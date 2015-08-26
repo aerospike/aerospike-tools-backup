@@ -55,7 +55,6 @@ DIR_ENV := env
 INCLUDES := -I$(DIR_INC)
 INCLUDES += -I$(CLIENTREPO)/src/include
 INCLUDES += -I$(CLIENTREPO)/modules/common/src/include
-INCLUDES += -I$(CLIENTREPO)/modules/ck/include
 
 LIBRARIES := $(CLIENTREPO)/target/$(PLATFORM)/lib/libaerospike.a
 LIBRARIES += -lcrypto
