@@ -1,0 +1,18 @@
+[FORMAT]
+max-line-length=100
+indent-string="	"
+
+[DESIGN]
+max-args=10
+
+[EXCEPTIONS]
+overgeneral-exceptions=
+
+[TYPECHECK]
+generated-members=setdefaultencoding,predicates,client,POLICY_KEY_SEND,POLICY_KEY_DIGEST,UDF_TYPE_LUA,INDEX_NUMERIC,INDEX_STRING,INDEX_TYPE_LIST,INDEX_TYPE_MAPKEYS,INDEX_TYPE_MAPVALUES
+
+[MESSAGES CONTROL]
+disable=bad-continuation
+
+[BASIC]
+good-names=eq,_

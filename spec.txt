@@ -1,0 +1,64 @@
+(record "nil"
+	1 (nil))
+
+(record "integer"
+	1 (integer))
+
+(record "string"
+	1 (string 50))
+
+(record "bytes"
+	1 (bytes 50))
+
+(record "list"
+	1 (list 3
+		(string 50)))
+
+(record "map"
+	1 (map 3
+		(integer)
+		(string 50)))
+
+(record "llist"
+	1 (llist 3
+		(string 50)))
+
+(record "lmap"
+	1 (lmap 3
+		(integer)
+		(string 50)))
+
+(record "pretty-nested"
+	1 (list 3
+		(map 3
+			(integer)
+			(list 3
+				(map 3
+					(integer)
+					(string 50))))))
+
+(record "multiple-bins"
+	3 (integer)
+	1 (string 50))
+
+(record "test"
+	1 (nil)
+	1 (integer)
+	1 (double)
+	1 (string 50)
+	1 (bytes 50)
+	1 (list 3
+		(string 50))
+	1 (map 3
+		(integer)
+		(string 50))
+	1 (llist 3
+		(string 50)))
+
+(record "llist-benchmark"
+	1 (llist 1000
+		(string 500)))
+
+(record "list-benchmark"
+	1 (list 1000
+		(string 500)))
