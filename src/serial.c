@@ -15,7 +15,6 @@
  * the License.
  */
 
-
 #include <serial.h>
 #include <utils.h>
 

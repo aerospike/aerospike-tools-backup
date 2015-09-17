@@ -15,7 +15,6 @@
  * the License.
  */
 
-
 #include <spec.h>
 
 #pragma GCC diagnostic ignored "-Wsign-conversion"

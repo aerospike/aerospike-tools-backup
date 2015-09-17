@@ -15,7 +15,6 @@
  * the License.
  */
 
-
 #include <errno.h>
 #include <fcntl.h>
 #include <stdbool.h>

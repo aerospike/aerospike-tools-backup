@@ -15,7 +15,6 @@
  * the License.
  */
 
-
 #include <utils.h>
 
 #if defined __APPLE__
