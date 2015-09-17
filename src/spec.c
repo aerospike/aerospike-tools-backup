@@ -61,7 +61,7 @@ static type_node **pop()
 }
 
 
-#line 72 "src/spec.c"
+#line 65 "src/spec.c"
 static const char _spec_actions[] = {
 	0, 1, 0, 1, 1, 1, 11, 1, 
 	12, 1, 13, 1, 15, 1, 16, 1, 
@@ -354,7 +354,7 @@ static const int spec_en_type = 21;
 static const int spec_en_main = 1;
 
 
-#line 248 "src/spec.rl"
+#line 241 "src/spec.rl"
 
 
 bool parse(char *input, rec_node **rec_out)
@@ -372,13 +372,13 @@ bool parse(char *input, rec_node **rec_out)
 	int32_t top;
 
 
-#line 383 "src/spec.c"
+#line 376 "src/spec.c"
 	{
 	cs = spec_start;
 	top = 0;
 	}
 
-#line 389 "src/spec.c"
+#line 382 "src/spec.c"
 	{
 	int _klen;
 	unsigned int _trans;
@@ -453,81 +453,81 @@ _match:
 		switch ( *_acts++ )
 		{
 	case 0:
-#line 72 "src/spec.rl"
+#line 65 "src/spec.rl"
 	{
 		line = p;
 		++line_no;
 	}
 	break;
 	case 1:
-#line 77 "src/spec.rl"
+#line 70 "src/spec.rl"
 	{
 		*type_out = (type_node *)safe_malloc(sizeof (type_node));
 	}
 	break;
 	case 2:
-#line 81 "src/spec.rl"
+#line 74 "src/spec.rl"
 	{
 		(*type_out)->type = NIL;
 	}
 	break;
 	case 3:
-#line 85 "src/spec.rl"
+#line 78 "src/spec.rl"
 	{
 		(*type_out)->type = INTEGER;
 	}
 	break;
 	case 4:
-#line 89 "src/spec.rl"
+#line 82 "src/spec.rl"
 	{
 		(*type_out)->type = DOUBLE;
 	}
 	break;
 	case 5:
-#line 93 "src/spec.rl"
+#line 86 "src/spec.rl"
 	{
 		(*type_out)->type = STRING;
 	}
 	break;
 	case 6:
-#line 97 "src/spec.rl"
+#line 90 "src/spec.rl"
 	{
 		(*type_out)->type = BYTES;
 	}
 	break;
 	case 7:
-#line 101 "src/spec.rl"
+#line 94 "src/spec.rl"
 	{
 		(*type_out)->type = LIST;
 	}
 	break;
 	case 8:
-#line 105 "src/spec.rl"
+#line 98 "src/spec.rl"
 	{
 		(*type_out)->type = MAP;
 	}
 	break;
 	case 9:
-#line 109 "src/spec.rl"
+#line 102 "src/spec.rl"
 	{
 		(*type_out)->type = LLIST;
 	}
 	break;
 	case 10:
-#line 113 "src/spec.rl"
+#line 106 "src/spec.rl"
 	{
 		(*type_out)->type = LMAP;
 	}
 	break;
 	case 11:
-#line 117 "src/spec.rl"
+#line 110 "src/spec.rl"
 	{
 		push(NULL);
 		p--; {stack[top++] = cs; cs = 21; goto _again;}
 	}
 	break;
 	case 12:
-#line 122 "src/spec.rl"
+#line 115 "src/spec.rl"
 	{
 		push(type_out);
 		type_out = &(*type_out)->children[0];
@@ -535,7 +535,7 @@ _match:
 	}
 	break;
 	case 13:
-#line 128 "src/spec.rl"
+#line 121 "src/spec.rl"
 	{
 		push(type_out);
 		type_out = &(*type_out)->children[1];
@@ -543,14 +543,14 @@ _match:
 	}
 	break;
 	case 14:
-#line 134 "src/spec.rl"
+#line 127 "src/spec.rl"
 	{
 		type_out = pop();
 		{cs = stack[--top]; goto _again;}
 	}
 	break;
 	case 15:
-#line 139 "src/spec.rl"
+#line 132 "src/spec.rl"
 	{
 		*rec_out = (rec_node *)safe_malloc(sizeof (rec_node));
 		bin_out = &(*rec_out)->bins;
@@ -558,7 +558,7 @@ _match:
 	}
 	break;
 	case 16:
-#line 145 "src/spec.rl"
+#line 138 "src/spec.rl"
 	{
 		char saved = *p;
 		*p = 0;
@@ -569,7 +569,7 @@ _match:
 	}
 	break;
 	case 17:
-#line 154 "src/spec.rl"
+#line 147 "src/spec.rl"
 	{
 		*bin_out = (bin_node *)safe_malloc(sizeof (bin_node));
 		type_out = &(*bin_out)->type;
@@ -577,7 +577,7 @@ _match:
 	}
 	break;
 	case 18:
-#line 160 "src/spec.rl"
+#line 153 "src/spec.rl"
 	{
 		char saved = *p;
 		*p = 0;
@@ -588,13 +588,13 @@ _match:
 	}
 	break;
 	case 19:
-#line 169 "src/spec.rl"
+#line 162 "src/spec.rl"
 	{
 		token = p;
 	}
 	break;
 	case 20:
-#line 173 "src/spec.rl"
+#line 166 "src/spec.rl"
 	{
 		char saved = *p;
 		*p = 0;
@@ -604,7 +604,7 @@ _match:
 	}
 	break;
 	case 21:
-#line 181 "src/spec.rl"
+#line 174 "src/spec.rl"
 	{
 		int32_t length = 0;
 
@@ -629,7 +629,7 @@ _match:
 		fputc('\n', stderr);
 	}
 	break;
-#line 640 "src/spec.c"
+#line 633 "src/spec.c"
 		}
 	}
 
@@ -646,14 +646,14 @@ _again:
 	while ( __nacts-- > 0 ) {
 		switch ( *__acts++ ) {
 	case 0:
-#line 72 "src/spec.rl"
+#line 65 "src/spec.rl"
 	{
 		line = p;
 		++line_no;
 	}
 	break;
 	case 21:
-#line 181 "src/spec.rl"
+#line 174 "src/spec.rl"
 	{
 		int32_t length = 0;
 
@@ -678,7 +678,7 @@ _again:
 		fputc('\n', stderr);
 	}
 	break;
-#line 689 "src/spec.c"
+#line 682 "src/spec.c"
 		}
 	}
 	}
@@ -686,7 +686,7 @@ _again:
 	_out: {}
 	}
 
-#line 267 "src/spec.rl"
+#line 260 "src/spec.rl"
 
 
 	if (cs == spec_error) {
