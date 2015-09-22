@@ -919,7 +919,7 @@ text_parse_bin(FILE *fd, bool legacy, as_vector *bin_vec, uint32_t *line_no, uin
 		return false;
 	}
 
-	if (strchr("NIDSXBJCPRHEMLU", ch) == NULL) {
+	if (strchr("NIDSXGBJCPRHEMLU", ch) == NULL) {
 		err("Invalid bytes label %s (line %u, col %u)", print_char(ch), line_no[0], col_no[0]);
 		return false;
 	}
@@ -1056,6 +1056,43 @@ text_parse_bin(FILE *fd, bool legacy, as_vector *bin_vec, uint32_t *line_no, uin
 			err("Error while setting string bin %s to %s (line %u, col %u)", name, (char *)buffer,
 					line_no[0], col_no[0]);
 			as_string_destroy(string);
+			cf_free(buffer);
+			return false;
+		}
+
+		return true;
+	}
+
+	if (ch == 'G') {
+		void *buffer;
+		size_t size;
+
+		if (!text_parse_string(fd, legacy, line_no, col_no, bytes, &buffer, &size)) {
+			err("Error while reading geojson bin value");
+			return false;
+		}
+
+		if (!expect_char(fd, line_no, col_no, bytes, '\n')) {
+			return false;
+		}
+
+		if (!match) {
+			cf_free(buffer);
+			return true;
+		}
+
+		as_geojson *geojson = as_geojson_new_wlen(buffer, size, true);
+
+		if (geojson == NULL) {
+			err("Error while allocating geojson bin value");
+			cf_free(buffer);
+			return false;
+		}
+
+		if (!as_record_set_geojson(rec, name, geojson)) {
+			err("Error while setting geojson bin %s to %s (line %u, col %u)", name, (char *)buffer,
+					line_no[0], col_no[0]);
+			as_geojson_destroy(geojson);
 			cf_free(buffer);
 			return false;
 		}
@@ -1441,6 +1478,10 @@ text_parse_index(FILE *fd, as_vector *ns_vec, uint32_t *line_no, uint32_t *col_n
 
 		case 'N':
 			path.type = PATH_TYPE_NUMERIC;
+			break;
+
+		case 'G':
+			path.type = PATH_TYPE_GEOJSON;
 			break;
 
 		default:

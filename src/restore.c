@@ -1233,6 +1233,10 @@ restore_indexes(aerospike *as, as_vector *index_vec, as_vector *set_vec, volatil
 		case PATH_TYPE_NUMERIC:
 			dtype = AS_INDEX_NUMERIC;
 			break;
+
+		case PATH_TYPE_GEOJSON:
+			dtype = AS_INDEX_GEO2DSPHERE;
+			break;
 		}
 
 		as_policy_info policy;

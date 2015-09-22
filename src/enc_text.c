@@ -195,6 +195,24 @@ text_output_string(uint64_t *bytes, FILE *fd, const char *prefix1, const char *p
 }
 
 ///
+/// Writes a geojson to the backup file.
+///
+/// @param bytes    Increased by the number of bytes written to the backup file.
+/// @param fd       The file descriptor of the backup file.
+/// @param prefix1  The first string prefix.
+/// @param prefix2  The second string prefix.
+/// @param val      The geojson to be written.
+///
+/// @result         `true`, if successful.
+///
+static bool
+text_output_geojson(uint64_t *bytes, FILE *fd, const char *prefix1, const char *prefix2, as_val *val)
+{
+	as_geojson *v = as_geojson_fromval(val);
+	return text_output_data(bytes, fd, prefix1, prefix2, v->value, v->len);
+}
+
+///
 /// Writes a bytes value to the backup file.
 ///
 /// @param bytes    Increased by the number of bytes written to the backup file.
@@ -282,6 +300,9 @@ text_output_value(uint64_t *bytes, FILE *fd, bool compact, const char *bin_name,
 
 	case AS_STRING:
 		return text_output_string(bytes, fd, "- S ", bin_name, val);
+
+	case AS_GEOJSON:
+		return text_output_geojson(bytes, fd, "- G ", bin_name, val);
 
 	case AS_BYTES: {
 		int32_t type = text_bytes_type_to_label(as_bytes_fromval(val)->type);
@@ -452,7 +473,7 @@ text_index_type_to_label(index_type type)
 static int32_t
 text_path_type_to_label(path_type type)
 {
-	return "ISN"[(int32_t)type];
+	return "ISNG"[(int32_t)type];
 }
 
 ///
