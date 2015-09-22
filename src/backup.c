@@ -514,9 +514,9 @@ process_secondary_indexes(per_node_context *pnc)
 					goto cleanup2;
 				}
 			} else if (strcmp(para, "type") == 0) {
-				if (strcmp(arg, "TEXT") == 0) {
+				if (strcmp(arg, "STRING") == 0) {
 					type = PATH_TYPE_STRING;
-				} else if (strcmp(arg, "INT SIGNED") == 0) {
+				} else if (strcmp(arg, "NUMERIC") == 0) {
 					type = PATH_TYPE_NUMERIC;
 				} else {
 					err("Invalid path type %s", arg);
