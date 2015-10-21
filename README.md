@@ -22,6 +22,11 @@ Now clone the source code of the Aerospike backup tools from GitHub.
 
     git clone https://github.com/aerospike/aerospike-tools-backup
 
+Install Doxygen dependency.
+
+    http://www.stack.nl/~dimitri/doxygen/download.html#srcbin
+    
+
 Then build the backup tools and generate the Doxygen documentation.
 
     cd aerospike-tools-backup
