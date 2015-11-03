@@ -59,6 +59,7 @@ INCLUDES += -I$(CLIENTREPO)/modules/common/src/include
 LIBRARIES := $(CLIENTREPO)/target/$(PLATFORM)/lib/libaerospike.a
 LIBRARIES += -lcrypto
 LIBRARIES += -lm
+LIBRARIES += -lz
 
 ifeq ($(OS), Linux)
 LIBRARIES += -ldl -lrt
