@@ -516,6 +516,8 @@ process_secondary_indexes(per_node_context *pnc)
 			} else if (strcmp(para, "type") == 0) {
 				if (strcmp(arg, "STRING") == 0) {
 					type = PATH_TYPE_STRING;
+				} else if (strcmp(arg, "TEXT") == 0) {
+					type = PATH_TYPE_STRING;
 				} else if (strcmp(arg, "NUMERIC") == 0) {
 					type = PATH_TYPE_NUMERIC;
 				} else if (strcmp(arg, "GEOJSON") == 0) {
