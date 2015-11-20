@@ -700,6 +700,11 @@ restore_thread_func(void *cont)
 		ptc.ldt_batch = NULL;
 		ptc.ldt_bytes = 0;
 		ptc.ldt_cleared = args.conf->keep_ldt;
+		ptc.stat_records = 0;
+		ptc.read_time = 0;
+		ptc.store_time = 0;
+		ptc.read_ema = 0;
+		ptc.store_ema = 0;
 
 		// restoring from a single backup file: use the provided shared file descriptor
 		if (ptc.conf->input_file != NULL) {
@@ -749,6 +754,9 @@ restore_thread_func(void *cont)
 			ver("Generation policy is default");
 		}
 
+		cf_clock prev_log = 0;
+		uint64_t prev_records = 0;
+
 		while (true) {
 			as_record rec;
 			bool expired;
@@ -773,9 +781,11 @@ restore_thread_func(void *cont)
 
 			ptc.ldt_prepare = PREPARE_INVALID;
 			ptc.has_ldts = false;
+			cf_clock read_start = verbose ? cf_getus() : 0;
 			decoder_status res = ptc.conf->decoder->parse(ptc.fd, ptc.legacy, ptc.ns_vec,
 					ptc.bin_vec, ptc.line_no, &ptc.conf->total_bytes, &rec, &expired, add_ldt_value,
 					&ptc, &index, &udf);
+			cf_clock read_time = verbose ? cf_getus() - read_start : 0;
 
 			// set the stop flag inside the critical section; see check above
 			if (res == DECODER_ERROR) {
@@ -848,8 +858,11 @@ restore_thread_func(void *cont)
 						as_error ae;
 						policy.key = rec.key.valuep != NULL ? AS_POLICY_KEY_SEND :
 								AS_POLICY_KEY_DIGEST;
+						cf_clock store_start = verbose ? cf_getus() : 0;
 						as_status put = aerospike_key_put(ptc.conf->as, &ae, &policy, &rec.key,
 								&rec);
+						cf_clock now = verbose ? cf_getus() : 0;
+						cf_clock store_time = now - store_start;
 
 						if (put == AEROSPIKE_ERR_RECORD_GENERATION) {
 							cf_atomic64_incr(&ptc.conf->fresher_records);
@@ -863,6 +876,35 @@ restore_thread_func(void *cont)
 
 						if (put == AEROSPIKE_OK) {
 							cf_atomic64_incr(&ptc.conf->inserted_records);
+
+							if (!verbose) {
+								break;
+							}
+
+							ptc.read_time += read_time;
+							ptc.store_time += store_time;
+							ptc.read_ema = (99 * ptc.read_ema + 1 * (uint32_t)read_time) / 100;
+							ptc.store_ema = (99 * ptc.store_ema + 1 * (uint32_t)store_time) / 100;
+
+							++ptc.stat_records;
+
+							uint32_t time_diff = (uint32_t)((now - prev_log) / 1000);
+
+							if (time_diff < STAT_INTERVAL * 1000) {
+								break;
+							}
+
+							uint32_t rec_diff = (uint32_t)(ptc.stat_records - prev_records);
+
+							ver("%" PRIu64 " per-thread record(s) (%u rec/s), "
+									"read latency: %u (%u) us, store latency: %u (%u) us",
+									ptc.stat_records,
+									prev_records > 0 ? rec_diff * 1000 / time_diff : 1,
+									(uint32_t)(ptc.read_time / ptc.stat_records), ptc.read_ema,
+									(uint32_t)(ptc.store_time / ptc.stat_records), ptc.store_ema);
+
+							prev_log = now;
+							prev_records = ptc.stat_records;
 							break;
 						}
 

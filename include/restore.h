@@ -39,6 +39,8 @@
 #define INITIAL_BACKOFF 10              ///< Initial backoff delay (in ms) between tries when
                                         ///  overloaded; doubled after each try.
 
+#define STAT_INTERVAL 10                ///< The interval for logging per-thread timing stats.
+
 ///
 /// Encapsulates a UDF file.
 ///
@@ -232,4 +234,9 @@ typedef struct {
 	bool has_ldts;              ///< Indicates that the @ref ldt_callback function was invoked and
 	                            ///  wrote LDT data.
 	bool ldt_cleared;           ///< Indicates that we have cleared the current LDT bin.
+	uint64_t stat_records;      ///< The number of records for which we have collected timing stats.
+	cf_clock read_time;         ///< The time spent on reading records on this thread.
+	cf_clock store_time;        ///< The time spent on storing records on this thread.
+	uint32_t read_ema;          ///< The exponential moving average of read latencies.
+	uint32_t store_ema;         ///< The exponential moving average of store latencies.
 } per_thread_context;
