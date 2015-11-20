@@ -26,7 +26,7 @@
 
 #include <shared.h>
 
-#define IO_BUF_SIZE (1024 * 256)            ///< We do I/O in blocks of this size.
+#define IO_BUF_SIZE (1024 * 1024 * 16)      ///< We do I/O in blocks of this size.
 #define STACK_BUF_SIZE (1024 * 16)          ///< The size limit for stack-allocated buffers.
 #define ETA_BUF_SIZE (4 + 3 + 3 + 3 + 1)    ///< The buffer size for pretty-printing an ETA.
 
