@@ -1544,6 +1544,7 @@ main(int32_t argc, char **argv)
 	as_scan scan;
 	as_scan_init(&scan, "", "");
 	scan.deserialize_list_map = false;
+	scan.include_ldt = true;
 
 	char *host = NULL;
 	int32_t port = -1;
