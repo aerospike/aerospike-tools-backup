@@ -31,6 +31,7 @@ typedef struct {
 	FILE *fd;
 	uint32_t *line_no;
 	uint32_t *col_no;
+	uint32_t indent;
 	int64_t *bytes;
 	b64_context *b64_cont;
 } serial_context;

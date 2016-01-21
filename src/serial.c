@@ -18,6 +18,14 @@
 #include <serial.h>
 #include <utils.h>
 
+// #define VERY_VERBOSE
+
+#if !defined VERY_VERBOSE
+#define VERBOSE false
+#else
+#define VERBOSE verbose
+#endif
+
 #if !defined DECODE_BASE64
 #define READ_CHAR(fd, line_no, col_no, bytes) read_char(fd, line_no, col_no, bytes)
 #define READ_BLOCK(fd, line_no, col_no, bytes, buffer, size) \
@@ -32,6 +40,19 @@
 #define GET_LIST_SIZE(ser_cont, size) get_list_size_dec(ser_cont, size)
 #define UNPACK_VALUE(ser_cont, value) unpack_value_dec(ser_cont, value)
 #endif
+
+static inline const char *indent(serial_context *ser_cont)
+{
+	uint32_t indent = ser_cont->indent;
+
+	if (indent > 50) {
+		indent = 50;
+	}
+
+	//                1         2         3         4
+	//      01234567890123456789012345678901234567890123456789
+	return "                                                  " + (50 - indent);
+}
 
 // almost all functions adapted from as_msgpack.c
 
@@ -108,15 +129,23 @@ extract_double(serial_context *ser_cont, double *value)
 }
 
 static inline bool
-unpack_nil(as_val **out)
+unpack_nil(serial_context *ser_cont, as_val **out)
 {
+	if (VERBOSE) {
+		ver("%sNIL", indent(ser_cont));
+	}
+
 	*out = (as_val *)&as_nil;
 	return true;
 }
 
 static inline bool
-unpack_integer(int64_t in, as_val **out)
+unpack_integer(serial_context *ser_cont, int64_t in, as_val **out)
 {
+	if (VERBOSE) {
+		ver("%sInteger %" PRId64, indent(ser_cont), in);
+	}
+
 	as_val *tmp = (as_val *)as_integer_new(in);
 
 	if (tmp == NULL) {
@@ -129,8 +158,12 @@ unpack_integer(int64_t in, as_val **out)
 }
 
 static inline bool
-unpack_double(double in, as_val **out)
+unpack_double(serial_context *ser_cont, double in, as_val **out)
 {
+	if (VERBOSE) {
+		ver("%sDouble %f", indent(ser_cont), in);
+	}
+
 	as_val *tmp = (as_val *)as_double_new(in);
 
 	if (tmp == NULL) {
@@ -143,9 +176,13 @@ unpack_double(double in, as_val **out)
 }
 
 static inline bool
-unpack_boolean(bool in, as_val **out)
+unpack_boolean(serial_context *ser_cont, bool in, as_val **out)
 {
-	return unpack_integer(in ? 1 : 0, out);
+	if (VERBOSE) {
+		ver("%sBoolean %s", indent(ser_cont), in ? "true" : "false");
+	}
+
+	return unpack_integer(ser_cont, in ? 1 : 0, out);
 }
 
 static bool
@@ -160,7 +197,16 @@ unpack_blob(serial_context *ser_cont, uint32_t size, as_val **value)
 
 	--size;
 
-	void *buffer = safe_malloc(size);
+	if (VERBOSE) {
+		ver("%sBLOB, %u byte(s), type 0x%02x", indent(ser_cont), size, type);
+	}
+
+	// Waste one byte...
+	void *buffer = safe_malloc(size + 1);
+
+	// ... so that we can NUL-terminate all strings for as_string_val_hashcode().
+	char *chars = buffer;
+	chars[size] = 0;
 
 	if (!READ_BLOCK(ser_cont->fd, ser_cont->line_no, ser_cont->col_no, ser_cont->bytes,
 			buffer, size)) {
@@ -170,6 +216,10 @@ unpack_blob(serial_context *ser_cont, uint32_t size, as_val **value)
 	}
 
 	if (type == AS_BYTES_STRING) {
+		if (VERBOSE) {
+			ver("%s  -> string BLOB: \"%s\"", indent(ser_cont), chars);
+		}
+
 		as_string *string = as_string_new_wlen(buffer, size, true);
 
 		if (string == NULL) {
@@ -183,6 +233,10 @@ unpack_blob(serial_context *ser_cont, uint32_t size, as_val **value)
 	}
 
 	if (type == AS_BYTES_GEOJSON) {
+		if (VERBOSE) {
+			ver("%s  -> geo BLOB: \"%s\"", indent(ser_cont), chars);
+		}
+
 		as_geojson *geo = as_geojson_new_wlen(buffer, size, true);
 
 		if (geo == NULL) {
@@ -210,6 +264,10 @@ unpack_blob(serial_context *ser_cont, uint32_t size, as_val **value)
 static bool
 unpack_list(serial_context *ser_cont, uint32_t size, as_val **value)
 {
+	if (VERBOSE) {
+		ver("%sList, %u element(s)", indent(ser_cont), size);
+	}
+
 	as_arraylist *list = as_arraylist_new(size, 8);
 
 	if (list == NULL) {
@@ -217,10 +275,12 @@ unpack_list(serial_context *ser_cont, uint32_t size, as_val **value)
 		return false;
 	}
 
+	ser_cont->indent += 2;
+
 	for (uint32_t i = 0; i < size; ++i) {
 		as_val *element;
 
-		if (!unpack_value(ser_cont, &element)) {
+		if (!UNPACK_VALUE(ser_cont, &element)) {
 			err("Error while unpacking list element");
 			as_arraylist_destroy(list);
 			return false;
@@ -233,6 +293,7 @@ unpack_list(serial_context *ser_cont, uint32_t size, as_val **value)
 		}
 	}
 
+	ser_cont->indent -= 2;
 	*value = (as_val *)list;
 	return true;
 }
@@ -283,6 +344,10 @@ GET_LIST_SIZE(serial_context *ser_cont, uint32_t *size)
 static bool
 unpack_map(serial_context *ser_cont, uint32_t size, as_val **value)
 {
+	if (VERBOSE) {
+		ver("%sMap, %u element(s)", indent(ser_cont), size);
+	}
+
 	as_hashmap *map = as_hashmap_new(size > 32 ? size : 32);
 
 	if (map == NULL) {
@@ -290,10 +355,12 @@ unpack_map(serial_context *ser_cont, uint32_t size, as_val **value)
 		return false;
 	}
 
+	ser_cont->indent += 2;
+
 	for (uint32_t i = 0; i < size; ++i) {
 		as_val *key, *val;
 
-		if (!unpack_value(ser_cont, &key) || !unpack_value(ser_cont, &val)) {
+		if (!UNPACK_VALUE(ser_cont, &key) || !UNPACK_VALUE(ser_cont, &val)) {
 			err("Error while unpacking map key or value");
 			as_hashmap_destroy(map);
 			return false;
@@ -306,6 +373,7 @@ unpack_map(serial_context *ser_cont, uint32_t size, as_val **value)
 		}
 	}
 
+	ser_cont->indent -= 2;
 	*value = (as_val *)map;
 	return true;
 }
@@ -322,58 +390,58 @@ UNPACK_VALUE(serial_context *ser_cont, as_val **value)
 
 	switch (type) {
 	case 0xc0: // nil
-		return unpack_nil(value);
+		return unpack_nil(ser_cont, value);
 
 	case 0xc3: // boolean true
-		return unpack_boolean(true, value);
+		return unpack_boolean(ser_cont, true, value);
 
 	case 0xc2: // boolean false
-		return unpack_boolean(false, value);
+		return unpack_boolean(ser_cont, false, value);
 
 	case 0xca: { // float
 		float tmp;
-		return extract_float(ser_cont, &tmp) && unpack_double(tmp, value);
+		return extract_float(ser_cont, &tmp) && unpack_double(ser_cont, tmp, value);
 	}
 
 	case 0xcb: { // double
 		double tmp;
-		return extract_double(ser_cont, &tmp) && unpack_double(tmp, value);
+		return extract_double(ser_cont, &tmp) && unpack_double(ser_cont, tmp, value);
 	}
 
 	case 0xd0: { // signed 8 bit integer
 		int8_t tmp;
-		return extract_uint8(ser_cont, (uint8_t *)&tmp) && unpack_integer(tmp, value);
+		return extract_uint8(ser_cont, (uint8_t *)&tmp) && unpack_integer(ser_cont, tmp, value);
 	}
 	case 0xcc: { // unsigned 8 bit integer
 		uint8_t tmp;
-		return extract_uint8(ser_cont, &tmp) && unpack_integer(tmp, value);
+		return extract_uint8(ser_cont, &tmp) && unpack_integer(ser_cont, tmp, value);
 	}
 
 	case 0xd1: { // signed 16 bit integer
 		int16_t tmp;
-		return extract_uint16(ser_cont, (uint16_t *)&tmp) && unpack_integer(tmp, value);
+		return extract_uint16(ser_cont, (uint16_t *)&tmp) && unpack_integer(ser_cont, tmp, value);
 	}
 	case 0xcd: { // unsigned 16 bit integer
 		uint16_t tmp;
-		return extract_uint16(ser_cont, &tmp) && unpack_integer(tmp, value);
+		return extract_uint16(ser_cont, &tmp) && unpack_integer(ser_cont, tmp, value);
 	}
 
 	case 0xd2: { // signed 32 bit integer
 		int32_t tmp;
-		return extract_uint32(ser_cont, (uint32_t *)&tmp) && unpack_integer(tmp, value);
+		return extract_uint32(ser_cont, (uint32_t *)&tmp) && unpack_integer(ser_cont, tmp, value);
 	}
 	case 0xce: { // unsigned 32 bit integer
 		uint32_t tmp;
-		return extract_uint32(ser_cont, &tmp) && unpack_integer(tmp, value);
+		return extract_uint32(ser_cont, &tmp) && unpack_integer(ser_cont, tmp, value);
 	}
 
 	case 0xd3: { // signed 64 bit integer
 		int64_t tmp;
-		return extract_uint64(ser_cont, (uint64_t *)&tmp) && unpack_integer(tmp, value);
+		return extract_uint64(ser_cont, (uint64_t *)&tmp) && unpack_integer(ser_cont, tmp, value);
 	}
 	case 0xcf: { // unsigned 64 bit integer
 		uint64_t tmp;
-		return extract_uint64(ser_cont, &tmp) && unpack_integer((int64_t)tmp, value);
+		return extract_uint64(ser_cont, &tmp) && unpack_integer(ser_cont, (int64_t)tmp, value);
 	}
 
 	case 0xc4:
@@ -424,11 +492,11 @@ UNPACK_VALUE(serial_context *ser_cont, as_val **value)
 		}
 
 		if (type < 0x80) { // 8 bit combined unsigned integer
-			return unpack_integer(type, value);
+			return unpack_integer(ser_cont, type, value);
 		}
 
 		if (type >= 0xe0) { // 8 bit combined signed integer
-			return unpack_integer(type - 0xe0 - 32, value);
+			return unpack_integer(ser_cont, type - 0xe0 - 32, value);
 		}
 
 		return false;

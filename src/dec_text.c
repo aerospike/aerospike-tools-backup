@@ -786,13 +786,17 @@ text_parse_ldt(FILE *fd, bool legacy, bool compact, uint32_t *line_no, uint32_t 
 
 	int64_t orig_bytes = *bytes;
 	b64_context b64_cont = { 0, 9999, { 99, 99 }};
-	serial_context ser_cont = { fd, line_no, col_no, bytes, &b64_cont };
+	serial_context ser_cont = { fd, line_no, col_no, 2, bytes, &b64_cont };
 	uint32_t length;
 
 	if (!compact) {
 		if (!get_list_size_dec(&ser_cont, &length)) {
 			err("Error while getting encoded LDT list size");
 			return false;
+		}
+
+		if (verbose) {
+			ver("Encoded LDT list has %u element(s)", length);
 		}
 
 		for (uint32_t i = 0; i < length; ++i) {
@@ -816,6 +820,10 @@ text_parse_ldt(FILE *fd, bool legacy, bool compact, uint32_t *line_no, uint32_t 
 		if (!get_list_size(&ser_cont, &length)) {
 			err("Error while getting LDT list size");
 			return false;
+		}
+
+		if (verbose) {
+			ver("Compact LDT list has %u element(s)", length);
 		}
 
 		for (uint32_t i = 0; i < length; ++i) {

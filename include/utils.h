@@ -220,7 +220,7 @@ read_char_dec(FILE *fd, uint32_t *line_no, uint32_t *col_no, int64_t *bytes, b64
 
 	if (UNLIKELY(ch1 == EOF || ch2 == EOF || ch3 == EOF || ch4 == EOF)) {
 		err("Unexpected end of file in base-64 data");
-		return false;
+		return EOF;
 	}
 
 	if (UNLIKELY(ch4 == '=')) {
@@ -238,7 +238,7 @@ read_char_dec(FILE *fd, uint32_t *line_no, uint32_t *col_no, int64_t *bytes, b64
 		err("Invalid base-64 character (%s, %s, %s, or %s at or before line %u, col %u)",
 				print_char(ch1), print_char(ch2), print_char(ch3), print_char(ch4),
 				line_no[0], col_no[0]);
-		return false;
+		return EOF;
 	}
 
 	b64c->buffer[0] = (uint8_t)((dig2 << 4) | (dig3 >> 2));
