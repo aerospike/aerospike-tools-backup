@@ -36,6 +36,20 @@
 // almost all functions adapted from as_msgpack.c
 
 static inline bool
+extract_uint8(serial_context *ser_cont, uint8_t *value)
+{
+	int32_t ch1 = READ_CHAR(ser_cont->fd, ser_cont->line_no, ser_cont->col_no, ser_cont->bytes);
+
+	if (ch1 == EOF) {
+		err("Error while reading 8-bit value");
+		return false;
+	}
+
+	*value = (uint8_t)ch1;
+	return true;
+}
+
+static inline bool
 extract_uint16(serial_context *ser_cont, uint16_t *value)
 {
 	int32_t ch1 = READ_CHAR(ser_cont->fd, ser_cont->line_no, ser_cont->col_no, ser_cont->bytes);
@@ -115,6 +129,20 @@ unpack_integer(int64_t in, as_val **out)
 }
 
 static inline bool
+unpack_double(double in, as_val **out)
+{
+	as_val *tmp = (as_val *)as_double_new(in);
+
+	if (tmp == NULL) {
+		err("Error while allocating double");
+		return false;
+	}
+
+	*out = tmp;
+	return true;
+}
+
+static inline bool
 unpack_boolean(bool in, as_val **out)
 {
 	return unpack_integer(in ? 1 : 0, out);
@@ -151,6 +179,19 @@ unpack_blob(serial_context *ser_cont, uint32_t size, as_val **value)
 		}
 
 		*value = (as_val *)string;
+		return true;
+	}
+
+	if (type == AS_BYTES_GEOJSON) {
+		as_geojson *geo = as_geojson_new_wlen(buffer, size, true);
+
+		if (geo == NULL) {
+			err("Error while allocating geo value");
+			cf_free(buffer);
+			return false;
+		}
+
+		*value = (as_val *)geo;
 		return true;
 	}
 
@@ -289,37 +330,23 @@ UNPACK_VALUE(serial_context *ser_cont, as_val **value)
 	case 0xc2: // boolean false
 		return unpack_boolean(false, value);
 
-	case 0xca: { // float: unsupported, so convert to integer for now
+	case 0xca: { // float
 		float tmp;
-		return extract_float(ser_cont, &tmp) && unpack_integer((int64_t)tmp, value);
+		return extract_float(ser_cont, &tmp) && unpack_double(tmp, value);
 	}
 
-	case 0xcb: { // double: unsupported, so convert to integer for now
+	case 0xcb: { // double
 		double tmp;
-		return extract_double(ser_cont, &tmp) && unpack_integer((int64_t)tmp, value);
+		return extract_double(ser_cont, &tmp) && unpack_double(tmp, value);
 	}
 
 	case 0xd0: { // signed 8 bit integer
-		int32_t tmp = READ_CHAR(ser_cont->fd, ser_cont->line_no, ser_cont->col_no,
-				ser_cont->bytes);
-
-		if (tmp == EOF) {
-			err("Error while reading 8-bit value");
-			return false;
-		}
-
-		return unpack_integer((int8_t)tmp, value);
+		int8_t tmp;
+		return extract_uint8(ser_cont, (uint8_t *)&tmp) && unpack_integer(tmp, value);
 	}
 	case 0xcc: { // unsigned 8 bit integer
-		int32_t tmp = READ_CHAR(ser_cont->fd, ser_cont->line_no, ser_cont->col_no,
-				ser_cont->bytes);
-
-		if (tmp == EOF) {
-			err("Error while reading 8-bit value");
-			return false;
-		}
-
-		return unpack_integer((uint8_t)tmp, value);
+		uint8_t tmp;
+		return extract_uint8(ser_cont, &tmp) && unpack_integer(tmp, value);
 	}
 
 	case 0xd1: { // signed 16 bit integer
@@ -349,10 +376,17 @@ UNPACK_VALUE(serial_context *ser_cont, as_val **value)
 		return extract_uint64(ser_cont, &tmp) && unpack_integer((int64_t)tmp, value);
 	}
 
+	case 0xc4:
+	case 0xd9: { // raw bytes with 8 bit header
+		uint8_t size;
+		return extract_uint8(ser_cont, &size) && unpack_blob(ser_cont, size, value);
+	}
+	case 0xc5:
 	case 0xda: { // raw bytes with 16 bit header
 		uint16_t size;
 		return extract_uint16(ser_cont, &size) && unpack_blob(ser_cont, size, value);
 	}
+	case 0xc6:
 	case 0xdb: { // raw bytes with 32 bit header
 		uint32_t size;
 		return extract_uint32(ser_cont, &size) && unpack_blob(ser_cont, size, value);
@@ -371,7 +405,6 @@ UNPACK_VALUE(serial_context *ser_cont, as_val **value)
 		uint16_t size;
 		return extract_uint16(ser_cont, &size) && unpack_map(ser_cont, size, value);
 	}
-
 	case 0xdf: { // map with 32 bit header
 		uint32_t size;
 		return extract_uint32(ser_cont, &size) && unpack_map(ser_cont, size, value);
