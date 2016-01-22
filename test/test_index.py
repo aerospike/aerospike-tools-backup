@@ -46,6 +46,16 @@ def test_string_index():
 		lambda context: check_indexes(lib.check_simple_index, u"foobar")
 	)
 
+def test_geo_index():
+	"""
+	Tests geo indexes across all set names, index names, and index paths.
+	"""
+	lib.backup_and_restore(
+		lambda context: create_indexes(lib.create_geo_index),
+		None,
+		lambda context: check_indexes(lib.check_geo_index, (0.0, 0.0))
+	)
+
 def test_integer_list_index():
 	"""
 	Tests integer list indexes across all set names, index names, and

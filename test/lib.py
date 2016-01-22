@@ -541,6 +541,16 @@ def check_simple_index(set_name, path, value):
 	query.where(aerospike.predicates.equals(path, value))
 	query.results()
 
+def check_geo_index(set_name, path, value):
+	"""
+	Tests the presence of a geo index by making a region query.
+	"""
+	validate_index_check(set_name, path, value)
+	query = GLOBALS["client"].query(NAMESPACE, set_name)
+	# XXX - geo index requires string bin names
+	query.where(aerospike.predicates.geo_within_radius(str(path), value[0], value[1], 10.0))
+	query.results()
+
 def check_complex_index(set_name, path, index_type, value):
 	"""
 	Tests the presence of a complex secondary index by making a "contains" query.
@@ -618,6 +628,15 @@ def create_string_index(set_name, path, index_name):
 	validate_index_creation(set_name, path, index_name)
 	assert GLOBALS["client"].index_string_create(NAMESPACE, set_name, path, index_name) == 0, \
 			"Unexpected error while creating index"
+
+def create_geo_index(set_name, path, index_name):
+	"""
+	Creates a geo index.
+	"""
+	validate_index_creation(set_name, path, index_name)
+	# XXX - geo index requires string bin names
+	assert GLOBALS["client"].index_geo2dsphere_create(NAMESPACE, set_name, str(path), \
+			index_name) == 0, "Unexpected error while creating index"
 
 def create_string_list_index(set_name, path, index_name):
 	"""
