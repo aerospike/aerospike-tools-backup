@@ -67,6 +67,10 @@ def eq(value1, value2):
 	if isinstance(value1, float) and isinstance(value2, float) and math.isnan(value1):
 		return math.isnan(value2)
 
+	# XXX - geo objects don't support equality
+	if isinstance(value1, aerospike.GeoJSON) and isinstance(value2, aerospike.GeoJSON):
+		return str(value1) == str(value2)
+
 	return value1 == value2
 
 def force_unicode(value, message):
@@ -487,6 +491,27 @@ def write_ldt_record(set_name, key, bin_names, values):
 		for entry in value:
 			ldt_list.add(entry)
 
+# XXX - geo objects don't support equality
+def geo_to_string(value):
+	"""
+	Convert geo objects to strings, because they don't support equality.
+	"""
+	if isinstance(value, list):
+		return [geo_to_string(x) for x in value]
+
+	if isinstance(value, dict):
+		result = {}
+
+		for dict_key, dict_value in value.iteritems():
+			result[dict_key] = geo_to_string(dict_value)
+
+		return result
+
+	if isinstance(value, aerospike.GeoJSON):
+		return str(value)
+
+	return value
+
 def validate_ldt_record(set_name, key, bin_names, values):
 	"""
 	Ensures that the given key has the given bins with the given
@@ -502,7 +527,7 @@ def validate_ldt_record(set_name, key, bin_names, values):
 		force_unicode(value, "Please use Unicode bin values")
 		ldt_list = GLOBALS["client"].llist((NAMESPACE, set_name, key), bin_name)
 		read_value = ldt_list.filter()
-		assert sorted(read_value) == sorted(value), \
+		assert sorted(geo_to_string(read_value)) == sorted(geo_to_string(value)), \
 				"Key %s has an invalid \"%s\" LDT bin (%s vs %s)" % \
 				(key, bin_name, read_value, value)
 

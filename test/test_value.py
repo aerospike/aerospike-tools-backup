@@ -5,6 +5,7 @@ Tests the representation of values in backup files.
 """
 
 import lib
+import aerospike
 
 STRING_VALUES = lib.identifier_variations(10, False)
 STRING_VALUES += lib.identifier_variations(100, False)
@@ -39,6 +40,13 @@ DOUBLE_VALUES = [
 	1.7976931348623157e+308
 ]
 
+GEO_VALUES = [
+	aerospike.GeoJSON({
+		"type": "Point",
+		"coordinates": [0.0, 0.0]
+	})
+]
+
 MAP_KEYS = [[lib.identifier(10) for _ in xrange(100)] for _ in xrange(50)]
 MAP_VALUES = [[lib.identifier(10) for _ in xrange(100)] for _ in xrange(50)]
 
@@ -70,7 +78,7 @@ LARGE_LIST_VALUES_MSG_PACK = [
 		str('X' * 65536), str('X' * 131072)
 	],
 	[
-		{"key": 0, "a": 1, "b": 2},
+		{"key": 0, "a": 1, "b": 1.2345, "c": "string"},
 		{"key": 1, "map": {}},
 		{"key": 2, "map": {"a": 1}},
 		{"key": 3, "map": LARGE_LIST_MAPS[15]},
@@ -90,7 +98,14 @@ LARGE_LIST_VALUES_MSG_PACK = [
 		{"key": 17, "list": [1] * 65536},
 		{"key": 18, "list": [1] * 131072},
 		{"key": 19, "map": {"list1": [1, 2, 3], "list2": [4, 5, 6]}},
-		{"key": 20, "list": [{"a": 1, "b": 2}, {"c": 3, "d": 4}]}
+		{"key": 20, "list": [{"a": 1, "b": 2}, {"c": 3, "d": 4}]},
+		{
+			"key": 21,
+			"geo": aerospike.GeoJSON({
+				"type": "Point",
+				"coordinates": [0.0, 0.0]
+			})
+		}
 	]
 ]
 
@@ -175,6 +190,16 @@ def test_double_value():
 		lambda context: put_values(lib.SET, "key", DOUBLE_VALUES),
 		None,
 		lambda context: check_values(lib.SET, "key", DOUBLE_VALUES)
+	)
+
+def test_geo_value():
+	"""
+	Test geo values.
+	"""
+	lib.backup_and_restore(
+		lambda context: put_values(lib.SET, "key", GEO_VALUES),
+		None,
+		lambda context: check_values(lib.SET, "key", GEO_VALUES)
 	)
 
 def test_map_value():
