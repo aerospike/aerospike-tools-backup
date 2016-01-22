@@ -4,7 +4,8 @@
 Utility functions for automated tests.
 """
 
-import sys, os, os.path, subprocess, time, codecs, random, string, aerospike, aerospike.predicates
+import sys, os, os.path, subprocess, time, codecs, random, string, math
+import aerospike, aerospike.predicates
 
 PORT = 3000
 NAMESPACE = "test"
@@ -52,6 +53,9 @@ def eq(value1, value2):
 
 	if isinstance(value2, unicode):
 		value2 = value2.encode("UTF-8")
+
+	if type(value1) is float and type(value2) is float and math.isnan(value1):
+		return math.isnan(value2)
 
 	return value1 == value2
 

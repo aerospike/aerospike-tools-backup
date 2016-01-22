@@ -6,10 +6,6 @@ Tests the representation of values in backup files.
 
 import lib
 
-# XXX - the Python client doesn't yet support double-valued bins
-TEST_DOUBLE_VALUES = False
-
-# XXX - not testing strings with NUL for now, as the Python client chokes on them
 STRING_VALUES = lib.identifier_variations(10, False)
 STRING_VALUES += lib.identifier_variations(100, False)
 STRING_VALUES += lib.identifier_variations(1000, False)
@@ -126,9 +122,6 @@ def test_double_value():
 	"""
 	Test double values.
 	"""
-	if not TEST_DOUBLE_VALUES:
-		return
-
 	lib.backup_and_restore(
 		lambda context: put_values(lib.SET, "key", DOUBLE_VALUES),
 		None,

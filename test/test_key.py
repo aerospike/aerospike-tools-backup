@@ -6,7 +6,6 @@ Tests the representation of keys in backup files.
 
 import lib
 
-# XXX - not testing strings with NUL for now, as the Python client chokes on them
 STRING_KEYS = lib.identifier_variations(10, False)
 STRING_KEYS += lib.identifier_variations(100, False)
 STRING_KEYS += lib.identifier_variations(1000, False)

@@ -64,7 +64,7 @@ text_check_floating_point(const char *buffer, size_t len)
 			continue;
 		}
 
-		if (ch == '-' && prev == 'e') {
+		if ((ch == '+' || ch == '-') && prev == 'e') {
 			continue;
 		}
 
