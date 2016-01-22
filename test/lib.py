@@ -4,8 +4,18 @@
 Utility functions for automated tests.
 """
 
-import sys, os, os.path, subprocess, time, codecs, random, string, math
-import aerospike, aerospike.predicates
+import sys
+import os
+import os.path
+import subprocess
+import time
+import codecs
+import random
+import string
+import math
+
+import aerospike
+import aerospike.predicates
 
 PORT = 3000
 NAMESPACE = "test"
@@ -54,7 +64,7 @@ def eq(value1, value2):
 	if isinstance(value2, unicode):
 		value2 = value2.encode("UTF-8")
 
-	if type(value1) is float and type(value2) is float and math.isnan(value1):
+	if isinstance(value1, float) and isinstance(value2, float) and math.isnan(value1):
 		return math.isnan(value2)
 
 	return value1 == value2
@@ -318,7 +328,7 @@ def stop(keep_work_dir=False):
 	"""
 	print "Disconnecting client"
 
-	if not "client" in GLOBALS:
+	if "client" not in GLOBALS:
 		print "No connected client"
 	else:
 		GLOBALS["client"].close()
@@ -329,7 +339,7 @@ def stop(keep_work_dir=False):
 	for index in xrange(1, 3):
 		asd = "asd-" + str(index)
 
-		if not asd in GLOBALS:
+		if asd not in GLOBALS:
 			print "No running", asd, "process"
 		else:
 			GLOBALS[asd].terminate()

@@ -4,7 +4,9 @@
 Tests the representation of UDF files in backup files.
 """
 
-import lib, os.path
+import os.path
+
+import lib
 
 COMMENTS = lib.identifier_variations(100, False)
 

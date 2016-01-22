@@ -4,7 +4,9 @@
 Tests backup and restore filter options.
 """
 
-import os.path, lib
+import os.path
+
+import lib
 
 KEY = u"key"
 SET_NAME_1 = u"set-1"
