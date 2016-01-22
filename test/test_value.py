@@ -56,8 +56,8 @@ LARGE_LIST_VALUES_MSG_PACK = [
 	[
 		"", "X", str('X' * 15), str('X' * 31),
 		str('X' * 32), str('X' * 127), str('X' * 128), str('X' * 255),
-		# str('X' * 256), str('X' * 32767), str('X' * 32768), str('X' * 65535),
-		# str('X' * 65536), str('X' * 131072)
+		str('X' * 256), str('X' * 32767), str('X' * 32768), str('X' * 65535),
+		str('X' * 65536), str('X' * 131072)
 	],
 	[
 		{"key": 0, "a": 1, "b": 2},
@@ -208,6 +208,17 @@ def test_large_list_value_msg_pack():
 		lambda context: check_large_list(lib.SET, "key", LARGE_LIST_VALUES_MSG_PACK)
 	)
 
+def test_large_list_value_msg_pack_compact():
+	"""
+	Test LDT list values and cover all possible packed representations, pass --compact to backup.
+	"""
+	lib.backup_and_restore(
+		lambda context: put_large_list(lib.SET, "key", LARGE_LIST_VALUES_MSG_PACK),
+		None,
+		lambda context: check_large_list(lib.SET, "key", LARGE_LIST_VALUES_MSG_PACK),
+		["--compact"]
+	)
+
 def test_large_list_value():
 	"""
 	Test LDT list values.
@@ -219,6 +230,20 @@ def test_large_list_value():
 		lambda context: put_large_list(lib.SET, "key", LARGE_LIST_VALUES),
 		None,
 		lambda context: check_large_list(lib.SET, "key", LARGE_LIST_VALUES)
+	)
+
+def test_large_list_value_compact():
+	"""
+	Test LDT list values, pass --compact to backup.
+	"""
+	if not LARGE_LIST_VALUES:
+		populate()
+
+	lib.backup_and_restore(
+		lambda context: put_large_list(lib.SET, "key", LARGE_LIST_VALUES),
+		None,
+		lambda context: check_large_list(lib.SET, "key", LARGE_LIST_VALUES),
+		["--compact"]
 	)
 
 def test_large_list_value_1_mib():
@@ -233,4 +258,18 @@ def test_large_list_value_1_mib():
 		None,
 		lambda context: check_large_list(lib.SET, "key", LARGE_LIST_VALUES),
 		restore_opts=["--batch-size", "1"]
+	)
+
+def test_large_list_value_1_mib_compact():
+	"""
+	Test LDT list values, pass --compact to backup. Use a 1-MiB batch size.
+	"""
+	if not LARGE_LIST_VALUES:
+		populate()
+
+	lib.backup_and_restore(
+		lambda context: put_large_list(lib.SET, "key", LARGE_LIST_VALUES),
+		None,
+		lambda context: check_large_list(lib.SET, "key", LARGE_LIST_VALUES),
+		["--compact"], ["--batch-size", "1"]
 	)
