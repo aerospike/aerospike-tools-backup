@@ -44,6 +44,16 @@ MAP_VALUES = [[lib.identifier(10) for _ in xrange(100)] for _ in xrange(50)]
 
 LIST_VALUES = [[lib.identifier(10) for _ in xrange(100)] for _ in xrange(50)]
 
+LARGE_LIST_MAPS = {
+	15: {},
+	16: {},
+	255: {},
+	256: {},
+	65535: {},
+	65536: {},
+	131072: {}
+}
+
 LARGE_LIST_VALUES = []
 LARGE_LIST_VALUES_MSG_PACK = [
 	[-1.2345, 0.0, 1.2345],
@@ -61,10 +71,26 @@ LARGE_LIST_VALUES_MSG_PACK = [
 	],
 	[
 		{"key": 0, "a": 1, "b": 2},
-		{"key": 1, "map": {"a": 1, "b": 2}},
-		{"key": 2, "list": [1, 2, 3]},
-		{"key": 9, "map": {"list1": [1, 2, 3], "list2": [4, 5, 6]}},
-		{"key": 10, "list": [{"a": 1, "b": 2}, {"c": 3, "d": 4}]}
+		{"key": 1, "map": {}},
+		{"key": 2, "map": {"a": 1}},
+		{"key": 3, "map": LARGE_LIST_MAPS[15]},
+		{"key": 4, "map": LARGE_LIST_MAPS[16]},
+		{"key": 5, "map": LARGE_LIST_MAPS[255]},
+		{"key": 6, "map": LARGE_LIST_MAPS[256]},
+		{"key": 7, "map": LARGE_LIST_MAPS[65535]},
+		{"key": 8, "map": LARGE_LIST_MAPS[65536]},
+		{"key": 9, "map": LARGE_LIST_MAPS[131072]},
+		{"key": 10, "list": []},
+		{"key": 11, "list": [1]},
+		{"key": 12, "list": [1] * 15},
+		{"key": 13, "list": [1] * 16},
+		{"key": 14, "list": [1] * 255},
+		{"key": 15, "list": [1] * 256},
+		{"key": 16, "list": [1] * 65535},
+		{"key": 17, "list": [1] * 65536},
+		{"key": 18, "list": [1] * 131072},
+		{"key": 19, "map": {"list1": [1, 2, 3], "list2": [4, 5, 6]}},
+		{"key": 20, "list": [{"a": 1, "b": 2}, {"c": 3, "d": 4}]}
 	]
 ]
 
@@ -198,10 +224,21 @@ def populate():
 
 			LARGE_LIST_VALUES.append(ldt)
 
+def populate_maps():
+	"""
+	Populates the LDT list packed maps test data.
+	"""
+	for count, item in LARGE_LIST_MAPS.iteritems():
+		for i in xrange(count):
+			item[i] = i
+
 def test_large_list_value_msg_pack():
 	"""
 	Test LDT list values and cover all possible packed representations.
 	"""
+	if not LARGE_LIST_MAPS[15]:
+		populate_maps()
+
 	lib.backup_and_restore(
 		lambda context: put_large_list(lib.SET, "key", LARGE_LIST_VALUES_MSG_PACK),
 		None,
@@ -212,6 +249,9 @@ def test_large_list_value_msg_pack_compact():
 	"""
 	Test LDT list values and cover all possible packed representations, pass --compact to backup.
 	"""
+	if not LARGE_LIST_MAPS[15]:
+		populate_maps()
+
 	lib.backup_and_restore(
 		lambda context: put_large_list(lib.SET, "key", LARGE_LIST_VALUES_MSG_PACK),
 		None,
