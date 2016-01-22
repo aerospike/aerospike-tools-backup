@@ -43,7 +43,30 @@ MAP_KEYS = [[lib.identifier(10) for _ in xrange(100)] for _ in xrange(50)]
 MAP_VALUES = [[lib.identifier(10) for _ in xrange(100)] for _ in xrange(50)]
 
 LIST_VALUES = [[lib.identifier(10) for _ in xrange(100)] for _ in xrange(50)]
+
 LARGE_LIST_VALUES = []
+LARGE_LIST_VALUES_MSG_PACK = [
+	[-1.2345, 0.0, 1.2345],
+	[
+		-1099511627776, -2147483649, -2147483648, -32769, -32768, -129, -128, -1,
+		0,
+		1, 127, 128, 32767, 32768, 2147483647, 2147483648, 1099511627775
+	],
+	[0, 1, 255, 256, 65535, 65536, 4294967295, 4294967296, 1099511627776],
+	[
+		"", "X", str('X' * 15), str('X' * 31),
+		str('X' * 32), str('X' * 127), str('X' * 128), str('X' * 255),
+		# str('X' * 256), str('X' * 32767), str('X' * 32768), str('X' * 65535),
+		# str('X' * 65536), str('X' * 131072)
+	],
+	[
+		{"key": 0, "a": 1, "b": 2},
+		{"key": 1, "map": {"a": 1, "b": 2}},
+		{"key": 2, "list": [1, 2, 3]},
+		{"key": 9, "map": {"list1": [1, 2, 3], "list2": [4, 5, 6]}},
+		{"key": 10, "list": [{"a": 1, "b": 2}, {"c": 3, "d": 4}]}
+	]
+]
 
 def put_values(set_name, key, values):
 	"""
@@ -175,10 +198,19 @@ def populate():
 
 			LARGE_LIST_VALUES.append(ldt)
 
+def test_large_list_value_msg_pack():
+	"""
+	Test LDT list values and cover all possible packed representations.
+	"""
+	lib.backup_and_restore(
+		lambda context: put_large_list(lib.SET, "key", LARGE_LIST_VALUES_MSG_PACK),
+		None,
+		lambda context: check_large_list(lib.SET, "key", LARGE_LIST_VALUES_MSG_PACK)
+	)
+
 def test_large_list_value():
 	"""
-	Test LDT list values. As they are stored as BLOBs, we don't need that
-	much variation here.
+	Test LDT list values.
 	"""
 	if not LARGE_LIST_VALUES:
 		populate()
