@@ -78,7 +78,7 @@ LARGE_LIST_VALUES_MSG_PACK = [
 		str('X' * 65536), str('X' * 131072)
 	],
 	[
-		{"key": 0, "a": 1, "b": 1.2345, "c": "string"},
+		{"key": 0, "a": 1, "b": 1.2345, "c": "string", "d": bytearray([1, 2, 3, 4, 5])},
 		{"key": 1, "map": {}},
 		{"key": 2, "map": {"a": 1}},
 		{"key": 3, "map": LARGE_LIST_MAPS[15]},
