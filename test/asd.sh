@@ -76,7 +76,7 @@ function start_process {
 		if [ -x ${DIR}/asd ]; then
 			echo "starting ${DIR}/asd"
 			make_work
-			${DIR}/asd --config aerospike.conf >"${1}" 2>&1
+			${DIR}/asd --config aerospike-cs.conf >"${1}" 2>&1
 			echo "${DIR}/asd exited"
 			clear_work
 			exit 0
