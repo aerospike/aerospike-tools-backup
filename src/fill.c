@@ -550,8 +550,11 @@ get_string(char *buffer, size_t size, bool fuzz, bool allow_nul)
 static as_val *
 generate_string(uint32_t size, bool fuzz)
 {
-	char *string = allocate(size);
+	char *string = allocate(size + 1);
+
 	get_string(string, size, fuzz, true);
+	((char *)string)[size] = 0;
+
 	return (as_val *)as_string_new_wlen(string, size, true);
 }
 
@@ -759,8 +762,11 @@ init_key(as_key *key, const char *namespace, const char *set, key_type type, boo
 		break;
 
 	case KEY_TYPE_STRING:
-		data = allocate(KEY_LENGTH);
+		data = allocate(KEY_LENGTH + 1);
+
 		get_string(data, KEY_LENGTH, fuzz, true);
+		((char *)data)[KEY_LENGTH] = 0;
+
 		string = as_string_new_wlen(data, KEY_LENGTH, true);
 
 		if (string == NULL) {

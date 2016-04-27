@@ -323,12 +323,13 @@ text_read_double(FILE *fd, bool legacy, uint32_t *line_no, uint32_t *col_no, int
 /// @param bytes    Increased by the number of bytes read from the file descriptor.
 /// @param buffer   The buffer allocated for the string.
 /// @param size     The size of the string.
+/// @param extra    The amount of extra memory to allocate.
 ///
 /// @result         `true`, if successful.
 ///
 static bool
 text_parse_string(FILE *fd, bool legacy, uint32_t *line_no, uint32_t *col_no, int64_t *bytes,
-		void **buffer, size_t *size)
+		void **buffer, size_t *size, size_t extra)
 {
 	if (!text_read_size(fd, legacy, line_no, col_no, bytes, size, " ")) {
 		err("Error while reading string size");
@@ -339,7 +340,7 @@ text_parse_string(FILE *fd, bool legacy, uint32_t *line_no, uint32_t *col_no, in
 		return false;
 	}
 
-	*buffer = safe_malloc(*size);
+	*buffer = safe_malloc(*size + extra);
 
 	if (!read_block(fd, line_no, col_no, bytes, *buffer, *size)) {
 		err("Error while reading string data");
@@ -360,12 +361,13 @@ text_parse_string(FILE *fd, bool legacy, uint32_t *line_no, uint32_t *col_no, in
 /// @param bytes    Increased by the number of bytes read from the file descriptor.
 /// @param buffer   The buffer allocated for the BLOB.
 /// @param size     The size of the BLOB.
+/// @param extra    The amount of extra memory to allocate.
 ///
 /// @result         `true`, if successful.
 ///
 static bool
 text_parse_data(FILE *fd, bool legacy, uint32_t *line_no, uint32_t *col_no, int64_t *bytes,
-		void **buffer, size_t *size)
+		void **buffer, size_t *size, size_t extra)
 {
 	if (!text_read_size(fd, legacy, line_no, col_no, bytes, size, " ")) {
 		err("Error while reading data size");
@@ -376,7 +378,7 @@ text_parse_data(FILE *fd, bool legacy, uint32_t *line_no, uint32_t *col_no, int6
 		return false;
 	}
 
-	*buffer = safe_malloc(*size);
+	*buffer = safe_malloc(*size + extra);
 
 	if (!read_block(fd, line_no, col_no, bytes, *buffer, *size)) {
 		err("Error while reading data");
@@ -397,12 +399,13 @@ text_parse_data(FILE *fd, bool legacy, uint32_t *line_no, uint32_t *col_no, int6
 /// @param bytes    Increased by the number of bytes read from the file descriptor.
 /// @param buffer   The buffer allocated for the string.
 /// @param size     The size of the string.
+/// @param extra    The amount of extra memory to allocate.
 ///
 /// @result         `true`, if successful.
 ///
 static bool
 text_parse_data_dec(FILE *fd, bool legacy, uint32_t *line_no, uint32_t *col_no, int64_t *bytes,
-		void **buffer, size_t *size)
+		void **buffer, size_t *size, size_t extra)
 {
 	size_t enc_size;
 
@@ -424,7 +427,7 @@ text_parse_data_dec(FILE *fd, bool legacy, uint32_t *line_no, uint32_t *col_no, 
 	b64_context b64_cont = { 0, 9999, { 99, 99 }};
 	// over-estimates the decoded size by up to 2 bytes (includes the padding)
 	size_t dec_size = enc_size / 4 * 3;
-	*buffer = safe_malloc(dec_size);
+	*buffer = safe_malloc(dec_size + extra);
 
 	if (!read_block_dec(fd, line_no, col_no, bytes, *buffer, dec_size, &b64_cont)) {
 		err("Error while reading encoded data");
@@ -515,15 +518,19 @@ text_parse_key(FILE *fd, bool legacy, uint32_t *line_no, uint32_t *col_no, int64
 			return false;
 		}
 
-		if (ch == 'S' && !text_parse_string(fd, legacy, line_no, col_no, bytes, &buffer, &size)) {
+		if (ch == 'S' && !text_parse_string(fd, legacy, line_no, col_no, bytes,
+				&buffer, &size, 1)) {
 			err("Error while reading string key value");
 			return false;
 		}
 
-		if (ch == 'X' && !text_parse_data_dec(fd, legacy, line_no, col_no, bytes, &buffer, &size)) {
+		if (ch == 'X' && !text_parse_data_dec(fd, legacy, line_no, col_no, bytes,
+				&buffer, &size, 1)) {
 			err("Error while reading encoded string key value");
 			return false;
 		}
+
+		((char *)buffer)[size] = 0;
 
 		if (as_string_init_wlen(&rec->key.value.string, buffer, size, true) == NULL) {
 			err("Error while initializing string key value");
@@ -550,12 +557,13 @@ text_parse_key(FILE *fd, bool legacy, uint32_t *line_no, uint32_t *col_no, int64
 		}
 
 		if (compact &&
-				!text_parse_data(fd, legacy, line_no, col_no, bytes, &buffer, &size)) {
+				!text_parse_data(fd, legacy, line_no, col_no, bytes, &buffer, &size, 0)) {
 			err("Error while reading key bytes");
 			return false;
 		}
 
-		if (!compact && !text_parse_data_dec(fd, legacy, line_no, col_no, bytes, &buffer, &size)) {
+		if (!compact && !text_parse_data_dec(fd, legacy, line_no, col_no, bytes,
+				&buffer, &size, 0)) {
 			err("Error while reading encoded key bytes");
 			return false;
 		}
@@ -1033,12 +1041,14 @@ text_parse_bin(FILE *fd, bool legacy, as_vector *bin_vec, uint32_t *line_no, uin
 		void *buffer;
 		size_t size;
 
-		if (ch == 'S' && !text_parse_string(fd, legacy, line_no, col_no, bytes, &buffer, &size)) {
+		if (ch == 'S' && !text_parse_string(fd, legacy, line_no, col_no, bytes,
+				&buffer, &size, 1)) {
 			err("Error while reading string bin value");
 			return false;
 		}
 
-		if (ch == 'X' && !text_parse_data_dec(fd, legacy, line_no, col_no, bytes, &buffer, &size)) {
+		if (ch == 'X' && !text_parse_data_dec(fd, legacy, line_no, col_no, bytes,
+				&buffer, &size, 1)) {
 			err("Error while reading encoded string bin value");
 			return false;
 		}
@@ -1052,6 +1062,7 @@ text_parse_bin(FILE *fd, bool legacy, as_vector *bin_vec, uint32_t *line_no, uin
 			return true;
 		}
 
+		((char *)buffer)[size] = 0;
 		as_string *string = as_string_new_wlen(buffer, size, true);
 
 		if (string == NULL) {
@@ -1075,7 +1086,7 @@ text_parse_bin(FILE *fd, bool legacy, as_vector *bin_vec, uint32_t *line_no, uin
 		void *buffer;
 		size_t size;
 
-		if (!text_parse_string(fd, legacy, line_no, col_no, bytes, &buffer, &size)) {
+		if (!text_parse_string(fd, legacy, line_no, col_no, bytes, &buffer, &size, 1)) {
 			err("Error while reading geojson bin value");
 			return false;
 		}
@@ -1089,6 +1100,7 @@ text_parse_bin(FILE *fd, bool legacy, as_vector *bin_vec, uint32_t *line_no, uin
 			return true;
 		}
 
+		((char *)buffer)[size] = 0;
 		as_geojson *geojson = as_geojson_new_wlen(buffer, size, true);
 
 		if (geojson == NULL) {
@@ -1132,12 +1144,12 @@ text_parse_bin(FILE *fd, bool legacy, as_vector *bin_vec, uint32_t *line_no, uin
 		return false;
 	}
 
-	if (compact && !text_parse_data(fd, legacy, line_no, col_no, bytes, &buffer, &size)) {
+	if (compact && !text_parse_data(fd, legacy, line_no, col_no, bytes, &buffer, &size, 0)) {
 		err("Error while reading data bin value");
 		return false;
 	}
 
-	if (!compact && !text_parse_data_dec(fd, legacy, line_no, col_no, bytes, &buffer, &size)) {
+	if (!compact && !text_parse_data_dec(fd, legacy, line_no, col_no, bytes, &buffer, &size, 0)) {
 		err("Error while reading encoded data bin value");
 		return false;
 	}
