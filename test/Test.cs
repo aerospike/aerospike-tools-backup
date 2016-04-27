@@ -404,6 +404,10 @@ namespace Test
 				return Value.Get((IDictionary)obj);
 			}
 
+			if (obj is Double && Double.IsNaN((Double)obj)) {
+				obj = 12345678.0;
+			}
+
 			return Value.Get(obj);
 		}
 
