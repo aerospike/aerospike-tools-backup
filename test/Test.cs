@@ -405,7 +405,7 @@ namespace Test
 			}
 
 			if (obj is Double && Double.IsNaN((Double)obj)) {
-				obj = 12345678.0;
+				obj = Double.NaN;
 			}
 
 			return Value.Get(obj);
