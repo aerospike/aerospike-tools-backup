@@ -1202,6 +1202,201 @@ cleanup0:
 }
 
 ///
+/// Creates a printable secondary index set specification.
+///
+/// @param set  The set specification to be printed.
+///
+/// @result     The printable set specification.
+///
+static const char *
+print_set(const char *set)
+{
+	return set != NULL && set[0] != 0 ? set : "[none]";
+}
+
+///
+/// Compares two secondary index set specifications for equality.
+///
+/// @param set1  The first set specification.
+/// @param set2  The second set specification.
+///
+/// @result      `true`, if the set specifications are equal.
+///
+static bool
+compare_sets(const char *set1, const char *set2)
+{
+	bool none1 = set1 == NULL || set1[0] == 0;
+	bool none2 = set2 == NULL || set2[0] == 0;
+
+	if (none1 && none2) {
+		return true;
+	}
+
+	if (!none1 && !none2) {
+		return strcmp(set1, set2) == 0;
+	}
+
+	return false;
+}
+
+///
+/// Checks whether a secondary index exists in the cluster and matches the given spec.
+///
+/// @param as     The Aerospike client.
+/// @param index  The secondary index to look for.
+///
+/// @result       `INDEX_STATUS_ABSENT`, if the index does not exist.
+///               `INDEX_STATUS_SAME`, if the index exists and matches the given spec.
+///               `INDEX_STATUS_DIFFERENT`, if the index exists, but does not match the given spec.
+///               `INDEX_STATUS_INVALID` in case of an error.
+///
+static index_status
+check_index(aerospike *as, index_param *index)
+{
+	if (verbose) {
+		ver("Checking index %s:%s:%s", index->ns, index->set, index->name);
+	}
+
+	index_status res = INDEX_STATUS_INVALID;
+
+	size_t value_size = sizeof "sindex-list:ns=" - 1 + strlen(index->ns) + 1;
+	char value[value_size];
+	snprintf(value, value_size, "sindex-list:ns=%s", index->ns);
+
+	as_policy_info policy;
+	as_policy_info_init(&policy);
+	policy.timeout = TIMEOUT;
+
+	char *resp = NULL;
+	as_error ae;
+
+	if (aerospike_info_any(as, &ae, &policy, value, &resp) != AEROSPIKE_OK) {
+		err("Error while retrieving secondary index info - code %d: %s at %s:%d", ae.code,
+				ae.message, ae.file, ae.line);
+		goto cleanup0;
+	}
+
+	char *info_str;
+
+	if (as_info_parse_single_response(resp, &info_str) != AEROSPIKE_OK) {
+		err("Error while parsing single info_str response");
+		goto cleanup1;
+	}
+
+	size_t info_len = strlen(info_str);
+
+	if (info_str[info_len - 1] == ';') {
+		info_str[info_len - 1] = 0;
+	}
+
+	if (info_str[0] == 0) {
+		if (verbose) {
+			ver("No secondary indexes");
+		}
+
+		res = INDEX_STATUS_ABSENT;
+		goto cleanup1;
+	}
+
+	as_vector info_vec;
+	as_vector_inita(&info_vec, sizeof (void *), 25);
+	split_string(info_str, ';', false, &info_vec);
+
+	char *clone = safe_strdup(info_str);
+	index_param index2;
+	uint32_t i;
+
+	for (i = 0; i < info_vec.size; ++i) {
+		char *index_str = as_vector_get_ptr(&info_vec, i);
+
+		if (!parse_index_info(index->ns, index_str, &index2)) {
+			err("Error while parsing secondary index info string %s", clone);
+			goto cleanup2;
+		}
+
+		if (strcmp(index->name, index2.name) == 0) {
+			break;
+		}
+
+		as_vector_destroy(&index2.path_vec);
+	}
+
+	if (i == info_vec.size) {
+		if (verbose) {
+			ver("Index not found");
+		}
+
+		res = INDEX_STATUS_ABSENT;
+		goto cleanup2;
+	}
+
+	if (!compare_sets(index->set, index2.set)) {
+		if (verbose) {
+			ver("Set mismatch, %s vs. %s", print_set(index->set), print_set(index2.set));
+		}
+
+		res = INDEX_STATUS_DIFFERENT;
+		goto cleanup3;
+	}
+
+	if (index->type != index2.type) {
+		if (verbose) {
+			ver("Type mismatch, %d vs. %d", (int32_t)index->type, (int32_t)index2.type);
+		}
+
+		res = INDEX_STATUS_DIFFERENT;
+		goto cleanup3;
+	}
+
+	if (index->path_vec.size != index2.path_vec.size) {
+		if (verbose) {
+			ver("Path count mismatch, %u vs. %u", index->path_vec.size, index2.path_vec.size);
+		}
+
+		res = INDEX_STATUS_DIFFERENT;
+		goto cleanup3;
+	}
+
+	for (i = 0; i < index->path_vec.size; ++i) {
+		path_param *path1 = as_vector_get((as_vector *)&index->path_vec, i);
+		path_param *path2 = as_vector_get((as_vector *)&index2.path_vec, i);
+
+		if (path1->type != path2->type) {
+			if (verbose) {
+				ver("Path type mismatch, %d vs. %d", (int32_t)path1->type, (int32_t)path2->type);
+			}
+
+			res = INDEX_STATUS_DIFFERENT;
+			goto cleanup3;
+		}
+
+		if (strcmp(path1->path, path2->path) != 0) {
+			if (verbose) {
+				ver("Path mismatch, %s vs. %s", path1->path, path2->path);
+			}
+
+			res = INDEX_STATUS_DIFFERENT;
+			goto cleanup3;
+		}
+	}
+
+	res = INDEX_STATUS_SAME;
+
+cleanup3:
+	as_vector_destroy(&index2.path_vec);
+
+cleanup2:
+	as_vector_destroy(&info_vec);
+	cf_free(clone);
+
+cleanup1:
+	cf_free(resp);
+
+cleanup0:
+	return res;
+}
+
+///
 /// Creates the given secondary indexes in the cluster.
 ///
 /// @param as         The Aerospike client.
@@ -1218,6 +1413,8 @@ restore_indexes(aerospike *as, as_vector *index_vec, as_vector *set_vec, volatil
 {
 	inf("Restoring %d secondary index(es)", index_vec->size);
 	int32_t skipped = 0;
+	int32_t matched = 0;
+	int32_t mismatched = 0;
 
 	for (uint32_t i = 0; i < index_vec->size; ++i) {
 		index_param *index = as_vector_get(index_vec, i);
@@ -1228,6 +1425,7 @@ restore_indexes(aerospike *as, as_vector *index_vec, as_vector *set_vec, volatil
 				ver("Skipping index with unwanted set %s:%s:%s (%s)", index->ns, index->set,
 						index->name, path->path);
 			}
+
 			++skipped;
 			continue;
 		}
@@ -1286,10 +1484,61 @@ restore_indexes(aerospike *as, as_vector *index_vec, as_vector *set_vec, volatil
 		policy.timeout = TIMEOUT;
 		as_error ae;
 
-		if (aerospike_index_remove(as, &ae, &policy, index->ns, index->name) != AEROSPIKE_OK) {
-			err("Error while removing index %s:%s - code %d: %s at %s:%d", index->ns, index->name,
-					ae.code, ae.message, ae.file, ae.line);
+		index_status stat = check_index(as, index);
+
+		if (stat == INDEX_STATUS_DIFFERENT) {
+			if (verbose) {
+				ver("Removing mismatched index %s:%s", index->ns, index->name);
+			}
+
+			if (aerospike_index_remove(as, &ae, &policy, index->ns, index->name) != AEROSPIKE_OK) {
+				err("Error while removing index %s:%s - code %d: %s at %s:%d", index->ns,
+						index->name, ae.code, ae.message, ae.file, ae.line);
+				return false;
+			}
+
+			// aerospike_index_remove() is asynchronous. Check the index again, because AEROSPIKE_OK
+			// doesn't necessarily mean that the index is gone.
+			for (int32_t tries = 0; tries < MAX_TRIES; ++tries) {
+				sleep(1);
+				stat = check_index(as, index);
+
+				if (stat != INDEX_STATUS_DIFFERENT) {
+					break;
+				}
+			}
+		}
+
+		switch (stat) {
+		default:
+			err("Unknown index status");
 			return false;
+
+		case INDEX_STATUS_INVALID:
+			err("Error while checking index %s:%s:%s (%s)", index->ns, index->set, index->name,
+					path->path);
+			return false;
+
+		case INDEX_STATUS_ABSENT:
+			break;
+
+		case INDEX_STATUS_SAME:
+			if (verbose) {
+				ver("Skipping matched index %s:%s:%s (%s)", index->ns, index->set, index->name,
+						path->path);
+			}
+
+			++matched;
+			continue;
+
+		case INDEX_STATUS_DIFFERENT:
+			err("Error while removing mismatched index %s:%s", index->ns, index->name);
+			++mismatched;
+			continue;
+		}
+
+		if (verbose) {
+			ver("Creating index %s:%s:%s (%s)", index->ns, index->set, index->name, path->path);
 		}
 
 		as_index_task task;
@@ -1320,6 +1569,14 @@ restore_indexes(aerospike *as, as_vector *index_vec, as_vector *set_vec, volatil
 
 	if (skipped > 0) {
 		inf("Skipped %d index(es) with unwanted set(s)", skipped);
+	}
+
+	if (matched > 0) {
+		inf("Skipped %d matched index(es)", matched);
+	}
+
+	if (mismatched > 0) {
+		err("Skipped %d mismatched index(es)", mismatched);
 	}
 
 	return true;

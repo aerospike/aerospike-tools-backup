@@ -868,3 +868,126 @@ get_migrations(aerospike *as, char (*node_names)[][AS_NODE_NAME_SIZE], uint32_t 
 
 	return true;
 }
+
+///
+/// Parses the given secondary index information string obtained from a cluster.
+///
+/// @param ns         The namespace that contains the secondary index.
+/// @param index_str  The information string to be parsed.
+/// @param index      The secondary index specification to be populated. The caller is responsible
+///                   for deallocating `index->path_vec`.
+///
+/// @result           `true`, if successful.
+///
+bool
+parse_index_info(char *ns, char *index_str, index_param *index)
+{
+	bool res = false;
+
+	if (index_str[0] == 0) {
+		err("Empty index info in");
+		goto cleanup0;
+	}
+
+	as_vector index_vec;
+	as_vector_inita(&index_vec, sizeof (void *), 25);
+	split_string(index_str, ':', false, &index_vec);
+
+	index->ns = ns;
+	index->set = NULL;
+	index->name = NULL;
+	index->type = INDEX_TYPE_INVALID;
+	as_vector_init(&index->path_vec, sizeof (path_param), 25);
+
+	char *path = NULL;
+	path_type type = PATH_TYPE_INVALID;
+
+	for (uint32_t i = 0; i < index_vec.size; ++i) {
+		char *para = as_vector_get_ptr(&index_vec, i);
+		char *equals = strchr(para, '=');
+
+		if (equals == NULL) {
+			err("Invalid secondary index parameter string %s (missing \"=\")", para);
+			goto cleanup2;
+		}
+
+		*equals = 0;
+		char *arg = equals + 1;
+
+		if (strcmp(para, "set") == 0) {
+			index->set = strcmp(arg, "NULL") == 0 ? NULL : arg;
+		} else if (strcmp(para, "indexname") == 0) {
+			index->name = arg;
+		} else if (strcmp(para, "num_bins") == 0) {
+			if (strcmp(arg, "1") != 0) {
+				err("Multi-bin secondary indexes currently not supported, number of bins: %s",
+						arg);
+				goto cleanup2;
+			}
+		} else if (strcmp(para, "type") == 0) {
+			if (strcmp(arg, "STRING") == 0) {
+				type = PATH_TYPE_STRING;
+			} else if (strcmp(arg, "TEXT") == 0) {
+				type = PATH_TYPE_STRING;
+			} else if (strcmp(arg, "NUMERIC") == 0) {
+				type = PATH_TYPE_NUMERIC;
+			} else if (strcmp(arg, "INT SIGNED") == 0) {
+				type = PATH_TYPE_NUMERIC;
+			} else if (strcmp(arg, "GEOJSON") == 0) {
+				type = PATH_TYPE_GEOJSON;
+			} else {
+				err("Invalid path type %s", arg);
+				goto cleanup2;
+			}
+		} else if (strcmp(para, "indextype") == 0) {
+			if (strcmp(arg, "LIST") == 0) {
+				index->type = INDEX_TYPE_LIST;
+			} else if (strcmp(arg, "MAPKEYS") == 0) {
+				index->type = INDEX_TYPE_MAPKEYS;
+			} else if (strcmp(arg, "MAPVALUES") == 0) {
+				index->type = INDEX_TYPE_MAPVALUES;
+			} else if (strcmp(arg, "NONE") == 0) {
+				index->type = INDEX_TYPE_NONE;
+			} else {
+				err("Invalid index type %s", arg);
+				goto cleanup2;
+			}
+		} else if (strcmp(para, "path") == 0) {
+			path = arg;
+		}
+
+		if (path != NULL && type != PATH_TYPE_INVALID) {
+			path_param tmp = { path, type };
+			as_vector_append(&index->path_vec, &tmp);
+			path = NULL;
+			type = PATH_TYPE_INVALID;
+		}
+	}
+
+	if (index->name == NULL) {
+		err("Missing index name");
+		goto cleanup2;
+	}
+
+	if (index->type == INDEX_TYPE_INVALID) {
+		err("Missing index type in index %s", index->name);
+		goto cleanup2;
+	}
+
+	if (index->path_vec.size != 1) {
+		err("Invalid number of paths in index %s (%u)", index->name, index->path_vec.size);
+		goto cleanup2;
+	}
+
+	res = true;
+	goto cleanup1;
+
+cleanup2:
+	as_vector_destroy(&index->path_vec);
+
+cleanup1:
+	as_vector_destroy(&index_vec);
+
+cleanup0:
+	return res;
+}

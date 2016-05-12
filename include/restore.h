@@ -240,3 +240,14 @@ typedef struct {
 	uint32_t read_ema;          ///< The exponential moving average of read latencies.
 	uint32_t store_ema;         ///< The exponential moving average of store latencies.
 } per_thread_context;
+
+///
+/// Indicates, whether a secondary index exists and matches a given secondary index specification.
+///
+typedef enum {
+	INDEX_STATUS_INVALID,   ///< Invalid.
+	INDEX_STATUS_ABSENT,    ///< The secondary index does not exist.
+	INDEX_STATUS_SAME,      ///< The secondary index exists and it matches the given specification.
+	INDEX_STATUS_DIFFERENT  ///< The secondary index exists, but it does not match the given
+	                        ///  specification.
+} index_status;
