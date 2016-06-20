@@ -704,12 +704,13 @@ get_node_names(as_cluster *clust, node_spec *node_specs, uint32_t n_node_specs,
 /// @param node_name  The name of the node to be queried.
 /// @param context    The opaque user-specified context for the callback.
 /// @param callback   The callback to be invoked for each key-value pair.
+/// @param kv_split   Indicates an info response of the form "<k1>=<v1>[;<k2>=<v2>[;...]]".
 ///
 /// @result          `true`, if successful.
 ///
 bool
 get_info(aerospike *as, const char *value, const char *node_name, void *context,
-		info_callback callback)
+		info_callback callback, bool kv_split)
 {
 	bool res = false;
 
@@ -763,16 +764,25 @@ get_info(aerospike *as, const char *value, const char *node_name, void *context,
 	split_string(info, ';', false, &info_vec);
 
 	for (uint32_t i = 0; i < info_vec.size; ++i) {
-		char *key = as_vector_get_ptr(&info_vec, i);
-		char *equals = strchr(key, '=');
+		char *key;
+		char *value;
 
-		if (equals == NULL) {
-			err("Invalid info string %s (missing \"=\")", clone);
-			goto cleanup2;
+		if (kv_split) {
+			key = as_vector_get_ptr(&info_vec, i);
+			char *equals = strchr(key, '=');
+
+			if (equals == NULL) {
+				err("Invalid info string %s (missing \"=\")", clone);
+				goto cleanup2;
+			}
+
+			*equals = 0;
+			value = equals + 1;
 		}
-
-		*equals = 0;
-		char *value = equals + 1;
+		else {
+			key = NULL;
+			value = as_vector_get_ptr(&info_vec, i);
+		}
 
 		if (!callback(context, key, value)) {
 			err("Info callback reports an error");
@@ -858,7 +868,8 @@ get_migrations(aerospike *as, char (*node_names)[][AS_NODE_NAME_SIZE], uint32_t 
 			ver("Getting migration count for node %s", (*node_names)[i]);
 		}
 
-		if (!get_info(as, "statistics", (*node_names)[i], &context, migration_count_callback)) {
+		if (!get_info(as, "statistics", (*node_names)[i], &context, migration_count_callback,
+				true)) {
 			err("Error while getting migration count for node %s", (*node_names)[i]);
 			return false;
 		}

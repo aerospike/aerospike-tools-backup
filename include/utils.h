@@ -67,13 +67,22 @@
 typedef bool (*info_callback)(void *context, const char *key, const char *value);
 
 ///
-/// The callback context passed to get_info() when parsing the object count and
+/// The callback context passed to get_info() when parsing the namespace object count and
 /// replication factor.
 ///
 typedef struct {
 	uint64_t count;     ///< The object count.
 	uint32_t factor;    ///< The replication factor.
-} object_count_context;
+} ns_count_context;
+
+///
+/// The callback context passed to get_info() when parsing the set object count.
+///
+typedef struct {
+	const char *ns;     ///< The namespace in which we are interested.
+	const char *set;    ///< The set in which we are interested.
+	uint64_t count;     ///< The object count;
+} set_count_context;
 
 ///
 /// The callback context passed to get_info() when parsing the number of pending
@@ -137,7 +146,7 @@ extern char *print_char(int32_t ch);
 extern void get_node_names(as_cluster *clust, node_spec *node_specs, uint32_t n_node_specs,
 		char (**node_names)[][AS_NODE_NAME_SIZE], uint32_t *n_node_names);
 extern bool get_info(aerospike *as, const char *value, const char *node_name, void *context,
-		info_callback callback);
+		info_callback callback, bool kv_split);
 extern bool get_migrations(aerospike *as, char (*node_names)[][AS_NODE_NAME_SIZE],
 		uint32_t n_node_names, uint64_t *mig_count);
 extern bool parse_index_info(char *ns, char *index_str, index_param *index);

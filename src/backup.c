@@ -1180,18 +1180,18 @@ cleanup1:
 }
 
 ///
-/// The callback passed to get_info() to parse the object count and replication factor.
+/// The callback passed to get_info() to parse the namespace object count and replication factor.
 ///
-/// @param context_  The object_count_context for the parsed result.
+/// @param context_  The ns_count_context for the parsed result.
 /// @param key       The key of the current key-value pair.
 /// @param value     The corresponding value.
 ///
 /// @result          `true`, if successful.
 ///
 static bool
-object_count_callback(void *context_, const char *key, const char *value)
+ns_count_callback(void *context_, const char *key, const char *value)
 {
-	object_count_context *context = (object_count_context *)context_;
+	ns_count_context *context = (ns_count_context *)context_;
 	uint64_t tmp;
 
 	if (strcmp(key, "objects") == 0) {
@@ -1218,6 +1218,76 @@ object_count_callback(void *context_, const char *key, const char *value)
 }
 
 ///
+/// The callback passed to get_info() to parse the set object count.
+///
+/// @param context_  The set_count_context for the parsed result.
+/// @param key       The key of the current key-value pair. Not used.
+/// @param value     A string of the form "<k1>=<v1>[:<k2>=<v2>[:...]]".
+///
+/// @result          `true`, if successful.
+///
+static bool
+set_count_callback(void *context_, const char *key_, const char *value_)
+{
+	(void)key_;
+	set_count_context *context = (set_count_context *)context_;
+	bool res = false;
+
+	// The server sends a trailing semicolon, which results in an empty last string. Skip it.
+	if (value_[0] == 0) {
+		res = true;
+		goto cleanup0;
+	}
+
+	char *info = safe_strdup(value_);
+	as_vector info_vec;
+	as_vector_inita(&info_vec, sizeof (void *), 25);
+	split_string(info, ':', false, &info_vec);
+
+	bool match = true;
+	uint64_t count = 0;
+
+	for (uint32_t i = 0; i < info_vec.size; ++i) {
+		char *key = as_vector_get_ptr(&info_vec, i);
+		char *equals = strchr(key, '=');
+
+		if (equals == NULL) {
+			err("Invalid info string %s (missing \"=\")", value_);
+			goto cleanup1;
+		}
+
+		*equals = 0;
+		char *value = equals + 1;
+
+		if (strcmp(key, "ns_name") == 0 && strcmp(value, context->ns) != 0) {
+			match = false;
+		}
+
+		if (strcmp(key, "set_name") == 0 && strcmp(value, context->set) != 0) {
+			match = false;
+		}
+
+		if (strcmp(key, "n_objects") == 0 && !better_atoi(value, &count)) {
+			err("Invalid object count %s", value);
+			goto cleanup1;
+		}
+	}
+
+	if (match) {
+		context->count += count;
+	}
+
+	res = true;
+
+cleanup1:
+	as_vector_destroy(&info_vec);
+	cf_free(info);
+
+cleanup0:
+	return res;
+}
+
+///
 /// Retrieves the total number of objects stored in the given namespace on the given nodes.
 ///
 /// Queries each cluster node individually, sums up the reported numbers, and then divides by the
@@ -1225,6 +1295,7 @@ object_count_callback(void *context_, const char *key, const char *value)
 ///
 /// @param as            The Aerospike client instance.
 /// @param namespace     The namespace that we are interested in.
+/// @param set           The set that we are interested in.
 /// @param node_names    The array of node IDs of the cluster nodes to be queried.
 /// @param n_node_names  The number of elements in the node ID array.
 /// @param obj_count     The number of objects.
@@ -1232,8 +1303,8 @@ object_count_callback(void *context_, const char *key, const char *value)
 /// @result              `true`, if successful.
 ///
 static bool
-get_object_count(aerospike *as, const char *namespace, char (*node_names)[][AS_NODE_NAME_SIZE],
-		uint32_t n_node_names, uint64_t *obj_count)
+get_object_count(aerospike *as, const char *namespace, const char *set,
+		char (*node_names)[][AS_NODE_NAME_SIZE], uint32_t n_node_names, uint64_t *obj_count)
 {
 	if (verbose) {
 		ver("Getting cluster object count");
@@ -1245,28 +1316,44 @@ get_object_count(aerospike *as, const char *namespace, char (*node_names)[][AS_N
 	char value[value_size];
 	snprintf(value, value_size, "namespace/%s", namespace);
 	inf("%-20s%-15s%-15s", "Node ID", "Objects", "Replication");
-	object_count_context context = { 0, 0 };
+	ns_count_context ns_context = { 0, 0 };
 
 	for (uint32_t i = 0; i < n_node_names; ++i) {
 		if (verbose) {
 			ver("Getting object count for node %s", (*node_names)[i]);
 		}
 
-		if (!get_info(as, value, (*node_names)[i], &context, object_count_callback)) {
-			err("Error while getting object count for node %s", (*node_names)[i]);
+		if (!get_info(as, value, (*node_names)[i], &ns_context, ns_count_callback, true)) {
+			err("Error while getting namespace object count for node %s", (*node_names)[i]);
 			return false;
 		}
 
-		if (context.factor == 0) {
+		if (ns_context.factor == 0) {
 			err("Invalid namespace %s", namespace);
 			return false;
 		}
 
-		inf("%-20s%-15" PRIu64 "%-15d", (*node_names)[i], context.count, context.factor);
-		(*obj_count) += context.count;
+		uint64_t count;
+
+		if (set[0] == 0) {
+			count =  ns_context.count;
+		}
+		else {
+			set_count_context set_context = { namespace, set, 0 };
+
+			if (!get_info(as, "sets", (*node_names)[i], &set_context, set_count_callback, false)) {
+				err("Error while getting set object count for node %s", (*node_names)[i]);
+				return false;
+			}
+
+			count = set_context.count;
+		}
+
+		inf("%-20s%-15" PRIu64 "%-15d", (*node_names)[i], count, ns_context.factor);
+		*obj_count += count;
 	}
 
-	*obj_count /= context.factor;
+	*obj_count /= ns_context.factor;
 	return true;
 }
 
@@ -1750,7 +1837,7 @@ main(int32_t argc, char **argv)
 	conf.udf_count = 0;
 	uint64_t rec_count_estimate;
 
-	if (!get_object_count(&as, scan.ns, node_names, n_node_names, &rec_count_estimate)) {
+	if (!get_object_count(&as, scan.ns, scan.set, node_names, n_node_names, &rec_count_estimate)) {
 		err("Error while counting cluster objects");
 		goto cleanup4;
 	}
