@@ -49,9 +49,10 @@ static inline const char *indent(serial_context *ser_cont)
 		indent = 50;
 	}
 
-	//                1         2         3         4
-	//      01234567890123456789012345678901234567890123456789
-	return "                                                  " + (50 - indent);
+	//                                  1         2         3         4
+	//                        01234567890123456789012345678901234567890123456789
+	static const char *pad = "                                                  ";
+	return pad + 50 - indent;
 }
 
 // almost all functions adapted from as_msgpack.c
