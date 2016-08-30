@@ -733,14 +733,14 @@ get_info(aerospike *as, const char *value, const char *node_name, void *context,
 
 	char *resp = NULL;
 	as_error ae;
-	
+
 	if (aerospike_info_node(as, &ae, &policy, node, value, &resp) != AEROSPIKE_OK) {
 		as_node_release(node);
 		err("Error while retrieving info from node %s - code %d: %s at %s:%d", node_name, ae.code,
 			ae.message, ae.file, ae.line);
 		goto cleanup0;
 	}
-	
+
 	as_node_release(node);
 
 	if (verbose) {
