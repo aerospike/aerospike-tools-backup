@@ -63,7 +63,10 @@ endif
 endif
 
 LIBRARIES := $(CLIENTREPO)/target/$(PLATFORM)/lib/libaerospike.a
+LIBRARIES += -L/usr/local/lib
+LIBRARIES += -lssl
 LIBRARIES += -lcrypto
+LIBRARIES += -lpthread
 LIBRARIES += -lm
 LIBRARIES += -lz
 

@@ -942,7 +942,7 @@ fill_worker(void *data)
 	as_config conf;
 	as_config_init(&conf);
 	conf.conn_timeout_ms = TIMEOUT;
-	conf.hosts[0] = (as_config_host){ context->host, context->port };
+	as_config_add_host(&conf, context->host, context->port);
 
 	if (context->user != NULL && context->password != NULL) {
 		as_config_set_user(&conf, context->user, context->password);
