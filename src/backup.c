@@ -1090,38 +1090,70 @@ parse_node_list(char *node_list, node_spec **node_specs, uint32_t *n_node_specs)
 
 	for (uint32_t i = 0; i < node_vec.size; ++i) {
 		char *node_str = as_vector_get_ptr(&node_vec, i);
-		char *colon = strchr(node_str, ':');
+		sa_family_t family;
+		char *colon;
 
-		if (colon == NULL) {
-			err("Invalid node list %s (missing \":\")", clone);
-			goto cleanup1;
+		if (node_str[0] == '[') {
+			family = AF_INET6;
+			char *closing = strchr(node_str, ']');
+
+			if (closing == NULL) {
+				err("Invalid node list %s (missing \"]\"", clone);
+				goto cleanup1;
+			}
+
+			if (closing[1] != ':') {
+				err("Invalid node list %s (missing \":\")", clone);
+				goto cleanup1;
+			}
+
+			colon = closing + 1;
+		} else {
+			family = AF_INET;
+			colon = strchr(node_str, ':');
+
+			if (colon == NULL) {
+				err("Invalid node list %s (missing \":\")", clone);
+				goto cleanup1;
+			}
 		}
 
 		size_t length = (size_t)(colon - node_str);
 
-		if (length == 0 || length > IPV4_ADDR_SIZE - 1) {
-			err("Invalid node list %s (invalid IPv4 address)", clone);
+		if (family == AF_INET6) {
+			++node_str;
+			length -= 2;
+		}
+
+		if (length == 0 || length > IP_ADDR_SIZE - 1) {
+			err("Invalid node list %s (invalid IP address)", clone);
 			goto cleanup2;
 		}
 
-		char ipv4_addr[IPV4_ADDR_SIZE];
-		memcpy(ipv4_addr, node_str, length);
-		ipv4_addr[length] = 0;
-		in_addr_t addr = inet_addr(ipv4_addr);
+		char ip_addr[IP_ADDR_SIZE];
+		memcpy(ip_addr, node_str, length);
+		ip_addr[length] = 0;
+
+		union {
+			struct in_addr v4;
+			struct in6_addr v6;
+		} ver;
+
+		if (inet_pton(family, ip_addr, &ver) <= 0) {
+			err("Invalid node list %s (invalid IP address %s)", clone, ip_addr);
+			goto cleanup2;
+		}
+
 		uint64_t tmp;
-
-		if (addr == INADDR_NONE) {
-			err("Invalid node list %s (invalid IPv4 address %s)", clone, ipv4_addr);
-			goto cleanup2;
-		}
 
 		if (!better_atoi(colon + 1, &tmp) || tmp < 1 || tmp > 65535) {
 			err("Invalid node list %s (invalid port value %s)", clone, colon + 1);
 			goto cleanup2;
 		}
 
-		memcpy((*node_specs)[i].addr_string, ipv4_addr, IPV4_ADDR_SIZE);
-		(*node_specs)[i].addr = addr;
+		memcpy((*node_specs)[i].addr_string, ip_addr, IP_ADDR_SIZE);
+		(*node_specs)[i].family = family;
+		memcpy(&(*node_specs)[i].ver, &ver, sizeof ver);
 		(*node_specs)[i].port = htons((in_port_t)tmp);
 	}
 
@@ -1337,8 +1369,7 @@ get_object_count(aerospike *as, const char *namespace, const char *set,
 
 		if (set[0] == 0) {
 			count =  ns_context.count;
-		}
-		else {
+		} else {
 			set_count_context set_context = { namespace, set, 0 };
 
 			if (!get_info(as, "sets", (*node_names)[i], &set_context, set_count_callback, false)) {

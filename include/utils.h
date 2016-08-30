@@ -52,8 +52,8 @@
 ///
 #define escape(_str) escape_space(_str, alloca(escape_space(_str, NULL).len)).str
 
-#define IPV4_ADDR_SIZE 16   ///< The maximal size of an IPv4 address string (including the
-                            ///  terminating NUL).
+#define IP_ADDR_SIZE 46 ///< The maximal size of an IPv4 or IPv6 address string (including the
+                        ///  terminating NUL).
 
 ///
 /// The callback invoked by the get_info() function to parse info key-value pairs.
@@ -97,9 +97,13 @@ typedef struct {
 /// Encapsulates the IP address and port of a cluster node.
 ///
 typedef struct {
-	char addr_string[IPV4_ADDR_SIZE];   ///< The IPv4 address as a string.
-	in_addr_t addr;                     ///< The IPv4 address in network byte order.
-	in_port_t port;                     ///< The port in network byte order.
+	char addr_string[IP_ADDR_SIZE];   ///< The IP address as a string.
+	sa_family_t family;               ///< The address family of the IP address.
+	union {                           ///< The IPv4 / IPv6 address in network byte order.
+		struct in_addr v4;
+		struct in6_addr v6;
+	} ver;
+	in_port_t port;                   ///< The port in network byte order.
 } node_spec;
 
 ///
