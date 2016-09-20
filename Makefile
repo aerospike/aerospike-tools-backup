@@ -42,6 +42,9 @@ ifeq ($(OS), Linux)
 CFLAGS += -pthread -fstack-protector -Wa,--noexecstack
 endif
 
+# Set the tool version from the latest Git tag.
+CFLAGS += -DTOOL_VERSION=\"$(shell git describe)\"
+
 LD := $(CC)
 LDFLAGS := $(CFLAGS)
 

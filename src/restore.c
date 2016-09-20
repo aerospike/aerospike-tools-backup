@@ -1763,6 +1763,24 @@ sig_hand(int32_t sig)
 }
 
 ///
+/// C Client Version:
+/// [Defined in the Aerospike C Client, but not declared in any header file.]
+///
+extern char *aerospike_client_version;
+
+///
+/// Print the tool's version information.
+///
+static void
+print_version(void)
+{
+	fprintf(stdout, "Aerospike Restore Utility\n");
+	fprintf(stdout, "Version %s\n", TOOL_VERSION);
+	fprintf(stderr, "C Client Version %s\n", aerospike_client_version);
+	fprintf(stdout, "Copyright 2015-2016 Aerospike. All rights reserved.\n");
+}
+
+///
 /// Displays usage information.
 ///
 /// @param name  The actual name of the `asrestore` binary.
@@ -1844,6 +1862,9 @@ usage(const char *name)
 	fprintf(stderr, "    Wait for restored secondary indexes to finish building. Wait for restored\n");
 	fprintf(stderr, "    UDFs to be distributed across the cluster.\n\n");
 
+	fprintf(stderr, "  -V, --version\n");
+	fprintf(stderr, "    Display version information.\n\n");
+
 	fprintf(stderr, "  -Z, --usage\n");
 	fprintf(stderr, "    Display this message.\n");
 }
@@ -1879,6 +1900,7 @@ main(int32_t argc, char **argv)
 		{ "no-udfs", no_argument, NULL, 'F' },
 		{ "wait", no_argument, NULL, 'w' },
 		{ "usage", no_argument, NULL, 'Z' },
+		{ "version", no_argument, NULL, 'V' },
 		{ NULL, 0, NULL, 0 }
 	};
 
@@ -1915,7 +1937,7 @@ main(int32_t argc, char **argv)
 	int32_t optcase;
 	uint64_t tmp;
 
-	while ((optcase = getopt_long(argc, argv, "h:p:U:P::n:d:i:t:vm:B:s:urgkb:N:RILFwZ",
+	while ((optcase = getopt_long(argc, argv, "h:p:U:P::n:d:i:t:vm:B:s:urgkb:N:RILFwVZ",
 			options, 0)) != -1) {
 		switch (optcase) {
 		case 'h':
@@ -2029,6 +2051,10 @@ main(int32_t argc, char **argv)
 		case 'w':
 			wait = true;
 			break;
+
+		case 'V':
+			print_version();
+			return 0;
 
 		case 'Z':
 			usage(argv[0]);

@@ -1440,6 +1440,24 @@ sig_hand(int32_t sig)
 }
 
 ///
+/// C Client Version:
+/// [Defined in the Aerospike C Client, but not declared in any header file.]
+///
+extern char *aerospike_client_version;
+
+///
+/// Print the tool's version information.
+///
+static void
+print_version(void)
+{
+	fprintf(stdout, "Aerospike Backup Utility\n");
+	fprintf(stdout, "Version %s\n", TOOL_VERSION);
+	fprintf(stderr, "C Client Version %s\n", aerospike_client_version);
+	fprintf(stdout, "Copyright 2015-2016 Aerospike. All rights reserved.\n");
+}
+
+///
 /// Displays usage information.
 ///
 /// @param name  The actual name of the `asbackup` binary.
@@ -1527,6 +1545,9 @@ usage(const char *name)
 	fprintf(stderr, "  -u, --no-udfs\n");
 	fprintf(stderr, "    Don't backup any UDFs.\n\n");
 
+	fprintf(stderr, "  -V, --version\n");
+	fprintf(stderr, "    Display version information.\n\n");
+
 	fprintf(stderr, "  -Z, --usage\n");
 	fprintf(stderr, "    Display this message.\n");
 }
@@ -1564,6 +1585,7 @@ main(int32_t argc, char **argv)
 		{ "no-indexes", no_argument, NULL, 'I' },
 		{ "no-udfs", no_argument, NULL, 'u' },
 		{ "usage", no_argument, NULL, 'Z' },
+		{ "version", no_argument, NULL, 'V' },
 		{ NULL, 0, NULL, 0 }
 	};
 
@@ -1607,7 +1629,7 @@ main(int32_t argc, char **argv)
 	int32_t opt;
 	uint64_t tmp;
 
-	while ((opt = getopt_long(argc, argv, "h:p:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuZ",
+	while ((opt = getopt_long(argc, argv, "h:p:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZ",
 			options, 0)) != -1) {
 		switch (opt) {
 		case 'h':
@@ -1740,6 +1762,10 @@ main(int32_t argc, char **argv)
 		case 'u':
 			conf.no_udfs = true;
 			break;
+
+		case 'V':
+			print_version();
+			return 0;
 
 		case 'Z':
 			usage(argv[0]);
