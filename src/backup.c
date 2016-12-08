@@ -1466,11 +1466,17 @@ static void
 usage(const char *name)
 {
 	fprintf(stderr, "Usage: %s <options>, with the following options:\n", name);
-	fprintf(stderr, "  -h, --host <host>\n");
-	fprintf(stderr, "    The host to connect to. Default: 127.0.0.1.\n\n");
 
-	fprintf(stderr, "  -p, --port <port>\n");
-	fprintf(stderr, "    The port to connect to. Default: 3000.\n\n");
+	fprintf(stderr, "  -h --host <host1>[:<tlsname1>][:<port1>],...  # Default: localhost\n");
+	fprintf(stderr, "    Server seed hostnames or IP addresses.\n");
+	fprintf(stderr, "    The tlsname is only used when connecting with a secure TLS enabled server.\n");
+	fprintf(stderr, "    If the port is not specified, the default port is used. Examples:\n\n");
+	fprintf(stderr, "      host1\n");
+	fprintf(stderr, "      host1:3000,host2:3000\n");
+	fprintf(stderr, "      192.168.1.10:cert1:3000,192.168.1.20:cert2:3000\n\n");
+
+	fprintf(stderr, "  -p <port>\n");
+	fprintf(stderr, "    Server default port. Default: 3000\n\n");
 
 	fprintf(stderr, "  -U, --user <user>\n");
 	fprintf(stderr, "    The user to connect as. Default: no user.\n\n");
@@ -1550,6 +1556,42 @@ usage(const char *name)
 
 	fprintf(stderr, "  -Z, --usage\n");
 	fprintf(stderr, "    Display this message.\n");
+
+	fprintf(stderr, "  --tlsEnable         # Default: TLS disabled\n");
+	fprintf(stderr, "    Enable TLS.\n\n");
+
+	fprintf(stderr, "  --tlsEncryptOnly\n");
+	fprintf(stderr, "    Disable TLS certificate verification.\n\n");
+
+	fprintf(stderr, "  --tlsCaFile <path>\n");
+	fprintf(stderr, "    Set the TLS certificate authority file.\n\n");
+
+	fprintf(stderr, "  --tlsCaPath <path>\n");
+	fprintf(stderr, "    Set the TLS certificate authority directory.\n\n");
+
+	fprintf(stderr, "  --tlsProtocols <protocols>\n");
+	fprintf(stderr, "    Set the TLS protocol selection criteria.\n\n");
+
+	fprintf(stderr, "  --tlsCipherSuite <suite>\n");
+	fprintf(stderr, "    Set the TLS cipher selection criteria.\n\n");
+
+	fprintf(stderr, "  --tlsCrlCheck\n");
+	fprintf(stderr, "    Enable CRL checking for leaf certs.\n\n");
+
+	fprintf(stderr, "  --tlsCrlCheckAll\n");
+	fprintf(stderr, "    Enable CRL checking for all certs.\n\n");
+
+	fprintf(stderr, "  --tlsCertBlackList <path>\n");
+	fprintf(stderr, "    Path to a certificate blacklist file.\n\n");
+
+	fprintf(stderr, "  --tlsLogSessionInfo\n");
+	fprintf(stderr, "    Log TLS connected session info.\n\n");
+
+	fprintf(stderr, "  --tlsKeyFile <path>\n");
+	fprintf(stderr, "    Set the TLS client key file for mutual authentication.\n\n");
+
+	fprintf(stderr, "  --tlsChainFile <path>\n");
+	fprintf(stderr, "    Set the TLS client chain file for mutual authentication.\n\n");
 }
 
 ///
@@ -1586,6 +1628,18 @@ main(int32_t argc, char **argv)
 		{ "no-udfs", no_argument, NULL, 'u' },
 		{ "usage", no_argument, NULL, 'Z' },
 		{ "version", no_argument, NULL, 'V' },
+		{ "tlsEnable", no_argument, 0, 1000},
+		{ "tlsEncryptOnly", no_argument, 0, 1001},
+		{ "tlsCaFile", required_argument, 0, 1002},
+		{ "tlsCaPath", required_argument, 0, 1003},
+		{ "tlsProtocols", required_argument, 0, 1004},
+		{ "tlsCipherSuite", required_argument, 0, 1005},
+		{ "tlsCrlCheck", no_argument, 0, 1006},
+		{ "tlsCrlCheckAll", no_argument, 0, 1007},
+		{ "tlsCertBlackList", required_argument, 0, 1008},
+		{ "tlsLogSessionInfo", no_argument, 0, 1009},
+		{ "tlsKeyFile", required_argument, 0, 1010},
+		{ "tlsChainFile", required_argument, 0, 1011},
 		{ NULL, 0, NULL, 0 }
 	};
 
@@ -1625,6 +1679,9 @@ main(int32_t argc, char **argv)
 	conf.encoder = &(backup_encoder){
 		text_put_record, text_put_udf_file, text_put_secondary_index
 	};
+
+	as_config_tls tls;
+	memset(&tls, 0, sizeof(as_config_tls));
 
 	int32_t opt;
 	uint64_t tmp;
@@ -1772,6 +1829,54 @@ main(int32_t argc, char **argv)
 			res = EXIT_SUCCESS;
 			goto cleanup1;
 
+		case 1000:
+			tls.enable = true;
+			break;
+
+		case 1001:
+			tls.encrypt_only = true;
+			break;
+
+		case 1002:
+			tls.cafile = safe_strdup(optarg);
+			break;
+
+		case 1003:
+			tls.capath = safe_strdup(optarg);
+			break;
+
+		case 1004:
+			tls.protocols = safe_strdup(optarg);
+			break;
+
+		case 1005:
+			tls.cipher_suite = safe_strdup(optarg);
+			break;
+
+		case 1006:
+			tls.crl_check = true;
+			break;
+
+		case 1007:
+			tls.crl_check_all = true;
+			break;
+
+		case 1008:
+			tls.cert_blacklist = safe_strdup(optarg);
+			break;
+
+		case 1009:
+			tls.log_session_info = true;
+			break;
+
+		case 1010:
+			tls.keyfile = safe_strdup(optarg);
+			break;
+			
+		case 1011:
+			tls.chainfile = safe_strdup(optarg);
+			break;
+
 		default:
 			usage(argv[0]);
 			goto cleanup1;
@@ -1859,8 +1964,16 @@ main(int32_t argc, char **argv)
 	as_config as_conf;
 	as_config_init(&as_conf);
 	as_conf.conn_timeout_ms = TIMEOUT;
-	as_config_add_host(&as_conf, host, (uint16_t)port);
+
+	if (! as_config_add_hosts(&as_conf, host, (uint16_t)port)) {
+		err("Invalid host(s) %s", host);
+		goto cleanup3;
+	}
+	
 	as_config_set_user(&as_conf, user, password);
+
+	// Transfer ownership of all heap allocated TLS fields via shallow copy.
+	memcpy(&as_conf.tls, &tls, sizeof(as_config_tls));
 
 	aerospike as;
 	aerospike_init(&as, &as_conf);
@@ -1874,7 +1987,7 @@ main(int32_t argc, char **argv)
 	if (aerospike_connect(&as, &ae) != AEROSPIKE_OK) {
 		err("Error while connecting to %s:%d - code %d: %s at %s:%d", host, port, ae.code,
 				ae.message, ae.file, ae.line);
-		goto cleanup3;
+		goto cleanup3A;
 	}
 
 	char (*node_names)[][AS_NODE_NAME_SIZE] = NULL;
@@ -2051,9 +2164,10 @@ cleanup4:
 
 	aerospike_close(&as, &ae);
 
-cleanup3:
+cleanup3A:
 	aerospike_destroy(&as);
 
+cleanup3:
 	if (mach_fd != NULL) {
 		fclose(mach_fd);
 	}
