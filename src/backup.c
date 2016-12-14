@@ -1590,8 +1590,8 @@ usage(const char *name)
 	fprintf(stderr, "  --tlsKeyFile <path>\n");
 	fprintf(stderr, "    Set the TLS client key file for mutual authentication.\n\n");
 
-	fprintf(stderr, "  --tlsChainFile <path>\n");
-	fprintf(stderr, "    Set the TLS client chain file for mutual authentication.\n\n");
+	fprintf(stderr, "  --tlsCertFile <path>\n");
+	fprintf(stderr, "    Set the TLS client certificate chain file for mutual authentication.\n\n");
 }
 
 ///
@@ -1639,7 +1639,7 @@ main(int32_t argc, char **argv)
 		{ "tlsCertBlackList", required_argument, 0, 1008},
 		{ "tlsLogSessionInfo", no_argument, 0, 1009},
 		{ "tlsKeyFile", required_argument, 0, 1010},
-		{ "tlsChainFile", required_argument, 0, 1011},
+		{ "tlsCertFile", required_argument, 0, 1011},
 		{ NULL, 0, NULL, 0 }
 	};
 
@@ -1874,7 +1874,7 @@ main(int32_t argc, char **argv)
 			break;
 			
 		case 1011:
-			tls.chainfile = safe_strdup(optarg);
+			tls.certfile = safe_strdup(optarg);
 			break;
 
 		default:
