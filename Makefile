@@ -62,10 +62,11 @@ INCLUDES += -I$(CLIENTREPO)/modules/common/src/include
 ifeq ($(OS), Darwin)
 ifneq ($(wildcard /usr/local/opt/openssl/include),)
 INCLUDES += -I/usr/local/opt/openssl/include
+LIBRARIES += -L/usr/local/opt/openssl/lib
 endif
 endif
 
-LIBRARIES := $(CLIENTREPO)/target/$(PLATFORM)/lib/libaerospike.a
+LIBRARIES += $(CLIENTREPO)/target/$(PLATFORM)/lib/libaerospike.a
 LIBRARIES += -L/usr/local/lib
 LIBRARIES += -lssl
 LIBRARIES += -lcrypto
