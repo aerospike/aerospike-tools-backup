@@ -153,3 +153,21 @@ typedef struct {
 	as_vector path_vec; ///< The path expressions of the index as a vector of path_param. Currently,
 	                    ///  there's always only one path expression.
 } index_param;
+
+///
+/// Identifies the TLS client command line options.
+///
+typedef enum {
+	TLS_OPT_ENABLE = 1000,      ///< The `--tlsEnable` option.
+	TLS_OPT_ENCRYPT_ONLY,       ///< The `--tlsEncryptOnly` option.
+	TLS_OPT_CA_FILE,            ///< The `--tlsCaFile` option.
+	TLS_OPT_CA_PATH,            ///< The `--tlsCaPath` option.
+	TLS_OPT_PROTOCOLS,          ///< The `--tlsProtocols` option.
+	TLS_OPT_CIPHER_SUITE,       ///< The `--tlsCipherSuite` option.
+	TLS_OPT_CRL_CHECK,          ///< The `--tlsCrlCheck` option.
+	TLS_OPT_CRL_CHECK_ALL,      ///< The `--tlsCrlCheckAll` option.
+	TLS_OPT_CERT_BLACK_LIST,    ///< The `--tlsCertBlackList` option.
+	TLS_OPT_LOG_SESSION_INFO,   ///< The `--tlsLogSessionInfo` option.
+	TLS_OPT_KEY_FILE,           ///< The `--tlsKeyFile` option.
+	TLS_OPT_CERT_FILE           ///< The `--tlsCertFile` option.
+} tls_opt;

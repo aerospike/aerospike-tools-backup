@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 Aerospike, Inc.
+ * Copyright 2015-2017 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -18,6 +18,8 @@
 #include <restore.h>
 #include <dec_text.h>
 #include <utils.h>
+
+extern char *aerospike_client_version;  ///< The C client's version string.
 
 static volatile bool stop = false;  ///< Makes background threads exit.
 
@@ -1763,21 +1765,15 @@ sig_hand(int32_t sig)
 }
 
 ///
-/// C Client Version:
-/// [Defined in the Aerospike C Client, but not declared in any header file.]
-///
-extern char *aerospike_client_version;
-
-///
 /// Print the tool's version information.
 ///
 static void
 print_version(void)
 {
-	fprintf(stdout, "Aerospike Restore Utility\n");
-	fprintf(stdout, "Version %s\n", TOOL_VERSION);
+	fprintf(stderr, "Aerospike Restore Utility\n");
+	fprintf(stderr, "Version %s\n", TOOL_VERSION);
 	fprintf(stderr, "C Client Version %s\n", aerospike_client_version);
-	fprintf(stdout, "Copyright 2015-2016 Aerospike. All rights reserved.\n");
+	fprintf(stderr, "Copyright 2015-2017 Aerospike. All rights reserved.\n");
 }
 
 ///
@@ -1790,16 +1786,16 @@ usage(const char *name)
 {
 	fprintf(stderr, "Usage: %s <options>, with the following options:\n", name);
 
-	fprintf(stderr, "  -h --host <host1>[:<tlsname1>][:<port1>],...  # Default: localhost\n");
-	fprintf(stderr, "    Server seed hostnames or IP addresses.\n");
-	fprintf(stderr, "    The tlsname is only used when connecting with a secure TLS enabled server.\n");
-	fprintf(stderr, "    If the port is not specified, the default port is used. Examples:\n\n");
+	fprintf(stderr, "  -h, --host <host>[:<tls-name>][:<port>][,...]\n");
+	fprintf(stderr, "    The server seed hostnames or IP addresses. Default: localhost.\n\n");
+	fprintf(stderr, "    The tls-name is only used when connecting with a TLS-enabled server.\n");
+	fprintf(stderr, "    If the port is not specified, the default port is used. Examples:\n");
 	fprintf(stderr, "      host1\n");
 	fprintf(stderr, "      host1:3000,host2:3000\n");
 	fprintf(stderr, "      192.168.1.10:cert1:3000,192.168.1.20:cert2:3000\n\n");
 
-	fprintf(stderr, "  -p <port>\n");
-	fprintf(stderr, "    Server default port. Default: 3000\n\n");
+	fprintf(stderr, "  -p, --port <port>\n");
+	fprintf(stderr, "    The default port. Default: 3000\n\n");
 
 	fprintf(stderr, "  -U, --user <user>\n");
 	fprintf(stderr, "    The user to connect as. Default: no user.\n\n");
@@ -1872,9 +1868,9 @@ usage(const char *name)
 	fprintf(stderr, "    Display version information.\n\n");
 
 	fprintf(stderr, "  -Z, --usage\n");
-	fprintf(stderr, "    Display this message.\n");
-	
-	fprintf(stderr, "  --tlsEnable         # Default: TLS disabled\n");
+	fprintf(stderr, "    Display this message.\n\n");
+
+	fprintf(stderr, "  --tlsEnable\n");
 	fprintf(stderr, "    Enable TLS.\n\n");
 
 	fprintf(stderr, "  --tlsEncryptOnly\n");
@@ -1893,10 +1889,10 @@ usage(const char *name)
 	fprintf(stderr, "    Set the TLS cipher selection criteria.\n\n");
 
 	fprintf(stderr, "  --tlsCrlCheck\n");
-	fprintf(stderr, "    Enable CRL checking for leaf certs.\n\n");
+	fprintf(stderr, "    Enable CRL checking for leaf certificates.\n\n");
 
 	fprintf(stderr, "  --tlsCrlCheckAll\n");
-	fprintf(stderr, "    Enable CRL checking for all certs.\n\n");
+	fprintf(stderr, "    Enable CRL checking for all certificates.\n\n");
 
 	fprintf(stderr, "  --tlsCertBlackList <path>\n");
 	fprintf(stderr, "    Path to a certificate blacklist file.\n\n");
@@ -1908,7 +1904,7 @@ usage(const char *name)
 	fprintf(stderr, "    Set the TLS client key file for mutual authentication.\n\n");
 
 	fprintf(stderr, "  --tlsCertFile <path>\n");
-	fprintf(stderr, "    Set the TLS client certificate chain file for mutual authentication.\n\n");
+	fprintf(stderr, "    Set the TLS client certificate chain file for mutual authentication.\n");
 }
 
 ///
@@ -1943,18 +1939,18 @@ main(int32_t argc, char **argv)
 		{ "wait", no_argument, NULL, 'w' },
 		{ "usage", no_argument, NULL, 'Z' },
 		{ "version", no_argument, NULL, 'V' },
-		{ "tlsEnable", no_argument, 0, 1000},
-		{ "tlsEncryptOnly", no_argument, 0, 1001},
-		{ "tlsCaFile", required_argument, 0, 1002},
-		{ "tlsCaPath", required_argument, 0, 1003},
-		{ "tlsProtocols", required_argument, 0, 1004},
-		{ "tlsCipherSuite", required_argument, 0, 1005},
-		{ "tlsCrlCheck", no_argument, 0, 1006},
-		{ "tlsCrlCheckAll", no_argument, 0, 1007},
-		{ "tlsCertBlackList", required_argument, 0, 1008},
-		{ "tlsLogSessionInfo", no_argument, 0, 1009},
-		{ "tlsKeyFile", required_argument, 0, 1010},
-		{ "tlsCertFile", required_argument, 0, 1011},
+		{ "tlsEnable", no_argument, NULL, TLS_OPT_ENABLE },
+		{ "tlsEncryptOnly", no_argument, NULL, TLS_OPT_ENCRYPT_ONLY },
+		{ "tlsCaFile", required_argument, NULL, TLS_OPT_CA_FILE },
+		{ "tlsCaPath", required_argument, NULL, TLS_OPT_CA_PATH },
+		{ "tlsProtocols", required_argument, NULL, TLS_OPT_PROTOCOLS },
+		{ "tlsCipherSuite", required_argument, NULL, TLS_OPT_CIPHER_SUITE },
+		{ "tlsCrlCheck", no_argument, NULL, TLS_OPT_CRL_CHECK },
+		{ "tlsCrlCheckAll", no_argument, NULL, TLS_OPT_CRL_CHECK_ALL },
+		{ "tlsCertBlackList", required_argument, NULL, TLS_OPT_CERT_BLACK_LIST },
+		{ "tlsLogSessionInfo", no_argument, NULL, TLS_OPT_LOG_SESSION_INFO },
+		{ "tlsKeyFile", required_argument, NULL, TLS_OPT_KEY_FILE },
+		{ "tlsCertFile", required_argument, NULL, TLS_OPT_CERT_FILE },
 		{ NULL, 0, NULL, 0 }
 	};
 
@@ -2111,58 +2107,59 @@ main(int32_t argc, char **argv)
 
 		case 'V':
 			print_version();
-			return 0;
+			res = EXIT_SUCCESS;
+			goto cleanup1;
 
 		case 'Z':
 			usage(argv[0]);
 			res = EXIT_SUCCESS;
 			goto cleanup1;
 
-		case 1000:
+		case TLS_OPT_ENABLE:
 			tls.enable = true;
 			break;
 
-		case 1001:
+		case TLS_OPT_ENCRYPT_ONLY:
 			tls.encrypt_only = true;
 			break;
 
-		case 1002:
+		case TLS_OPT_CA_FILE:
 			tls.cafile = safe_strdup(optarg);
 			break;
 
-		case 1003:
+		case TLS_OPT_CA_PATH:
 			tls.capath = safe_strdup(optarg);
 			break;
 
-		case 1004:
+		case TLS_OPT_PROTOCOLS:
 			tls.protocols = safe_strdup(optarg);
 			break;
 
-		case 1005:
+		case TLS_OPT_CIPHER_SUITE:
 			tls.cipher_suite = safe_strdup(optarg);
 			break;
 
-		case 1006:
+		case TLS_OPT_CRL_CHECK:
 			tls.crl_check = true;
 			break;
 
-		case 1007:
+		case TLS_OPT_CRL_CHECK_ALL:
 			tls.crl_check_all = true;
 			break;
 
-		case 1008:
+		case TLS_OPT_CERT_BLACK_LIST:
 			tls.cert_blacklist = safe_strdup(optarg);
 			break;
 
-		case 1009:
+		case TLS_OPT_LOG_SESSION_INFO:
 			tls.log_session_info = true;
 			break;
 
-		case 1010:
+		case TLS_OPT_KEY_FILE:
 			tls.keyfile = safe_strdup(optarg);
 			break;
-			
-		case 1011:
+
+		case TLS_OPT_CERT_FILE:
 			tls.certfile = safe_strdup(optarg);
 			break;
 
@@ -2190,7 +2187,7 @@ main(int32_t argc, char **argv)
 	signal(SIGINT, sig_hand);
 	signal(SIGTERM, sig_hand);
 
-	inf("Starting restore to %s:%d (bins: %s, sets: %s) from %s", host, port,
+	inf("Starting restore to %s (bins: %s, sets: %s) from %s", host,
 			conf.bin_list == NULL ? "[all]" : conf.bin_list,
 			conf.set_list == NULL ? "[all]" : conf.set_list,
 			conf.input_file != NULL ?
@@ -2208,15 +2205,15 @@ main(int32_t argc, char **argv)
 	as_config_init(&as_conf);
 	as_conf.conn_timeout_ms = TIMEOUT;
 
-	if (! as_config_add_hosts(&as_conf, host, (uint16_t)port)) {
-		err("Invalid host(s) %s", host);
+	if (!as_config_add_hosts(&as_conf, host, (uint16_t)port)) {
+		err("Invalid host(s): %s", host);
 		goto cleanup2;
 	}
 
 	as_config_set_user(&as_conf, user, password);
 
-	// Transfer ownership of all heap allocated TLS fields via shallow copy.
 	memcpy(&as_conf.tls, &tls, sizeof(as_config_tls));
+	memset(&tls, 0, sizeof(tls));
 
 	aerospike as;
 	aerospike_init(&as, &as_conf);
@@ -2230,7 +2227,7 @@ main(int32_t argc, char **argv)
 	if (aerospike_connect(&as, &ae) != AEROSPIKE_OK) {
 		err("Error while connecting to %s:%d - code %d: %s at %s:%d", host, port, ae.code,
 				ae.message, ae.file, ae.line);
-		goto cleanup2A;
+		goto cleanup3;
 	}
 
 	char (*node_names)[][AS_NODE_NAME_SIZE] = NULL;
@@ -2263,7 +2260,7 @@ main(int32_t argc, char **argv)
 
 	if (pthread_create(&counter_thread, NULL, counter_thread_func, &counter_args) != 0) {
 		err_code("Error while creating counter thread");
-		goto cleanup3;
+		goto cleanup4;
 	}
 
 	pthread_t restore_threads[MAX_THREADS];
@@ -2277,7 +2274,7 @@ main(int32_t argc, char **argv)
 
 	if (job_queue == NULL) {
 		err_code("Error while allocating job queue");
-		goto cleanup4;
+		goto cleanup5;
 	}
 
 	uint32_t line_no;
@@ -2294,23 +2291,23 @@ main(int32_t argc, char **argv)
 	if (conf.ns_list != NULL && !parse_list("namespace", AS_MAX_NAMESPACE_SIZE, conf.ns_list,
 			&ns_vec)) {
 		err("Error while parsing namespace list");
-		goto cleanup5;
+		goto cleanup6;
 	}
 
 	if (ns_vec.size > 2) {
 		err("Invalid namespace option");
-		goto cleanup5;
+		goto cleanup6;
 	}
 
 	if (nice_list != NULL) {
 		if (!parse_list("nice", 10, nice_list, &nice_vec)) {
 			err("Error while parsing nice list");
-			goto cleanup5;
+			goto cleanup6;
 		}
 
 		if (nice_vec.size != 2) {
 			err("Invalid nice option");
-			goto cleanup5;
+			goto cleanup6;
 		}
 
 		char *item0 = as_vector_get_ptr(&nice_vec, 0);
@@ -2318,14 +2315,14 @@ main(int32_t argc, char **argv)
 
 		if (!better_atoi(item0, &tmp) || tmp < 1) {
 			err("Invalid bandwidth value %s", item0);
-			goto cleanup5;
+			goto cleanup6;
 		}
 
 		conf.bandwidth = tmp * 1024 * 1024;
 
 		if (!better_atoi(item1, &tmp) || tmp < 1 || tmp > 1000000000) {
 			err("Invalid TPS value %s", item1);
-			goto cleanup5;
+			goto cleanup6;
 		}
 
 		conf.tps = (uint32_t)tmp;
@@ -2337,12 +2334,12 @@ main(int32_t argc, char **argv)
 	if (conf.bin_list != NULL && !parse_list("bin", AS_BIN_NAME_MAX_SIZE, conf.bin_list,
 			&bin_vec)) {
 		err("Error while parsing bin list");
-		goto cleanup5;
+		goto cleanup6;
 	}
 
 	if (conf.set_list != NULL && !parse_list("set", AS_SET_MAX_SIZE, conf.set_list, &set_vec)) {
 		err("Error while parsing set list");
-		goto cleanup5;
+		goto cleanup6;
 	}
 
 	restore_args.ns_vec = &ns_vec;
@@ -2353,12 +2350,12 @@ main(int32_t argc, char **argv)
 	if (conf.directory != NULL) {
 		if (!get_backup_files(conf.directory, &file_vec)) {
 			err("Error while getting backup files");
-			goto cleanup5;
+			goto cleanup6;
 		}
 
 		if (file_vec.size == 0) {
 			err("No backup files found");
-			goto cleanup5;
+			goto cleanup6;
 		}
 
 		if (!no_indexes || !no_udfs) {
@@ -2376,7 +2373,7 @@ main(int32_t argc, char **argv)
 				if (!open_file(path, restore_args.ns_vec, &fd, &fd_buf, &legacy, &line_no, &first,
 						NULL, &size)) {
 					err("Error while triaging backup file %s [1]", path);
-					goto cleanup6;
+					goto cleanup7;
 				}
 
 				if (!no_records) {
@@ -2395,13 +2392,13 @@ main(int32_t argc, char **argv)
 							NULL, no_indexes ? NULL : &index_vec, no_udfs ? NULL : &udf_vec)) {
 						err("Error while reading index and UDF info from backup file %s", path);
 						close_file(&fd, &fd_buf);
-						goto cleanup6;
+						goto cleanup7;
 					}
 				}
 
 				if (!close_file(&fd, &fd_buf)) {
 					err("Error while triaging backup file %s [2]", path);
-					goto cleanup7;
+					goto cleanup8;
 				}
 			}
 		}
@@ -2416,7 +2413,7 @@ main(int32_t argc, char **argv)
 
 			if (cf_queue_push(job_queue, &restore_args) != CF_QUEUE_OK) {
 				err("Error while queueing restore job");
-				goto cleanup7;
+				goto cleanup8;
 			}
 		}
 
@@ -2432,7 +2429,7 @@ main(int32_t argc, char **argv)
 				&restore_args.legacy, &line_no, NULL, &conf.total_bytes,
 				no_records ? NULL : &conf.estimated_bytes)) {
 			err("Error while opening shared backup file");
-			goto cleanup5;
+			goto cleanup6;
 		}
 
 		if (verbose) {
@@ -2444,7 +2441,7 @@ main(int32_t argc, char **argv)
 				restore_args.ns_vec, restore_args.legacy, &conf, &line_no, &conf.total_bytes,
 				no_indexes ? NULL : &index_vec, no_udfs ? NULL : &udf_vec)) {
 			err("Error while reading index and UDF info from backup file %s", conf.input_file);
-			goto cleanup6;
+			goto cleanup7;
 		}
 
 		restore_args.line_no = &line_no;
@@ -2454,25 +2451,25 @@ main(int32_t argc, char **argv)
 		for (uint32_t i = 0; i < threads; ++i) {
 			if (cf_queue_push(job_queue, &restore_args) != CF_QUEUE_OK) {
 				err("Error while queueing restore job");
-				goto cleanup7;
+				goto cleanup8;
 			}
 		}
 	}
 
 	if (!no_udfs && !restore_udfs(&as, &udf_vec, &conf.udf_count, wait)) {
 		err("Error while restoring UDFs to cluster");
-		goto cleanup7;
+		goto cleanup8;
 	}
 
 	if (!no_indexes && !indexes_last &&
 			!restore_indexes(&as, &index_vec, &set_vec, &conf.index_count, wait)) {
 		err("Error while restoring secondary indexes to cluster");
-		goto cleanup7;
+		goto cleanup8;
 	}
 
 	if (no_records) {
 		res = EXIT_SUCCESS;
-		goto cleanup8;
+		goto cleanup9;
 	}
 
 	inf("Restoring records");
@@ -2485,7 +2482,7 @@ main(int32_t argc, char **argv)
 	for (uint32_t i = 0; i < threads; ++i) {
 		if (pthread_create(&restore_threads[i], NULL, restore_thread_func, job_queue) != 0) {
 			err_code("Error while creating restore thread");
-			goto cleanup9;
+			goto cleanup10;
 		}
 
 		++threads_ok;
@@ -2493,7 +2490,7 @@ main(int32_t argc, char **argv)
 
 	res = EXIT_SUCCESS;
 
-cleanup9:
+cleanup10:
 	if (verbose) {
 		ver("Waiting for %u restore thread(s)", threads_ok);
 	}
@@ -2516,18 +2513,18 @@ cleanup9:
 		}
 	}
 
-cleanup8:
+cleanup9:
 	if (res == EXIT_SUCCESS && !no_indexes && indexes_last &&
 			!restore_indexes(&as, &index_vec, &set_vec, &conf.index_count, wait)) {
 		err("Error while restoring secondary indexes to cluster");
 		res = EXIT_FAILURE;
 	}
 
-cleanup7:
+cleanup8:
 	free_indexes(&index_vec);
 	free_udfs(&udf_vec);
 
-cleanup6:
+cleanup7:
 	if (conf.directory != NULL) {
 		for (uint32_t i = 0; i < file_vec.size; ++i) {
 			cf_free(as_vector_get_ptr(&file_vec, i));
@@ -2537,7 +2534,7 @@ cleanup6:
 		res = EXIT_FAILURE;
 	}
 
-cleanup5:
+cleanup6:
 	as_vector_destroy(&set_vec);
 	as_vector_destroy(&bin_vec);
 	as_vector_destroy(&nice_vec);
@@ -2547,7 +2544,7 @@ cleanup5:
 	as_vector_destroy(&file_vec);
 	cf_queue_destroy(job_queue);
 
-cleanup4:
+cleanup5:
 	stop = true;
 
 	if (verbose) {
@@ -2559,14 +2556,14 @@ cleanup4:
 		res = EXIT_FAILURE;
 	}
 
-cleanup3:
+cleanup4:
 	if (node_names != NULL) {
 		cf_free(node_names);
 	}
 
 	aerospike_close(&as, &ae);
 
-cleanup2A:
+cleanup3:
 	aerospike_destroy(&as);
 
 cleanup2:
@@ -2593,6 +2590,34 @@ cleanup1:
 
 	if (nice_list != NULL) {
 		cf_free(nice_list);
+	}
+
+	if (tls.cafile != NULL) {
+		cf_free(tls.cafile);
+	}
+
+	if (tls.cafile != NULL) {
+		cf_free(tls.capath);
+	}
+
+	if (tls.cafile != NULL) {
+		cf_free(tls.protocols);
+	}
+
+	if (tls.cafile != NULL) {
+		cf_free(tls.cipher_suite);
+	}
+
+	if (tls.cafile != NULL) {
+		cf_free(tls.cert_blacklist);
+	}
+
+	if (tls.cafile != NULL) {
+		cf_free(tls.keyfile);
+	}
+
+	if (tls.cafile != NULL) {
+		cf_free(tls.certfile);
 	}
 
 	if (verbose) {

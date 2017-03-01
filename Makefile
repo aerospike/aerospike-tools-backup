@@ -36,14 +36,12 @@ DWARF := $(shell $(CC) -Wall -Wextra -O2 -o /tmp/asflags_$${$$} src/flags.c; \
 		/tmp/asflags_$${$$}; rm /tmp/asflags_$${$$})
 CFLAGS := -std=gnu99 $(DWARF) -O2 -march=nocona -fno-common -fno-strict-aliasing \
 		-Wall -Wextra -Wconversion -Wsign-conversion -Wmissing-declarations \
-		-D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_FORTIFY_SOURCE=2 -DMARCH_$(ARCH)
+		-D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_FORTIFY_SOURCE=2 -DMARCH_$(ARCH) \
+		-DTOOL_VERSION=\"$(shell git describe)\"
 
 ifeq ($(OS), Linux)
 CFLAGS += -pthread -fstack-protector -Wa,--noexecstack
 endif
-
-# Set the tool version from the latest Git tag.
-CFLAGS += -DTOOL_VERSION=\"$(shell git describe)\"
 
 LD := $(CC)
 LDFLAGS := $(CFLAGS)
@@ -58,15 +56,10 @@ DIR_ENV := env
 INCLUDES := -I$(DIR_INC)
 INCLUDES += -I$(CLIENTREPO)/src/include
 INCLUDES += -I$(CLIENTREPO)/modules/common/src/include
-
-ifeq ($(OS), Darwin)
-ifneq ($(wildcard /usr/local/opt/openssl/include),)
 INCLUDES += -I/usr/local/opt/openssl/include
-LIBRARIES += -L/usr/local/opt/openssl/lib
-endif
-endif
 
-LIBRARIES += $(CLIENTREPO)/target/$(PLATFORM)/lib/libaerospike.a
+LIBRARIES := $(CLIENTREPO)/target/$(PLATFORM)/lib/libaerospike.a
+LIBRARIES += -L/usr/local/opt/openssl/lib
 LIBRARIES += -L/usr/local/lib
 LIBRARIES += -lssl
 LIBRARIES += -lcrypto
