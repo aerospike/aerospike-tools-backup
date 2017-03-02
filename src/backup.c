@@ -1960,8 +1960,8 @@ main(int32_t argc, char **argv)
 
 	if (mod_since > 0) {
 		as_scan_predexp_inita(&scan, 3);
-		as_scan_predexp_add(&scan, as_predexp_integer_value(mod_since));
 		as_scan_predexp_add(&scan, as_predexp_rec_last_update());
+		as_scan_predexp_add(&scan, as_predexp_integer_value(mod_since));
 		as_scan_predexp_add(&scan, as_predexp_integer_greatereq());
 
 		if (!format_date_time(mod_since, since_buff, sizeof since_buff)) {

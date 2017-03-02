@@ -417,7 +417,10 @@ better_atoi(const char *string, uint64_t *val)
 bool
 parse_date_time(const char *string, int64_t *nanos)
 {
-	ver("Parsing date and time string %s", string);
+	if (verbose) {
+		ver("Parsing date and time string %s", string);
+	}
+
 	time_t now = time(NULL);
 
 	if (now == (time_t)-1) {
