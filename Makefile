@@ -29,6 +29,7 @@ endif
 OS := $(shell uname -s)
 ARCH := $(shell uname -m)
 PLATFORM := $(OS)-$(ARCH)
+VERSION := $(shell git describe 2>/dev/null; if [ $${?} != 0 ]; then echo 'unknown'; fi)
 
 CC := cc
 
@@ -37,7 +38,7 @@ DWARF := $(shell $(CC) -Wall -Wextra -O2 -o /tmp/asflags_$${$$} src/flags.c; \
 CFLAGS := -std=gnu99 $(DWARF) -O2 -march=nocona -fno-common -fno-strict-aliasing \
 		-Wall -Wextra -Wconversion -Wsign-conversion -Wmissing-declarations \
 		-D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_FORTIFY_SOURCE=2 -DMARCH_$(ARCH) \
-		-DTOOL_VERSION=\"$(shell git describe)\"
+		-DTOOL_VERSION=\"$(VERSION)\"
 
 ifeq ($(OS), Linux)
 CFLAGS += -pthread -fstack-protector -Wa,--noexecstack
