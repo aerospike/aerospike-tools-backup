@@ -406,6 +406,117 @@ better_atoi(const char *string, uint64_t *val)
 }
 
 ///
+/// Parses a "YYYY-MM-DD_HH:MM:SS" date and time string (local time) into nanoseconds
+/// since the epoch (GMT).
+///
+/// @param string  The date and time string.
+/// @param nanos   The nanoseconds passed since the epoch.
+///
+/// @result        `true`, if successful.
+///
+bool
+parse_date_time(const char *string, int64_t *nanos)
+{
+	ver("Parsing date and time string %s", string);
+	time_t now = time(NULL);
+
+	if (now == (time_t)-1) {
+		err("Error while getting current time");
+		return false;
+	}
+
+	struct tm local;
+
+	if (localtime_r(&now, &local) == NULL) {
+		err("Error while calculating local time");
+		return false;
+	}
+
+	int32_t year;
+	int32_t month;
+
+	switch (strlen(string)) {
+	case 10:
+		// YYYY-MM-DD, missing time, assume 00:00:00
+		if (sscanf(string, "%4d-%2d-%2d", &year, &month, &local.tm_mday) != 3 || year < 1900) {
+			err("Date format error in %s", string);
+			return false;
+		}
+
+		local.tm_year = year - 1900;
+		local.tm_mon = month - 1;
+		local.tm_hour = 0;
+		local.tm_sec = 0;
+		local.tm_min = 0;
+		break;
+
+	case 8:
+		// HH:MM:SS, missing date, assume today's date
+		if (sscanf(string, "%2d:%2d:%2d", &local.tm_hour, &local.tm_min, &local.tm_sec) != 3) {
+			err("Time format error in %s", string);
+			return false;
+		}
+
+		break;
+
+	case 19:
+		// YYYY-MM-DD_HH:MM:SS
+		if (sscanf(string, "%4d-%2d-%2d_%2d:%2d:%2d",
+				&year, &month, &local.tm_mday, &local.tm_hour, &local.tm_min,
+				&local.tm_sec) != 6 || year < 1900) {
+			err("Date/time format error in %s", string);
+			return false;
+		}
+
+		local.tm_year = year - 1900;
+		local.tm_mon = month - 1;
+		break;
+
+	default:
+		return false;
+	}
+
+	time_t secs = mktime(&local);
+
+	if (secs == (time_t)-1) {
+		err("Error while calculating epoch time");
+		return false;
+	}
+
+	*nanos = (int64_t)secs * 1000000000;
+	return true;
+}
+
+///
+/// Converts the given nanoseconds since the epoch (GMT) into a "YYYY-MM-DD_HH:MM:SS"
+/// date and time string (local time).
+///
+/// @param nanos   The nanoseconds to be converted.
+/// @param buffer  The output buffer to receive the converted result.
+/// @param size    The size of the output buffer.
+///
+/// @result        `true`, if successful.
+///
+bool
+format_date_time(int64_t nanos, char *buffer, size_t size)
+{
+	time_t gmt = (time_t)(nanos / 1000000000);
+	struct tm local;
+
+	if (localtime_r(&gmt, &local) == NULL) {
+		err("Error while calculating local time");
+		return false;
+	}
+
+	if (strftime(buffer, size, "%Y-%m-%d %H:%M:%S %Z", &local) == 0) {
+		err("Error while formatting local time");
+		return false;
+	}
+
+	return true;
+}
+
+///
 /// '\'-escapes spaces and line feeds in a string. Used by the @ref escape() macro.
 ///
 /// @param source  The string to be escaped.

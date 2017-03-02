@@ -1636,6 +1636,7 @@ main(int32_t argc, char **argv)
 		{ "tlsLogSessionInfo", no_argument, NULL, TLS_OPT_LOG_SESSION_INFO },
 		{ "tlsKeyFile", required_argument, NULL, TLS_OPT_KEY_FILE },
 		{ "tlsCertFile", required_argument, NULL, TLS_OPT_CERT_FILE },
+		{ "modified-since", required_argument, NULL, 'M' },
 		{ NULL, 0, NULL, 0 }
 	};
 
@@ -1657,6 +1658,7 @@ main(int32_t argc, char **argv)
 	bool remove_files = false;
 	char *bin_list = NULL;
 	char *node_list = NULL;
+	int64_t mod_since = 0;
 
 	backup_config conf;
 	conf.policy = &policy;
@@ -1682,7 +1684,7 @@ main(int32_t argc, char **argv)
 	int32_t opt;
 	uint64_t tmp;
 
-	while ((opt = getopt_long(argc, argv, "h:p:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZ",
+	while ((opt = getopt_long(argc, argv, "h:p:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZM:",
 			options, 0)) != -1) {
 		switch (opt) {
 		case 'h':
@@ -1874,6 +1876,14 @@ main(int32_t argc, char **argv)
 			tls.certfile = safe_strdup(optarg);
 			break;
 
+		case 'M':
+			if (!parse_date_time(optarg, &mod_since)) {
+				err("Invalid date and time string %s", optarg);
+				goto cleanup1;
+			}
+
+			break;
+
 		default:
 			usage(argv[0]);
 			goto cleanup1;
@@ -1938,9 +1948,29 @@ main(int32_t argc, char **argv)
 	signal(SIGINT, sig_hand);
 	signal(SIGTERM, sig_hand);
 
-	inf("Starting %d%% backup of %s (namespace: %s, set: %s, bins: %s) to %s", scan.percent,
-			host, scan.ns, scan.set[0] == 0 ? "[all]" : scan.set,
-			bin_list == NULL ? "[all]" : bin_list,
+	const char *since;
+	char since_buff[100];
+
+	if (mod_since > 0) {
+		as_scan_predexp_inita(&scan, 3);
+		as_scan_predexp_add(&scan, as_predexp_integer_value(mod_since));
+		as_scan_predexp_add(&scan, as_predexp_rec_last_update());
+		as_scan_predexp_add(&scan, as_predexp_integer_greatereq());
+
+		if (!format_date_time(mod_since, since_buff, sizeof since_buff)) {
+			err("Error while formatting modified-since time");
+			goto cleanup2;
+		}
+
+		since = since_buff;
+	}
+	else {
+		since = "[all]";
+	}
+
+	inf("Starting %d%% backup of %s (namespace: %s, set: %s, bins: %s, since: %s) to %s",
+			scan.percent, host, scan.ns, scan.set[0] == 0 ? "[all]" : scan.set,
+			bin_list == NULL ? "[all]" : bin_list, since,
 			conf.output_file != NULL ?
 					strcmp(conf.output_file, "-") == 0 ? "[stdout]" : conf.output_file :
 					conf.directory != NULL ?
@@ -1963,7 +1993,7 @@ main(int32_t argc, char **argv)
 	as_conf.conn_timeout_ms = TIMEOUT;
 
 	if (!as_config_add_hosts(&as_conf, host, (uint16_t)port)) {
-		err("Invalid host(s): %s", host);
+		err("Invalid host(s) string %s", host);
 		goto cleanup3;
 	}
 

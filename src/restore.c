@@ -2206,7 +2206,7 @@ main(int32_t argc, char **argv)
 	as_conf.conn_timeout_ms = TIMEOUT;
 
 	if (!as_config_add_hosts(&as_conf, host, (uint16_t)port)) {
-		err("Invalid host(s): %s", host);
+		err("Invalid host(s) string %s", host);
 		goto cleanup2;
 	}
 

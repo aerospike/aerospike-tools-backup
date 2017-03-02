@@ -141,6 +141,8 @@ extern void safe_unlock(void);
 extern void safe_wait(pthread_cond_t *cond);
 extern void safe_signal(pthread_cond_t *cond);
 extern bool better_atoi(const char *string, uint64_t *val);
+extern bool parse_date_time(const char *string, int64_t *nanos);
+extern bool format_date_time(int64_t nanos, char *buffer, size_t size);
 extern esc_res escape_space(const char *source, char *dest);
 extern esc_res unescape_space(const char *source, char *dest);
 extern char *trim_string(char *str);
