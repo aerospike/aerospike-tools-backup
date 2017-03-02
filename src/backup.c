@@ -1553,6 +1553,13 @@ usage(const char *name)
 	fprintf(stderr, "  -Z, --usage\n");
 	fprintf(stderr, "    Display this message.\n\n");
 
+	fprintf(stderr, "  -M, --modified-since <YYYY-MM-DD_HH:MM:SS>\n");
+	fprintf(stderr, "    Perform an incremental backup; only include records that changed since the\n");
+	fprintf(stderr, "    given date and time. The system's local timezone applies.\n\n");
+	fprintf(stderr, "    If only HH:MM:SS is specified, then today's date is assumed as the date.\n\n");
+	fprintf(stderr, "    If only YYYY-MM-DD is specified, then 00:00:00 (midnight) is assumed as\n");
+	fprintf(stderr, "    the time.\n\n");
+
 	fprintf(stderr, "  --tlsEnable\n");
 	fprintf(stderr, "    Enable TLS.\n\n");
 
