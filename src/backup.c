@@ -1553,12 +1553,16 @@ usage(const char *name)
 	fprintf(stderr, "  -Z, --usage\n");
 	fprintf(stderr, "    Display this message.\n\n");
 
-	fprintf(stderr, "  -M, --modified-since <YYYY-MM-DD_HH:MM:SS>\n");
-	fprintf(stderr, "    Perform an incremental backup; only include records that changed since the\n");
+	fprintf(stderr, "  -a, --modified-after <YYYY-MM-DD_HH:MM:SS>\n");
+	fprintf(stderr, "    Perform an incremental backup; only include records that changed after the\n");
 	fprintf(stderr, "    given date and time. The system's local timezone applies.\n\n");
 	fprintf(stderr, "    If only HH:MM:SS is specified, then today's date is assumed as the date.\n\n");
 	fprintf(stderr, "    If only YYYY-MM-DD is specified, then 00:00:00 (midnight) is assumed as\n");
 	fprintf(stderr, "    the time.\n\n");
+
+	fprintf(stderr, "  -b, --modified-before <YYYY-MM-DD_HH:MM:SS>\n");
+	fprintf(stderr, "    Only include records that last changed before the given date and time. May\n");
+	fprintf(stderr, "    combined with --modified-after to specify a range.\n\n");
 
 	fprintf(stderr, "  --tlsEnable\n");
 	fprintf(stderr, "    Enable TLS.\n\n");
@@ -1643,7 +1647,8 @@ main(int32_t argc, char **argv)
 		{ "tlsLogSessionInfo", no_argument, NULL, TLS_OPT_LOG_SESSION_INFO },
 		{ "tlsKeyFile", required_argument, NULL, TLS_OPT_KEY_FILE },
 		{ "tlsCertFile", required_argument, NULL, TLS_OPT_CERT_FILE },
-		{ "modified-since", required_argument, NULL, 'M' },
+		{ "modified-after", required_argument, NULL, 'a' },
+		{ "modified-before", required_argument, NULL, 'b' },
 		{ NULL, 0, NULL, 0 }
 	};
 
@@ -1665,7 +1670,8 @@ main(int32_t argc, char **argv)
 	bool remove_files = false;
 	char *bin_list = NULL;
 	char *node_list = NULL;
-	int64_t mod_since = 0;
+	int64_t mod_after = 0;
+	int64_t mod_before = 0;
 
 	backup_config conf;
 	conf.policy = &policy;
@@ -1691,7 +1697,7 @@ main(int32_t argc, char **argv)
 	int32_t opt;
 	uint64_t tmp;
 
-	while ((opt = getopt_long(argc, argv, "h:p:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZM:",
+	while ((opt = getopt_long(argc, argv, "h:p:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b:",
 			options, 0)) != -1) {
 		switch (opt) {
 		case 'h':
@@ -1883,8 +1889,16 @@ main(int32_t argc, char **argv)
 			tls.certfile = safe_strdup(optarg);
 			break;
 
-		case 'M':
-			if (!parse_date_time(optarg, &mod_since)) {
+		case 'a':
+			if (!parse_date_time(optarg, &mod_after)) {
+				err("Invalid date and time string %s", optarg);
+				goto cleanup1;
+			}
+
+			break;
+
+		case 'b':
+			if (!parse_date_time(optarg, &mod_before)) {
 				err("Invalid date and time string %s", optarg);
 				goto cleanup1;
 			}
@@ -1955,29 +1969,54 @@ main(int32_t argc, char **argv)
 	signal(SIGINT, sig_hand);
 	signal(SIGTERM, sig_hand);
 
-	const char *since;
-	char since_buff[100];
+	const char *before;
+	const char *after;
+	char before_buff[100];
+	char after_buff[100];
 
-	if (mod_since > 0) {
+	if (mod_before > 0 && mod_after > 0) {
+		as_scan_predexp_inita(&scan, 7);
+	} else if (mod_before > 0 || mod_after > 0) {
 		as_scan_predexp_inita(&scan, 3);
-		as_scan_predexp_add(&scan, as_predexp_rec_last_update());
-		as_scan_predexp_add(&scan, as_predexp_integer_value(mod_since));
-		as_scan_predexp_add(&scan, as_predexp_integer_greatereq());
+	}
 
-		if (!format_date_time(mod_since, since_buff, sizeof since_buff)) {
+	if (mod_before > 0) {
+		as_scan_predexp_add(&scan, as_predexp_rec_last_update());
+		as_scan_predexp_add(&scan, as_predexp_integer_value(mod_before));
+		as_scan_predexp_add(&scan, as_predexp_integer_less());
+
+		if (!format_date_time(mod_before, before_buff, sizeof before_buff)) {
 			err("Error while formatting modified-since time");
 			goto cleanup2;
 		}
 
-		since = since_buff;
-	}
-	else {
-		since = "[all]";
+		before = before_buff;
+	} else {
+		before = "[none]";
 	}
 
-	inf("Starting %d%% backup of %s (namespace: %s, set: %s, bins: %s, since: %s) to %s",
+	if (mod_after > 0) {
+		as_scan_predexp_add(&scan, as_predexp_rec_last_update());
+		as_scan_predexp_add(&scan, as_predexp_integer_value(mod_after));
+		as_scan_predexp_add(&scan, as_predexp_integer_greatereq());
+
+		if (!format_date_time(mod_after, after_buff, sizeof after_buff)) {
+			err("Error while formatting modified-since time");
+			goto cleanup2;
+		}
+
+		after = after_buff;
+	} else {
+		after = "[none]";
+	}
+
+	if (mod_before > 0 && mod_after > 0) {
+		as_scan_predexp_add(&scan, as_predexp_and(2));
+	}
+
+	inf("Starting %d%% backup of %s (namespace: %s, set: %s, bins: %s, after: %s, before: %s) to %s",
 			scan.percent, host, scan.ns, scan.set[0] == 0 ? "[all]" : scan.set,
-			bin_list == NULL ? "[all]" : bin_list, since,
+			bin_list == NULL ? "[all]" : bin_list, after, before,
 			conf.output_file != NULL ?
 					strcmp(conf.output_file, "-") == 0 ? "[stdout]" : conf.output_file :
 					conf.directory != NULL ?
