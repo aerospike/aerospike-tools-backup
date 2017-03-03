@@ -1770,10 +1770,10 @@ sig_hand(int32_t sig)
 static void
 print_version(void)
 {
-	fprintf(stderr, "Aerospike Restore Utility\n");
-	fprintf(stderr, "Version %s\n", TOOL_VERSION);
-	fprintf(stderr, "C Client Version %s\n", aerospike_client_version);
-	fprintf(stderr, "Copyright 2015-2017 Aerospike. All rights reserved.\n");
+	fprintf(stdout, "Aerospike Restore Utility\n");
+	fprintf(stdout, "Version %s\n", TOOL_VERSION);
+	fprintf(stdout, "C Client Version %s\n", aerospike_client_version);
+	fprintf(stdout, "Copyright 2015-2017 Aerospike. All rights reserved.\n");
 }
 
 ///
