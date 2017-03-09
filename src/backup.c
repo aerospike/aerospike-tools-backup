@@ -1293,15 +1293,18 @@ set_count_callback(void *context_, const char *key_, const char *value_)
 		*equals = 0;
 		char *value = equals + 1;
 
-		if (strcmp(key, "ns_name") == 0 && strcmp(value, context->ns) != 0) {
+		if ((strcmp(key, "ns_name") == 0 || strcmp(key, "ns") == 0) &&
+				strcmp(value, context->ns) != 0) {
 			match = false;
 		}
 
-		if (strcmp(key, "set_name") == 0 && strcmp(value, context->set) != 0) {
+		if ((strcmp(key, "set_name") == 0 || strcmp(key, "set") == 0) &&
+				strcmp(value, context->set) != 0) {
 			match = false;
 		}
 
-		if (strcmp(key, "n_objects") == 0 && !better_atoi(value, &count)) {
+		if ((strcmp(key, "n_objects") == 0 || strcmp(key, "objects") == 0) &&
+				!better_atoi(value, &count)) {
 			err("Invalid object count %s", value);
 			goto cleanup1;
 		}
