@@ -2169,6 +2169,11 @@ main(int32_t argc, char **argv)
 		}
 	}
 
+	if (optind < argc) {
+		err("Unexpected trailing argument %s", argv[optind]);
+		goto cleanup1;
+	}
+
 	if (conf.directory != NULL && conf.input_file != NULL) {
 		err("Invalid options: -d and -i are mutually exclusive.");
 		goto cleanup1;

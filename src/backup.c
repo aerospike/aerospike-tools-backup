@@ -1914,6 +1914,11 @@ main(int32_t argc, char **argv)
 		}
 	}
 
+	if (optind < argc) {
+		err("Unexpected trailing argument %s", argv[optind]);
+		goto cleanup1;
+	}
+
 	if ((port >= 0 || host != NULL) && node_list != NULL) {
 		err("Invalid options: -h and -p are mutually exclusive with -l");
 		goto cleanup1;
