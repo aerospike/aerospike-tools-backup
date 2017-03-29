@@ -1660,6 +1660,7 @@ main(int32_t argc, char **argv)
 	enable_client_log();
 	as_policy_scan policy;
 	as_policy_scan_init(&policy);
+	policy.socket_timeout = 10 * 60 * 1000;
 
 	as_scan scan;
 	as_scan_init(&scan, "", "");
