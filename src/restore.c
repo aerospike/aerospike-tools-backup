@@ -1600,43 +1600,93 @@ restore_udfs(aerospike *as, as_vector *udf_vec, volatile uint32_t *count, bool w
 {
 	inf("Restoring %d UDF file(s)", udf_vec->size);
 
+	uint32_t not_done = udf_vec->size;
+	bool done[udf_vec->size];
+
 	for (uint32_t i = 0; i < udf_vec->size; ++i) {
-		udf_param *udf = as_vector_get(udf_vec, i);
-
-		if (verbose) {
-			ver("Restoring UDF file %s (size %u)", udf->name, udf->size);
-		}
-
-		as_policy_info policy;
-		as_policy_info_init(&policy);
-		policy.timeout = TIMEOUT;
-		as_bytes content;
-		as_bytes_init_wrap(&content, udf->data, udf->size, false);
-		as_error ae;
-
-		if (aerospike_udf_put(as, &ae, &policy, udf->name, udf->type, &content) != AEROSPIKE_OK) {
-			err("Error while putting UDF file %s - code %d: %s at %s:%d", udf->name, ae.code,
-					ae.message, ae.file, ae.line);
-			return false;
-		}
-
-		as_bytes_destroy(&content);
-
-		if (wait) {
-			if (verbose) {
-				ver("Waiting for UDF file %s", udf->name);
-			}
-
-			if (aerospike_udf_put_wait(as, &ae, &policy, udf->name, 500) != AEROSPIKE_OK) {
-				err("Error while waiting for UDF file %s - code %d: %s at %s:%d", udf->name,
-						ae.code, ae.message, ae.file, ae.line);
-				return false;
-			}
-		}
-
-		++(*count);
+		done[i] = false;
 	}
 
+	bool final = false;
+
+	while (not_done > 0) {
+		if (verbose) {
+			ver("%s try, %u UDF file(s) left", final ? "Final" : "Non-final", not_done);
+		}
+
+		uint32_t per_try = 0;
+
+		for (uint32_t i = 0; i < udf_vec->size; ++i) {
+			udf_param *udf = as_vector_get(udf_vec, i);
+
+			if (verbose) {
+				ver("%s UDF file %s (size %u)", done[i] ? "Skipping" : "Restoring", udf->name,
+						udf->size);
+			}
+
+			if (done[i]) {
+				continue;
+			}
+
+			as_policy_info policy;
+			as_policy_info_init(&policy);
+			policy.timeout = TIMEOUT;
+			as_bytes content;
+			as_bytes_init_wrap(&content, udf->data, udf->size, false);
+			as_error ae;
+
+			if (aerospike_udf_put(as, &ae, &policy, udf->name, udf->type,
+					&content) != AEROSPIKE_OK) {
+				if (!final) {
+					if (verbose) {
+						ver("Error, retrying later");
+					}
+
+					continue;
+				}
+
+				err("Error while putting UDF file %s - code %d: %s at %s:%d", udf->name, ae.code,
+						ae.message, ae.file, ae.line);
+				*count = udf_vec->size - not_done;
+				return false;
+			}
+
+			as_bytes_destroy(&content);
+
+			if (wait) {
+				if (verbose) {
+					ver("Waiting for UDF file %s", udf->name);
+				}
+
+				if (aerospike_udf_put_wait(as, &ae, &policy, udf->name, 500) != AEROSPIKE_OK) {
+					if (!final) {
+						if (verbose) {
+							ver("Error, retrying later");
+						}
+
+						continue;
+					}
+
+					err("Error while waiting for UDF file %s - code %d: %s at %s:%d", udf->name,
+							ae.code, ae.message, ae.file, ae.line);
+					*count = udf_vec->size - not_done;
+					return false;
+				}
+			}
+
+			++per_try;
+			--not_done;
+			done[i] = true;
+		}
+
+		if (verbose) {
+			ver("Restored %u UDF file(s) in this try", per_try);
+		}
+
+		final = per_try == 0;
+	}
+
+	*count = udf_vec->size - not_done;
 	return true;
 }
 
