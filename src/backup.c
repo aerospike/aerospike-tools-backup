@@ -653,7 +653,7 @@ static void *
 backup_thread_func(void *cont)
 {
 	if (verbose) {
-		ver("Entering backup thread");
+		ver("Entering backup thread 0x%" PRIx64, pthread_self());
 	}
 
 	cf_queue *job_queue = cont;
@@ -834,7 +834,7 @@ static void *
 counter_thread_func(void *cont)
 {
 	if (verbose) {
-		ver("Entering counter thread");
+		ver("Entering counter thread 0x%" PRIx64, pthread_self());
 	}
 
 	counter_thread_args *args = (counter_thread_args *)cont;
@@ -1442,6 +1442,49 @@ sig_hand(int32_t sig)
 	(void)sig;
 	err("### Backup interrupted ###");
 	stop = true;
+}
+
+///
+/// Joins a thread and expects it to exit within a reasonable amount of time after `stop` was
+/// set to abort all threads.
+///
+/// @param thread      The thread to be joined.
+/// @param thread_res  The joined thread's return value.
+///
+/// @result            `ETIMEDOUT` on a timeout, otherwise the same as `pthread_join()`.
+///
+static int32_t
+safe_join(pthread_t thread, void **thread_res)
+{
+	if (verbose) {
+		ver("Joining thread 0x%" PRIx64, thread);
+	}
+
+	int32_t since_stop = 0;
+
+	while (true) {
+		time_t deadline = time(NULL) + 5;
+		struct timespec ts = { deadline, 0 };
+		int32_t res = pthread_timedjoin_np(thread, thread_res, &ts);
+
+		if (res == 0 || res != ETIMEDOUT) {
+			return res;
+		}
+
+		if (!stop) {
+			continue;
+		}
+
+		if (verbose) {
+			ver("Expecting thread 0x%" PRIx64 " to finish (%d)", thread, since_stop);
+		}
+
+		if (++since_stop >= 4) {
+			err("Stuck thread detected");
+			errno = ETIMEDOUT;
+			return ETIMEDOUT;
+		}
+	}
 }
 
 ///
@@ -2199,13 +2242,12 @@ cleanup9:
 	void *thread_res;
 
 	for (uint32_t i = 0; i < n_threads_ok; i++) {
-		if (pthread_join(backup_threads[i], &thread_res) != 0) {
+		if (safe_join(backup_threads[i], &thread_res) != 0) {
 			err_code("Error while joining backup thread");
 			stop = true;
 			res = EXIT_FAILURE;
 		}
-
-		if (thread_res != (void *)EXIT_SUCCESS) {
+		else if (thread_res != (void *)EXIT_SUCCESS) {
 			if (verbose) {
 				ver("Backup thread failed");
 			}
@@ -2230,7 +2272,7 @@ cleanup6:
 		ver("Waiting for counter thread");
 	}
 
-	if (pthread_join(counter_thread, NULL) != 0) {
+	if (safe_join(counter_thread, NULL) != 0) {
 		err_code("Error while joining counter thread");
 		res = EXIT_FAILURE;
 	}
