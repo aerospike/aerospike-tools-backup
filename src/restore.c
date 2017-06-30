@@ -922,8 +922,17 @@ restore_thread_func(void *cont)
 							backoff = INITIAL_BACKOFF * 1000;
 						}
 
-						err("Error while storing record - code %d: %s at %s:%d", ae.code,
-								ae.message, ae.file, ae.line);
+						if (tries < MAX_TRIES - 1 && put != AEROSPIKE_ROLE_VIOLATION) {
+							if (verbose) {
+								ver("Error while storing record - code %d: %s at %s:%d", ae.code,
+										ae.message, ae.file, ae.line);
+							}
+
+						} else {
+							err("Error while storing record - code %d: %s at %s:%d", ae.code,
+									ae.message, ae.file, ae.line);
+
+						}
 
 						if (put == AEROSPIKE_ROLE_VIOLATION) {
 							stop = true;
