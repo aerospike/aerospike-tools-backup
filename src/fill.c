@@ -51,25 +51,6 @@ struct job_node_s {
 	rec_node *record;   ///< The record specification for this job.
 };
 
-struct ldt_node_s;
-typedef struct ldt_node_s ldt_node;     ///< Encapsulates the generated value for an LDT bin.
-
-///
-/// Encapsulates the generated value for an LDT bin.
-///
-/// As an `as_ldt` does not hold a value, we need to combine an `as_val` (which holds the generated
-/// value) with an `as_ldt` to represent a value for an LDT bin.
-///
-/// All LDT bins for a record are kept in a linked list.
-///
-struct ldt_node_s {
-	ldt_node *next; ///< Pointer for the linked list of LDT bins.
-	node_type type; ///< The type of the LDT bin; either @ref LLIST or @ref LMAP.
-	as_ldt *ldt;    ///< The `as_ldt` allocated to access this LDT bin.
-	as_val *val;    ///< The generated value for this LDT bin. Either an `as_arraylist` (for an
-	                /// @ref LLIST LDT bin) or an `as_hashmap` (for an @ref LMAP LDT bin).
-};
-
 ///
 /// The type of key to generate.
 ///
@@ -278,32 +259,6 @@ free_jobs(job_node *node)
 }
 
 ///
-/// Frees a linked list of @ref ldt_node.
-///
-/// There isn't an equivalent function to free non-LDT bin values, as those are associated with an
-/// `as_record` and thus automatically freed, when the `as_record` is freed.
-///
-/// @param node  The first node in the linked list.
-///
-static void
-free_ldts(ldt_node *node)
-{
-	while (node != NULL) {
-		if (node->ldt != NULL) {
-			as_ldt_destroy(node->ldt);
-		}
-
-		if (node->val != NULL) {
-			as_val_destroy(node->val);
-		}
-
-		ldt_node *next = node->next;
-		cf_free(node);
-		node = next;
-	}
-}
-
-///
 /// Indents by writing space characters to the given file descriptor.
 ///
 /// @param out    The file descriptor to write to.
@@ -354,15 +309,14 @@ print_type_rec(FILE *out, const type_node *node, int32_t level)
 		return;
 	}
 
-	if (node->type == LIST || node->type == LLIST) {
-		fprintf(out, "%slist, length: %" PRIu32 ", elements of type:\n",
-				node->type == LLIST ? "large " : "", node->count);
+	if (node->type == LIST) {
+		fprintf(out, "list, length: %" PRIu32 ", elements of type:\n", node->count);
 		print_type_rec(out, node->children[0], level + 1);
 		return;
 	}
 
-	if (node->type == MAP || node->type == LMAP) {
-		fprintf(out, "%smap, size: %" PRIu32 "\n", node->type == LMAP ? "large " : "", node->count);
+	if (node->type == MAP) {
+		fprintf(out, "map, size: %" PRIu32 "\n", node->count);
 		indent(out, level);
 		fprintf(out, "keys of type:\n");
 		print_type_rec(out, node->children[0], level + 1);
@@ -687,9 +641,6 @@ generate_map(uint32_t size, const type_node *key_type, const type_node *val_type
 /// Depending on the requested type, dispatches to generate_integer(), generate_string(),
 /// generate_bytes(), generate_list(), or generate_map().
 ///
-/// LDT lists and maps are treated like normal lists and maps. The generated `as_list` or
-/// `as_map' then goes into the ldt_node_s.val field.
-///
 /// @param type  The type of the value to be generated.
 /// @param fuzz  Enables fuzzing.
 ///
@@ -716,11 +667,9 @@ generate(const type_node *type, bool fuzz)
 		return generate_bytes(type->count);
 
 	case LIST:
-	case LLIST:
 		return generate_list(type->count, type->children[0], fuzz);
 
 	case MAP:
-	case LMAP:
 		return generate_map(type->count, type->children[0], type->children[1], fuzz);
 	}
 
@@ -794,15 +743,13 @@ init_key(as_key *key, const char *namespace, const char *set, key_type type, boo
 /// @param context     The fill context that, among other things, points to the job to be executed
 ///                    and, thus, indirectly to the record specification.
 /// @param rec         The record to be populated.
-/// @param ldts        The linked list of generated LDT bin values. LDT bin values cannot be
-///                    stored in the record, hence this separate linked list.
 /// @param name_count  Counts the number of generated unique bin names so that we can remain below
 ///                    the bin name quota imposed by `asd`.
 ///
 /// @result            `true`, if successful.
 ///
 static bool
-create_record(fill_context *context, as_record *rec, ldt_node **ldts, uint32_t *name_count)
+create_record(fill_context *context, as_record *rec, uint32_t *name_count)
 {
 	bool res = false;
 	uint32_t bin_count = 0;
@@ -817,10 +764,7 @@ create_record(fill_context *context, as_record *rec, ldt_node **ldts, uint32_t *
 	}
 
 	as_record_init(rec, (uint16_t)bin_count);
-	*ldts = NULL;
-
 	uint32_t walker = 0;
-	ldt_node **insert = ldts;
 
 	for (bin_node *bin = context->job->record->bins; bin != NULL; bin = bin->next) {
 		for (uint32_t b = 0; b < bin->count; ++b) {
@@ -873,24 +817,6 @@ create_record(fill_context *context, as_record *rec, ldt_node **ldts, uint32_t *
 			case MAP:
 				ok = as_record_set_map(rec, bin_name, (as_map *)val);
 				break;
-
-			case LLIST:
-			case LMAP:
-				*insert = allocate(sizeof (ldt_node));
-				memset(*insert, 0, sizeof (ldt_node));
-				(*insert)->type = bin->type->type;
-				as_ldt_type ldt_type = bin->type->type == LLIST ? AS_LDT_LLIST : AS_LDT_LMAP;
-				(*insert)->ldt = as_ldt_new(bin_name, ldt_type, NULL);
-
-				if ((*insert)->ldt == NULL) {
-					fprintf(stderr, "cannot initialize LDT\n");
-					goto cleanup1;
-				}
-
-				(*insert)->val = val;
-				insert = &(*insert)->next;
-				ok = true;
-				break;
 			}
 
 			if (!ok) {
@@ -905,7 +831,6 @@ create_record(fill_context *context, as_record *rec, ldt_node **ldts, uint32_t *
 
 cleanup1:
 	as_record_destroy(rec);
-	free_ldts(*ldts);
 
 cleanup0:
 	return res;
@@ -918,17 +843,14 @@ cleanup0:
 ///     the job to be executed. Which, in turn, contains (among other things) a record
 ///     specification.
 ///   - Connects to the Aerospike server.
-///   - Pseudo-randomly populates a record and creates a linked list of @ref ldt_node with
-///     pseudo-random values according to the record specification from the job / fill context.
+///   - Pseudo-randomly populates a record according to the record specification from the
+///     job / fill context.
 ///   - Initializes a key.
 ///   - Puts the populated record using the initialized key.
-///   - Invokes `aerospike_llist_add_all()` and `aerospike_lmap_put_all()` to populate the
-///     LDT bins described by the linked list of @ref ldt_node.
 ///   - Interates.
 ///
-/// In benchmark mode, to speed things up, the populated record and the linked list of @ref ldt_node
-/// are kept. If benchmark mode is disabled, then the record and the linked list are regenerated
-/// from scratch for each iteration.
+/// In benchmark mode, to speed things up, the populated record is kept. If benchmark mode is disabled,
+/// then the record and the linked list are regenerated from scratch for each iteration.
 ///
 /// @param data  The @ref fill_context passed to the thread.
 ///
@@ -958,10 +880,9 @@ fill_worker(void *data)
 	}
 
 	as_record rec;
-	ldt_node *ldts;
 	uint32_t name_count = 0;
 
-	if (!create_record(context, &rec, &ldts, &name_count)) {
+	if (!create_record(context, &rec, &name_count)) {
 		fprintf(stderr, "error while creating record data\n");
 		goto cleanup2;
 	}
@@ -970,7 +891,7 @@ fill_worker(void *data)
 	as_policy_write_init(&policy);
 	policy.key = AS_POLICY_KEY_SEND;
 	policy.exists = AS_POLICY_EXISTS_CREATE;
-	policy.timeout = TIMEOUT;
+	policy.base.total_timeout = TIMEOUT;
 
 	while (true) {
 		lock();
@@ -1010,48 +931,12 @@ fill_worker(void *data)
 			goto cleanup3;
 		}
 
-		as_policy_apply policy;
-		as_policy_apply_init(&policy);
-		policy.key = AS_POLICY_KEY_SEND;
-		policy.timeout = TIMEOUT;
-
-		for (ldt_node *ldt = ldts; ldt != NULL; ldt = ldt->next) {
-			switch (ldt->type) {
-			case LLIST:
-				if (aerospike_llist_add_all(&as, &err, &policy, &key, ldt->ldt,
-						(as_list *)ldt->val) != AEROSPIKE_OK) {
-					show_error(&err, "error while populating LLIST on %s:%d\n", context->host,
-							context->port);
-					as_key_destroy(&key);
-					goto cleanup3;
-				}
-
-				break;
-
-			case LMAP:
-				if (aerospike_lmap_put_all(&as, &err, &policy, &key, ldt->ldt,
-						(as_map *)ldt->val) != AEROSPIKE_OK) {
-					show_error(&err, "error while populating LMAP on %s:%d\n", context->host,
-							context->port);
-					as_key_destroy(&key);
-					goto cleanup3;
-				}
-
-				break;
-
-			default:
-				fprintf(stderr, "whoa! this should not be reached\n");
-				goto cleanup3;
-			}
-		}
-
 		as_key_destroy(&key);
 
 		if (!context->bench) {
 			as_record_destroy(&rec);
-			free_ldts(ldts);
 
-			if (!create_record(context, &rec, &ldts, &name_count)) {
+			if (!create_record(context, &rec, &name_count)) {
 				fprintf(stderr, "error while recreating record data\n");
 				goto cleanup2;
 			}
@@ -1062,7 +947,6 @@ fill_worker(void *data)
 
 cleanup3:
 	as_record_destroy(&rec);
-	free_ldts(ldts);
 
 cleanup2:
 	if (aerospike_close(&as, &err) != AEROSPIKE_OK) {

@@ -36,6 +36,18 @@ sys.setdefaultencoding("UTF-8") # make it easier to work with a mix of unicode a
 
 random.seed(0)
 
+def safe_sleep(secs):
+	"""
+	Sleeps, even in the presence of signals.
+	"""
+	start = time.time()
+
+	while True:
+		time.sleep(1)
+
+		if time.time() - start >= secs:
+			break
+
 def enable_dir_mode():
 	"""
 	Enables directory mode.
@@ -304,7 +316,7 @@ def start(keep_work_dir=False):
 	os.environ["LD_PRELOAD"] = interceptor
 
 	for index in xrange(1, 3):
-		command = [asd_path, "--config-file", conf_file[index - 1]]
+		command = [asd_path, "--config-file", conf_file[index - 1], "--instance", str(index - 1)]
 		print "Executing", command
 		GLOBALS["asd-" + str(index)] = subprocess.Popen(command, cwd=absolute_path("."), **redirect)
 
@@ -319,12 +331,12 @@ def start(keep_work_dir=False):
 			break
 		except Exception:
 			if attempt < CLIENT_ATTEMPTS - 1:
-				time.sleep(1)
+				safe_sleep(1)
 			else:
 				raise
 
 	print "Client connected"
-	time.sleep(5) # let the cluster fully form and the client learn about it
+	safe_sleep(5) # let the cluster fully form and the client learn about it
 
 def stop(keep_work_dir=False):
 	"""
@@ -473,24 +485,6 @@ def validate_meta(key, meta_key, meta_ttl, expect_key=False, expected_ttl=None):
 		assert meta_ttl >= expected_ttl[0] and meta_ttl <= expected_ttl[1], \
 				"Key %s has an invalid TTL (%s vs. %s)" % (key, meta_ttl, expected_ttl)
 
-def write_ldt_record(set_name, key, bin_names, values):
-	"""
-	Writes the given LDT lists to the given bins in the given record.
-	"""
-	validate_client()
-	force_unicode(set_name, "Please use Unicode set names")
-	assert len(bin_names) == len(values), "Invalid number of bin names or values (%d vs. %d)" % \
-			(len(bin_names), len(values))
-
-	for bin_name, value in zip(bin_names, values):
-		force_unicode(bin_name, "Please use Unicode bin names")
-		force_unicode(value, "Please use Unicode bin values")
-		ldt_list = GLOBALS["client"].llist((NAMESPACE, set_name, key), bin_name)
-
-		# XXX - add_many() causes spurious duplicate value errors
-		for entry in value:
-			ldt_list.add(entry)
-
 # XXX - geo objects don't support equality
 def geo_to_string(value):
 	"""
@@ -511,25 +505,6 @@ def geo_to_string(value):
 		return str(value)
 
 	return value
-
-def validate_ldt_record(set_name, key, bin_names, values):
-	"""
-	Ensures that the given key has the given bins with the given
-	LDT lists.
-	"""
-	validate_client()
-	force_unicode(set_name, "Please use Unicode set names")
-	assert len(bin_names) == len(values), "Invalid number of bin names or values (%d vs. %d)" % \
-			(len(bin_names), len(values))
-
-	for bin_name, value in zip(bin_names, values):
-		force_unicode(bin_name, "Please use Unicode bin names")
-		force_unicode(value, "Please use Unicode bin values")
-		ldt_list = GLOBALS["client"].llist((NAMESPACE, set_name, key), bin_name)
-		read_value = ldt_list.filter()
-		assert sorted(geo_to_string(read_value)) == sorted(geo_to_string(value)), \
-				"Key %s has an invalid \"%s\" LDT bin (%s vs %s)" % \
-				(key, bin_name, read_value, value)
 
 def put_udf_file(content):
 	"""
@@ -746,7 +721,7 @@ def backup_and_restore(filler, preparer, checker, backup_opts=None, restore_opts
 		reset()
 
 		if restore_delay is not None:
-			time.sleep(restore_delay)
+			safe_sleep(restore_delay)
 
 		if preparer is not None:
 			preparer(context)

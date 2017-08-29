@@ -97,7 +97,6 @@ Let's now look at what the worker threads do, starting at `restore_thread_func()
   * Invoke the `parse()` function of the backup decoder to read the next record. The decoder is the counterpart to the encoder in `asbackup`. It implements the backup file format by deserializing record information from the the backup file. Its code is in `src/dec_text.c`, its interface in `include/dec_text.h`.
   * When backing up to a single file, release the file lock.
   * Invoke `aerospike_key_put()` to store the current record in the cluster.
-  * When LDT list bins are involved, things get a little less linear: the decoder calls back into `restore.c`. `prepare_ldt_record()` is invoked when the first LDT list bin of the current record is encountered. It simulates a write policy for LDT list bins. `add_ldt_value()` is invoked for each LDT list element to be added to an LDT list bin. The function batches the LDT list elements and then collectively adds the batched elements to the LDT bin using `aerospike_llist_update_all()`. When there aren't any more elements for the current LDT bin, `NULL` is passed as the element pointer, which makes the function clean up its data structures and prepare itself for the next LDT bin.
 
 For more detailed information, please generate the documentation (`make docs`) and open `docs/index.html`.
 
@@ -127,8 +126,6 @@ Accordingly, the `{bin-count-x}` placeholders are just integer values. The `{bin
 | `(string {length})` | A string value of the given length. |
 | `(list {length} {element-type})` | A list of the given length, whose elements are of the given type. This type can then again have one of these six forms. |
 | `(map {size} {key-type} {value-type})` | A map of the given size, whose keys and values are of the given types. These types can then again have one of these six forms. |
-| `(llist {length} {element-type})` | The LDT equivalent to `(list ...)`. |
-| `(lmap {size} {key-type} {value-type})` | The LDT equivalent to `(map ...)`. |
 
 Let's reconsider the above examples: a 50-character string, a 100-element list of integers, and a 100-element list of 50-element maps that map integer keys to 500-character string values. Let's specify a record that has 1, 3, and 5 bins of those types, respectively.
 
@@ -326,7 +323,7 @@ Actually, the above `["B"]` form is not the only way to represent bytes-valued b
 | `["E"]` | Erlang bytes value. |
 | `["M"]` | Map value, opaquely represented as a bytes value. |
 | `["L"]` | List value, opaquely represented as a bytes value. |
-| `["U"]` | LDT value, opaquely represented as a bytes value. |
+| `["U"]` | LDT value, opaquely represented as a bytes value. Deprecated. |
 
 ### Sample Backup File
 

@@ -85,15 +85,6 @@ typedef struct {
 } set_count_context;
 
 ///
-/// The callback context passed to get_info() when parsing the number of pending
-/// incoming and outgoing migrations.
-///
-typedef struct {
-	uint64_t incoming;  ///< The number of pending incoming migrations.
-	uint64_t outgoing;  ///< The number of pending outgoign migrations.
-} migration_count_context;
-
-///
 /// Encapsulates the IP address and port of a cluster node.
 ///
 typedef struct {

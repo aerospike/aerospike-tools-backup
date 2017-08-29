@@ -80,10 +80,9 @@ BACKUP_SRC := $(DIR_SRC)/backup.c $(DIR_SRC)/utils.c $(DIR_SRC)/enc_text.c
 BACKUP_OBJ := $(call src_to_obj, $(BACKUP_SRC))
 BACKUP_DEP := $(call obj_to_dep, $(BACKUP_OBJ))
 
-RESTORE_INC := $(DIR_INC)/restore.h $(DIR_INC)/dec_text.h $(DIR_INC)/serial.h $(DIR_INC)/shared.h \
-		$(DIR_INC)/utils.h
-RESTORE_SRC := $(DIR_SRC)/restore.c $(DIR_SRC)/utils.c $(DIR_SRC)/dec_text.c $(DIR_SRC)/serial.c
-RESTORE_OBJ := $(call src_to_obj, $(RESTORE_SRC)) $(DIR_OBJ)/serial_dec.o
+RESTORE_INC := $(DIR_INC)/restore.h $(DIR_INC)/dec_text.h $(DIR_INC)/shared.h $(DIR_INC)/utils.h
+RESTORE_SRC := $(DIR_SRC)/restore.c $(DIR_SRC)/utils.c $(DIR_SRC)/dec_text.c
+RESTORE_OBJ := $(call src_to_obj, $(RESTORE_SRC))
 RESTORE_DEP := $(call obj_to_dep, $(RESTORE_OBJ))
 
 FILL_INC := $(DIR_INC)/spec.h
@@ -151,9 +150,6 @@ $(DIR_BIN):
 
 $(DIR_OBJ)/%.o: $(DIR_SRC)/%.c | $(DIR_OBJ)
 	$(CC) $(CFLAGS) -MMD -o $@ -c $(INCLUDES) $<
-
-$(DIR_OBJ)/serial_dec.o: $(DIR_SRC)/serial.c | $(DIR_OBJ)
-	$(CC) $(CFLAGS) -DDECODE_BASE64 -MMD -o $@ -c $(INCLUDES) $<
 
 $(BACKUP): $(BACKUP_OBJ) | $(DIR_BIN)
 	$(CC) $(LDFLAGS) -o $(BACKUP) $(BACKUP_OBJ) $(LIBRARIES)

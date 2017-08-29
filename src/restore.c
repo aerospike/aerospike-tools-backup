@@ -378,259 +378,6 @@ check_set(char *set, as_vector *set_vec)
 }
 
 ///
-/// Prepares a record before restoring the first LDT bin of the record. Mimics what the "-u", "-r",
-/// and "-g" command line options do to records without LDT bins.
-///
-/// @param ptc  The per-thread context.
-/// @param rec  The record being restored.
-///
-/// @result     A `prepare_result` indicating how the record should be handled.
-///
-static prepare_result
-prepare_ldt_record(per_thread_context *ptc, as_record *rec)
-{
-	as_record *existing = NULL;
-	prepare_result res;
-	as_status status;
-	as_error ae;
-
-	// indicates that we tested record existence; if we tested and the record doesn't exist, this
-	// will be true and "existing" will remain NULL
-	bool tested = false;
-
-	if (ptc->conf->unique || !ptc->conf->no_generation) {
-		as_policy_read policy;
-		as_policy_read_init(&policy);
-		policy.timeout = TIMEOUT;
-
-		// we need to know if the record exists; if the record exists, this also gives us the record
-		// meta data for the generation check
-		status = aerospike_key_exists(ptc->conf->as, &ae, &policy, &rec->key, &existing);
-
-		if (status != AEROSPIKE_OK && status != AEROSPIKE_ERR_RECORD_NOT_FOUND) {
-			err("Error while testing record for existence - code %d: %s at %s:%d", ae.code,
-					ae.message, ae.file, ae.line);
-			res = PREPARE_ERROR;
-			goto cleanup1;
-		}
-
-		if (existing != NULL) {
-			if (ptc->conf->unique) {
-				// record exists
-				res = PREPARE_EXISTS;
-				goto cleanup1;
-			}
-
-			if (!ptc->conf->no_generation && rec->gen <= existing->gen) {
-				// generation check failed
-				res = PREPARE_FRESHER;
-				goto cleanup1;
-			}
-		}
-
-		tested = true;
-	}
-
-	if (ptc->conf->replace && (!tested || existing != NULL)) {
-		as_policy_remove policy;
-		as_policy_remove_init(&policy);
-		policy.timeout = TIMEOUT;
-
-		// we didn't test above or we tested and the record exists: delete the record
-		status = aerospike_key_remove(ptc->conf->as, &ae, &policy, &rec->key);
-
-		if (status != AEROSPIKE_OK && status != AEROSPIKE_ERR_RECORD_NOT_FOUND) {
-			err("Error while deleting record - code %d: %s at %s:%d", ae.code, ae.message, ae.file,
-					ae.line);
-			res = PREPARE_ERROR;
-			goto cleanup1;
-		}
-	}
-
-	res = PREPARE_OK;
-
-cleanup1:
-	if (existing != NULL) {
-		as_record_destroy(existing);
-	}
-
-	return res;
-}
-
-///
-/// Adds an element to an LDT bin.
-///
-/// See @ref ldt_callback for details. `NULL` passed as the `val` parameter indicates the
-/// end of the LDT list.
-///
-static bool
-add_ldt_value(void *context, int64_t bytes, as_record *rec, const char *bin_name, as_val *val,
-		bool *expired)
-{
-	bool res = false;
-	bool appended = false;
-	per_thread_context *ptc = context;
-
-	if (*expired || !check_set(rec->key.set, ptc->set_vec)) {
-		res = true;
-		goto cleanup1;
-	}
-
-	if (ptc->ldt_prepare == PREPARE_INVALID) {
-		ptc->ldt_prepare = prepare_ldt_record(ptc, rec);
-	}
-
-	if (ptc->ldt_prepare != PREPARE_OK) {
-		res = ptc->ldt_prepare != PREPARE_ERROR;
-		goto cleanup1;
-	}
-
-	if (ptc->ldt_list == NULL &&
-			(ptc->ldt_list = as_ldt_new(bin_name, AS_LDT_LLIST, NULL)) == NULL) {
-		err("Error while initializing LDT for bin %s", bin_name);
-		goto cleanup1;
-	}
-
-	if (ptc->ldt_batch == NULL && (ptc->ldt_batch = as_arraylist_new(16384, 16384)) == NULL) {
-		err("Error while initializing batch list for bin %s", bin_name);
-		goto cleanup2;
-	}
-
-	cf_clock now = cf_secs_since_clepoch();
-
-	if (ptc->ldt_now == 0) {
-		ptc->ldt_now = now;
-	}
-
-	// restoring an LDT bin can take a while, so keep adjusting the record's TTL, if the record
-	// has not yet expired and does not live forever
-	if (!(*expired) && rec->ttl != (uint32_t)-1) {
-		if (now < ptc->ldt_now + rec->ttl) {
-			rec->ttl -= (uint32_t)(now - ptc->ldt_now);
-			ptc->ldt_now = now;
-		} else {
-			*expired = true;
-			res = true;
-			goto cleanup3;
-		}
-	}
-
-	if (val != NULL) {
-		if (as_arraylist_append(ptc->ldt_batch, val) != AS_ARRAYLIST_OK) {
-			err("Error while appending LDT element to batch for bin %s", bin_name);
-			goto cleanup3;
-		}
-
-		// the list now owns the value
-		appended = true;
-	}
-
-	// batch size is 0 when val == NULL and the previous invocation flushed the batch
-	if (ptc->ldt_batch->size > 0 &&
-			(val == NULL || (uint64_t)(bytes - ptc->ldt_bytes) >= ptc->conf->batch_size)) {
-		useconds_t backoff = INITIAL_BACKOFF * 1000;
-		int32_t tries;
-
-		for (tries = 0; tries < MAX_TRIES && !stop; ++tries) {
-			as_policy_apply policy;
-			as_policy_apply_init(&policy);
-			policy.timeout = VERY_LONG_LDT_TIMEOUT;
-			policy.key = rec->key.valuep != NULL ? AS_POLICY_KEY_SEND : AS_POLICY_KEY_DIGEST;
-			policy.ttl = rec->ttl;
-
-			as_error ae;
-			as_status put;
-
-			if (!ptc->ldt_cleared) {
-				put = aerospike_llist_destroy(ptc->conf->as, &ae, &policy, &rec->key,
-						ptc->ldt_list);
-
-				// XXX - error code 1417 indicates that the bin does not exist; is there
-				// a more elegant way to test for this error code?
-				if (put == AEROSPIKE_ERR_RECORD_NOT_FOUND ||
-						(put == AEROSPIKE_ERR_UDF && strstr(ae.message, " 1417:") != NULL)) {
-					put = AEROSPIKE_OK;
-				}
-
-				if (put == AEROSPIKE_OK) {
-					ptc->ldt_cleared = true;
-				}
-			}
-
-			if (ptc->ldt_cleared) {
-				put = aerospike_llist_update_all(ptc->conf->as, &ae, &policy, &rec->key,
-						ptc->ldt_list, (as_list *)ptc->ldt_batch);
-			}
-
-			if (put == AEROSPIKE_OK) {
-				ptc->has_ldts = true;
-				break;
-			}
-
-			if (put == AEROSPIKE_ERR_DEVICE_OVERLOAD) {
-				cf_atomic64_incr(&ptc->conf->backoff_count);
-
-				if (tries < MAX_TRIES - 1) {
-					usleep(backoff);
-					backoff *= 2;
-					continue;
-				}
-			} else {
-				backoff = INITIAL_BACKOFF * 1000;
-			}
-
-			err("Error while writing LDT batch - code %d: %s at %s:%d", ae.code, ae.message,
-					ae.file, ae.line);
-
-			if (put == AEROSPIKE_ROLE_VIOLATION) {
-				goto cleanup3;
-			}
-
-			sleep(1);
-		}
-
-		if (tries == MAX_TRIES) {
-			err("Too many errors, giving up");
-			goto cleanup3;
-		}
-
-		if (as_arraylist_trim(ptc->ldt_batch, 0) != AS_ARRAYLIST_OK) {
-			err("Error during LDT batch reset for bin %s", bin_name);
-			goto cleanup3;
-		}
-
-		ptc->ldt_bytes = bytes;
-	}
-
-	res = true;
-
-	if (val == NULL) {
-		goto cleanup3;
-	}
-
-	goto cleanup1;
-
-cleanup3:
-	ptc->ldt_bytes = 0;
-	ptc->ldt_now = 0;
-
-	as_arraylist_destroy(ptc->ldt_batch);
-	ptc->ldt_batch = NULL;
-
-cleanup2:
-	as_ldt_destroy(ptc->ldt_list);
-	ptc->ldt_list = NULL;
-	ptc->ldt_cleared = ptc->conf->keep_ldt;
-
-cleanup1:
-	if (val != NULL && !appended) {
-		as_val_val_destroy(val);
-	}
-
-	return res;
-}
-
-///
 /// Main restore worker thread function.
 ///
 ///   - Pops the restore_thread_args for a backup file off the job queue.
@@ -697,11 +444,6 @@ restore_thread_func(void *cont)
 		ptc.bin_vec = args.bin_vec;
 		ptc.set_vec = args.set_vec;
 		ptc.legacy = args.legacy;
-		ptc.ldt_now = 0;
-		ptc.ldt_list = NULL;
-		ptc.ldt_batch = NULL;
-		ptc.ldt_bytes = 0;
-		ptc.ldt_cleared = args.conf->keep_ldt;
 		ptc.stat_records = 0;
 		ptc.read_time = 0;
 		ptc.store_time = 0;
@@ -728,7 +470,8 @@ restore_thread_func(void *cont)
 
 		as_policy_write policy;
 		as_policy_write_init(&policy);
-		policy.timeout = TIMEOUT;
+		policy.base.total_timeout = TIMEOUT;
+		policy.base.max_retries = 0;
 
 		if (ptc.conf->replace) {
 			policy.exists = AS_POLICY_EXISTS_CREATE_OR_REPLACE;
@@ -781,12 +524,10 @@ restore_thread_func(void *cont)
 				break;
 			}
 
-			ptc.ldt_prepare = PREPARE_INVALID;
-			ptc.has_ldts = false;
 			cf_clock read_start = verbose ? cf_getus() : 0;
 			decoder_status res = ptc.conf->decoder->parse(ptc.fd, ptc.legacy, ptc.ns_vec,
-					ptc.bin_vec, ptc.line_no, &ptc.conf->total_bytes, &rec, &expired, add_ldt_value,
-					&ptc, &index, &udf);
+					ptc.bin_vec, ptc.line_no, &ptc.conf->total_bytes, &rec, &expired,
+					&index, &udf);
 			cf_clock read_time = verbose ? cf_getus() - read_start : 0;
 
 			// set the stop flag inside the critical section; see check above
@@ -808,18 +549,6 @@ restore_thread_func(void *cont)
 
 			if (res == DECODER_ERROR) {
 				err("Error while restoring backup file %s (line %u)", ptc.path, *ptc.line_no);
-
-				// in case we got interrupted and the LDT callback never got the final NULL
-				// marker value
-				if (ptc.ldt_batch != NULL) {
-					as_arraylist_destroy(ptc.ldt_batch);
-				}
-
-				// dto.
-				if (ptc.ldt_list != NULL) {
-					as_ldt_destroy(ptc.ldt_list);
-				}
-
 				break;
 			}
 
@@ -844,12 +573,6 @@ restore_thread_func(void *cont)
 			if (res == DECODER_RECORD) {
 				if (expired) {
 					cf_atomic64_incr(&ptc.conf->expired_records);
-				} else if (ptc.ldt_prepare == PREPARE_EXISTS) {
-					cf_atomic64_incr(&ptc.conf->existed_records);
-				} else if (ptc.ldt_prepare == PREPARE_FRESHER) {
-					cf_atomic64_incr(&ptc.conf->fresher_records);
-				} else if (rec.bins.size == 0 && ptc.has_ldts) {
-					cf_atomic64_incr(&ptc.conf->inserted_records);
 				} else if (rec.bins.size == 0 || !check_set(rec.key.set, ptc.set_vec)) {
 					cf_atomic64_incr(&ptc.conf->skipped_records);
 				} else {
@@ -1174,7 +897,7 @@ get_indexes_and_udfs(FILE *fd, as_vector *ns_vec, bool legacy, restore_config *c
 		index_param index;
 		udf_param udf;
 		decoder_status res = conf->decoder->parse(fd, legacy, ns_vec, NULL, line_no, total, NULL,
-				NULL, NULL, NULL, &index, &udf);
+				NULL, &index, &udf);
 
 		if (res == DECODER_ERROR || res == DECODER_EOF) {
 			err("Error while reading global data from backup file (line %u) [3]", *line_no);
@@ -1898,12 +1621,6 @@ usage(const char *name)
 	fprintf(stderr, "  -g, --no-generation\n");
 	fprintf(stderr, "    Don't check the generation of records that already exist in the namespace.\n\n");
 
-	fprintf(stderr, "  -k, --keep-ldt\n");
-	fprintf(stderr, "    Merge LDT bin data from backup instead of replacing existing bins.\n\n");
-
-	fprintf(stderr, "  -b, --batch-size\n");
-	fprintf(stderr, "    The maximal size of a batch when restoring an LDT (in MiB). Default: 100.\n\n");
-
 	fprintf(stderr, "  -N, --nice <bandwidth>,<TPS>\n");
 	fprintf(stderr, "    The limits for read storage bandwidth in MiB/s and write operations in TPS.\n\n");
 
@@ -1988,8 +1705,6 @@ main(int32_t argc, char **argv)
 		{ "unique", no_argument, NULL, 'u' },
 		{ "replace", no_argument, NULL, 'r' },
 		{ "no-generation", no_argument, NULL, 'g' },
-		{ "keep-ldt", no_argument, NULL, 'k' },
-		{ "batch-size", required_argument, NULL, 'b' },
 		{ "nice", required_argument, NULL, 'N' },
 		{ "no-records", no_argument, NULL, 'R' },
 		{ "no-indexes", no_argument, NULL, 'I' },
@@ -2037,8 +1752,6 @@ main(int32_t argc, char **argv)
 	conf.unique = false;
 	conf.replace = false;
 	conf.no_generation = false;
-	conf.keep_ldt = false;
-	conf.batch_size = DEFAULT_LDT_BATCH_SIZE * 1024 * 1024;
 	conf.bandwidth = 0;
 	conf.tps = 0;
 	conf.decoder = &(backup_decoder){ text_parse };
@@ -2049,7 +1762,7 @@ main(int32_t argc, char **argv)
 	int32_t optcase;
 	uint64_t tmp;
 
-	while ((optcase = getopt_long(argc, argv, "h:p:U:P::n:d:i:t:vm:B:s:urgkb:N:RILFwVZ",
+	while ((optcase = getopt_long(argc, argv, "h:p:U:P::n:d:i:t:vm:B:s:urgN:RILFwVZ",
 			options, 0)) != -1) {
 		switch (optcase) {
 		case 'h':
@@ -2125,19 +1838,6 @@ main(int32_t argc, char **argv)
 
 		case 'g':
 			conf.no_generation = true;
-			break;
-
-		case 'k':
-			conf.keep_ldt = true;
-			break;
-
-		case 'b':
-			if (!better_atoi(optarg, &tmp) || tmp < 1 || tmp > MAX_LDT_BATCH_SIZE) {
-				err("Invalid batch size value %s", optarg);
-				goto cleanup1;
-			}
-
-			conf.batch_size = tmp * 1024 * 1024;
 			break;
 
 		case 'N':

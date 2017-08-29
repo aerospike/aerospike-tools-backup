@@ -16,7 +16,6 @@
  */
 
 #include <dec_text.h>
-#include <serial.h>
 #include <utils.h>
 
 ///
@@ -759,115 +758,6 @@ text_parse_expiration(FILE *fd, bool legacy, uint32_t *line_no, uint32_t *col_no
 }
 
 ///
-/// Reads, parses, and restores an LDT value from the backup file.
-///
-/// @param fd        The file descriptor of the backup file.
-/// @param legacy    Indicates a version 3.0 backup file.
-/// @param compact   Indicates to skip base-64 encoding.
-/// @param line_no   The current line number.
-/// @param col_no    The current column number.
-/// @param bytes     Increased by the number of bytes read from the file descriptor.
-/// @param match     Indicates that this bin is to be restored, not just skipped in the backup file.
-/// @param callback  The callback to be invoked to add values to an LDT bin.
-/// @param context   The opaque user-specified context to be passed to the callback.
-/// @param rec       The current record.
-/// @param bin_name  The name of the LDT bin.
-/// @param expired   Indicates that the record is expired.
-///
-/// @result         `true`, if successful.
-///
-static bool
-text_parse_ldt(FILE *fd, bool legacy, bool compact, uint32_t *line_no, uint32_t *col_no,
-		int64_t *bytes, bool match, ldt_callback callback, void *context, as_record *rec,
-		const char *bin_name, bool *expired)
-{
-	size_t size;
-
-	if (!text_read_size(fd, legacy, line_no, col_no, bytes, &size, " ")) {
-		err("Error while reading %sLDT size", compact ? "" : "encoded ");
-		return false;
-	}
-
-	if (!expect_char(fd, line_no, col_no, bytes, ' ')) {
-		return false;
-	}
-
-	int64_t orig_bytes = *bytes;
-	b64_context b64_cont = { 0, 9999, { 99, 99 }};
-	serial_context ser_cont = { fd, line_no, col_no, 2, bytes, &b64_cont };
-	uint32_t length;
-
-	if (!compact) {
-		if (!get_list_size_dec(&ser_cont, &length)) {
-			err("Error while getting encoded LDT list size");
-			return false;
-		}
-
-		if (verbose) {
-			ver("Encoded LDT list has %u element(s)", length);
-		}
-
-		for (uint32_t i = 0; i < length; ++i) {
-			as_val *elem;
-
-			if (!unpack_value_dec(&ser_cont, &elem)) {
-				err("Error while parsing encoded LDT list element");
-				return false;
-			}
-
-			if (match) {
-				if (!callback(context, *bytes - orig_bytes, rec, bin_name, elem, expired)) {
-					err("Error while adding LDT list element");
-					return false;
-				}
-			} else {
-				as_val_destroy(elem);
-			}
-		}
-	} else {
-		if (!get_list_size(&ser_cont, &length)) {
-			err("Error while getting LDT list size");
-			return false;
-		}
-
-		if (verbose) {
-			ver("Compact LDT list has %u element(s)", length);
-		}
-
-		for (uint32_t i = 0; i < length; ++i) {
-			as_val *elem;
-
-			if (!unpack_value(&ser_cont, &elem)) {
-				err("Error while parsing LDT list element");
-				return false;
-			}
-
-			if (match) {
-				if (!callback(context, *bytes - orig_bytes, rec, bin_name, elem, expired)) {
-					err("Error while adding LDT list element");
-					return false;
-				}
-			} else {
-				as_val_destroy(elem);
-			}
-		}
-	}
-
-	if (match && !callback(context, -1, rec, bin_name, NULL, expired)) {
-		err("Error while indicating end of LDT list");
-		return false;
-	}
-
-	if ((size_t)(*bytes - orig_bytes) != size) {
-		err("%sLDT size mismatch: %zu vs. %" PRId64 " (line %u, col %u)", compact ? "" : "Encoded ",
-				size, *bytes - orig_bytes, line_no[0], col_no[0]);
-		return false;
-	}
-
-	return true;
-}
-
-///
 /// Maps a one-character label to the corresponding BLOB type.
 ///
 /// @param label  The one-character label.
@@ -914,15 +804,12 @@ text_bytes_label_to_type(int32_t label, as_bytes_type *type)
 /// @param col_no   The current column number.
 /// @param bytes    Increased by the number of bytes read from the file descriptor.
 /// @param rec      The record to receive the bin.
-/// @param callback The callback to be invoked to add values to an LDT bin.
-/// @param context  The opaque user-specified context to be passed to the callback.
-/// @param expired  Indicates that the record is expired.
 ///
 /// @result         `true`, if successful.
 ///
 static bool
 text_parse_bin(FILE *fd, bool legacy, as_vector *bin_vec, uint32_t *line_no, uint32_t *col_no,
-		int64_t *bytes, as_record *rec, ldt_callback callback, void *context, bool *expired)
+		int64_t *bytes, as_record *rec)
 {
 	if (!expect_char(fd, line_no, col_no, bytes, '-') ||
 			!expect_char(fd, line_no, col_no, bytes, ' ')) {
@@ -972,10 +859,6 @@ text_parse_bin(FILE *fd, bool legacy, as_vector *bin_vec, uint32_t *line_no, uin
 				break;
 			}
 		}
-	}
-
-	if (match && strcmp(name, "LDTCONTROLBIN") == 0) {
-		match = false;
 	}
 
 	if (ch == 'N') {
@@ -1121,17 +1004,9 @@ text_parse_bin(FILE *fd, bool legacy, as_vector *bin_vec, uint32_t *line_no, uin
 	}
 
 	if (ch == 'U') {
-		if (!text_parse_ldt(fd, legacy, compact, line_no, col_no, bytes, match, callback, context,
-				rec, name, expired)) {
-			err("Error while parsing %sLDT bin value", compact ? "" : "encoded ");
-			return false;
-		}
-
-		if (!expect_char(fd, line_no, col_no, bytes, '\n')) {
-			return false;
-		}
-
-		return true;
+		err("The backup contains LDTs - please use an older version of this tool to "
+				"restore the backup (line %u, col %u)", line_no[0], col_no[0]);
+		return false;
 	}
 
 	as_bytes_type type;
@@ -1187,15 +1062,12 @@ text_parse_bin(FILE *fd, bool legacy, as_vector *bin_vec, uint32_t *line_no, uin
 /// @param col_no   The current column number.
 /// @param bytes    Increased by the number of bytes read from the file descriptor.
 /// @param rec      The record to receive the bins.
-/// @param callback The callback to be invoked to add values to an LDT bin.
-/// @param context  The opaque user-specified context to be passed to the callback.
-/// @param expired  Indicates that the record is expired.
 ///
 /// @result         `true`, if successful.
 ///
 static bool
 text_parse_bins(FILE *fd, bool legacy, as_vector *bin_vec, uint32_t *line_no, uint32_t *col_no,
-		int64_t *bytes, as_record *rec, ldt_callback callback, void *context, bool *expired)
+		int64_t *bytes, as_record *rec)
 {
 	int64_t val;
 
@@ -1222,8 +1094,7 @@ text_parse_bins(FILE *fd, bool legacy, as_vector *bin_vec, uint32_t *line_no, ui
 	}
 
 	for (uint32_t i = 0; i < n_bins; ++i) {
-		if (!text_parse_bin(fd, legacy, bin_vec, line_no, col_no, bytes, rec, callback, context,
-				expired)) {
+		if (!text_parse_bin(fd, legacy, bin_vec, line_no, col_no, bytes, rec)) {
 			return false;
 		}
 	}
@@ -1243,20 +1114,17 @@ text_parse_bins(FILE *fd, bool legacy, as_vector *bin_vec, uint32_t *line_no, ui
 /// @param bytes    Increased by the number of bytes read from the file descriptor.
 /// @param rec      The record to be populated.
 /// @param expired  Indicates that the record is expired.
-/// @param callback The callback to be invoked to add values to an LDT bin.
-/// @param context  The opaque user-specified context to be passed to the callback.
 ///
 /// @result         See @ref decoder_status.
 ///
 static decoder_status
 text_parse_record(FILE *fd, bool legacy, as_vector *ns_vec, as_vector *bin_vec, uint32_t *line_no,
-		uint32_t *col_no, int64_t *bytes, as_record *rec, bool *expired, ldt_callback callback,
-		void *context)
+		uint32_t *col_no, int64_t *bytes, as_record *rec, bool *expired)
 {
 	decoder_status res = DECODER_ERROR;
 	bool tmp_expired = false;
 
-	if (rec == NULL || expired == NULL || callback == NULL || context == NULL) {
+	if (rec == NULL || expired == NULL) {
 		err("Unexpected record backup block (line %u)", line_no[0]);
 		goto cleanup0;
 	}
@@ -1318,8 +1186,7 @@ text_parse_record(FILE *fd, bool legacy, as_vector *ns_vec, as_vector *bin_vec, 
 			break;
 
 		case 6:
-			ok = text_parse_bins(fd, legacy, bin_vec, line_no, col_no, bytes, rec, callback,
-					context, &tmp_expired);
+			ok = text_parse_bins(fd, legacy, bin_vec, line_no, col_no, bytes, rec);
 			break;
 		}
 
@@ -1696,8 +1563,7 @@ text_parse_global(FILE *fd, as_vector *ns_vec, uint32_t *line_no, uint32_t *col_
 ///
 decoder_status
 text_parse(FILE *fd, bool legacy, as_vector *ns_vec, as_vector *bin_vec, uint32_t *orig_line_no,
-		cf_atomic64 *total, as_record *rec, bool *expired, ldt_callback callback, void *context,
-		index_param *index, udf_param *udf)
+		cf_atomic64 *total, as_record *rec, bool *expired, index_param *index, udf_param *udf)
 {
 	decoder_status res = DECODER_ERROR;
 	int64_t bytes = 0;
@@ -1729,8 +1595,8 @@ text_parse(FILE *fd, bool legacy, as_vector *ns_vec, as_vector *bin_vec, uint32_
 	}
 
 	if (ch == RECORD_META_PREFIX[0]) {
-		res = text_parse_record(fd, legacy, ns_vec, bin_vec, line_no, col_no, &bytes, rec, expired,
-				callback, context);
+		res = text_parse_record(fd, legacy, ns_vec, bin_vec, line_no, col_no, &bytes, rec,
+				expired);
 		goto out;
 	}
 

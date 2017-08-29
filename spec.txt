@@ -19,15 +19,6 @@
 		(integer)
 		(string 50)))
 
-(record "llist"
-	1 (llist 3
-		(string 50)))
-
-(record "lmap"
-	1 (lmap 3
-		(integer)
-		(string 50)))
-
 (record "pretty-nested"
 	1 (list 3
 		(map 3
@@ -51,14 +42,4 @@
 		(string 50))
 	1 (map 3
 		(integer)
-		(string 50))
-	1 (llist 3
 		(string 50)))
-
-(record "llist-benchmark"
-	1 (llist 1000
-		(string 500)))
-
-(record "list-benchmark"
-	1 (list 1000
-		(string 500)))

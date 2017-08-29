@@ -99,14 +99,6 @@ static type_node **pop()
 		(*type_out)->type = MAP;
 	}
 
-	action set_llist {
-		(*type_out)->type = LLIST;
-	}
-
-	action set_lmap {
-		(*type_out)->type = LMAP;
-	}
-
 	action root_type {
 		push(NULL);
 		fhold; fcall type;
@@ -213,9 +205,6 @@ static type_node **pop()
 	map_size = digit+;
 	map_type = "map" _+ map_size >start_count %end_count _* %child_type1 <: any _* %child_type2 <: any;
 
-	llist_type = "llist" _+ list_length >start_count %end_count _* %child_type1 <: any;
-	lmap_type = "lmap" _+ map_size >start_count %end_count _* %child_type1 <: any _* %child_type2 <: any;
-
 	type_spec = (
 			nil_type %set_nil |
 			integer_type %set_integer |
@@ -223,9 +212,7 @@ static type_node **pop()
 			string_type %set_string |
 			bytes_type %set_bytes |
 			list_type %set_list |
-			map_type %set_map |
-			llist_type %set_llist |
-			lmap_type %set_lmap
+			map_type %set_map
 		) %finish_type;
 
 	type := (_* "(" %new_type _* type_spec _* ")" _*) $err print_error;

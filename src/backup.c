@@ -1214,6 +1214,75 @@ cleanup1:
 }
 
 ///
+/// The callback passed to get_info() to parse the namespace LDT flag.
+///
+/// @param context_  The boolean result to be populated.
+/// @param key       The key of the current key-value pair.
+/// @param value     The corresponding value.
+///
+/// @result          `true`, if successful.
+///
+static bool
+check_for_ldt_callback(void *context_, const char *key, const char *value)
+{
+	bool *context = (bool *)context_;
+
+	if (strcmp(key, "ldt-enabled") == 0 && strcmp(value, "true") == 0) {
+		if (verbose) {
+			ver("Node supports LDT");
+		}
+
+		*context = true;
+	}
+
+	return true;
+}
+
+///
+/// Determines whether any of the given nodes has LDT enabled for the given namespace.
+///
+/// @param as            The Aerospike client instance.
+/// @param namespace     The namespace that we are interested in.
+/// @param node_names    The array of node IDs of the cluster nodes to be queried.
+/// @param n_node_names  The number of elements in the node ID array.
+/// @param has_ldt       Returns whether at least one of the nodes uses LDT.
+///
+/// @result              `true`, if successful.
+///
+static bool
+check_for_ldt(aerospike *as, const char *namespace, char (*node_names)[][AS_NODE_NAME_SIZE],
+		uint32_t n_node_names, bool *has_ldt)
+{
+	if (verbose) {
+		ver("Checking for LDT");
+	}
+
+	bool tmp_has_ldt = false;
+
+	size_t value_size = sizeof "namespace/" - 1 + strlen(namespace) + 1;
+	char value[value_size];
+	snprintf(value, value_size, "namespace/%s", namespace);
+
+	for (uint32_t i = 0; i < n_node_names; ++i) {
+		if (verbose) {
+			ver("Checking for LDT on node %s", (*node_names)[i]);
+		}
+
+		if (!get_info(as, value, (*node_names)[i], &tmp_has_ldt, check_for_ldt_callback, true)) {
+			err("Error while checking for LDT on node %s", (*node_names)[i]);
+			return false;
+		}
+
+		if (tmp_has_ldt) {
+			break;
+		}
+	}
+
+	*has_ldt = tmp_has_ldt;
+	return true;
+}
+
+///
 /// The callback passed to get_info() to parse the namespace object count and replication factor.
 ///
 /// @param context_  The ns_count_context for the parsed result.
@@ -1703,12 +1772,11 @@ main(int32_t argc, char **argv)
 	enable_client_log();
 	as_policy_scan policy;
 	as_policy_scan_init(&policy);
-	policy.socket_timeout = 10 * 60 * 1000;
+	policy.base.socket_timeout = 10 * 60 * 1000;
 
 	as_scan scan;
 	as_scan_init(&scan, "", "");
 	scan.deserialize_list_map = false;
-	scan.include_ldt = true;
 
 	char *host = NULL;
 	int32_t port = -1;
@@ -2144,6 +2212,19 @@ main(int32_t argc, char **argv)
 	}
 
 	inf("Namespace contains %" PRIu64 " record(s)", conf.rec_count_estimate);
+
+	bool has_ldt;
+
+	if (!check_for_ldt(&as, scan.ns, node_names, n_node_names, &has_ldt)) {
+		err("Error while checking for LDT");
+		goto cleanup5;
+	}
+
+	if (has_ldt) {
+		err("The cluster has LDT enabled for namespace %s; please use an older version of "
+				"this tool to create a backup", scan.ns);
+		goto cleanup5;
+	}
 
 	if (conf.estimate && conf.rec_count_estimate > NUM_SAMPLES) {
 		conf.rec_count_estimate = NUM_SAMPLES;

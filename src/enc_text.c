@@ -37,12 +37,11 @@ text_bytes_type_to_label(as_bytes_type type)
 		AS_BYTES_PHP,
 		AS_BYTES_ERLANG,
 		AS_BYTES_MAP,
-		AS_BYTES_LIST,
-		AS_BYTES_LDT
+		AS_BYTES_LIST
 	};
 
 	static char labels[] = {
-		'B', 'J', 'C', 'P', 'R', 'H', 'E', 'M', 'L', 'U'
+		'B', 'J', 'C', 'P', 'R', 'H', 'E', 'M', 'L'
 	};
 
 	for (size_t i = 0; i < sizeof types / sizeof types[0]; ++i) {
@@ -368,27 +367,14 @@ text_put_record(uint64_t *bytes, FILE *fd, bool compact, const as_record *rec)
 		return false;
 	}
 
-	int32_t bin_off = 0;
-
-	for (int32_t i = 0; i < rec->bins.size; ++i) {
-		if (strcmp(rec->bins.entries[i].name, "LDTCONTROLBIN") == 0) {
-			bin_off = -1;
-			break;
-		}
-	}
-
 	if (fprintf_bytes(bytes, fd, "+ g %d\n+ t %u\n+ b %d\n", rec->gen, expire,
-			rec->bins.size + bin_off) < 0) {
+			rec->bins.size) < 0) {
 		err_code("Error while writing record meta data to backup file [3]");
 		return false;
 	}
 
 	for (int32_t i = 0; i < rec->bins.size; ++i) {
 		as_bin *bin = &rec->bins.entries[i];
-
-		if (strcmp(bin->name, "LDTCONTROLBIN") == 0) {
-			continue;
-		}
 
 		if (!text_output_value(bytes, fd, compact, escape(bin->name), (as_val *)bin->valuep)) {
 			err("Error while writing record bin %s", bin->name);

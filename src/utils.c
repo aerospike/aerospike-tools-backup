@@ -807,7 +807,6 @@ get_node_names(as_cluster *clust, node_spec *node_specs, uint32_t n_node_specs,
 						}
 					}
 				}
-
 			}
 
 			if (keep) {
@@ -936,83 +935,6 @@ cleanup1:
 
 cleanup0:
 	return res;
-}
-
-///
-/// The callback passed to get_info() to parse the number of pending incoming and
-/// outgoing migrations.
-///
-/// @param context_  The migration_count_context for the parsed result.
-/// @param key       The key of the current key-value pair.
-/// @param value     The corresponding value.
-///
-/// @result          `true`, if successful.
-///
-static bool
-migration_count_callback(void *context_, const char *key, const char *value)
-{
-	migration_count_context *context = (migration_count_context *)context_;
-	uint64_t tmp;
-
-	if (strcmp(key, "migrate_progress_recv") == 0) {
-		if (!better_atoi(value, &tmp)) {
-			err("Invalid number of pending incoming migrations %s", value);
-			return false;
-		}
-
-		context->incoming = tmp;
-		return true;
-	}
-
-	if (strcmp(key, "migrate_progress_send") == 0) {
-		if (!better_atoi(value, &tmp)) {
-			err("Invalid number of pending outgoing migrations %s", value);
-			return false;
-		}
-
-		context->outgoing = tmp;
-		return true;
-	}
-
-	return true;
-}
-
-///
-/// Retrieves the total number of pending migrations on the given nodes.
-///
-/// @param as            The Aerospike client instance.
-/// @param node_names    The array of node IDs of the cluster nodes to be queried.
-/// @param n_node_names  The number of elements in the node ID array.
-/// @param mig_count     The number of migrations.
-///
-/// @result              `true`, if successful.
-///
-bool
-get_migrations(aerospike *as, char (*node_names)[][AS_NODE_NAME_SIZE], uint32_t n_node_names,
-		uint64_t *mig_count)
-{
-	if (verbose) {
-		ver("Getting cluster migration count");
-	}
-
-	*mig_count = 0;
-	migration_count_context context = { 0, 0 };
-
-	for (uint32_t i = 0; i < n_node_names; ++i) {
-		if (verbose) {
-			ver("Getting migration count for node %s", (*node_names)[i]);
-		}
-
-		if (!get_info(as, "statistics", (*node_names)[i], &context, migration_count_callback,
-				true)) {
-			err("Error while getting migration count for node %s", (*node_names)[i]);
-			return false;
-		}
-
-		(*mig_count) += context.incoming + context.outgoing;
-	}
-
-	return true;
 }
 
 ///

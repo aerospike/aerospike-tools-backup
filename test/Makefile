@@ -22,32 +22,12 @@
 # SOFTWARE.
 #
 
-NEO_LUA_URL :=			http://packages.nuget.org/api/v1/package/NeoLua/0.9.15
-CLIENT_DIR :=			../../../aerospike-client-csharp/AerospikeClient
-
-CLIENT_SRCS :=			$(wildcard $(CLIENT_DIR)/*/*.cs)
-
 all:
 						@echo "Please run \"make tests\" in the root directory instead."
 
-Test.exe:				Log.cs Test.cs Aerospike.Client.dll
-						mcs -out:Test.exe -pkg:dotnet -r:Aerospike.Client -debug Log.cs Test.cs
-
-Aerospike.Client.dll:	$(CLIENT_SRCS) Neo.Lua.dll
-						mcs -out:Aerospike.Client.dll -target:library -pkg:dotnet \
-								-r:Neo.Lua -r:System.Numerics -debug $(CLIENT_SRCS)
-
-Neo.Lua.zip:
-						wget --output-document Neo.Lua.zip $(NEO_LUA_URL)
-
-Neo.Lua.dll:			Neo.Lua.zip
-						unzip -j Neo.Lua.zip lib/net4/Neo.Lua.dll lib/net4/Neo.Lua.pdb
-						touch Neo.Lua.dll Neo.Lua.pdb
-
-test-cs:				Test.exe
-						mono --debug ./Test.exe
+test-cs:
+						dotnet run
 
 clean:
-						rm -f Test.exe Test.exe.mdb Aerospike.Client.dll Aerospike.Client.dll.mdb \
-								Neo.Lua.zip Neo.Lua.dll Neo.Lua.pdb \
-								log-*.txt test.asb
+						rm -rf bin obj
+						rm -f log-*.txt test.asb

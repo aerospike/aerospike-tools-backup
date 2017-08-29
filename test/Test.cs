@@ -80,13 +80,13 @@ namespace Test
 			proc.StartInfo.RedirectStandardInput = true;
 
 			proc.ErrorDataReceived += (object sender, DataReceivedEventArgs line) => {
-				if (line.Data.Length > 0) {
+				if (line.Data != null && line.Data.Length > 0) {
 					log.Info("{0}", line.Data);
 				}
 			};
 
 			proc.OutputDataReceived += (object sender, DataReceivedEventArgs line) => {
-				if (line.Data.Length > 0) {
+				if (line.Data != null && line.Data.Length > 0) {
 					log.Info("{0}", line.Data);
 				}
 			};
@@ -277,8 +277,6 @@ namespace Test
 			binList.Add(new Bin("f-0", 0.0));
 			binList.Add(new Bin("f-1.23", 1.23));
 			binList.Add(new Bin("f--2.34", -2.34));
-
-			binList.Add(new Bin("c-date", new DateTime()));
 
 			var listVal = new List<int>();
 

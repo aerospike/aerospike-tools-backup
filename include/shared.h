@@ -36,8 +36,6 @@
 #include <aerospike/aerospike_index.h>
 #include <aerospike/aerospike_info.h>
 #include <aerospike/aerospike_key.h>
-#include <aerospike/aerospike_llist.h>
-#include <aerospike/aerospike_lmap.h>
 #include <aerospike/aerospike_udf.h>
 #include <aerospike/as_arraylist.h>
 #include <aerospike/as_bin.h>

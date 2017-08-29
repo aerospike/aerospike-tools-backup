@@ -40,9 +40,7 @@ enum node_type_e {
 	STRING,     ///< A string value.
 	BYTES,      ///< A BLOB value.
 	LIST,       ///< A list value.
-	MAP,        ///< A map value.
-	LLIST,      ///< An LDT list value.
-	LMAP        ///< An LDT map value.
+	MAP         ///< A map value.
 };
 
 typedef enum node_type_e node_type;     ///< The data type of a type node.
@@ -88,11 +86,11 @@ typedef struct type_node_s type_node;   ///< A type node. The type of a bin is a
 struct type_node_s {
 	node_type type;         ///< The data type of this type node.
 	uint32_t count;         ///< Usage depends on @ref type, string length for @ref STRING, BLOB
-	                        ///  size for @ref BYTES, list length for @ref LIST and @ref LLIST, map
-	                        ///  size for @ref MAP and @ref LMAP.
+	                        ///  size for @ref BYTES, list length for @ref LIST, map size for
+	                        ///  @ref MAP.
 	type_node *children[2]; ///< Usage depends on @ref type, children[0] = type of list elements for
-	                        ///  @ref LIST and @ref LLIST, children[0] = type of map keys and
-	                        ///  children[1] = type of map values for @ref MAP and @ref LMAP.
+	                        ///  @ref LIST, children[0] = type of map keys and children[1] = type of
+	                        ///  map values for @ref MAP.
 };
 
 struct bin_node_s;
