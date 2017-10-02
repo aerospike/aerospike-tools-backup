@@ -57,9 +57,9 @@ static pid_t
 thread_id(void)
 {
 #if !defined __APPLE__
-	return syscall(SYS_gettid);
+	return (pid_t)syscall(SYS_gettid);
 #elif MAC_OS_X_VERSION_MAX_ALLOWED < MAC_OS_X_VERSION_10_12
-	return syscall(SYS_thread_selfid);
+	return (pid_t)syscall(SYS_thread_selfid);
 #else
 	uint64_t tid;
 	pthread_threadid_np(NULL, &tid);
