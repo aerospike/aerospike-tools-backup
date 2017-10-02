@@ -653,7 +653,7 @@ static void *
 backup_thread_func(void *cont)
 {
 	if (verbose) {
-		ver("Entering backup thread 0x%" PRIx64, pthread_self());
+		ver("Entering backup thread 0x%" PRIx64, (uint64_t)pthread_self());
 	}
 
 	cf_queue *job_queue = cont;
@@ -834,7 +834,7 @@ static void *
 counter_thread_func(void *cont)
 {
 	if (verbose) {
-		ver("Entering counter thread 0x%" PRIx64, pthread_self());
+		ver("Entering counter thread 0x%" PRIx64, (uint64_t)pthread_self());
 	}
 
 	counter_thread_args *args = (counter_thread_args *)cont;
@@ -1526,15 +1526,19 @@ static int32_t
 safe_join(pthread_t thread, void **thread_res)
 {
 	if (verbose) {
-		ver("Joining thread 0x%" PRIx64, thread);
+		ver("Joining thread 0x%" PRIx64, (uint64_t)thread);
 	}
 
 	int32_t since_stop = 0;
 
 	while (true) {
+#if !defined __APPLE__
 		time_t deadline = time(NULL) + 5;
 		struct timespec ts = { deadline, 0 };
 		int32_t res = pthread_timedjoin_np(thread, thread_res, &ts);
+#else
+		int32_t res = pthread_join(thread, thread_res);
+#endif
 
 		if (res == 0 || res != ETIMEDOUT) {
 			return res;
@@ -1545,7 +1549,7 @@ safe_join(pthread_t thread, void **thread_res)
 		}
 
 		if (verbose) {
-			ver("Expecting thread 0x%" PRIx64 " to finish (%d)", thread, since_stop);
+			ver("Expecting thread 0x%" PRIx64 " to finish (%d)", (uint64_t)thread, since_stop);
 		}
 
 		if (++since_stop >= 4) {

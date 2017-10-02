@@ -19,10 +19,8 @@
 
 #if defined __APPLE__
 #define MUTEX_INIT PTHREAD_RECURSIVE_MUTEX_INITIALIZER      ///< Mutex initializer on OS X.
-#define THREAD_ID SYS_thread_selfid                         ///< Thread ID system call on OS X.
 #else
 #define MUTEX_INIT PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP   ///< Mutex initializer on Linux.
-#define THREAD_ID SYS_gettid                                ///< Thread ID system call on Linux.
 #endif
 
 static pthread_mutex_t mutex = MUTEX_INIT;                  ///< Mutex used by safe_lock(),
@@ -51,6 +49,23 @@ const uint8_t b64map[256] = {
 	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
 	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff
 };
+
+///
+/// Determine the current thread's ID.
+///
+static pid_t
+thread_id(void)
+{
+#if !defined __APPLE__
+	return syscall(SYS_gettid);
+#elif MAC_OS_X_VERSION_MAX_ALLOWED < MAC_OS_X_VERSION_10_12
+	return syscall(SYS_thread_selfid);
+#else
+	uint64_t tid;
+	pthread_threadid_np(NULL, &tid);
+	return (pid_t)tid;
+#endif
+}
 
 ///
 /// Central log function. Writes a single log message.
@@ -89,7 +104,7 @@ log_line(const char *tag, const char *prefix, const char *format, va_list args, 
 
 	index += length;
 	length = (size_t)snprintf(buffer + index, sizeof buffer - index, "[%s] [%5d] %s", tag,
-			(int32_t)(syscall(THREAD_ID) % 100000), prefix);
+			(int32_t)(thread_id() % 100000), prefix);
 	index += length;
 
 	length = (size_t)vsnprintf(buffer + index, sizeof buffer - index, format, args);
