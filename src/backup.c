@@ -1307,7 +1307,7 @@ ns_count_callback(void *context_, const char *key, const char *value)
 		return true;
 	}
 
-	if (strcmp(key, "repl-factor") == 0 || strcmp(key, "replication-factor") == 0) {
+	if (strcmp(key, "repl-factor") == 0 || strcmp(key, "effective_replication_factor") == 0) {
 		if (!better_atoi(value, &tmp) || tmp == 0 || tmp > 100) {
 			err("Invalid replication factor %s", value);
 			return false;
