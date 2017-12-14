@@ -1964,10 +1964,6 @@ main(int32_t argc, char **argv)
 			tls.enable = true;
 			break;
 
-		case TLS_OPT_ENCRYPT_ONLY:
-			tls.encrypt_only = true;
-			break;
-
 		case TLS_OPT_CA_FILE:
 			tls.cafile = safe_strdup(optarg);
 			break;
