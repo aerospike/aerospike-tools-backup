@@ -82,6 +82,19 @@ typedef struct {
 /// The global backup configuration and stats shared by all backup threads and the counter thread.
 ///
 typedef struct {
+
+	char *host;
+	int32_t port;
+	char *user;
+	char password[AS_PASSWORD_HASH_SIZE];
+	bool remove_files;
+	char *bin_list;
+	char *node_list;
+	int64_t mod_after;
+	int64_t mod_before;
+	
+	as_config_tls tls;
+
 	aerospike *as;                      ///< The Aerospike client to be used for the node scans.
 	as_policy_scan *policy;             ///< The scan policy to be used for the node scans.
 	as_scan *scan;                      ///< The scan configuration to be used for the node scans.
@@ -115,16 +128,6 @@ typedef struct {
 	volatile uint32_t udf_count;        ///< The number of UDF files backed up.
 } backup_config;
 
-///
-/// The arguments passed to the counter thread.
-///
-typedef struct {
-	backup_config *conf;                        ///< The global backup configuration and stats.
-	char (*node_names)[][AS_NODE_NAME_SIZE];    ///< The cluster nodes to be backed up.
-	uint32_t n_node_names;                      ///< The number of cluster nodes to be backed up.
-	FILE *mach_fd;                              ///< The file descriptor for the machine-readable
-	                                            ///  output.
-} counter_thread_args;
 
 ///
 /// The per-node information pushed to the job queue and picked up by the backup threads.

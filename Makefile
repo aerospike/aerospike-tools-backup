@@ -53,8 +53,10 @@ DIR_OBJ := obj
 DIR_BIN := bin
 DIR_DOCS := docs
 DIR_ENV := env
+DIR_TOML := src/toml
 
 INCLUDES := -I$(DIR_INC)
+INCLUDES += -I$(DIR_TOML)
 INCLUDES += -I$(CLIENTREPO)/src/include
 INCLUDES += -I$(CLIENTREPO)/modules/common/src/include
 INCLUDES += -I/usr/local/opt/openssl/include
@@ -70,18 +72,22 @@ LIBRARIES += -lz
 
 ifeq ($(OS), Linux)
 LIBRARIES += -ldl -lrt
+LIBRARIES += -L$(DIR_TOML) -Wl,-l,:libtoml.a
+else
+LIBRARIES += $(DIR_TOML)/libtoml.a
 endif
 
 src_to_obj = $(1:$(DIR_SRC)/%.c=$(DIR_OBJ)/%.o)
 obj_to_dep = $(1:%.o=%.d)
+src_to_lib = 
 
 BACKUP_INC := $(DIR_INC)/backup.h $(DIR_INC)/enc_text.h $(DIR_INC)/shared.h $(DIR_INC)/utils.h
-BACKUP_SRC := $(DIR_SRC)/backup.c $(DIR_SRC)/utils.c $(DIR_SRC)/enc_text.c
+BACKUP_SRC := $(DIR_SRC)/backup.c $(DIR_SRC)/conf.c $(DIR_SRC)/utils.c $(DIR_SRC)/enc_text.c
 BACKUP_OBJ := $(call src_to_obj, $(BACKUP_SRC))
 BACKUP_DEP := $(call obj_to_dep, $(BACKUP_OBJ))
 
 RESTORE_INC := $(DIR_INC)/restore.h $(DIR_INC)/dec_text.h $(DIR_INC)/shared.h $(DIR_INC)/utils.h
-RESTORE_SRC := $(DIR_SRC)/restore.c $(DIR_SRC)/utils.c $(DIR_SRC)/dec_text.c
+RESTORE_SRC := $(DIR_SRC)/restore.c $(DIR_SRC)/conf.c $(DIR_SRC)/utils.c $(DIR_SRC)/dec_text.c
 RESTORE_OBJ := $(call src_to_obj, $(RESTORE_SRC))
 RESTORE_DEP := $(call obj_to_dep, $(RESTORE_OBJ))
 
@@ -93,12 +99,13 @@ FILL_DEP := $(call obj_to_dep, $(FILL_OBJ))
 BACKUP := $(DIR_BIN)/asbackup
 RESTORE := $(DIR_BIN)/asrestore
 FILL := $(DIR_BIN)/fill
+TOML := $(DIR_TOML)/libtoml.a
 
 INCS := $(BACKUP_INC) $(RESTORE_INC) $(FILL_INC)
 SRCS := $(BACKUP_SRC) $(RESTORE_SRC) $(FILL_SRC)
 OBJS := $(BACKUP_OBJ) $(RESTORE_OBJ) $(FILL_OBJ)
 DEPS := $(BACKUP_DEP) $(RESTORE_DEP) $(FILL_DEP)
-BINS := $(BACKUP) $(RESTORE) $(FILL)
+BINS := $(TOML) $(BACKUP) $(RESTORE) $(FILL)
 
 ifeq ($(OS), Linux)
 SPEED_INC :=
@@ -126,6 +133,7 @@ DEPS := $(sort $(DEPS))
 all: $(BINS)
 
 clean:
+	$(MAKE) -C $(DIR_TOML) clean
 	rm -f $(DEPS) $(OBJS) $(BINS)
 	if [ -d $(DIR_OBJ) ]; then rmdir $(DIR_OBJ); fi
 	if [ -d $(DIR_BIN) ]; then rmdir $(DIR_BIN); fi
@@ -159,6 +167,9 @@ $(RESTORE): $(RESTORE_OBJ) | $(DIR_BIN)
 
 $(FILL): $(FILL_OBJ) | $(DIR_BIN)
 	$(CC) $(LDFLAGS) -o $(FILL) $(FILL_OBJ) $(LIBRARIES)
+
+$(TOML):
+	$(MAKE) -C $(DIR_TOML)
 
 -include $(BACKUP_DEP)
 -include $(RESTORE_DEP)

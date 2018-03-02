@@ -88,6 +88,21 @@ typedef struct {
 /// The global restore configuration and stats shared by all restore threads and the counter thread.
 ///
 typedef struct {
+
+	char *host;
+	int32_t port;
+	char *user;
+	char password[AS_PASSWORD_HASH_SIZE];
+	uint32_t threads;
+	char *nice_list;
+	bool no_records;
+	bool no_indexes;
+	bool indexes_last;
+	bool no_udfs;
+	bool wait;
+
+	as_config_tls tls;
+
 	aerospike *as;                  ///< The Aerospike client.
 	char *ns_list;                  ///< The (optional) source and (also optional) target namespace
 	                                ///  to be restored.
@@ -132,16 +147,6 @@ typedef struct {
 	volatile uint32_t udf_count;    ///< The number of successfully stored UDF files.
 } restore_config;
 
-///
-/// The arguments passed to the counter thread.
-///
-typedef struct {
-	restore_config *conf;                       ///< The global restore configuration and stats.
-	char (*node_names)[][AS_NODE_NAME_SIZE];    ///< The cluster nodes to be backed up.
-	uint32_t n_node_names;                      ///< The number of cluster nodes to be backed up.
-	FILE *mach_fd;                              ///< The file descriptor for the machine-readable
-	                                            ///< output.
-} counter_thread_args;
 
 ///
 /// The backup file information pushed to the job queue and picked up by the restore threads.

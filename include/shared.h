@@ -170,3 +170,20 @@ typedef enum {
 	TLS_OPT_KEY_FILE,           ///< The `--tlsKeyFile` option.
 	TLS_OPT_CERT_FILE           ///< The `--tlsCertFile` option.
 } tls_opt;
+
+///
+/// Identifies the config file command line options.
+///
+typedef enum {
+	CONFIG_FILE_OPT_FILE = 2000,
+	CONFIG_FILE_OPT_INSTANCE, 
+	CONFIG_FILE_OPT_NO_CONFIG_FILE,
+	CONFIG_FILE_OPT_ONLY_CONFIG_FILE,
+} cfgfile_opt;
+
+typedef struct {
+	void *conf;                                 ///< The global configuration and stats.
+	char (*node_names)[][AS_NODE_NAME_SIZE];    ///< The cluster nodes to be backed up.
+	uint32_t n_node_names;                      ///< The number of cluster nodes to be backed up.
+	FILE *mach_fd;                              ///< The file descriptor for the machine-readable
+} counter_thread_args;

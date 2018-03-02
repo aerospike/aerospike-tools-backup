@@ -18,6 +18,7 @@
 #include <backup.h>
 #include <enc_text.h>
 #include <utils.h>
+#include <conf.h>
 
 extern char *aerospike_client_version;  ///< The C client's version string.
 
@@ -34,6 +35,8 @@ static pthread_cond_t bandwidth_cond = PTHREAD_COND_INITIALIZER;    ///< Used by
                                                                     ///  to signal newly available
                                                                     ///  bandwidth to the backup
                                                                     ///  threads.
+
+static void config_default(backup_config *conf);
 
 ///
 /// Waits until the one-time work (secondary indexes and UDF files) is complete.
@@ -1580,144 +1583,162 @@ print_version(void)
 static void
 usage(const char *name)
 {
-	fprintf(stderr, "Usage: %s <options>, with the following options:\n", name);
+	fprintf(stderr, "Usage: %s [OPTIONS]\n", name);
+	fprintf(stderr, "------------------------------------------------------------------------------");
+	fprintf(stderr, "\n");
+	fprintf(stderr, " -V, --version        Print ASBACKUP version information.\n");
+	fprintf(stderr, " -O, --options        Print command-line options message.\n");
+	fprintf(stderr, " -Z, --usage          Display this message.\n\n");
+	fprintf(stderr, " -v, --verbose        Enable verbose output. Default: disabled\n");
+	fprintf(stderr, " -r, --remove-files\n");
+	fprintf(stderr, "                      Remove existing backup file (-o) or files (-d).\n");
+	fprintf(stderr, "                      NOT allowed in configuration file\n");
 
-	fprintf(stderr, "  -h, --host <host>[:<tls-name>][:<port>][,...]\n");
-	fprintf(stderr, "    The server seed hostnames or IP addresses. Default: localhost.\n\n");
-	fprintf(stderr, "    The tls-name is only used when connecting with a TLS-enabled server.\n");
-	fprintf(stderr, "    If the port is not specified, the default port is used. Examples:\n");
-	fprintf(stderr, "      host1\n");
-	fprintf(stderr, "      host1:3000,host2:3000\n");
-	fprintf(stderr, "      192.168.1.10:cert1:3000,192.168.1.20:cert2:3000\n\n");
+	fprintf(stderr, "\n");
+	fprintf(stderr, "Configuration File Allowed Options\n");
+	fprintf(stderr, "----------------------------------\n\n");
 
-	fprintf(stderr, "  -p, --port <port>\n");
-	fprintf(stderr, "    The default port. Default: 3000\n\n");
+	fprintf(stderr, "[cluster]\n");
+	fprintf(stderr, " -h HOST, --host=HOST\n");
+	fprintf(stderr, "                      HOST is \"<host1>[:<tlsname1>][:<port1>],...\" \n");
+	fprintf(stderr, "                      Server seed hostnames or IP addresses. The tlsname is \n");
+	fprintf(stderr, "                      only used when connecting with a secure TLS enabled \n");
+	fprintf(stderr, "                      server. Default: localhost:3000\n");
+	fprintf(stderr, "                      Examples:\n");
+	fprintf(stderr, "                        host1\n");
+	fprintf(stderr, "                        host1:3000,host2:3000\n");
+	fprintf(stderr, "                        192.168.1.10:cert1:3000,192.168.1.20:cert2:3000\n");
+	fprintf(stderr, " -p PORT, --port=PORT Server default port. Default: 3000\n");
+	fprintf(stderr, " -U USER, --user=USER User name used to authenticate with cluster. Default: none\n");
+	fprintf(stderr, " -P, --password\n");
+	fprintf(stderr, "                      Password used to authenticate with cluster. Default: none\n");
+	fprintf(stderr, "                      User will be prompted on command line if -P specified and no\n");
+	fprintf(stderr, "      	               password is given.\n");
+	fprintf(stderr, " --tls-enable         Enable TLS on connections. By default TLS is disabled.\n");
+	// Deprecated
+	//fprintf(stderr, " --tls-encrypt-only   Disable TLS certificate verification.\n");
+	fprintf(stderr, " --tls-cafile=TLS_CAFILE\n");
+	fprintf(stderr, "                      Path to a trusted CA certificate file.\n");
+	fprintf(stderr, " --tls-capath=TLS_CAPATH.\n");
+	fprintf(stderr, "                      Path to a directory of trusted CA certificates.\n");
+	fprintf(stderr, " --tls-protocols=TLS_PROTOCOLS\n");
+	fprintf(stderr, "                      Set the TLS protocol selection criteria. This format\n"
+                    "                      is the same as Apache's SSLProtocol documented at http\n"
+                    "                      s://httpd.apache.org/docs/current/mod/mod_ssl.html#ssl\n"
+                    "                      protocol . If not specified the asbackup will use '-all\n"
+                    "                      +TLSv1.2' if has support for TLSv1.2,otherwise it will\n"
+                    "                      be '-all +TLSv1'.\n");
+	fprintf(stderr, " --tls-cipher-suite=TLS_CIPHER_SUITE\n");
+	fprintf(stderr, "                     Set the TLS cipher selection criteria. The format is\n"
+                	"                     the same as Open_sSL's Cipher List Format documented\n"
+                	"                     at https://www.openssl.org/docs/man1.0.1/apps/ciphers.\n"
+                	"                     html\n");
+	fprintf(stderr, " --tls-keyfile=TLS_KEYFILE\n");
+	fprintf(stderr, "                      Path to the key for mutual authentication (if\n"
+                    "                      Aerospike Cluster is supporting it).\n");
+	fprintf(stderr, " --tls-certfile=TLS_CERTFILE <path>\n");
+	fprintf(stderr, "                      Path to the chain file for mutual authentication (if\n"
+                    "                      Aerospike Cluster is supporting it).\n");
+	fprintf(stderr, " --tls-cert-blacklist <path>\n");
+	fprintf(stderr, "                      Path to a certificate blacklist file. The file should\n"
+                    "                      contain one line for each blacklisted certificate.\n"
+                    "                      Each line starts with the certificate serial number\n"
+                    "                      expressed in hex. Each entry may optionally specify\n"
+                    "                      the issuer name of the certificate (serial numbers are\n"
+                    "                      only required to be unique per issuer).Example:\n"
+                    "                      867EC87482B2\n"
+                    "                      /C=US/ST=CA/O=Acme/OU=Engineering/CN=TestChainCA\n");
 
-	fprintf(stderr, "  -U, --user <user>\n");
-	fprintf(stderr, "    The user to connect as. Default: no user.\n\n");
+	fprintf(stderr, " --tls-crl-check      Enable CRL checking for leaf certificate. An error\n"
+                	"                      occurs if a valid CRL files cannot be found in\n"
+                    "                      tls_capath.\n");
+	fprintf(stderr, " --tls-crl-checkall   Enable CRL checking for entire certificate chain. An\n"
+                	"                      error occurs if a valid CRL files cannot be found in\n"
+                    "                      tls_capath.\n");
 
-	fprintf(stderr, "  -P[<password>], --password\n");
-	fprintf(stderr, "    The user's password. If empty, a prompt is shown. Default: no password.\n\n");
 
+	fprintf(stderr, "[asbackup]\n");
 	fprintf(stderr, "  -n, --namespace <namespace>\n");
-	fprintf(stderr, "    The namespace to be backed up. Required.\n\n");
-
+	fprintf(stderr, "                      The namespace to be backed up. Required.\n");
 	fprintf(stderr, "  -s, --set <set>\n");
-	fprintf(stderr, "    The set to be backed up. Default: all sets.\n\n");
-
+	fprintf(stderr, "                      The set to be backed up. Default: all sets.\n");
 	fprintf(stderr, "  -d, --directory <directory>\n");
-	fprintf(stderr, "    The directory that holds the backup files. Required, unless -o or -e is\n");
-	fprintf(stderr, "    used.\n\n");
-
+	fprintf(stderr, "                      The directory that holds the backup files. Required, \n");
+	fprintf(stderr, "                      unless -o or -e is used.\n");
 	fprintf(stderr, "  -o, --output-file <file>\n");
-	fprintf(stderr, "    Backup to a single backup file. Use - for stdout. Required, unless -d or -e\n");
-	fprintf(stderr, "    is used.\n\n");
-
+	fprintf(stderr, "                      Backup to a single backup file. Use - for stderr.\n");
+	fprintf(stderr, "                      Required, unless -d or -e is used.\n");
 	fprintf(stderr, "  -F, --file-limit\n");
-	fprintf(stderr, "    Rotate backup files, when their size crosses the given value (in MiB).\n");
-	fprintf(stderr, "    Only used when backing up to a directory. Default: 250.\n\n");
-
-	fprintf(stderr, "  -r, --remove-files\n");
-	fprintf(stderr, "    Remove existing backup file (-o) or files (-d).\n\n");
-
+	fprintf(stderr, "                      Rotate backup files, when their size crosses the given\n");
+	fprintf(stderr, "                      value (in MiB) Only used when backing up to a directory.\n");
+	fprintf(stderr, "                      Default: 250.\n");
 	fprintf(stderr, "  -f, --priority <priority>\n");
-	fprintf(stderr, "    The scan priority. 0 (auto), 1 (low), 2 (medium), 3 (high). Default: 0.\n\n");
-
+	fprintf(stderr, "                      The scan priority. 0 (auto), 1 (low), 2 (medium), 3 (high).\n");
+	fprintf(stderr, "                      Default: 0.\n");
 	fprintf(stderr, "  -c, --no-cluster-change\n");
-	fprintf(stderr, "    Abort, if the cluster configuration changes during backup.\n\n");
-
+	fprintf(stderr, "                      Abort, if the cluster configuration changes during backup.\n");
 	fprintf(stderr, "  -v, --verbose\n");
-	fprintf(stderr, "    Enable more detailed logging.\n\n");
-
+	fprintf(stderr, "                      Enable more detailed logging.\n");
 	fprintf(stderr, "  -x, --no-bins\n");
-	fprintf(stderr, "    Do not include bin data in the backup.\n\n");
-
+	fprintf(stderr, "                      Do not include bin data in the backup.\n");
 	fprintf(stderr, "  -C, --compact\n");
-	fprintf(stderr, "    Do not apply base-64 encoding to BLOBs; results in smaller backup files.\n\n");
-
+	fprintf(stderr, "                      Do not apply base-64 encoding to BLOBs; results in smaller\n");
+	fprintf(stderr, "                      backup files.\n");
 	fprintf(stderr, "  -B, --bin-list <bin 1>[,<bin 2>[,...]]\n");
-	fprintf(stderr, "    Only include the given bins in the backup. Default: include all bins.\n\n");
-
+	fprintf(stderr, "                      Only include the given bins in the backup.\n");
+	fprintf(stderr, "                      Default: include all bins.\n");
 	fprintf(stderr, "  -w, --parallel <# nodes>\n");
-	fprintf(stderr, "    Maximal number of nodes backed up in parallel. Default: 10.\n\n");
-
+	fprintf(stderr, "                      Maximal number of nodes backed up in parallel. Default: 10.\n");
 	fprintf(stderr, "  -l, --node-list <IP addr 1>:<port 1>[,<IP addr 2>:<port 2>[,...]]\n");
-	fprintf(stderr, "    Backup the given cluster nodes only. Default: backup the whole cluster.\n\n");
-
+	fprintf(stderr, "                      Backup the given cluster nodes only. Default: backup the \n");
+	fprintf(stderr, "                      whole cluster.\n");
 	fprintf(stderr, "  -%%, --percent <percentage>\n");
-	fprintf(stderr, "    The percentage of records to process. Default: 100.\n\n");
-
+	fprintf(stderr, "                      The percentage of records to process. Default: 100.\n");
 	fprintf(stderr, "  -m, --machine <path>\n");
-	fprintf(stderr, "    Output machine-readable status updates to the given path, typically a FIFO.\n\n");
-
+	fprintf(stderr, "                      Output machine-readable status updates to the given path, \n");
+	fprintf(stderr,"                       typically a FIFO.\n");
 	fprintf(stderr, "  -e, --estimate\n");
-	fprintf(stderr, "    Estimate the backed-up record size from a random sample of 10,000 records\n");
-	fprintf(stderr, "    at 99.9999%% confidence.\n\n");
-
+	fprintf(stderr, "                      Estimate the backed-up record size from a random sample of \n");
+	fprintf(stderr, "                      10,000 records at 99.9999%% confidence.\n");
 	fprintf(stderr, "  -N, --nice <bandwidth>\n");
-	fprintf(stderr, "    The limit for write storage bandwidth in MiB/s.\n\n");
-
+	fprintf(stderr, "                      The limit for write storage bandwidth in MiB/s.\n");
 	fprintf(stderr, "  -R, --no-records\n");
-	fprintf(stderr, "    Don't backup any records.\n\n");
-
+	fprintf(stderr, "                      Don't backup any records.\n");
 	fprintf(stderr, "  -I, --no-indexes\n");
-	fprintf(stderr, "    Don't backup any indexes.\n\n");
-
+	fprintf(stderr, "                      Don't backup any indexes.\n");
 	fprintf(stderr, "  -u, --no-udfs\n");
-	fprintf(stderr, "    Don't backup any UDFs.\n\n");
-
-	fprintf(stderr, "  -V, --version\n");
-	fprintf(stderr, "    Display version information.\n\n");
-
-	fprintf(stderr, "  -Z, --usage\n");
-	fprintf(stderr, "    Display this message.\n\n");
-
+	fprintf(stderr, "                      Don't backup any UDFs.\n");
+	fprintf(stderr, "  -R, --no-records\n");
+	fprintf(stderr, "                      Don't backup any records.\n\n");
+	fprintf(stderr, "  -I, --no-indexes\n");
+	fprintf(stderr, "                      Don't backup any indexes.\n\n");
+	fprintf(stderr, "  -u, --no-udfs\n");
+	fprintf(stderr, "                      Don't backup any UDFs.\n\n");
 	fprintf(stderr, "  -a, --modified-after <YYYY-MM-DD_HH:MM:SS>\n");
-	fprintf(stderr, "    Perform an incremental backup; only include records that changed after the\n");
-	fprintf(stderr, "    given date and time. The system's local timezone applies.\n\n");
-	fprintf(stderr, "    If only HH:MM:SS is specified, then today's date is assumed as the date.\n\n");
-	fprintf(stderr, "    If only YYYY-MM-DD is specified, then 00:00:00 (midnight) is assumed as\n");
-	fprintf(stderr, "    the time.\n\n");
-
+	fprintf(stderr, "                      Perform an incremental backup; only include records \n");
+	fprintf(stderr, "                      that changed after the given date and time. The system's \n");
+	fprintf(stderr, "                      local timezone applies. If only HH:MM:SS is specified, then\n");
+	fprintf(stderr, "                      today's date is assumed as the date. If only YYYY-MM-DD is \n");
+	fprintf(stderr, "                      specified, then 00:00:00 (midnight) is assumed as the time.\n");
 	fprintf(stderr, "  -b, --modified-before <YYYY-MM-DD_HH:MM:SS>\n");
-	fprintf(stderr, "    Only include records that last changed before the given date and time. May\n");
-	fprintf(stderr, "    combined with --modified-after to specify a range.\n\n");
+	fprintf(stderr, "                      Only include records that last changed before the given\n");
+	fprintf(stderr, "                      date and time. May combined with --modified-after to specify\n");
+	fprintf(stderr, "                      a range.\n\n");
 
-	fprintf(stderr, "  --tlsEnable\n");
-	fprintf(stderr, "    Enable TLS.\n\n");
-
-	fprintf(stderr, "  --tlsEncryptOnly\n");
-	fprintf(stderr, "    Disable TLS certificate verification.\n\n");
-
-	fprintf(stderr, "  --tlsCaFile <path>\n");
-	fprintf(stderr, "    Set the TLS certificate authority file.\n\n");
-
-	fprintf(stderr, "  --tlsCaPath <path>\n");
-	fprintf(stderr, "    Set the TLS certificate authority directory.\n\n");
-
-	fprintf(stderr, "  --tlsProtocols <protocols>\n");
-	fprintf(stderr, "    Set the TLS protocol selection criteria.\n\n");
-
-	fprintf(stderr, "  --tlsCipherSuite <suite>\n");
-	fprintf(stderr, "    Set the TLS cipher selection criteria.\n\n");
-
-	fprintf(stderr, "  --tlsCrlCheck\n");
-	fprintf(stderr, "    Enable CRL checking for leaf certificates.\n\n");
-
-	fprintf(stderr, "  --tlsCrlCheckAll\n");
-	fprintf(stderr, "    Enable CRL checking for all certificates.\n\n");
-
-	fprintf(stderr, "  --tlsCertBlackList <path>\n");
-	fprintf(stderr, "    Path to a certificate blacklist file.\n\n");
-
-	fprintf(stderr, "  --tlsLogSessionInfo\n");
-	fprintf(stderr, "    Log TLS connected session info.\n\n");
-
-	fprintf(stderr, "  --tlsKeyFile <path>\n");
-	fprintf(stderr, "    Set the TLS client key file for mutual authentication.\n\n");
-
-	fprintf(stderr, "  --tlsCertFile <path>\n");
-	fprintf(stderr, "    Set the TLS client certificate chain file for mutual authentication.\n");
+	fprintf(stderr, "\n\n");
+	fprintf(stderr, "Default configuration files are read from the following files in the given order:\n");
+	fprintf(stderr, "/etc/aerospike/astools.conf ~/.aerospike/astools.conf\n");
+	fprintf(stderr, "The following sections are read: (cluster asbackup include)\n");
+	fprintf(stderr, "The following options effect configuration file behavior\n");
+	fprintf(stderr, " --no-config-file \n");
+	fprintf(stderr, "                      Do not read any config file. Default: disabled\n");
+	fprintf(stderr, " --instance <name>\n");
+	fprintf(stderr, "                      Section with these instance is read. e.g in case instance `a` is specified\n");
+	fprintf(stderr, "                      sections cluster_a, asbackup_a is read.\n");
+	fprintf(stderr, " --config-file <path>\n");
+	fprintf(stderr, "                      Read this file after default configuration file.\n");
+	fprintf(stderr, " --only-config-file <path>\n");
+	fprintf(stderr, "                      Read only this configuration file.\n");
 }
 
 ///
@@ -1727,33 +1748,23 @@ int32_t
 main(int32_t argc, char **argv)
 {
 	static struct option options[] = {
-		{ "host", required_argument, NULL, 'h' },
-		{ "port", required_argument, NULL, 'p' },
-		{ "user", required_argument, NULL, 'U' },
-		{ "password", optional_argument, NULL, 'P' },
-		{ "namespace", required_argument, NULL, 'n' },
-		{ "set", required_argument, NULL, 's' },
-		{ "directory", required_argument, NULL, 'd' },
-		{ "output-file", required_argument, NULL, 'o' },
-		{ "file-limit", required_argument, NULL, 'F' },
-		{ "remove-files", no_argument, NULL, 'r' },
-		{ "priority", required_argument, NULL, 'f' },
-		{ "no-cluster-change", no_argument, NULL, 'c' },
+
+		// Non Config file options
 		{ "verbose", no_argument, NULL, 'v' },
-		{ "no-bins", no_argument, NULL, 'x' },
-		{ "compact", no_argument, NULL, 'C' },
-		{ "bin-list", required_argument, NULL, 'B' },
-		{ "parallel", required_argument, NULL, 'w' },
-		{ "node-list", required_argument, NULL, 'l' },
-		{ "percent", required_argument, NULL, '%' },
-		{ "machine", required_argument, NULL, 'm' },
-		{ "estimate", no_argument, NULL, 'e' },
-		{ "nice", required_argument, NULL, 'N' },
-		{ "no-records", no_argument, NULL, 'R' },
-		{ "no-indexes", no_argument, NULL, 'I' },
-		{ "no-udfs", no_argument, NULL, 'u' },
 		{ "usage", no_argument, NULL, 'Z' },
 		{ "version", no_argument, NULL, 'V' },
+
+		{ "instance", required_argument, 0, CONFIG_FILE_OPT_INSTANCE},
+		{ "config-file", required_argument, 0, CONFIG_FILE_OPT_FILE},
+		{ "no-config-file", no_argument, 0, CONFIG_FILE_OPT_NO_CONFIG_FILE},
+		{ "only-config-file", required_argument, 0, CONFIG_FILE_OPT_ONLY_CONFIG_FILE},
+
+		// Config options
+		{ "host", required_argument, 0, 'h'},
+		{ "port", required_argument, 0, 'p'},
+		{ "user", required_argument, 0, 'U'},
+		{ "password", optional_argument, 0, 'P'},
+
 		{ "tlsEnable", no_argument, NULL, TLS_OPT_ENABLE },
 		{ "tlsEncryptOnly", no_argument, NULL, TLS_OPT_ENCRYPT_ONLY },
 		{ "tlsCaFile", required_argument, NULL, TLS_OPT_CA_FILE },
@@ -1766,61 +1777,136 @@ main(int32_t argc, char **argv)
 		{ "tlsLogSessionInfo", no_argument, NULL, TLS_OPT_LOG_SESSION_INFO },
 		{ "tlsKeyFile", required_argument, NULL, TLS_OPT_KEY_FILE },
 		{ "tlsCertFile", required_argument, NULL, TLS_OPT_CERT_FILE },
+
+		{ "tls-enable", no_argument, NULL, TLS_OPT_ENABLE },
+		{ "tls-cafile", required_argument, NULL, TLS_OPT_CA_FILE },
+		{ "tls-capath", required_argument, NULL, TLS_OPT_CA_PATH },
+		{ "tls-protocols", required_argument, NULL, TLS_OPT_PROTOCOLS },
+		{ "tls-cipher-suite", required_argument, NULL, TLS_OPT_CIPHER_SUITE },
+		{ "tls-crl-check", no_argument, NULL, TLS_OPT_CRL_CHECK },
+		{ "tls-crl-check-all", no_argument, NULL, TLS_OPT_CRL_CHECK_ALL },
+		{ "tls-cert-blackList", required_argument, NULL, TLS_OPT_CERT_BLACK_LIST },
+		{ "tls-keyfile", required_argument, NULL, TLS_OPT_KEY_FILE },
+		{ "tls-certfile", required_argument, NULL, TLS_OPT_CERT_FILE },
+
+		// asbackup section in config file
+		{ "no-cluster-change", no_argument, NULL, 'c' },
+		{ "compact", no_argument, NULL, 'C' },
+		{ "parallel", required_argument, NULL, 'w' },
+		{ "no-bins", no_argument, NULL, 'x' },
+		{ "bin-list", required_argument, NULL, 'B' },
+		{ "no-records", no_argument, NULL, 'R' },
+		{ "no-indexes", no_argument, NULL, 'I' },
+		{ "no-udfs", no_argument, NULL, 'u' },
+		{ "namespace", required_argument, NULL, 'n' },
+		{ "set", required_argument, NULL, 's' },
+		{ "directory", required_argument, NULL, 'd' },
+		{ "output-file", required_argument, NULL, 'o' },
+		{ "remove-files", no_argument, NULL, 'r' },
+		{ "node-list", required_argument, NULL, 'l' },
 		{ "modified-after", required_argument, NULL, 'a' },
 		{ "modified-before", required_argument, NULL, 'b' },
+		{ "priority", required_argument, NULL, 'f' },
+		{ "percent", required_argument, NULL, '%' },
+		{ "machine", required_argument, NULL, 'm' },
+		{ "estimate", no_argument, NULL, 'e' },
+		{ "nice", required_argument, NULL, 'N' },
 		{ NULL, 0, NULL, 0 }
 	};
+
 
 	int32_t res = EXIT_FAILURE;
 
 	enable_client_log();
+
+	backup_config conf;
+	config_default(&conf);
+
 	as_policy_scan policy;
 	as_policy_scan_init(&policy);
 	policy.base.socket_timeout = 10 * 60 * 1000;
+	conf.policy = &policy;
 
 	as_scan scan;
 	as_scan_init(&scan, "", "");
 	scan.deserialize_list_map = false;
-
-	char *host = NULL;
-	int32_t port = -1;
-	char *user = NULL;
-	char password[AS_PASSWORD_HASH_SIZE];
-	bool remove_files = false;
-	char *bin_list = NULL;
-	char *node_list = NULL;
-	int64_t mod_after = 0;
-	int64_t mod_before = 0;
-
-	backup_config conf;
-	conf.policy = &policy;
 	conf.scan = &scan;
-	conf.directory = NULL;
-	conf.output_file = NULL;
-	conf.compact = false;
-	conf.parallel = DEFAULT_PARALLEL;
-	conf.machine = NULL;
-	conf.estimate = false;
-	conf.bandwidth = 0;
-	conf.no_records = false;
-	conf.no_indexes = false;
-	conf.no_udfs = false;
-	conf.file_limit = DEFAULT_FILE_LIMIT * 1024 * 1024;
-	conf.encoder = &(backup_encoder){
-		text_put_record, text_put_udf_file, text_put_secondary_index
-	};
-
-	as_config_tls tls;
-	memset(&tls, 0, sizeof(as_config_tls));
 
 	int32_t opt;
 	uint64_t tmp;
+	while ((opt = getopt_long(argc, argv, "h:p:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b",
+					options, 0)) != -1) {
 
+		switch (opt) {
+			case 'V':
+				print_version();
+				res = EXIT_SUCCESS;
+				goto cleanup1;
+
+			case 'Z':
+				usage(argv[0]);
+				res = EXIT_SUCCESS;
+				goto cleanup1;
+		}
+	}
+
+	char *config_fname = NULL;
+	bool read_conf_files = true;
+	bool read_only_conf_file = false;
+	char *instance = NULL;
+
+	// Reset to optind (internal variable)
+	// to parse all options again
+	optind = 0;
+	while ((opt = getopt_long(argc, argv, "h:p:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b",
+			options, 0)) != -1) {
+		switch (opt) {
+
+			case CONFIG_FILE_OPT_FILE:
+				config_fname = optarg;
+				break;
+
+			case CONFIG_FILE_OPT_INSTANCE:
+				instance = optarg;
+				break;
+
+			case CONFIG_FILE_OPT_NO_CONFIG_FILE:
+				read_conf_files = false;
+				break;
+
+			case CONFIG_FILE_OPT_ONLY_CONFIG_FILE:
+				config_fname = optarg;
+				read_only_conf_file = true;
+				break;
+
+		}
+	}
+
+	if (read_conf_files) {
+		if (read_only_conf_file) {
+			if (! config_from_file(&conf, instance, config_fname, 0, true)) {
+				return false;
+			}
+		} else {
+			if (! config_from_files(&conf, instance, config_fname, true)) {
+				return false;
+			}
+		}
+	} else { 
+		if (read_only_conf_file) {
+			fprintf(stderr, "--no-config-file and only-config-file are mutually exclusive option. Please enable only one.\n");
+			return false;
+		}
+	}
+
+	// Reset to optind (internal variable)
+	// to parse all options again
+	optind = 0;
 	while ((opt = getopt_long(argc, argv, "h:p:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b:",
 			options, 0)) != -1) {
 		switch (opt) {
 		case 'h':
-			host = optarg;
+			conf.host = optarg;
 			break;
 
 		case 'p':
@@ -1829,15 +1915,15 @@ main(int32_t argc, char **argv)
 				goto cleanup1;
 			}
 
-			port = (int32_t)tmp;
+			conf.port = (int32_t)tmp;
 			break;
 
 		case 'U':
-			user = optarg;
+			conf.user = optarg;
 			break;
 
 		case 'P':
-			as_password_prompt_hash(optarg, password);
+			as_password_prompt_hash(optarg, conf.password);
 			break;
 
 		case 'n':
@@ -1866,7 +1952,7 @@ main(int32_t argc, char **argv)
 			break;
 
 		case 'r':
-			remove_files = true;
+			conf.remove_files = true;
 			break;
 
 		case 'f':
@@ -1896,7 +1982,7 @@ main(int32_t argc, char **argv)
 			break;
 
 		case 'B':
-			bin_list = safe_strdup(optarg);
+			conf.bin_list = safe_strdup(optarg);
 			break;
 
 		case 'w':
@@ -1909,7 +1995,7 @@ main(int32_t argc, char **argv)
 			break;
 
 		case 'l':
-			node_list = safe_strdup(optarg);
+			conf.node_list = safe_strdup(optarg);
 			break;
 
 		case '%':
@@ -1950,62 +2036,52 @@ main(int32_t argc, char **argv)
 			conf.no_udfs = true;
 			break;
 
-		case 'V':
-			print_version();
-			res = EXIT_SUCCESS;
-			goto cleanup1;
-
-		case 'Z':
-			usage(argv[0]);
-			res = EXIT_SUCCESS;
-			goto cleanup1;
-
 		case TLS_OPT_ENABLE:
-			tls.enable = true;
+			conf.tls.enable = true;
 			break;
 
 		case TLS_OPT_CA_FILE:
-			tls.cafile = safe_strdup(optarg);
+			conf.tls.cafile = safe_strdup(optarg);
 			break;
 
 		case TLS_OPT_CA_PATH:
-			tls.capath = safe_strdup(optarg);
+			conf.tls.capath = safe_strdup(optarg);
 			break;
 
 		case TLS_OPT_PROTOCOLS:
-			tls.protocols = safe_strdup(optarg);
+			conf.tls.protocols = safe_strdup(optarg);
 			break;
 
 		case TLS_OPT_CIPHER_SUITE:
-			tls.cipher_suite = safe_strdup(optarg);
+			conf.tls.cipher_suite = safe_strdup(optarg);
 			break;
 
 		case TLS_OPT_CRL_CHECK:
-			tls.crl_check = true;
+			conf.tls.crl_check = true;
 			break;
 
 		case TLS_OPT_CRL_CHECK_ALL:
-			tls.crl_check_all = true;
+			conf.tls.crl_check_all = true;
 			break;
 
 		case TLS_OPT_CERT_BLACK_LIST:
-			tls.cert_blacklist = safe_strdup(optarg);
+			conf.tls.cert_blacklist = safe_strdup(optarg);
 			break;
 
 		case TLS_OPT_LOG_SESSION_INFO:
-			tls.log_session_info = true;
+			conf.tls.log_session_info = true;
 			break;
 
 		case TLS_OPT_KEY_FILE:
-			tls.keyfile = safe_strdup(optarg);
+			conf.tls.keyfile = safe_strdup(optarg);
 			break;
 
 		case TLS_OPT_CERT_FILE:
-			tls.certfile = safe_strdup(optarg);
+			conf.tls.certfile = safe_strdup(optarg);
 			break;
 
 		case 'a':
-			if (!parse_date_time(optarg, &mod_after)) {
+			if (!parse_date_time(optarg, &conf.mod_after)) {
 				err("Invalid date and time string %s", optarg);
 				goto cleanup1;
 			}
@@ -2013,11 +2089,17 @@ main(int32_t argc, char **argv)
 			break;
 
 		case 'b':
-			if (!parse_date_time(optarg, &mod_before)) {
+			if (!parse_date_time(optarg, &conf.mod_before)) {
 				err("Invalid date and time string %s", optarg);
 				goto cleanup1;
 			}
 
+			break;
+
+		case CONFIG_FILE_OPT_FILE:
+		case CONFIG_FILE_OPT_INSTANCE:
+		case CONFIG_FILE_OPT_NO_CONFIG_FILE:
+		case CONFIG_FILE_OPT_ONLY_CONFIG_FILE:
 			break;
 
 		default:
@@ -2031,17 +2113,17 @@ main(int32_t argc, char **argv)
 		goto cleanup1;
 	}
 
-	if ((port >= 0 || host != NULL) && node_list != NULL) {
-		err("Invalid options: -h and -p are mutually exclusive with -l");
+	if ((conf.port >= 0 || conf.host != NULL) && conf.node_list != NULL) {
+		err("Invalid options: --host and --port are mutually exclusive with --node-list.");
 		goto cleanup1;
 	}
 
-	if (port < 0) {
-		port = DEFAULT_PORT;
+	if (conf.port < 0) {
+		conf.port = DEFAULT_PORT;
 	}
 
-	if (host == NULL) {
-		host = DEFAULT_HOST;
+	if (conf.host == NULL) {
+		conf.host = DEFAULT_HOST;
 	}
 
 	if (scan.ns[0] == 0) {
@@ -2055,7 +2137,7 @@ main(int32_t argc, char **argv)
 	out_count += conf.estimate ? 1 : 0;
 
 	if (out_count > 1) {
-		err("Invalid options: -d, -o, and -e are mutually exclusive.");
+		err("Invalid options: --directory, --output-file, and --estimate are mutually exclusive.");
 		goto cleanup1;
 	}
 
@@ -2072,18 +2154,18 @@ main(int32_t argc, char **argv)
 	node_spec *node_specs = NULL;
 	uint32_t n_node_specs = 0;
 
-	if (node_list != NULL) {
+	if (conf.node_list != NULL) {
 		if (verbose) {
-			ver("Parsing node list %s", node_list);
+			ver("Parsing node list %s", conf.node_list);
 		}
 
-		if (!parse_node_list(node_list, &node_specs, &n_node_specs)) {
+		if (!parse_node_list(conf.node_list, &node_specs, &n_node_specs)) {
 			err("Error while parsing node list");
 			goto cleanup2;
 		}
 
-		host = node_specs[0].addr_string;
-		port = ntohs(node_specs[0].port);
+		conf.host = node_specs[0].addr_string;
+		conf.port = ntohs(node_specs[0].port);
 	}
 
 	signal(SIGINT, sig_hand);
@@ -2094,18 +2176,18 @@ main(int32_t argc, char **argv)
 	char before_buff[100];
 	char after_buff[100];
 
-	if (mod_before > 0 && mod_after > 0) {
+	if (conf.mod_before > 0 && conf.mod_after > 0) {
 		as_scan_predexp_inita(&scan, 7);
-	} else if (mod_before > 0 || mod_after > 0) {
+	} else if (conf.mod_before > 0 || conf.mod_after > 0) {
 		as_scan_predexp_inita(&scan, 3);
 	}
 
-	if (mod_before > 0) {
+	if (conf.mod_before > 0) {
 		as_scan_predexp_add(&scan, as_predexp_rec_last_update());
-		as_scan_predexp_add(&scan, as_predexp_integer_value(mod_before));
+		as_scan_predexp_add(&scan, as_predexp_integer_value(conf.mod_before));
 		as_scan_predexp_add(&scan, as_predexp_integer_less());
 
-		if (!format_date_time(mod_before, before_buff, sizeof before_buff)) {
+		if (!format_date_time(conf.mod_before, before_buff, sizeof before_buff)) {
 			err("Error while formatting modified-since time");
 			goto cleanup2;
 		}
@@ -2115,12 +2197,12 @@ main(int32_t argc, char **argv)
 		before = "[none]";
 	}
 
-	if (mod_after > 0) {
+	if (conf.mod_after > 0) {
 		as_scan_predexp_add(&scan, as_predexp_rec_last_update());
-		as_scan_predexp_add(&scan, as_predexp_integer_value(mod_after));
+		as_scan_predexp_add(&scan, as_predexp_integer_value(conf.mod_after));
 		as_scan_predexp_add(&scan, as_predexp_integer_greatereq());
 
-		if (!format_date_time(mod_after, after_buff, sizeof after_buff)) {
+		if (!format_date_time(conf.mod_after, after_buff, sizeof after_buff)) {
 			err("Error while formatting modified-since time");
 			goto cleanup2;
 		}
@@ -2130,19 +2212,19 @@ main(int32_t argc, char **argv)
 		after = "[none]";
 	}
 
-	if (mod_before > 0 && mod_after > 0) {
+	if (conf.mod_before > 0 && conf.mod_after > 0) {
 		as_scan_predexp_add(&scan, as_predexp_and(2));
 	}
 
 	inf("Starting %d%% backup of %s (namespace: %s, set: %s, bins: %s, after: %s, before: %s) to %s",
-			scan.percent, host, scan.ns, scan.set[0] == 0 ? "[all]" : scan.set,
-			bin_list == NULL ? "[all]" : bin_list, after, before,
+			scan.percent, conf.host, scan.ns, scan.set[0] == 0 ? "[all]" : scan.set,
+			conf.bin_list == NULL ? "[all]" : conf.bin_list, after, before,
 			conf.output_file != NULL ?
 					strcmp(conf.output_file, "-") == 0 ? "[stdout]" : conf.output_file :
 					conf.directory != NULL ?
 							conf.directory : "[none]");
 
-	if (bin_list != NULL && !init_scan_bins(bin_list, &scan)) {
+	if (conf.bin_list != NULL && !init_scan_bins(conf.bin_list, &scan)) {
 		err("Error while setting scan bin list");
 		goto cleanup2;
 	}
@@ -2158,15 +2240,15 @@ main(int32_t argc, char **argv)
 	as_config_init(&as_conf);
 	as_conf.conn_timeout_ms = TIMEOUT;
 
-	if (!as_config_add_hosts(&as_conf, host, (uint16_t)port)) {
-		err("Invalid host(s) string %s", host);
+	if (!as_config_add_hosts(&as_conf, conf.host, (uint16_t)conf.port)) {
+		err("Invalid conf.host(s) string %s", conf.host);
 		goto cleanup3;
 	}
 
-	as_config_set_user(&as_conf, user, password);
+	as_config_set_user(&as_conf, conf.user, conf.password);
 
-	memcpy(&as_conf.tls, &tls, sizeof(as_config_tls));
-	memset(&tls, 0, sizeof(tls));
+	memcpy(&as_conf.tls, &conf.tls, sizeof(as_config_tls));
+	memset(&conf.tls, 0, sizeof(conf.tls));
 
 	aerospike as;
 	aerospike_init(&as, &as_conf);
@@ -2178,7 +2260,7 @@ main(int32_t argc, char **argv)
 	}
 
 	if (aerospike_connect(&as, &ae) != AEROSPIKE_OK) {
-		err("Error while connecting to %s:%d - code %d: %s at %s:%d", host, port, ae.code,
+		err("Error while connecting to %s:%d - code %d: %s at %s:%d", conf.host, conf.port, ae.code,
 				ae.message, ae.file, ae.line);
 		goto cleanup4;
 	}
@@ -2230,11 +2312,11 @@ main(int32_t argc, char **argv)
 		conf.rec_count_estimate = NUM_SAMPLES;
 	}
 
-	if (conf.directory != NULL && !clean_directory(conf.directory, remove_files)) {
+	if (conf.directory != NULL && !clean_directory(conf.directory, conf.remove_files)) {
 		goto cleanup5;
 	}
 
-	if (conf.output_file != NULL && !clean_output_file(conf.output_file, remove_files)) {
+	if (conf.output_file != NULL && !clean_output_file(conf.output_file, conf.remove_files)) {
 		goto cleanup5;
 	}
 
@@ -2383,40 +2465,40 @@ cleanup2:
 	}
 
 cleanup1:
-	if (node_list != NULL) {
-		cf_free(node_list);
+	if (conf.node_list != NULL) {
+		cf_free(conf.node_list);
 	}
 
-	if (bin_list != NULL) {
-		cf_free(bin_list);
+	if (conf.bin_list != NULL) {
+		cf_free(conf.bin_list);
 	}
 
-	if (tls.cafile != NULL) {
-		cf_free(tls.cafile);
+	if (conf.tls.cafile != NULL) {
+		cf_free(conf.tls.cafile);
 	}
 
-	if (tls.cafile != NULL) {
-		cf_free(tls.capath);
+	if (conf.tls.cafile != NULL) {
+		cf_free(conf.tls.capath);
 	}
 
-	if (tls.cafile != NULL) {
-		cf_free(tls.protocols);
+	if (conf.tls.cafile != NULL) {
+		cf_free(conf.tls.protocols);
 	}
 
-	if (tls.cafile != NULL) {
-		cf_free(tls.cipher_suite);
+	if (conf.tls.cafile != NULL) {
+		cf_free(conf.tls.cipher_suite);
 	}
 
-	if (tls.cafile != NULL) {
-		cf_free(tls.cert_blacklist);
+	if (conf.tls.cafile != NULL) {
+		cf_free(conf.tls.cert_blacklist);
 	}
 
-	if (tls.cafile != NULL) {
-		cf_free(tls.keyfile);
+	if (conf.tls.cafile != NULL) {
+		cf_free(conf.tls.keyfile);
 	}
 
-	if (tls.cafile != NULL) {
-		cf_free(tls.certfile);
+	if (conf.tls.cafile != NULL) {
+		cf_free(conf.tls.certfile);
 	}
 
 	as_scan_destroy(&scan);
@@ -2426,4 +2508,34 @@ cleanup1:
 	}
 
 	return res;
+}
+
+static void
+config_default(backup_config *conf)
+{
+	conf->host = NULL;
+	conf->port = -1;
+	conf->user = NULL;
+
+	conf->remove_files = false;
+	conf->bin_list = NULL;
+	conf->node_list = NULL;
+	conf->mod_after = 0;
+	conf->mod_before = 0;
+	conf->directory = NULL;
+	conf->output_file = NULL;
+	conf->compact = false;
+	conf->parallel = DEFAULT_PARALLEL;
+	conf->machine = NULL;
+	conf->estimate = false;
+	conf->bandwidth = 0;
+	conf->no_records = false;
+	conf->no_indexes = false;
+	conf->no_udfs = false;
+	conf->file_limit = DEFAULT_FILE_LIMIT * 1024 * 1024;
+	conf->encoder = &(backup_encoder){
+		text_put_record, text_put_udf_file, text_put_secondary_index
+	};
+
+	memset(&conf->tls, 0, sizeof(as_config_tls));
 }
