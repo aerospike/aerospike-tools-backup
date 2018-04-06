@@ -86,7 +86,7 @@ typedef struct {
 	char *host;
 	int32_t port;
 	char *user;
-	char password[AS_PASSWORD_HASH_SIZE];
+	char *password;
 	bool remove_files;
 	char *bin_list;
 	char *node_list;

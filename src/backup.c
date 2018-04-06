@@ -1631,7 +1631,7 @@ usage(const char *name)
 	fprintf(stderr, " --tls-cipher-suite=TLS_CIPHER_SUITE\n");
 	fprintf(stderr, "                     Set the TLS cipher selection criteria. The format is\n"
                 	"                     the same as Open_sSL's Cipher List Format documented\n"
-                	"                     at https://www.openssl.org/docs/man1.0.1/apps/ciphers.\n"
+                	"                     at https://www.openssl.org/docs/man1.0.2/apps/ciphers.\n"
                 	"                     html\n");
 	fprintf(stderr, " --tls-keyfile=TLS_KEYFILE\n");
 	fprintf(stderr, "                      Path to the key for mutual authentication (if\n"
@@ -1666,7 +1666,7 @@ usage(const char *name)
 	fprintf(stderr, "                      The directory that holds the backup files. Required, \n");
 	fprintf(stderr, "                      unless -o or -e is used.\n");
 	fprintf(stderr, "  -o, --output-file <file>\n");
-	fprintf(stderr, "                      Backup to a single backup file. Use - for stderr.\n");
+	fprintf(stderr, "                      Backup to a single backup file. Use - for stdout.\n");
 	fprintf(stderr, "                      Required, unless -d or -e is used.\n");
 	fprintf(stderr, "  -F, --file-limit\n");
 	fprintf(stderr, "                      Rotate backup files, when their size crosses the given\n");
@@ -1923,7 +1923,9 @@ main(int32_t argc, char **argv)
 			break;
 
 		case 'P':
-			as_password_prompt_hash(optarg, conf.password);
+			if (optarg) {
+				conf.password = optarg;
+			}	
 			break;
 
 		case 'n':
@@ -2240,9 +2242,13 @@ main(int32_t argc, char **argv)
 	as_config_init(&as_conf);
 	as_conf.conn_timeout_ms = TIMEOUT;
 
-	if (!as_config_add_hosts(&as_conf, conf.host, (uint16_t)conf.port)) {
+	if (! as_config_add_hosts(&as_conf, conf.host, (uint16_t)conf.port)) {
 		err("Invalid conf.host(s) string %s", conf.host);
 		goto cleanup3;
+	}
+
+	if (conf.user && ! conf.password) {
+		conf.password = getpass("Enter Password: ");
 	}
 
 	as_config_set_user(&as_conf, conf.user, conf.password);

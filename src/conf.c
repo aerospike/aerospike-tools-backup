@@ -238,12 +238,7 @@ config_restore_cluster(toml_table_t *conftab, restore_config *c, const char *ins
 			status = config_str(curtab, name, (void*)&c->user);
 
 		} else if (! strcasecmp("password", name)) {
-			char *pass_str;
-			status = config_str(curtab, name, (void*)&pass_str);
-			if (status) {
-				as_password_prompt_hash(pass_str, c->password);
-				free(pass_str);
-			}
+			status = config_str(curtab, name, (void*)&c->password);
 
 		} else if (! strcasecmp("tls-enable", name)) {
 			status = config_bool(curtab, name, (void*)&c->tls.enable);
@@ -326,12 +321,7 @@ config_backup_cluster(toml_table_t *conftab, backup_config *c, const char *insta
 			status = config_str(curtab, name, (void*)&c->user);
 
 		} else if (! strcasecmp("password", name)) {
-			char *pass_str;
-			status = config_str(curtab, name, (void*)&pass_str);
-			if (status) {
-				as_password_prompt_hash(pass_str, c->password);
-				free(pass_str);
-			}
+			status = config_str(curtab, name, (void*)&c->password);
 
 		} else if (! strcasecmp("tls-enable", name)) {
 			status = config_bool(curtab, name, (void*)&c->tls.enable);

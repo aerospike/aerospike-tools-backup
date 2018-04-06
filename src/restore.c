@@ -1613,7 +1613,7 @@ usage(const char *name)
 	fprintf(stderr, " --tls-cipher-suite=TLS_CIPHER_SUITE\n");
 	fprintf(stderr, "                     Set the TLS cipher selection criteria. The format is\n"
                 	"                     the same as Open_sSL's Cipher List Format documented\n"
-                	"                     at https://www.openssl.org/docs/man1.0.1/apps/ciphers.\n"
+                	"                     at https://www.openssl.org/docs/man1.0.2/apps/ciphers.\n"
                 	"                     html\n");
 	fprintf(stderr, " --tls-keyfile=TLS_KEYFILE\n");
 	fprintf(stderr, "                      Path to the key for mutual authentication (if\n"
@@ -1644,7 +1644,7 @@ usage(const char *name)
 	fprintf(stderr, "                      The namespace to be backed up. Required.\n");
 	fprintf(stderr, "  -d, --directory <directory>\n");
 	fprintf(stderr, "                      The directory that holds the backup files. Required, \n");
-	fprintf(stderr, "                      unless -o or -e is used.\n");
+	fprintf(stderr, "                      unless -i is used.\n");
 	fprintf(stderr, "  -i, --input-file <file>\n");
 	fprintf(stderr, "                      Restore from a single backup file. Use - for stdin.\n");
 	fprintf(stderr, "                      Required, unless -d is used.\n");
@@ -1869,7 +1869,9 @@ main(int32_t argc, char **argv)
 			break;
 
 		case 'P':
-			as_password_prompt_hash(optarg, conf.password);
+			if (optarg) {
+				conf.password = optarg;
+			}	
 			break;
 
 		case 'n':
@@ -2050,6 +2052,10 @@ main(int32_t argc, char **argv)
 	if (!as_config_add_hosts(&as_conf, conf.host, (uint16_t)conf.port)) {
 		err("Invalid host(s) string %s", conf.host);
 		goto cleanup2;
+	}
+
+	if (conf.user && ! conf.password) {
+		conf.password = getpass("Enter Password: ");
 	}
 
 	as_config_set_user(&as_conf, conf.user, conf.password);

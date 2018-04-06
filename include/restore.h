@@ -92,7 +92,7 @@ typedef struct {
 	char *host;
 	int32_t port;
 	char *user;
-	char password[AS_PASSWORD_HASH_SIZE];
+	char *password;
 	uint32_t threads;
 	char *nice_list;
 	bool no_records;
