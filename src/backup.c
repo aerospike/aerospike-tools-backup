@@ -1802,6 +1802,7 @@ main(int32_t argc, char **argv)
 		{ "set", required_argument, NULL, 's' },
 		{ "directory", required_argument, NULL, 'd' },
 		{ "output-file", required_argument, NULL, 'o' },
+		{ "file-limit", required_argument, NULL, 'F' },
 		{ "remove-files", no_argument, NULL, 'r' },
 		{ "node-list", required_argument, NULL, 'l' },
 		{ "modified-after", required_argument, NULL, 'a' },
