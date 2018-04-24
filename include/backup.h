@@ -126,6 +126,7 @@ typedef struct {
 	                                    ///  raise the limit according to the bandwidth limit.
 	volatile uint32_t index_count;      ///< The number of secondary indexes backed up.
 	volatile uint32_t udf_count;        ///< The number of UDF files backed up.
+	char *auth_mode;					///< Authentication mode
 } backup_config;
 
 

@@ -1596,6 +1596,10 @@ usage(const char *name)
 	fprintf(stderr, "                      Password used to authenticate with cluster. Default: none\n");
 	fprintf(stderr, "                      User will be prompted on command line if -P specified and no\n");
 	fprintf(stderr, "      	               password is given.\n");
+	fprintf(stdout, " --auth\n");
+	fprintf(stdout, "                      Set authentication mode when user/password is defined. Modes are\n");
+	fprintf(stdout, "                      (INTERNAL, EXTERNAL, EXTERNAL_INSECURE) and the default is INTERNAL.\n");
+	fprintf(stdout, "                      This mode must be set EXTERNAL when using LDAP\n");
 	fprintf(stderr, " --tls-enable         Enable TLS on connections. By default TLS is disabled.\n");
 	// Deprecated
 	//fprintf(stderr, " --tls-encrypt-only   Disable TLS certificate verification.\n");
@@ -1725,6 +1729,7 @@ main(int32_t argc, char **argv)
 		{ "port", required_argument, 0, 'p'},
 		{ "user", required_argument, 0, 'U'},
 		{ "password", optional_argument, 0, 'P'},
+		{ "auth", required_argument, 0, 'A' },
 
 		{ "tlsEnable", no_argument, NULL, TLS_OPT_ENABLE },
 		{ "tlsEncryptOnly", no_argument, NULL, TLS_OPT_ENCRYPT_ONLY },
@@ -1779,7 +1784,7 @@ main(int32_t argc, char **argv)
 	int32_t optcase;
 	uint64_t tmp;
 
-	while ((optcase = getopt_long(argc, argv, "h:p:U:P::n:d:i:t:vm:B:s:urgN:RILFwVZ",
+	while ((optcase = getopt_long(argc, argv, "h:p:A:U:P::n:d:i:t:vm:B:s:urgN:RILFwVZ",
 			options, 0)) != -1) {
 		switch (optcase) {
 			case 'V':
@@ -1804,7 +1809,7 @@ main(int32_t argc, char **argv)
 	// Reset to optind (internal variable)
 	// to parse all options again
 	optind = 0;
-	while ((optcase = getopt_long(argc, argv, "h:p:U:P::n:d:i:t:vm:B:s:urgN:RILFwVZ",
+	while ((optcase = getopt_long(argc, argv, "h:p:A:U:P::n:d:i:t:vm:B:s:urgN:RILFwVZ",
 			options, 0)) != -1) {
 		switch (optcase) {
 
@@ -1848,7 +1853,7 @@ main(int32_t argc, char **argv)
 	// Reset to optind (internal variable)
 	// to parse all options again
 	optind = 0;
-	while ((optcase = getopt_long(argc, argv, "h:p:U:P::n:d:i:t:vm:B:s:urgN:RILFwVZ",
+	while ((optcase = getopt_long(argc, argv, "h:p:A:U:P::n:d:i:t:vm:B:s:urgN:RILFwVZ",
 			options, 0)) != -1) {
 		switch (optcase) {
 		case 'h':
@@ -1872,6 +1877,10 @@ main(int32_t argc, char **argv)
 			if (optarg) {
 				conf.password = optarg;
 			}	
+			break;
+
+		case 'A':
+			conf.auth_mode = optarg;
 			break;
 
 		case 'n':
@@ -2053,6 +2062,14 @@ main(int32_t argc, char **argv)
 		err("Invalid host(s) string %s", conf.host);
 		goto cleanup2;
 	}
+
+	if (conf.auth_mode && ! as_auth_mode_from_string(&as_conf.auth_mode, conf.auth_mode)) {
+		err("Invalid authentication mode %s. Allowed values are INTERNAL / EXTERNAL / EXTERNAL_INSECURE\n",
+				conf.auth_mode);
+		goto cleanup2;
+	}
+
+
 
 	if (conf.user && ! conf.password) {
 		conf.password = getpass("Enter Password: ");
@@ -2481,6 +2498,7 @@ config_default(restore_config *conf)
 	conf->host = DEFAULT_HOST;
 	conf->port = DEFAULT_PORT;
 	conf->user = NULL;
+	conf->auth_mode = NULL;
 
 	conf->threads = DEFAULT_THREADS;
 	conf->nice_list = NULL;

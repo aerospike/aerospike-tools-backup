@@ -145,6 +145,7 @@ typedef struct {
 	                                    ///  raise the limit according to the TPS limit.
 	volatile uint32_t index_count;  ///< The number of successfully created secondary indexes.
 	volatile uint32_t udf_count;    ///< The number of successfully stored UDF files.
+	char *auth_mode;                ///< Authentication mode.
 } restore_config;
 
 
