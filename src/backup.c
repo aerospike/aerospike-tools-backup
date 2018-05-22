@@ -1614,6 +1614,10 @@ usage(const char *name)
 	fprintf(stderr, "                      Password used to authenticate with cluster. Default: none\n");
 	fprintf(stderr, "                      User will be prompted on command line if -P specified and no\n");
 	fprintf(stderr, "      	               password is given.\n");
+	fprintf(stdout, " --auth\n");
+	fprintf(stdout, "                      Set authentication mode when user/password is defined. Modes are\n");
+	fprintf(stdout, "                      (INTERNAL, EXTERNAL, EXTERNAL_INSECURE) and the default is INTERNAL.\n");
+	fprintf(stdout, "                      This mode must be set EXTERNAL when using LDAP\n");
 	fprintf(stderr, " --tls-enable         Enable TLS on connections. By default TLS is disabled.\n");
 	// Deprecated
 	//fprintf(stderr, " --tls-encrypt-only   Disable TLS certificate verification.\n");
@@ -1764,6 +1768,7 @@ main(int32_t argc, char **argv)
 		{ "port", required_argument, 0, 'p'},
 		{ "user", required_argument, 0, 'U'},
 		{ "password", optional_argument, 0, 'P'},
+		{ "auth", required_argument, 0, 'A' },
 
 		{ "tlsEnable", no_argument, NULL, TLS_OPT_ENABLE },
 		{ "tlsEncryptOnly", no_argument, NULL, TLS_OPT_ENCRYPT_ONLY },
@@ -1835,7 +1840,7 @@ main(int32_t argc, char **argv)
 
 	int32_t opt;
 	uint64_t tmp;
-	while ((opt = getopt_long(argc, argv, "h:p:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b",
+	while ((opt = getopt_long(argc, argv, "h:p:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b",
 					options, 0)) != -1) {
 
 		switch (opt) {
@@ -1859,7 +1864,7 @@ main(int32_t argc, char **argv)
 	// Reset to optind (internal variable)
 	// to parse all options again
 	optind = 0;
-	while ((opt = getopt_long(argc, argv, "h:p:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b",
+	while ((opt = getopt_long(argc, argv, "h:p:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b",
 			options, 0)) != -1) {
 		switch (opt) {
 
@@ -1903,7 +1908,7 @@ main(int32_t argc, char **argv)
 	// Reset to optind (internal variable)
 	// to parse all options again
 	optind = 0;
-	while ((opt = getopt_long(argc, argv, "h:p:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b:",
+	while ((opt = getopt_long(argc, argv, "h:p:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b:",
 			options, 0)) != -1) {
 		switch (opt) {
 		case 'h':
@@ -1927,6 +1932,10 @@ main(int32_t argc, char **argv)
 			if (optarg) {
 				conf.password = optarg;
 			}	
+			break;
+
+		case 'A':
+			conf.auth_mode = optarg;
 			break;
 
 		case 'n':
@@ -2248,6 +2257,12 @@ main(int32_t argc, char **argv)
 		goto cleanup3;
 	}
 
+	if (conf.auth_mode && ! as_auth_mode_from_string(&as_conf.auth_mode, conf.auth_mode)) {
+		err("Invalid authentication mode %s. Allowed values are INTERNAL / EXTERNAL / EXTERNAL_INSECURE\n",
+				conf.auth_mode);
+		goto cleanup2;
+	}
+
 	if (conf.user && ! conf.password) {
 		conf.password = getpass("Enter Password: ");
 	}
@@ -2523,6 +2538,7 @@ config_default(backup_config *conf)
 	conf->host = NULL;
 	conf->port = -1;
 	conf->user = NULL;
+	conf->auth_mode = NULL;
 
 	conf->remove_files = false;
 	conf->bin_list = NULL;
