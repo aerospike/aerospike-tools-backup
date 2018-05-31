@@ -1827,6 +1827,10 @@ main(int32_t argc, char **argv)
 
 	backup_config conf;
 	config_default(&conf);
+	
+	conf.encoder = &(backup_encoder){
+		text_put_record, text_put_udf_file, text_put_secondary_index
+	};
 
 	as_policy_scan policy;
 	as_policy_scan_init(&policy);
@@ -2556,9 +2560,6 @@ config_default(backup_config *conf)
 	conf->no_indexes = false;
 	conf->no_udfs = false;
 	conf->file_limit = DEFAULT_FILE_LIMIT * 1024 * 1024;
-	conf->encoder = &(backup_encoder){
-		text_put_record, text_put_udf_file, text_put_secondary_index
-	};
 
 	memset(&conf->tls, 0, sizeof(as_config_tls));
 }

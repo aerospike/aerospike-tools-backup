@@ -1779,6 +1779,8 @@ main(int32_t argc, char **argv)
 
 	restore_config conf;
 	config_default(&conf);
+	
+	conf.decoder = &(backup_decoder){ text_parse };
 
 
 	int32_t optcase;
@@ -2518,6 +2520,5 @@ config_default(restore_config *conf)
 	conf->no_generation = false;
 	conf->bandwidth = 0;
 	conf->tps = 0;
-	conf->decoder = &(backup_decoder){ text_parse };
 	memset(&conf->tls, 0, sizeof(as_config_tls));
 };
