@@ -1479,22 +1479,26 @@ get_object_count(aerospike *as, const char *namespace, const char *set,
 static void
 show_estimate(FILE *mach_fd, uint64_t *samples, uint32_t n_samples, uint64_t rec_count_estimate)
 {
-	double exp_value = 0.0;
+	uint64_t upper = 0;
+	if (n_samples > 0) {
 
-	for (uint32_t i = 0; i < n_samples; ++i) {
-		exp_value += (double)samples[i];
+		double exp_value = 0.0;
+
+		for (uint32_t i = 0; i < n_samples; ++i) {
+			exp_value += (double)samples[i];
+		}
+
+		exp_value /= n_samples;
+		double stand_dev = 0.0;
+
+		for (uint32_t i = 0; i < n_samples; ++i) {
+			double diff = (double)samples[i] - exp_value;
+			stand_dev += diff * diff;
+		}
+
+		upper = (uint64_t)ceil(exp_value + 4.7 * stand_dev / sqrt(n_samples));
 	}
 
-	exp_value /= n_samples;
-	double stand_dev = 0.0;
-
-	for (uint32_t i = 0; i < n_samples; ++i) {
-		double diff = (double)samples[i] - exp_value;
-		stand_dev += diff * diff;
-	}
-
-	stand_dev = sqrt(stand_dev / n_samples);
-	uint64_t upper = (uint64_t)ceil(exp_value + 4.7 * stand_dev / sqrt(n_samples));
 	inf("Estimated overall record size is %" PRIu64 " byte(s)", upper);
 
 	if (mach_fd != NULL && (fprintf(mach_fd, "ESTIMATE:%" PRIu64 ":%" PRIu64 "\n",
