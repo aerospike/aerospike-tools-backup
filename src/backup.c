@@ -1612,6 +1612,11 @@ usage(const char *name)
 	fprintf(stderr, "                        host1\n");
 	fprintf(stderr, "                        host1:3000,host2:3000\n");
 	fprintf(stderr, "                        192.168.1.10:cert1:3000,192.168.1.20:cert2:3000\n");
+	fprintf(stderr, " --services-alternate\n");
+	fprintf(stderr, "                      Use to connect to alternate access address when the \n");
+	fprintf(stderr, "                      cluster's nodes publish IP addresses through access-address \n");
+	fprintf(stderr, "                      which are not accessible over WAN and alternate IP addresses \n");
+	fprintf(stderr, "                      accessible over WAN through alternate-access-address. Default: false.\n");
 	fprintf(stderr, " -p PORT, --port=PORT Server default port. Default: 3000\n");
 	fprintf(stderr, " -U USER, --user=USER User name used to authenticate with cluster. Default: none\n");
 	fprintf(stderr, " -P, --password\n");
@@ -1722,11 +1727,6 @@ usage(const char *name)
 	fprintf(stderr, "                      Don't backup any indexes.\n\n");
 	fprintf(stderr, "  -u, --no-udfs\n");
 	fprintf(stderr, "                      Don't backup any UDFs.\n\n");
-	fprintf(stderr, " --services-alternate\n");
-	fprintf(stderr, "                      Use to connect to alternate access address when the \n");
-	fprintf(stderr, "                      cluster's nodes publish IP addresses through access-address \n");
-	fprintf(stderr, "                      which are not accessible over WAN and alternate IP addresses \n");
-	fprintf(stderr, "                      accessible over WAN through alternate-access-address. Default: false.\n");
 	fprintf(stderr, "  -a, --modified-after <YYYY-MM-DD_HH:MM:SS>\n");
 	fprintf(stderr, "                      Perform an incremental backup; only include records \n");
 	fprintf(stderr, "                      that changed after the given date and time. The system's \n");

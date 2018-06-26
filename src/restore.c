@@ -1590,6 +1590,11 @@ usage(const char *name)
 	fprintf(stderr, "                        host1\n");
 	fprintf(stderr, "                        host1:3000,host2:3000\n");
 	fprintf(stderr, "                        192.168.1.10:cert1:3000,192.168.1.20:cert2:3000\n");
+	fprintf(stderr, " --services-alternate\n");
+	fprintf(stderr, "                      Use to connect to alternate access address when the \n");
+	fprintf(stderr, "                      cluster's nodes publish IP addresses through access-address \n");
+	fprintf(stderr, "                      which are not accessible over WAN and alternate IP addresses \n");
+	fprintf(stderr, "                      accessible over WAN through alternate-access-address. Default: false.\n");
 	fprintf(stderr, " -p PORT, --port=PORT Server default port. Default: 3000\n");
 	fprintf(stderr, " -U USER, --user=USER User name used to authenticate with cluster. Default: none\n");
 	fprintf(stderr, " -P, --password\n");
@@ -1688,11 +1693,6 @@ usage(const char *name)
 	fprintf(stderr, "  -w, --wait\n");
 	fprintf(stderr, "                      Wait for restored secondary indexes to finish building.\n");
 	fprintf(stderr, "                      Wait for restored UDFs to be distributed across the cluster.\n");
-	fprintf(stderr, " --services-alternate\n");
-	fprintf(stderr, "                      Use to connect to alternate access address when the \n");
-	fprintf(stderr, "                      cluster's nodes publish IP addresses through access-address \n");
-	fprintf(stderr, "                      which are not accessible over WAN and alternate IP addresses \n");
-	fprintf(stderr, "                      accessible over WAN through alternate-access-address. Default: false.\n");
 
 	fprintf(stderr, "\n\n");
 	fprintf(stderr, "Default configuration files are read from the following files in the given order:\n");
