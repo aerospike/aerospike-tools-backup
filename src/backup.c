@@ -1722,6 +1722,11 @@ usage(const char *name)
 	fprintf(stderr, "                      Don't backup any indexes.\n\n");
 	fprintf(stderr, "  -u, --no-udfs\n");
 	fprintf(stderr, "                      Don't backup any UDFs.\n\n");
+	fprintf(stderr, " --services-alternate\n");
+	fprintf(stderr, "                      Use to connect to alternate access address when the \n");
+	fprintf(stderr, "                      cluster's nodes publish IP addresses through access-address \n");
+	fprintf(stderr, "                      which are not accessible over WAN and alternate IP addresses \n");
+	fprintf(stderr, "                      accessible over WAN through alternate-access-address. Default: false.\n");
 	fprintf(stderr, "  -a, --modified-after <YYYY-MM-DD_HH:MM:SS>\n");
 	fprintf(stderr, "                      Perform an incremental backup; only include records \n");
 	fprintf(stderr, "                      that changed after the given date and time. The system's \n");
@@ -1807,6 +1812,7 @@ main(int32_t argc, char **argv)
 		{ "no-records", no_argument, NULL, 'R' },
 		{ "no-indexes", no_argument, NULL, 'I' },
 		{ "no-udfs", no_argument, NULL, 'u' },
+		{ "services-alternate", no_argument, NULL, 'S' },
 		{ "namespace", required_argument, NULL, 'n' },
 		{ "set", required_argument, NULL, 's' },
 		{ "directory", required_argument, NULL, 'd' },
@@ -1848,7 +1854,7 @@ main(int32_t argc, char **argv)
 
 	int32_t opt;
 	uint64_t tmp;
-	while ((opt = getopt_long(argc, argv, "h:p:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b",
+	while ((opt = getopt_long(argc, argv, "h:Sp:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b",
 					options, 0)) != -1) {
 
 		switch (opt) {
@@ -1872,7 +1878,7 @@ main(int32_t argc, char **argv)
 	// Reset to optind (internal variable)
 	// to parse all options again
 	optind = 0;
-	while ((opt = getopt_long(argc, argv, "h:p:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b",
+	while ((opt = getopt_long(argc, argv, "h:Sp:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b",
 			options, 0)) != -1) {
 		switch (opt) {
 
@@ -1916,7 +1922,7 @@ main(int32_t argc, char **argv)
 	// Reset to optind (internal variable)
 	// to parse all options again
 	optind = 0;
-	while ((opt = getopt_long(argc, argv, "h:p:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b:",
+	while ((opt = getopt_long(argc, argv, "h:Sp:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b:",
 			options, 0)) != -1) {
 		switch (opt) {
 		case 'h':
@@ -2054,6 +2060,10 @@ main(int32_t argc, char **argv)
 
 		case 'u':
 			conf.no_udfs = true;
+			break;
+
+		case 'S':
+			conf.use_services_alternate = true;
 			break;
 
 		case TLS_OPT_ENABLE:
@@ -2259,6 +2269,7 @@ main(int32_t argc, char **argv)
 	as_config as_conf;
 	as_config_init(&as_conf);
 	as_conf.conn_timeout_ms = TIMEOUT;
+	as_conf.use_services_alternate = conf.use_services_alternate;
 
 	if (! as_config_add_hosts(&as_conf, conf.host, (uint16_t)conf.port)) {
 		err("Invalid conf.host(s) string %s", conf.host);
@@ -2544,6 +2555,7 @@ static void
 config_default(backup_config *conf)
 {
 	conf->host = NULL;
+	conf->use_services_alternate = false;
 	conf->port = -1;
 	conf->user = NULL;
 	conf->auth_mode = NULL;

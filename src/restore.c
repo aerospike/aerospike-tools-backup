@@ -1688,6 +1688,11 @@ usage(const char *name)
 	fprintf(stderr, "  -w, --wait\n");
 	fprintf(stderr, "                      Wait for restored secondary indexes to finish building.\n");
 	fprintf(stderr, "                      Wait for restored UDFs to be distributed across the cluster.\n");
+	fprintf(stderr, " --services-alternate\n");
+	fprintf(stderr, "                      Use to connect to alternate access address when the \n");
+	fprintf(stderr, "                      cluster's nodes publish IP addresses through access-address \n");
+	fprintf(stderr, "                      which are not accessible over WAN and alternate IP addresses \n");
+	fprintf(stderr, "                      accessible over WAN through alternate-access-address. Default: false.\n");
 
 	fprintf(stderr, "\n\n");
 	fprintf(stderr, "Default configuration files are read from the following files in the given order:\n");
@@ -1772,6 +1777,7 @@ main(int32_t argc, char **argv)
 		{ "indexes-last", no_argument, NULL, 'L' },
 		{ "no-udfs", no_argument, NULL, 'F' },
 		{ "wait", no_argument, NULL, 'w' },
+		{ "services-alternate", no_argument, NULL, 'S' },
 		{ NULL, 0, NULL, 0 }
 	};
 
@@ -1786,7 +1792,7 @@ main(int32_t argc, char **argv)
 	int32_t optcase;
 	uint64_t tmp;
 
-	while ((optcase = getopt_long(argc, argv, "h:p:A:U:P::n:d:i:t:vm:B:s:urgN:RILFwVZ",
+	while ((optcase = getopt_long(argc, argv, "h:Sp:A:U:P::n:d:i:t:vm:B:s:urgN:RILFwVZ",
 			options, 0)) != -1) {
 		switch (optcase) {
 			case 'V':
@@ -1811,7 +1817,7 @@ main(int32_t argc, char **argv)
 	// Reset to optind (internal variable)
 	// to parse all options again
 	optind = 0;
-	while ((optcase = getopt_long(argc, argv, "h:p:A:U:P::n:d:i:t:vm:B:s:urgN:RILFwVZ",
+	while ((optcase = getopt_long(argc, argv, "h:Sp:A:U:P::n:d:i:t:vm:B:s:urgN:RILFwVZ",
 			options, 0)) != -1) {
 		switch (optcase) {
 
@@ -1855,7 +1861,7 @@ main(int32_t argc, char **argv)
 	// Reset to optind (internal variable)
 	// to parse all options again
 	optind = 0;
-	while ((optcase = getopt_long(argc, argv, "h:p:A:U:P::n:d:i:t:vm:B:s:urgN:RILFwVZ",
+	while ((optcase = getopt_long(argc, argv, "h:Sp:A:U:P::n:d:i:t:vm:B:s:urgN:RILFwVZ",
 			options, 0)) != -1) {
 		switch (optcase) {
 		case 'h':
@@ -1963,6 +1969,10 @@ main(int32_t argc, char **argv)
 			conf.wait = true;
 			break;
 
+		case 'S':
+			conf.use_services_alternate = true;
+			break;
+
 		case TLS_OPT_ENABLE:
 			conf.tls.enable = true;
 			break;
@@ -2059,6 +2069,7 @@ main(int32_t argc, char **argv)
 	as_config as_conf;
 	as_config_init(&as_conf);
 	as_conf.conn_timeout_ms = TIMEOUT;
+	as_conf.use_services_alternate = conf.use_services_alternate;
 
 	if (!as_config_add_hosts(&as_conf, conf.host, (uint16_t)conf.port)) {
 		err("Invalid host(s) string %s", conf.host);
@@ -2498,6 +2509,7 @@ static void
 config_default(restore_config *conf)
 {
 	conf->host = DEFAULT_HOST;
+	conf->use_services_alternate = false;
 	conf->port = DEFAULT_PORT;
 	conf->user = NULL;
 	conf->auth_mode = NULL;

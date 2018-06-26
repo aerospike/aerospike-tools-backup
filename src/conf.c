@@ -626,6 +626,10 @@ config_backup(toml_table_t *conftab, backup_config *c, const char *instance,
 		} else if (! strcasecmp("no-udfs", name)) {
 			status = config_bool(curtab, name, (void*)&c->no_udfs);
 
+		} else if (! strcasecmp("services-alternate",  name)) {
+			status = config_bool(curtab, name,
+					(void*)&c->use_services_alternate);
+
 		} else {
 			fprintf(stderr, "Unknown parameter `%s` in `%s` section\n", name,
 					asbackup);
@@ -730,6 +734,9 @@ config_restore(toml_table_t *conftab, restore_config *c, const char *instance,
 		} else if (! strcasecmp("wait", name)) {
 			status = config_bool(curtab, name, (void*)&c->wait);
 
+		} else if (! strcasecmp("services-alternate",  name)) {
+			status = config_bool(curtab, name,
+					(void*)&c->use_services_alternate);
 
 		} else {
 			fprintf(stderr, "Unknown parameter `%s` in `%s` section\n", name,
