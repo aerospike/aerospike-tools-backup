@@ -1884,7 +1884,12 @@ main(int32_t argc, char **argv)
 		case 'P':
 			if (optarg) {
 				conf.password = optarg;
-			}	
+			} else {
+				// No password specified should
+				// force it to default password
+				// to trigger prompt.
+				conf.password = DEFAULTPASSWORD;
+			}
 			break;
 
 		case 'A':
@@ -2082,13 +2087,16 @@ main(int32_t argc, char **argv)
 		goto cleanup2;
 	}
 
+	if (conf.user) {
+		if (strcmp(conf.password, DEFAULTPASSWORD) == 0) {
+			conf.password = getpass("Enter Password: ");
+		}
 
-
-	if (conf.user && ! conf.password) {
-		conf.password = getpass("Enter Password: ");
+		if (! as_config_set_user(&as_conf, conf.user, conf.password)) {
+			printf("Invalid password for user name `%s`\n", conf.user);
+			goto cleanup2;
+		}
 	}
-
-	as_config_set_user(&as_conf, conf.user, conf.password);
 
 	memcpy(&as_conf.tls, &conf.tls, sizeof(as_config_tls));
 	memset(&conf.tls, 0, sizeof(conf.tls));
@@ -2512,6 +2520,7 @@ config_default(restore_config *conf)
 	conf->use_services_alternate = false;
 	conf->port = DEFAULT_PORT;
 	conf->user = NULL;
+	conf->password = DEFAULTPASSWORD;
 	conf->auth_mode = NULL;
 
 	conf->threads = DEFAULT_THREADS;

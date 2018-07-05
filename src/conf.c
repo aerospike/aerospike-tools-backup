@@ -55,6 +55,7 @@
 //=========================================================
 // Globals.
 //
+char *DEFAULTPASSWORD = "SomeDefaultRandomPassword";
 
 //=========================================================
 // Forward Declarations.
