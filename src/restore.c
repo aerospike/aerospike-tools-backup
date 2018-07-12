@@ -1590,6 +1590,11 @@ usage(const char *name)
 	fprintf(stderr, "                        host1\n");
 	fprintf(stderr, "                        host1:3000,host2:3000\n");
 	fprintf(stderr, "                        192.168.1.10:cert1:3000,192.168.1.20:cert2:3000\n");
+	fprintf(stderr, " --services-alternate\n");
+	fprintf(stderr, "                      Use to connect to alternate access address when the \n");
+	fprintf(stderr, "                      cluster's nodes publish IP addresses through access-address \n");
+	fprintf(stderr, "                      which are not accessible over WAN and alternate IP addresses \n");
+	fprintf(stderr, "                      accessible over WAN through alternate-access-address. Default: false.\n");
 	fprintf(stderr, " -p PORT, --port=PORT Server default port. Default: 3000\n");
 	fprintf(stderr, " -U USER, --user=USER User name used to authenticate with cluster. Default: none\n");
 	fprintf(stderr, " -P, --password\n");
@@ -1772,6 +1777,7 @@ main(int32_t argc, char **argv)
 		{ "indexes-last", no_argument, NULL, 'L' },
 		{ "no-udfs", no_argument, NULL, 'F' },
 		{ "wait", no_argument, NULL, 'w' },
+		{ "services-alternate", no_argument, NULL, 'S' },
 		{ NULL, 0, NULL, 0 }
 	};
 
@@ -1786,7 +1792,7 @@ main(int32_t argc, char **argv)
 	int32_t optcase;
 	uint64_t tmp;
 
-	while ((optcase = getopt_long(argc, argv, "h:p:A:U:P::n:d:i:t:vm:B:s:urgN:RILFwVZ",
+	while ((optcase = getopt_long(argc, argv, "h:Sp:A:U:P::n:d:i:t:vm:B:s:urgN:RILFwVZ",
 			options, 0)) != -1) {
 		switch (optcase) {
 			case 'V':
@@ -1811,7 +1817,7 @@ main(int32_t argc, char **argv)
 	// Reset to optind (internal variable)
 	// to parse all options again
 	optind = 0;
-	while ((optcase = getopt_long(argc, argv, "h:p:A:U:P::n:d:i:t:vm:B:s:urgN:RILFwVZ",
+	while ((optcase = getopt_long(argc, argv, "h:Sp:A:U:P::n:d:i:t:vm:B:s:urgN:RILFwVZ",
 			options, 0)) != -1) {
 		switch (optcase) {
 
@@ -1855,7 +1861,7 @@ main(int32_t argc, char **argv)
 	// Reset to optind (internal variable)
 	// to parse all options again
 	optind = 0;
-	while ((optcase = getopt_long(argc, argv, "h:p:A:U:P::n:d:i:t:vm:B:s:urgN:RILFwVZ",
+	while ((optcase = getopt_long(argc, argv, "h:Sp:A:U:P::n:d:i:t:vm:B:s:urgN:RILFwVZ",
 			options, 0)) != -1) {
 		switch (optcase) {
 		case 'h':
@@ -1878,7 +1884,12 @@ main(int32_t argc, char **argv)
 		case 'P':
 			if (optarg) {
 				conf.password = optarg;
-			}	
+			} else {
+				// No password specified should
+				// force it to default password
+				// to trigger prompt.
+				conf.password = DEFAULTPASSWORD;
+			}
 			break;
 
 		case 'A':
@@ -1961,6 +1972,10 @@ main(int32_t argc, char **argv)
 
 		case 'w':
 			conf.wait = true;
+			break;
+
+		case 'S':
+			conf.use_services_alternate = true;
 			break;
 
 		case TLS_OPT_ENABLE:
@@ -2059,6 +2074,7 @@ main(int32_t argc, char **argv)
 	as_config as_conf;
 	as_config_init(&as_conf);
 	as_conf.conn_timeout_ms = TIMEOUT;
+	as_conf.use_services_alternate = conf.use_services_alternate;
 
 	if (!as_config_add_hosts(&as_conf, conf.host, (uint16_t)conf.port)) {
 		err("Invalid host(s) string %s", conf.host);
@@ -2071,13 +2087,16 @@ main(int32_t argc, char **argv)
 		goto cleanup2;
 	}
 
+	if (conf.user) {
+		if (strcmp(conf.password, DEFAULTPASSWORD) == 0) {
+			conf.password = getpass("Enter Password: ");
+		}
 
-
-	if (conf.user && ! conf.password) {
-		conf.password = getpass("Enter Password: ");
+		if (! as_config_set_user(&as_conf, conf.user, conf.password)) {
+			printf("Invalid password for user name `%s`\n", conf.user);
+			goto cleanup2;
+		}
 	}
-
-	as_config_set_user(&as_conf, conf.user, conf.password);
 
 	memcpy(&as_conf.tls, &conf.tls, sizeof(as_config_tls));
 	memset(&conf.tls, 0, sizeof(conf.tls));
@@ -2498,8 +2517,10 @@ static void
 config_default(restore_config *conf)
 {
 	conf->host = DEFAULT_HOST;
+	conf->use_services_alternate = false;
 	conf->port = DEFAULT_PORT;
 	conf->user = NULL;
+	conf->password = DEFAULTPASSWORD;
 	conf->auth_mode = NULL;
 
 	conf->threads = DEFAULT_THREADS;

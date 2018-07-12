@@ -1479,22 +1479,26 @@ get_object_count(aerospike *as, const char *namespace, const char *set,
 static void
 show_estimate(FILE *mach_fd, uint64_t *samples, uint32_t n_samples, uint64_t rec_count_estimate)
 {
-	double exp_value = 0.0;
+	uint64_t upper = 0;
+	if (n_samples > 0) {
 
-	for (uint32_t i = 0; i < n_samples; ++i) {
-		exp_value += (double)samples[i];
+		double exp_value = 0.0;
+
+		for (uint32_t i = 0; i < n_samples; ++i) {
+			exp_value += (double)samples[i];
+		}
+
+		exp_value /= n_samples;
+		double stand_dev = 0.0;
+
+		for (uint32_t i = 0; i < n_samples; ++i) {
+			double diff = (double)samples[i] - exp_value;
+			stand_dev += diff * diff;
+		}
+
+		upper = (uint64_t)ceil(exp_value + 4.7 * stand_dev / sqrt(n_samples));
 	}
 
-	exp_value /= n_samples;
-	double stand_dev = 0.0;
-
-	for (uint32_t i = 0; i < n_samples; ++i) {
-		double diff = (double)samples[i] - exp_value;
-		stand_dev += diff * diff;
-	}
-
-	stand_dev = sqrt(stand_dev / n_samples);
-	uint64_t upper = (uint64_t)ceil(exp_value + 4.7 * stand_dev / sqrt(n_samples));
 	inf("Estimated overall record size is %" PRIu64 " byte(s)", upper);
 
 	if (mach_fd != NULL && (fprintf(mach_fd, "ESTIMATE:%" PRIu64 ":%" PRIu64 "\n",
@@ -1608,6 +1612,11 @@ usage(const char *name)
 	fprintf(stderr, "                        host1\n");
 	fprintf(stderr, "                        host1:3000,host2:3000\n");
 	fprintf(stderr, "                        192.168.1.10:cert1:3000,192.168.1.20:cert2:3000\n");
+	fprintf(stderr, " --services-alternate\n");
+	fprintf(stderr, "                      Use to connect to alternate access address when the \n");
+	fprintf(stderr, "                      cluster's nodes publish IP addresses through access-address \n");
+	fprintf(stderr, "                      which are not accessible over WAN and alternate IP addresses \n");
+	fprintf(stderr, "                      accessible over WAN through alternate-access-address. Default: false.\n");
 	fprintf(stderr, " -p PORT, --port=PORT Server default port. Default: 3000\n");
 	fprintf(stderr, " -U USER, --user=USER User name used to authenticate with cluster. Default: none\n");
 	fprintf(stderr, " -P, --password\n");
@@ -1803,6 +1812,7 @@ main(int32_t argc, char **argv)
 		{ "no-records", no_argument, NULL, 'R' },
 		{ "no-indexes", no_argument, NULL, 'I' },
 		{ "no-udfs", no_argument, NULL, 'u' },
+		{ "services-alternate", no_argument, NULL, 'S' },
 		{ "namespace", required_argument, NULL, 'n' },
 		{ "set", required_argument, NULL, 's' },
 		{ "directory", required_argument, NULL, 'd' },
@@ -1844,7 +1854,7 @@ main(int32_t argc, char **argv)
 
 	int32_t opt;
 	uint64_t tmp;
-	while ((opt = getopt_long(argc, argv, "h:p:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b",
+	while ((opt = getopt_long(argc, argv, "h:Sp:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b",
 					options, 0)) != -1) {
 
 		switch (opt) {
@@ -1868,7 +1878,7 @@ main(int32_t argc, char **argv)
 	// Reset to optind (internal variable)
 	// to parse all options again
 	optind = 0;
-	while ((opt = getopt_long(argc, argv, "h:p:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b",
+	while ((opt = getopt_long(argc, argv, "h:Sp:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b",
 			options, 0)) != -1) {
 		switch (opt) {
 
@@ -1912,7 +1922,7 @@ main(int32_t argc, char **argv)
 	// Reset to optind (internal variable)
 	// to parse all options again
 	optind = 0;
-	while ((opt = getopt_long(argc, argv, "h:p:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b:",
+	while ((opt = getopt_long(argc, argv, "h:Sp:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b:",
 			options, 0)) != -1) {
 		switch (opt) {
 		case 'h':
@@ -1935,7 +1945,12 @@ main(int32_t argc, char **argv)
 		case 'P':
 			if (optarg) {
 				conf.password = optarg;
-			}	
+			} else {
+				// No password specified should
+				// force it to default password
+				// to trigger prompt.
+				conf.password = DEFAULTPASSWORD;
+			}
 			break;
 
 		case 'A':
@@ -2050,6 +2065,10 @@ main(int32_t argc, char **argv)
 
 		case 'u':
 			conf.no_udfs = true;
+			break;
+
+		case 'S':
+			conf.use_services_alternate = true;
 			break;
 
 		case TLS_OPT_ENABLE:
@@ -2255,6 +2274,7 @@ main(int32_t argc, char **argv)
 	as_config as_conf;
 	as_config_init(&as_conf);
 	as_conf.conn_timeout_ms = TIMEOUT;
+	as_conf.use_services_alternate = conf.use_services_alternate;
 
 	if (! as_config_add_hosts(&as_conf, conf.host, (uint16_t)conf.port)) {
 		err("Invalid conf.host(s) string %s", conf.host);
@@ -2267,11 +2287,16 @@ main(int32_t argc, char **argv)
 		goto cleanup2;
 	}
 
-	if (conf.user && ! conf.password) {
-		conf.password = getpass("Enter Password: ");
-	}
+	if (conf.user) {
+		if (strcmp(conf.password, DEFAULTPASSWORD) == 0) {
+			conf.password = getpass("Enter Password: ");
+		}
 
-	as_config_set_user(&as_conf, conf.user, conf.password);
+		if (! as_config_set_user(&as_conf, conf.user, conf.password)) {
+			printf("Invalid password for user name `%s`\n", conf.user);
+			goto cleanup2;
+		}
+	}
 
 	memcpy(&as_conf.tls, &conf.tls, sizeof(as_config_tls));
 	memset(&conf.tls, 0, sizeof(conf.tls));
@@ -2540,8 +2565,10 @@ static void
 config_default(backup_config *conf)
 {
 	conf->host = NULL;
+	conf->use_services_alternate = false;
 	conf->port = -1;
 	conf->user = NULL;
+	conf->password = DEFAULTPASSWORD;
 	conf->auth_mode = NULL;
 
 	conf->remove_files = false;

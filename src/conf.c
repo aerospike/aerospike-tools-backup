@@ -55,6 +55,7 @@
 //=========================================================
 // Globals.
 //
+char *DEFAULTPASSWORD = "SomeDefaultRandomPassword";
 
 //=========================================================
 // Forward Declarations.
@@ -230,6 +231,10 @@ config_restore_cluster(toml_table_t *conftab, restore_config *c, const char *ins
 		if (! strcasecmp("host", name)) {
 			status = config_str(curtab, name, (void*)&c->host);
 
+		} else if (! strcasecmp("services-alternate",  name)) {
+			status = config_bool(curtab, name,
+					(void*)&c->use_services_alternate);
+
 		} else if (! strcasecmp("port", name)) {
 			// TODO make limits check for int for all int
 			status = config_int(curtab, name, (void*)&c->port);
@@ -315,6 +320,10 @@ config_backup_cluster(toml_table_t *conftab, backup_config *c, const char *insta
 
 		if (! strcasecmp("host", name)) {
 			status = config_str(curtab, name, (void*)&c->host);
+		
+		} else if (! strcasecmp("services-alternate",  name)) {
+			status = config_bool(curtab, name,
+					(void*)&c->use_services_alternate);
 
 		} else if (! strcasecmp("port", name)) {
 			// TODO make limits check for int for all int
@@ -729,7 +738,6 @@ config_restore(toml_table_t *conftab, restore_config *c, const char *instance,
 
 		} else if (! strcasecmp("wait", name)) {
 			status = config_bool(curtab, name, (void*)&c->wait);
-
 
 		} else {
 			fprintf(stderr, "Unknown parameter `%s` in `%s` section\n", name,

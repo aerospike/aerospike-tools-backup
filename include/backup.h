@@ -84,6 +84,7 @@ typedef struct {
 typedef struct {
 
 	char *host;
+	bool use_services_alternate;
 	int32_t port;
 	char *user;
 	char *password;
