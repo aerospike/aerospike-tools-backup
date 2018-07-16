@@ -903,8 +903,8 @@ get_info(aerospike *as, const char *value, const char *node_name, void *context,
 	}
 
 	if (info[0] == 0) {
-		err("Empty info string");
-		goto cleanup1;
+		// Empty result is a valid result
+		return true;
 	}
 
 	char *clone = safe_strdup(info);
