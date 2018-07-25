@@ -25,6 +25,7 @@
 #pragma once
 
 #include <shared.h>
+#include <utils.h>
 
 #define NUM_SAMPLES 10000                           ///< Number of samples to take for the record
                                                     ///  size estimate.
@@ -44,6 +45,17 @@
 ///
 typedef struct {
 	///
+	/// Writes a header in the backup file.
+	///
+	/// @param bytes    The number of bytes written to the backup file.
+	/// @param fd       The file descriptor of the backup file.
+	/// @param bin_list The list of bins to be dumped
+	///
+	/// @result         `true`, if successful.
+	///
+	bool (*put_header)(uint64_t *bytes, FILE *fd, as_vector* bin_list);
+
+	///
 	/// Writes a record to the backup file.
 	///
 	/// @param bytes    The number of bytes written to the backup file.
@@ -53,7 +65,7 @@ typedef struct {
 	///
 	/// @result         `true`, if successful.
 	///
-	bool (*put_record)(uint64_t *bytes, FILE *fd, bool compact, const as_record *rec);
+	bool (*put_record)(uint64_t *bytes, FILE *fd, bool compact, const as_record *rec, as_vector* bin_list);
 
 	///
 	/// Writes a UDF file to the backup file.
@@ -82,6 +94,8 @@ typedef struct {
 /// The global backup configuration and stats shared by all backup threads and the counter thread.
 ///
 typedef struct {
+	as_vector bins;
+	char* delimitor;
 
 	char *host;
 	int32_t port;

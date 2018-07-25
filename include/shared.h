@@ -46,6 +46,7 @@
 #include <aerospike/as_log_macros.h>
 #include <aerospike/as_nil.h>
 #include <aerospike/as_node.h>
+#include <aerospike/as_pair.h>
 #include <aerospike/as_policy.h>
 #include <aerospike/as_predexp.h>
 #include <aerospike/as_record.h>

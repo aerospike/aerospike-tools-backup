@@ -27,7 +27,9 @@
 #include <shared.h>
 #include <utils.h>
 
-bool text_put_header(uint64_t *bytes, FILE *fd, as_vector *bin_list);
-bool text_put_record(uint64_t *bytes, FILE *fd, bool compact, const as_record *rec, as_vector* bins);
-bool text_put_udf_file(uint64_t *bytes, FILE *fd, const as_udf_file *file);
-bool text_put_secondary_index(uint64_t *bytes, FILE *fd, const index_param *index);
+bool csv_set_delimitor(char *delimitor);
+bool csv_put_header(uint64_t *bytes, FILE *fd, as_vector *bin_list);
+bool csv_put_record(uint64_t *bytes, FILE *fd, bool compact, const as_record *rec, as_vector *bins);
+bool csv_put_udf_file(uint64_t *bytes, FILE *fd, const as_udf_file *file);
+bool csv_put_secondary_index(uint64_t *bytes, FILE *fd, const index_param *index);
+

@@ -341,8 +341,11 @@ text_output_value(uint64_t *bytes, FILE *fd, bool compact, const char *bin_name,
 /// See backup_encoder.put_record for details.
 ///
 bool
-text_put_record(uint64_t *bytes, FILE *fd, bool compact, const as_record *rec)
+text_put_record(uint64_t *bytes, FILE *fd, bool compact, const as_record *rec, as_vector *bins)
 {
+	// Supress Warning
+	bins = bins;
+
 	uint32_t enc_size = cf_b64_encoded_len(sizeof (as_digest_value)) + 1;
 	char *enc = alloca(enc_size);
 	cf_b64_encode(rec->key.digest.value, sizeof (as_digest_value), enc);
@@ -492,5 +495,15 @@ text_put_secondary_index(uint64_t *bytes, FILE *fd, const index_param *index)
 		return false;
 	}
 
+	return true;
+}
+
+bool
+text_put_header(uint64_t *bytes, FILE *fd, as_vector *bin_list)
+{
+	bytes = bytes;
+	fd = fd;
+	bin_list = bin_list;
+	// NOOP
 	return true;
 }
