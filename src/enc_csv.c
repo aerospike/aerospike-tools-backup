@@ -241,6 +241,7 @@ csv_put_bin(uint64_t *bytes, FILE *fd, char *userbinname, const as_record *rec)
 	if (! bin_present_in_data) {
 		csv_output_raw(bytes, fd, "");
 	} else {
+		fprintf_bytes(bytes, fd, "\"%s\":", userbinname);
 		if (! csv_output_value(bytes, fd, (as_val *)bin->valuep)) {
 			err("Error while writing record bin %s", bin->name);
 			return false;
@@ -266,6 +267,7 @@ csv_put_record(uint64_t *bytes, FILE *fd, bool compact, const as_record *rec, as
 {
 	// ignore compilor warning
 	compact = compact;
+	fprintf_bytes(bytes, fd, "{");
 
 	for (uint32_t j = 0; j < bin_list->size; ++j) {
 
@@ -279,6 +281,7 @@ csv_put_record(uint64_t *bytes, FILE *fd, bool compact, const as_record *rec, as
 			csv_output_raw(bytes, fd, sep);
 		}
 	}
+	fprintf_bytes(bytes, fd, "}");
 
 	csv_output_raw(bytes, fd, "\r\n");
 	return true;
@@ -297,6 +300,7 @@ csv_put_record(uint64_t *bytes, FILE *fd, bool compact, const as_record *rec, as
 bool
 csv_put_header(uint64_t *bytes, FILE *fd, as_vector *bin_list)
 {
+	return true;
 	for (uint32_t j = 0; j < bin_list->size; ++j) {
 
 		char *userbinname = as_vector_get_ptr(bin_list, j);
