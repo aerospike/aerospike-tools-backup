@@ -341,7 +341,7 @@ text_output_value(uint64_t *bytes, FILE *fd, bool compact, const char *bin_name,
 /// See backup_encoder.put_record for details.
 ///
 bool
-text_put_record(uint64_t *bytes, FILE *fd, bool compact, const as_record *rec, as_vector *bins)
+text_put_record(uint64_t *bytes, FILE *fd, bool compact, const as_record *rec, as_vector *bins, bool *is_first_rec)
 {
 	// Supress Warning
 	bins = bins;

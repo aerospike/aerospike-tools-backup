@@ -223,7 +223,7 @@ csv_output_value(uint64_t *bytes, FILE *fd, as_val *val)
 
 
 static bool
-csv_put_bin(uint64_t *bytes, FILE *fd, char *userbinname, const as_record *rec)
+csv_put_bin(uint64_t *bytes, FILE *fd, char *userbinname, const as_record *rec, bool *is_first)
 {
 	bool bin_present_in_data = false;
 	as_bin *bin = NULL;
@@ -241,6 +241,11 @@ csv_put_bin(uint64_t *bytes, FILE *fd, char *userbinname, const as_record *rec)
 	if (! bin_present_in_data) {
 		csv_output_raw(bytes, fd, "");
 	} else {
+		if (*is_first) {
+			*is_first = false;
+		} else {
+			csv_output_raw(bytes, fd, sep);
+		}
 		fprintf_bytes(bytes, fd, "\"%s\":", userbinname);
 		if (! csv_output_value(bytes, fd, (as_val *)bin->valuep)) {
 			err("Error while writing record bin %s", bin->name);
@@ -263,27 +268,35 @@ csv_set_delimitor(char *delimitor)
 /// See backup_encoder.put_record for details.
 ///
 bool
-csv_put_record(uint64_t *bytes, FILE *fd, bool compact, const as_record *rec, as_vector *bin_list)
+csv_put_record(uint64_t *bytes, FILE *fd, bool compact, const as_record *rec, as_vector *bin_list, bool *is_first_rec)
 {
 	// ignore compilor warning
 	compact = compact;
-	fprintf_bytes(bytes, fd, "{");
 
+	if (*is_first_rec) {
+		fprintf_bytes(bytes, fd, "[");
+		*is_first_rec = false;
+	} else {
+		csv_output_raw(bytes, fd, sep);
+		csv_output_raw(bytes, fd, "\r\n");
+	}
+
+	fprintf_bytes(bytes, fd, "{");
+	bool is_first_bin = true;
 	for (uint32_t j = 0; j < bin_list->size; ++j) {
 
 		char *userbinname = as_vector_get_ptr(bin_list, j);
 
-		if (! csv_put_bin(bytes, fd, userbinname, rec)) {
+		if (! csv_put_bin(bytes, fd, userbinname, rec, &is_first_bin)) {
 			return false;
 		}
 
-		if (j < bin_list->size - 1) {
-			csv_output_raw(bytes, fd, sep);
-		}
+//		if (j < bin_list->size - 1) {
+//			csv_output_raw(bytes, fd, sep);
+//		}
 	}
 	fprintf_bytes(bytes, fd, "}");
 
-	csv_output_raw(bytes, fd, "\r\n");
 	return true;
 }
 

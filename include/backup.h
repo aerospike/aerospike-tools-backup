@@ -65,7 +65,7 @@ typedef struct {
 	///
 	/// @result         `true`, if successful.
 	///
-	bool (*put_record)(uint64_t *bytes, FILE *fd, bool compact, const as_record *rec, as_vector* bin_list);
+	bool (*put_record)(uint64_t *bytes, FILE *fd, bool compact, const as_record *rec, as_vector* bin_list, bool* is_first_rec);
 
 	///
 	/// Writes a UDF file to the backup file.
@@ -196,4 +196,5 @@ typedef struct {
 	uint32_t *n_samples;                ///< The number of record size samples that fit into the
 	                                    ///  samples array. Copied from
 	                                    ///  backup_thread_args.n_samples.
+	bool is_first_rec;                  ///< true if first record for a backup file for that node.
 } per_node_context;

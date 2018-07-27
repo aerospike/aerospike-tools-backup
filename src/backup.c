@@ -166,7 +166,7 @@ close_file(FILE **fd, void **fd_buf)
 /// @param disk_space  An estimate of the required disk space for the backup file.
 /// @param fd          The file descriptor of the created backup file.
 /// @param fd_buf      The I/O buffer allocated for the file descriptor.
-///  @param is_dsv      true if it file is for dsv dump
+/// @param is_dsv      true if it file is for dsv dump
 ///
 /// @result            `true`, if successful.
 ///
@@ -230,7 +230,7 @@ open_file(uint64_t *bytes, const char *file_path, const char *ns, uint64_t disk_
 			close_file(fd, fd_buf);
 			return false;
 		}
-	}
+	} 
 
 	return true;
 }
@@ -245,6 +245,10 @@ open_file(uint64_t *bytes, const char *file_path, const char *ns, uint64_t disk_
 static bool
 close_dir_file(per_node_context *pnc)
 {
+	if (pnc->conf->delimitor) {
+		fprintf(pnc->fd, "]");
+	}
+
 	if (!close_file(&pnc->fd, &pnc->fd_buf)) {
 		return false;
 	}
@@ -364,6 +368,7 @@ scan_callback(const as_val *val, void *cont)
 			err("Error while opening new backup file");
 			return false;
 		}
+		pnc->is_first_rec = true;
 	}
 
 	// backing up to a single backup file: allow one thread at a time to write
@@ -378,7 +383,7 @@ scan_callback(const as_val *val, void *cont)
 	}
 
 	uint64_t bytes = 0;
-	bool ok = pnc->conf->encoder->put_record(&bytes, pnc->fd, pnc->conf->compact, rec, &pnc->conf->bins);
+	bool ok = pnc->conf->encoder->put_record(&bytes, pnc->fd, pnc->conf->compact, rec, &pnc->conf->bins, &pnc->is_first_rec);
 
 	if (pnc->conf->estimate) {
 		pnc->samples[*pnc->n_samples] = bytes;
@@ -703,6 +708,7 @@ backup_thread_func(void *cont)
 		pnc.rec_count_node = pnc.byte_count_node = 0;
 		pnc.samples = args.samples;
 		pnc.n_samples = args.n_samples;
+		pnc.is_first_rec = true;
 
 		inf("Starting backup for node %s", pnc.node_name);
 
