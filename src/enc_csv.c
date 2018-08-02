@@ -77,6 +77,7 @@ csv_output_map(uint64_t *bytes, FILE *fd, as_val *val)
 		delim = true;
 	}
 	fprintf_bytes(bytes, fd, "}");
+	as_iterator_destroy((as_iterator *)i);
 	return true;
 }
 
@@ -109,7 +110,7 @@ csv_output_list(uint64_t *bytes, FILE *fd, as_val *val)
 		delim = true;
 	}
 	fprintf_bytes(bytes, fd, "]");
-
+	as_iterator_destroy((as_iterator *)i);
 	return true;
 }
 
