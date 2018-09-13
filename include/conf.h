@@ -24,4 +24,6 @@
 bool config_from_files(void *c, const char* instance, const char* cmd_config_fname, bool is_backup);
 bool config_from_file(void *c, const char* instance, const char* fname, int level, bool is_backup);
 
+bool tls_read_password(char* value, char** ptr);
+
 extern char *DEFAULTPASSWORD;

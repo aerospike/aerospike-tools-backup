@@ -118,6 +118,7 @@ typedef struct {
 	bool unique;                    ///< Indicates that existing records shouldn't be touched.
 	bool replace;                   ///< Indicates that existing records should be replaced instead
 	                                ///  of updated.
+	bool ignore_rec_error;          ///< Ignore record specific errors.
 	bool no_generation;             ///< Indicates that the generation count of existing records
 	                                ///  should be ignored.
 	uint64_t bandwidth;             ///< The B/s cap for throttling.
@@ -133,6 +134,9 @@ typedef struct {
 	cf_atomic64 skipped_records;    ///< The number of records dropped because they didn't contain
 	                                ///  any of the selected bins or didn't belong to any of the the
 	                                ///  selected sets.
+	cf_atomic64 ignored_records;    ///< The number of records ignored because of record level 
+	                                ///  permanent error while restoring. e.g RECORD_TOO_BIG
+	                                ///  Enabled or disabled using --ignore-record-error flag.
 	cf_atomic64 inserted_records;   ///< The number of successfully restored records.
 	cf_atomic64 existed_records;    ///< The number of records dropped because they already existed
 	                                ///  in the database.

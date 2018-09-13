@@ -30,7 +30,7 @@
 #define STACK_BUF_SIZE (1024 * 16)          ///< The size limit for stack-allocated buffers.
 #define ETA_BUF_SIZE (4 + 3 + 3 + 3 + 1)    ///< The buffer size for pretty-printing an ETA.
 
-#define MAX_THREADS 100                     ///< The maximal supported number of threads.
+#define MAX_THREADS 4096                    ///< The maximal supported number of threads.
 
 ///
 /// Allocates a buffer. Buffers smaller than @ref STACK_BUF_SIZE are allocated on the stack.

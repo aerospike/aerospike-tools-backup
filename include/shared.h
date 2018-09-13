@@ -157,18 +157,19 @@ typedef struct {
 /// Identifies the TLS client command line options.
 ///
 typedef enum {
-	TLS_OPT_ENABLE = 1000,      ///< The `--tlsEnable` option.
-	TLS_OPT_ENCRYPT_ONLY,       ///< The `--tlsEncryptOnly` option.
-	TLS_OPT_CA_FILE,            ///< The `--tlsCaFile` option.
-	TLS_OPT_CA_PATH,            ///< The `--tlsCaPath` option.
-	TLS_OPT_PROTOCOLS,          ///< The `--tlsProtocols` option.
-	TLS_OPT_CIPHER_SUITE,       ///< The `--tlsCipherSuite` option.
-	TLS_OPT_CRL_CHECK,          ///< The `--tlsCrlCheck` option.
-	TLS_OPT_CRL_CHECK_ALL,      ///< The `--tlsCrlCheckAll` option.
-	TLS_OPT_CERT_BLACK_LIST,    ///< The `--tlsCertBlackList` option.
+	TLS_OPT_ENABLE = 1000,      ///< The `--tls-enable` option.
+	TLS_OPT_ENCRYPT_ONLY,       ///< The `--tls-encrypt-only` option.
+	TLS_OPT_CA_FILE,            ///< The `--tls-cafile` option.
+	TLS_OPT_CA_PATH,            ///< The `--tls-capath` option.
+	TLS_OPT_PROTOCOLS,          ///< The `--tls-protocols` option.
+	TLS_OPT_CIPHER_SUITE,       ///< The `--tls-cipher-suite` option.
+	TLS_OPT_CRL_CHECK,          ///< The `--tls-crl-check` option.
+	TLS_OPT_CRL_CHECK_ALL,      ///< The `--tls-crl-checkall` option.
+	TLS_OPT_CERT_BLACK_LIST,    ///< The `--tls-cert-blacklist` option.
 	TLS_OPT_LOG_SESSION_INFO,   ///< The `--tlsLogSessionInfo` option.
-	TLS_OPT_KEY_FILE,           ///< The `--tlsKeyFile` option.
-	TLS_OPT_CERT_FILE           ///< The `--tlsCertFile` option.
+	TLS_OPT_KEY_FILE,           ///< The `--tls-keyfile` option.
+	TLS_OPT_KEY_FILE_PASSWORD,  ///< The `--tls-keyfile-password` option.
+	TLS_OPT_CERT_FILE           ///< The `--tls-certfile` option.
 } tls_opt;
 
 ///

@@ -192,7 +192,7 @@ The header line is always followed by zero or more lines that contain meta infor
 
   * The second line marks this backup file as the first in a set of backup files. We discussed above what exactly this means and why it is important.
 
-We also introduced a new notation, `escape(...)`. Technically, a namespace identifier can contain space characters or line feeds. As the backup file format uses spaces and line feeds as token separators, they need to be escaped when they appear inside a token. We escape a token by adding a backslash ("\") character before any spaces, line feeds, and backslashes in the token. And that's what `escape(...)` means.
+We also introduced a new notation, `escape(...)`. Technically, a namespace identifier can contain space characters or line feeds. As the backup file format uses spaces and line feeds as token separators, they need to be escaped when they appear inside a token. We escape a token by adding a backslash ("\\") character before any spaces, line feeds, and backslashes in the token. And that's what `escape(...)` means.
 
 Escaping naively works on bytes. It thus works without having to know about character encodings. If we have a UTF-8 string that contains a byte with value 32, this byte will be escaped regardless of whether it is an actual space character or part of the encoding of a Unicode code point.
 

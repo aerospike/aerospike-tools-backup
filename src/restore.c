@@ -29,6 +29,8 @@ static pthread_cond_t limit_cond = PTHREAD_COND_INITIALIZER;    ///< Used by the
                                                                 ///  bandwidth or transactions to
                                                                 ///  the restore threads.
 
+static void print_stat(per_thread_context *, cf_clock *, uint64_t *, cf_clock *, cf_clock *, cf_clock *);
+
 static void config_default(restore_config *conf);
 ///
 /// Closes a backup file and frees the associated I/O buffer.
@@ -475,6 +477,8 @@ restore_thread_func(void *cont)
 		policy.base.total_timeout = TIMEOUT;
 		policy.base.max_retries = 0;
 
+		bool flag_ignore_rec_error = false;
+
 		if (ptc.conf->replace) {
 			policy.exists = AS_POLICY_EXISTS_CREATE_OR_REPLACE;
 
@@ -489,6 +493,10 @@ restore_thread_func(void *cont)
 			}
 		} else if (verbose) {
 			ver("Existence policy is default");
+		}
+
+		if (ptc.conf->ignore_rec_error) {
+			flag_ignore_rec_error = true;
 		}
 
 		if (!ptc.conf->no_generation) {
@@ -576,7 +584,7 @@ restore_thread_func(void *cont)
 				if (expired) {
 					cf_atomic64_incr(&ptc.conf->expired_records);
 				} else if (rec.bins.size == 0 || !check_set(rec.key.set, ptc.set_vec)) {
-					cf_atomic64_incr(&ptc.conf->skipped_records);
+					cf_atomic64_incr(&ptc.conf->ignored_records);
 				} else {
 					useconds_t backoff = INITIAL_BACKOFF * 1000;
 					int32_t tries;
@@ -591,85 +599,95 @@ restore_thread_func(void *cont)
 						cf_clock now = verbose ? cf_getus() : 0;
 						cf_clock store_time = now - store_start;
 
-						if (put == AEROSPIKE_ERR_RECORD_GENERATION) {
-							cf_atomic64_incr(&ptc.conf->fresher_records);
-							break;
-						}
+						bool do_retry = false;
 
-						if (put == AEROSPIKE_ERR_RECORD_EXISTS && ptc.conf->unique) {
-							cf_atomic64_incr(&ptc.conf->existed_records);
-							break;
-						}
-
-						if (put == AEROSPIKE_OK) {
-							cf_atomic64_incr(&ptc.conf->inserted_records);
-
-							if (!verbose) {
+						switch (put) {
+							// System level permanent errors. No point in 
+							// continuing. Fail immediately. The list
+							// is by no means complete, all missed cases would
+							// fall into default and go through n_retries cycle
+							// and eventually fail.
+							case AEROSPIKE_ERR_SERVER_FULL:
+							case AEROSPIKE_ROLE_VIOLATION:
+								err("Error while storing record - code %d: %s at %s:%d",
+										ae.code, ae.message, ae.file, ae.line);
+								stop = true;
 								break;
-							}
 
-							ptc.read_time += read_time;
-							ptc.store_time += store_time;
-							ptc.read_ema = (99 * ptc.read_ema + 1 * (uint32_t)read_time) / 100;
-							ptc.store_ema = (99 * ptc.store_ema + 1 * (uint32_t)store_time) / 100;
+							// Record specific error either ignored or restore
+							// is aborted. retry is meaningless
+							case AEROSPIKE_ERR_RECORD_TOO_BIG:
+							case AEROSPIKE_ERR_RECORD_KEY_MISMATCH:
+							case AEROSPIKE_ERR_BIN_NAME:
+							case AEROSPIKE_ERR_ALWAYS_FORBIDDEN:
+								if (verbose) {
+									ver("Error while storing record - code %d: %s at %s:%d",
+											ae.code, ae.message, ae.file, ae.line);
+								}
 
-							++ptc.stat_records;
-
-							uint32_t time_diff = (uint32_t)((now - prev_log) / 1000);
-
-							if (time_diff < STAT_INTERVAL * 1000) {
+								if (! flag_ignore_rec_error) {
+									stop = true;
+									err("Error while storing record - code %d: %s at %s:%d", ae.code, ae.message, ae.file, ae.line);
+									err("Encountered error while restoring. Skipping retries and aborting!!");
+								}
+								cf_atomic64_incr(&ptc.conf->ignored_records);
 								break;
-							}
 
-							uint32_t rec_diff = (uint32_t)(ptc.stat_records - prev_records);
+							// Conditional error based on input config. No
+							// retries.
+							case AEROSPIKE_ERR_RECORD_GENERATION:
+								cf_atomic64_incr(&ptc.conf->fresher_records);
+								break;
 
-							ver("%" PRIu64 " per-thread record(s) (%u rec/s), "
-									"read latency: %u (%u) us, store latency: %u (%u) us",
-									ptc.stat_records,
-									prev_records > 0 ? rec_diff * 1000 / time_diff : 1,
-									(uint32_t)(ptc.read_time / ptc.stat_records), ptc.read_ema,
-									(uint32_t)(ptc.store_time / ptc.stat_records), ptc.store_ema);
+							case AEROSPIKE_ERR_RECORD_EXISTS:
+								cf_atomic64_incr(&ptc.conf->existed_records);
+								break;
 
-							prev_log = now;
-							prev_records = ptc.stat_records;
+							case AEROSPIKE_OK:
+								if (verbose) {
+									print_stat(&ptc, &prev_log, &prev_records,
+											&now, &store_time, &read_time);
+								}
+								cf_atomic64_incr(&ptc.conf->inserted_records);
+								break;
+
+							// All other cases attempt retry.
+							default: 
+
+								if (tries == MAX_TRIES - 1) {
+									err("Error while storing record - code %d: %s at %s:%d",
+											ae.code, ae.message, ae.file, ae.line);
+									err("Encountered too many errors while restoring. Aborting!!");
+									stop = true;
+									break;
+								}
+
+								do_retry = true;
+
+								if (verbose) {
+									ver("Error while storing record - code %d: %s at %s:%d",
+											ae.code, ae.message, ae.file,
+											ae.line);
+								}
+
+								
+								// DEVICE_OVERLOAD error always retry with
+								// backoff and sleep.
+								if (put == AEROSPIKE_ERR_DEVICE_OVERLOAD) {
+									usleep(backoff);
+									backoff *= 2;
+									cf_atomic64_incr(&ptc.conf->backoff_count);
+								} else {
+									backoff = INITIAL_BACKOFF * 1000;
+									sleep(1);
+								} 
+								break;
+
+						}
+
+						if (! do_retry) {
 							break;
 						}
-
-						if (put == AEROSPIKE_ERR_DEVICE_OVERLOAD) {
-							cf_atomic64_incr(&ptc.conf->backoff_count);
-
-							if (tries < MAX_TRIES - 1) {
-								usleep(backoff);
-								backoff *= 2;
-								continue;
-							}
-						} else {
-							backoff = INITIAL_BACKOFF * 1000;
-						}
-
-						if (tries < MAX_TRIES - 1 && put != AEROSPIKE_ROLE_VIOLATION) {
-							if (verbose) {
-								ver("Error while storing record - code %d: %s at %s:%d", ae.code,
-										ae.message, ae.file, ae.line);
-							}
-
-						} else {
-							err("Error while storing record - code %d: %s at %s:%d", ae.code,
-									ae.message, ae.file, ae.line);
-
-						}
-
-						if (put == AEROSPIKE_ROLE_VIOLATION) {
-							stop = true;
-							break;
-						}
-
-						sleep(1);
-					}
-
-					if (tries == MAX_TRIES) {
-						err("Too many errors, giving up");
-						stop = true;
 					}
 				}
 
@@ -769,6 +787,7 @@ counter_thread_func(void *cont)
 
 		uint64_t expired_records = cf_atomic64_get(conf->expired_records);
 		uint64_t skipped_records = cf_atomic64_get(conf->skipped_records);
+		uint64_t ignored_records = cf_atomic64_get(conf->ignored_records);
 		uint64_t inserted_records = cf_atomic64_get(conf->inserted_records);
 		uint64_t existed_records = cf_atomic64_get(conf->existed_records);
 		uint64_t fresher_records = cf_atomic64_get(conf->fresher_records);
@@ -783,10 +802,12 @@ counter_thread_func(void *cont)
 					udf_count, index_count, now_records,
 					ms == 0 ? 0 : bytes * 1000 / 1024 / ms, ms == 0 ? 0 : records * 1000 / ms,
 					records == 0 ? 0 : bytes / records, backoff_count);
-			inf("Expired %" PRIu64 " : skipped %" PRIu64 " : inserted %" PRIu64 " "
-					": failed %" PRIu64 " (existed %" PRIu64 ", fresher %" PRIu64 ")",
-					expired_records, skipped_records, inserted_records,
-					existed_records + fresher_records, existed_records, fresher_records);
+			inf("Expired %" PRIu64 " : skipped %" PRIu64 " : err_ignored %" PRIu64 " "
+					": inserted %" PRIu64 ": failed %" PRIu64 " (existed %" PRIu64 " "
+					", fresher %" PRIu64 ")", expired_records, skipped_records,
+					ignored_records, inserted_records,
+					existed_records + fresher_records, existed_records,
+					fresher_records);
 
 			if (percent >= 0 && eta >= 0) {
 				inf("%d%% complete, ~%s remaining", percent, eta_buff);
@@ -820,9 +841,11 @@ counter_thread_func(void *cont)
 
 		if (last_iter) {
 			if (args->mach_fd != NULL && (fprintf(args->mach_fd,
-					"SUMMARY:%u:%u:%" PRIu64 ":%" PRIu64 ":%" PRIu64 ":%" PRIu64 ":%" PRIu64
-					":%" PRIu64 "\n", udf_count, index_count, now_records, expired_records,
-					skipped_records, inserted_records, existed_records, fresher_records) < 0 ||
+					"SUMMARY:%u:%u:%" PRIu64 ":%" PRIu64 ":%" PRIu64 ":%" PRIu64 " "
+					":%" PRIu64 ":%" PRIu64 ":%" PRIu64 "\n", udf_count,
+					index_count, now_records, expired_records, skipped_records,
+					ignored_records, inserted_records, existed_records,
+					fresher_records) < 0 ||
 					fflush(args->mach_fd) == EOF)) {
 				err_code("Error while writing machine-readable summary");
 			}
@@ -1627,6 +1650,15 @@ usage(const char *name)
 	fprintf(stderr, " --tls-keyfile=TLS_KEYFILE\n");
 	fprintf(stderr, "                      Path to the key for mutual authentication (if\n"
                     "                      Aerospike Cluster is supporting it).\n");
+	fprintf(stderr, " --tls-keyfile-password=TLS_KEYFILE_PASSWORD\n");
+	fprintf(stderr, "                      Password to load protected tls-keyfile.\n"
+                    "                      It can be one of the following:\n"
+                    "                      1) Environment varaible: 'env:<VAR>'\n"
+                    "                      2) File: 'file:<PATH>'\n"
+                    "                      3) String: 'PASSWORD'\n"
+                    "                      Default: none\n"
+                    "                      User will be prompted on command line if --tls-keyfile-password\n"
+                    "                      specified and no password is given.\n");
 	fprintf(stderr, " --tls-certfile=TLS_CERTFILE <path>\n");
 	fprintf(stderr, "                      Path to the chain file for mutual authentication (if\n"
                     "                      Aerospike Cluster is supporting it).\n");
@@ -1669,6 +1701,10 @@ usage(const char *name)
 	fprintf(stderr, "  -s, --set-list <set 1>[,<set 2>[,...]]\n");
 	fprintf(stderr, "                      Only restore the given sets from the backup.\n");
 	fprintf(stderr, "                      Default: restore all sets.\n");
+	fprintf(stderr, "  --ignore-record-error\n");
+	fprintf(stderr, "                      Ignore permanent record specific error. e.g AEROSPIKE_RECORD_TOO_BIG.\n");
+	fprintf(stderr, "                      By default such errors are not ignored and asrestore terminates.\n");
+	fprintf(stderr, "                      Optional: Use verbose mode to see errors in detail. \n");
 	fprintf(stderr, "  -u, --unique\n");
 	fprintf(stderr, "                      Skip records that already exist in the namespace;\n");
 	fprintf(stderr, "                      Don't touch them.\n");
@@ -1758,6 +1794,7 @@ main(int32_t argc, char **argv)
 		{ "tls-crl-check-all", no_argument, NULL, TLS_OPT_CRL_CHECK_ALL },
 		{ "tls-cert-blackList", required_argument, NULL, TLS_OPT_CERT_BLACK_LIST },
 		{ "tls-keyfile", required_argument, NULL, TLS_OPT_KEY_FILE },
+		{ "tls-keyfile-password", optional_argument, NULL, TLS_OPT_KEY_FILE_PASSWORD },
 		{ "tls-certfile", required_argument, NULL, TLS_OPT_CERT_FILE },
 
 		// asrestore section in config file
@@ -1769,6 +1806,7 @@ main(int32_t argc, char **argv)
 		{ "bin-list", required_argument, NULL, 'B' },
 		{ "set-list", required_argument, NULL, 's' },
 		{ "unique", no_argument, NULL, 'u' },
+		{ "ignore-record-error", no_argument, NULL, 'K'},
 		{ "replace", no_argument, NULL, 'r' },
 		{ "no-generation", no_argument, NULL, 'g' },
 		{ "nice", required_argument, NULL, 'N' },
@@ -1792,7 +1830,9 @@ main(int32_t argc, char **argv)
 	int32_t optcase;
 	uint64_t tmp;
 
-	while ((optcase = getopt_long(argc, argv, "h:Sp:A:U:P::n:d:i:t:vm:B:s:urgN:RILFwVZ",
+	// option string should start with '-' to avoid argv permutation
+	// we need same argv sequence in third check to support space separated optional argument value
+	while ((optcase = getopt_long(argc, argv, "-h:Sp:A:U:P::n:d:i:t:vm:B:s:urgN:RILFwVZ",
 			options, 0)) != -1) {
 		switch (optcase) {
 			case 'V':
@@ -1807,7 +1847,7 @@ main(int32_t argc, char **argv)
 		}
 	}
 
-	
+
 
 	char *config_fname = NULL;
 	bool read_conf_files = true;
@@ -1817,7 +1857,7 @@ main(int32_t argc, char **argv)
 	// Reset to optind (internal variable)
 	// to parse all options again
 	optind = 0;
-	while ((optcase = getopt_long(argc, argv, "h:Sp:A:U:P::n:d:i:t:vm:B:s:urgN:RILFwVZ",
+	while ((optcase = getopt_long(argc, argv, "-h:Sp:A:U:P::n:d:i:t:vm:B:s:urgN:RILFwVZ",
 			options, 0)) != -1) {
 		switch (optcase) {
 
@@ -1851,7 +1891,7 @@ main(int32_t argc, char **argv)
 				return false;
 			}
 		}
-	} else { 
+	} else {
 		if (read_only_conf_file) {
 			fprintf(stderr, "--no-config-file and only-config-file are mutually exclusive option. Please enable only one.\n");
 			return false;
@@ -1861,7 +1901,7 @@ main(int32_t argc, char **argv)
 	// Reset to optind (internal variable)
 	// to parse all options again
 	optind = 0;
-	while ((optcase = getopt_long(argc, argv, "h:Sp:A:U:P::n:d:i:t:vm:B:s:urgN:RILFwVZ",
+	while ((optcase = getopt_long(argc, argv, "h:Sp:A:U:P::n:d:i:t:vm:B:s:KurgN:RILFwVZ",
 			options, 0)) != -1) {
 		switch (optcase) {
 		case 'h':
@@ -1885,10 +1925,15 @@ main(int32_t argc, char **argv)
 			if (optarg) {
 				conf.password = optarg;
 			} else {
-				// No password specified should
-				// force it to default password
-				// to trigger prompt.
-				conf.password = DEFAULTPASSWORD;
+				if (optind < argc && NULL != argv[optind] && '-' != argv[optind][0] ) {
+					// space separated argument value
+					conf.password = argv[optind++];
+				} else {
+					// No password specified should
+					// force it to default password
+					// to trigger prompt.
+					conf.password = DEFAULTPASSWORD;
+				}
 			}
 			break;
 
@@ -1936,6 +1981,10 @@ main(int32_t argc, char **argv)
 
 		case 's':
 			conf.set_list = safe_strdup(optarg);
+			break;
+
+		case 'K':
+			conf.ignore_rec_error = true;
 			break;
 
 		case 'u':
@@ -2018,6 +2067,22 @@ main(int32_t argc, char **argv)
 			conf.tls.keyfile = safe_strdup(optarg);
 			break;
 
+		case TLS_OPT_KEY_FILE_PASSWORD:
+			if (optarg) {
+				conf.tls.keyfile_pw = safe_strdup(optarg);
+			} else {
+				if (optind < argc && NULL != argv[optind] && '-' != argv[optind][0] ) {
+					// space separated argument value
+					conf.tls.keyfile_pw = safe_strdup(argv[optind++]);
+				} else {
+					// No password specified should
+					// force it to default password
+					// to trigger prompt.
+					conf.tls.keyfile_pw = safe_strdup(DEFAULTPASSWORD);
+				}
+			}
+			break;
+
 		case TLS_OPT_CERT_FILE:
 			conf.tls.certfile = safe_strdup(optarg);
 			break;
@@ -2098,6 +2163,16 @@ main(int32_t argc, char **argv)
 		}
 	}
 
+	if (conf.tls.keyfile && conf.tls.keyfile_pw) {
+		if (strcmp(conf.tls.keyfile_pw, DEFAULTPASSWORD) == 0) {
+			conf.tls.keyfile_pw = getpass("Enter TLS-Keyfile Password: ");
+		}
+
+		if (!tls_read_password(conf.tls.keyfile_pw, &conf.tls.keyfile_pw)) {
+			goto cleanup2;
+		}
+	}
+
 	memcpy(&as_conf.tls, &conf.tls, sizeof(as_config_tls));
 	memset(&conf.tls, 0, sizeof(conf.tls));
 
@@ -2126,6 +2201,7 @@ main(int32_t argc, char **argv)
 	cf_atomic64_set(&conf.total_records, 0);
 	cf_atomic64_set(&conf.expired_records, 0);
 	cf_atomic64_set(&conf.skipped_records, 0);
+	cf_atomic64_set(&conf.ignored_records, 0);
 	cf_atomic64_set(&conf.inserted_records, 0);
 	cf_atomic64_set(&conf.existed_records, 0);
 	cf_atomic64_set(&conf.fresher_records, 0);
@@ -2482,27 +2558,31 @@ cleanup1:
 		cf_free(conf.tls.cafile);
 	}
 
-	if (conf.tls.cafile != NULL) {
+	if (conf.tls.capath != NULL) {
 		cf_free(conf.tls.capath);
 	}
 
-	if (conf.tls.cafile != NULL) {
+	if (conf.tls.protocols != NULL) {
 		cf_free(conf.tls.protocols);
 	}
 
-	if (conf.tls.cafile != NULL) {
+	if (conf.tls.cipher_suite != NULL) {
 		cf_free(conf.tls.cipher_suite);
 	}
 
-	if (conf.tls.cafile != NULL) {
+	if (conf.tls.cert_blacklist != NULL) {
 		cf_free(conf.tls.cert_blacklist);
 	}
 
-	if (conf.tls.cafile != NULL) {
+	if (conf.tls.keyfile != NULL) {
 		cf_free(conf.tls.keyfile);
 	}
 
-	if (conf.tls.cafile != NULL) {
+	if (conf.tls.keyfile_pw != NULL) {
+		cf_free(conf.tls.keyfile_pw);
+	}
+
+	if (conf.tls.certfile != NULL) {
 		cf_free(conf.tls.certfile);
 	}
 
@@ -2536,6 +2616,7 @@ config_default(restore_config *conf)
 	conf->machine = NULL;
 	conf->bin_list = NULL;
 	conf->set_list = NULL;
+	conf->ignore_rec_error = false;
 	conf->unique = false;
 	conf->replace = false;
 	conf->no_generation = false;
@@ -2543,3 +2624,33 @@ config_default(restore_config *conf)
 	conf->tps = 0;
 	memset(&conf->tls, 0, sizeof(as_config_tls));
 };
+
+static void
+print_stat(per_thread_context *ptc, cf_clock *prev_log, uint64_t *prev_records,	
+		cf_clock *now, cf_clock *store_time, cf_clock *read_time)
+{
+	ptc->read_time += *read_time;
+	ptc->store_time += *store_time;
+	ptc->read_ema = (99 * ptc->read_ema + 1 * (uint32_t)*read_time) / 100;
+	ptc->store_ema = (99 * ptc->store_ema + 1 * (uint32_t)*store_time) / 100;
+
+	++ptc->stat_records;
+
+	uint32_t time_diff = (uint32_t)((*now - *prev_log) / 1000);
+
+	if (time_diff < STAT_INTERVAL * 1000) {
+		return;
+	}
+
+	uint32_t rec_diff = (uint32_t)(ptc->stat_records - *prev_records);
+
+	ver("%" PRIu64 " per-thread record(s) (%u rec/s), "
+			"read latency: %u (%u) us, store latency: %u (%u) us",
+			ptc->stat_records,
+			*prev_records > 0 ? rec_diff * 1000 / time_diff : 1,
+			(uint32_t)(ptc->read_time / ptc->stat_records), ptc->read_ema,
+			(uint32_t)(ptc->store_time / ptc->stat_records), ptc->store_ema);
+
+	*prev_log = *now;
+	*prev_records = ptc->stat_records;
+}

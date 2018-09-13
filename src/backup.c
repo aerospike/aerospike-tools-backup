@@ -1649,6 +1649,15 @@ usage(const char *name)
 	fprintf(stderr, " --tls-keyfile=TLS_KEYFILE\n");
 	fprintf(stderr, "                      Path to the key for mutual authentication (if\n"
                     "                      Aerospike Cluster is supporting it).\n");
+	fprintf(stderr, " --tls-keyfile-password=TLS_KEYFILE_PASSWORD\n");
+	fprintf(stderr, "                      Password to load protected tls-keyfile.\n"
+                    "                      It can be one of the following:\n"
+                    "                      1) Environment varaible: 'env:<VAR>'\n"
+                    "                      2) File: 'file:<PATH>'\n"
+                    "                      3) String: 'PASSWORD'\n"
+                    "                      Default: none\n"
+                    "                      User will be prompted on command line if --tls-keyfile-password\n"
+                    "                      specified and no password is given.\n");
 	fprintf(stderr, " --tls-certfile=TLS_CERTFILE <path>\n");
 	fprintf(stderr, "                      Path to the chain file for mutual authentication (if\n"
                     "                      Aerospike Cluster is supporting it).\n");
@@ -1801,6 +1810,7 @@ main(int32_t argc, char **argv)
 		{ "tls-crl-check-all", no_argument, NULL, TLS_OPT_CRL_CHECK_ALL },
 		{ "tls-cert-blackList", required_argument, NULL, TLS_OPT_CERT_BLACK_LIST },
 		{ "tls-keyfile", required_argument, NULL, TLS_OPT_KEY_FILE },
+		{ "tls-keyfile-password", optional_argument, NULL, TLS_OPT_KEY_FILE_PASSWORD },
 		{ "tls-certfile", required_argument, NULL, TLS_OPT_CERT_FILE },
 
 		// asbackup section in config file
@@ -1854,7 +1864,10 @@ main(int32_t argc, char **argv)
 
 	int32_t opt;
 	uint64_t tmp;
-	while ((opt = getopt_long(argc, argv, "h:Sp:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b",
+
+	// option string should start with '-' to avoid argv permutation
+	// we need same argv sequence in third check to support space separated optional argument value
+	while ((opt = getopt_long(argc, argv, "-h:Sp:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b",
 					options, 0)) != -1) {
 
 		switch (opt) {
@@ -1878,7 +1891,7 @@ main(int32_t argc, char **argv)
 	// Reset to optind (internal variable)
 	// to parse all options again
 	optind = 0;
-	while ((opt = getopt_long(argc, argv, "h:Sp:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b",
+	while ((opt = getopt_long(argc, argv, "-h:Sp:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b",
 			options, 0)) != -1) {
 		switch (opt) {
 
@@ -1946,10 +1959,15 @@ main(int32_t argc, char **argv)
 			if (optarg) {
 				conf.password = optarg;
 			} else {
-				// No password specified should
-				// force it to default password
-				// to trigger prompt.
-				conf.password = DEFAULTPASSWORD;
+				if (optind < argc && NULL != argv[optind] && '-' != argv[optind][0] ) {
+					// space separated argument value
+					conf.password = argv[optind++];
+				} else {
+					// No password specified should
+					// force it to default password
+					// to trigger prompt.
+					conf.password = DEFAULTPASSWORD;
+				}
 			}
 			break;
 
@@ -2109,6 +2127,22 @@ main(int32_t argc, char **argv)
 
 		case TLS_OPT_KEY_FILE:
 			conf.tls.keyfile = safe_strdup(optarg);
+			break;
+
+		case TLS_OPT_KEY_FILE_PASSWORD:
+			if (optarg) {
+				conf.tls.keyfile_pw = safe_strdup(optarg);
+			} else {
+                                if (optind < argc && NULL != argv[optind] && '-' != argv[optind][0] ) {
+                                        // space separated argument value
+                                        conf.tls.keyfile_pw = safe_strdup(argv[optind++]);
+                                } else {
+					// No password specified should
+					// force it to default password
+					// to trigger prompt.
+					conf.tls.keyfile_pw = safe_strdup(DEFAULTPASSWORD);
+				}
+			}
 			break;
 
 		case TLS_OPT_CERT_FILE:
@@ -2294,6 +2328,16 @@ main(int32_t argc, char **argv)
 
 		if (! as_config_set_user(&as_conf, conf.user, conf.password)) {
 			printf("Invalid password for user name `%s`\n", conf.user);
+			goto cleanup2;
+		}
+	}
+
+	if (conf.tls.keyfile && conf.tls.keyfile_pw) {
+		if (strcmp(conf.tls.keyfile_pw, DEFAULTPASSWORD) == 0) {
+			conf.tls.keyfile_pw = getpass("Enter TLS-Keyfile Password: ");
+		}
+
+		if (!tls_read_password(conf.tls.keyfile_pw, &conf.tls.keyfile_pw)) {
 			goto cleanup2;
 		}
 	}
@@ -2528,27 +2572,31 @@ cleanup1:
 		cf_free(conf.tls.cafile);
 	}
 
-	if (conf.tls.cafile != NULL) {
+	if (conf.tls.capath != NULL) {
 		cf_free(conf.tls.capath);
 	}
 
-	if (conf.tls.cafile != NULL) {
+	if (conf.tls.protocols != NULL) {
 		cf_free(conf.tls.protocols);
 	}
 
-	if (conf.tls.cafile != NULL) {
+	if (conf.tls.cipher_suite != NULL) {
 		cf_free(conf.tls.cipher_suite);
 	}
 
-	if (conf.tls.cafile != NULL) {
+	if (conf.tls.cert_blacklist != NULL) {
 		cf_free(conf.tls.cert_blacklist);
 	}
 
-	if (conf.tls.cafile != NULL) {
+	if (conf.tls.keyfile != NULL) {
 		cf_free(conf.tls.keyfile);
 	}
 
-	if (conf.tls.cafile != NULL) {
+	if (conf.tls.keyfile_pw != NULL) {
+		cf_free(conf.tls.keyfile_pw);
+	}
+
+	if (conf.tls.certfile != NULL) {
 		cf_free(conf.tls.certfile);
 	}
 

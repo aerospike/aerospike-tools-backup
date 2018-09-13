@@ -76,6 +76,8 @@ static bool config_restore(toml_table_t *conftab, restore_config *c, const char 
 static bool config_include(toml_table_t *conftab, void *c, const char *instance, int level, bool is_backup);
 static bool config_from_dir(void *c, const char *instance, char *dirname, int level, bool is_backup);
 
+static bool password_env(const char *var, char **ptr);
+static bool password_file(const char *path, char **ptr);
 
 //=========================================================
 // Public API.
@@ -150,6 +152,20 @@ config_from_files(void *c, const char *instance,
 	return true;
 }
 
+bool
+tls_read_password(char *value, char **ptr)
+{
+	if (strncmp(value, "env:", 4) == 0) {
+		return password_env(value + 4, ptr);
+	}
+
+	if (strncmp(value, "file:", 5) == 0) {
+		return password_file(value + 5, ptr);
+	}
+
+	*ptr = value;
+	return true;
+}
 
 
 //=========================================================
@@ -266,6 +282,9 @@ config_restore_cluster(toml_table_t *conftab, restore_config *c, const char *ins
 		} else if (! strcasecmp("tls-keyfile", name)) {
 			status = config_str(curtab, name, (void*)&c->tls.keyfile);
 
+		} else if (! strcasecmp("tls-keyfile-password", name)) {
+			status = config_str(curtab, name, (void*)&c->tls.keyfile_pw);
+
 		} else if (! strcasecmp("tls-cafile", name)) {
 			status = config_str(curtab, name, (void*)&c->tls.cafile);
 
@@ -355,6 +374,9 @@ config_backup_cluster(toml_table_t *conftab, backup_config *c, const char *insta
 
 		} else if (! strcasecmp("tls-keyfile", name)) {
 			status = config_str(curtab, name, (void*)&c->tls.keyfile);
+
+		} else if (! strcasecmp("tls-keyfile-password", name)) {
+			status = config_str(curtab, name, (void*)&c->tls.keyfile_pw);
 
 		} else if (! strcasecmp("tls-cafile", name)) {
 			status = config_str(curtab, name, (void*)&c->tls.cafile);
@@ -674,7 +696,7 @@ config_restore(toml_table_t *conftab, restore_config *c, const char *instance,
 	const char *name;
 	const char *value;
 
-	int64_t i_val;
+	int64_t i_val = 0;
 
 	for (uint8_t k = 0; 0 != (name = toml_key_in(curtab, k)); k++) {
 
@@ -715,6 +737,9 @@ config_restore(toml_table_t *conftab, restore_config *c, const char *instance,
 		} else if (! strcasecmp("unique", name)) {
 			status = config_bool(curtab, name, (void*)&c->unique);
 
+		} else if (! strcasecmp("ignore-record-error", name)) {
+			status = config_bool(curtab, name, (void*)&c->ignore_rec_error);
+
 		} else if (! strcasecmp("replace", name)) {
 			status = config_bool(curtab, name, (void*)&c->replace);
 
@@ -751,5 +776,68 @@ config_restore(toml_table_t *conftab, restore_config *c, const char *instance,
 			return false;
 		}
 	}
+	return true;
+}
+
+static bool
+password_env(const char *var, char **ptr)
+{
+	char *pw = getenv(var);
+
+	if (pw == NULL) {
+		err("missing TLS key password environment variable %s\n", var);
+		return false;
+	}
+
+	if (pw[0] == 0) {
+		err("empty TLS key password environment variable %s\n", var);
+		return false;
+	}
+
+	*ptr = strdup(pw);
+	return true;
+}
+
+static bool
+password_file(const char *path, char **ptr)
+{
+	FILE *fh = fopen(path, "r");
+
+	if (fh == NULL) {
+		err("missing TLS key password file %s\n", path);
+		return false;
+	}
+
+	char pw[5000];
+	char *res = fgets(pw, sizeof(pw), fh);
+
+	fclose(fh);
+
+	if (res == NULL) {
+		err("error while reading TLS key password file %s\n", path);
+		return false;
+	}
+
+	int32_t pw_len;
+
+	for (pw_len = 0; pw[pw_len] != 0; pw_len++) {
+		if (pw[pw_len] == '\n' || pw[pw_len] == '\r') {
+			break;
+		}
+	}
+
+	if (pw_len == sizeof(pw) - 1) {
+		err("TLS key password in file %s too long\n", path);
+		return false;
+	}
+
+	pw[pw_len] = 0;
+
+	if (pw_len == 0) {
+		err("empty TLS key password file %s\n", path);
+		return false;
+	}
+
+	*ptr = strdup(pw);
 	return true;
 }
