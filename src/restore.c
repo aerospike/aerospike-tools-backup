@@ -1682,7 +1682,7 @@ usage(const char *name)
 
 	fprintf(stderr, "[asrestore]\n");
 	fprintf(stderr, "  -n, --namespace <namespace>\n");
-	fprintf(stderr, "                      The namespace to be backed up. Required.\n");
+	fprintf(stderr, "                      The namespace to restore. Required.\n");
 	fprintf(stderr, "  -d, --directory <directory>\n");
 	fprintf(stderr, "                      The directory that holds the backup files. Required, \n");
 	fprintf(stderr, "                      unless -i is used.\n");
