@@ -764,6 +764,14 @@ config_restore(toml_table_t *conftab, restore_config *c, const char *instance,
 		} else if (! strcasecmp("wait", name)) {
 			status = config_bool(curtab, name, (void*)&c->wait);
 
+		} else if (! strcasecmp("timeout", name)) {
+			status = config_int(curtab, name, (void*)&i_val);
+			if (i_val >= 0) {
+				c->timeout = (uint32_t)i_val;
+			} else {
+				status = false;
+			}
+
 		} else {
 			fprintf(stderr, "Unknown parameter `%s` in `%s` section\n", name,
 					asrestore);

@@ -1496,6 +1496,7 @@ show_estimate(FILE *mach_fd, uint64_t *samples, uint32_t n_samples, uint64_t rec
 			stand_dev += diff * diff;
 		}
 
+		stand_dev = sqrt(stand_dev / n_samples);
 		upper = (uint64_t)ceil(exp_value + 4.7 * stand_dev / sqrt(n_samples));
 	}
 

@@ -474,7 +474,7 @@ restore_thread_func(void *cont)
 
 		as_policy_write policy;
 		as_policy_write_init(&policy);
-		policy.base.total_timeout = TIMEOUT;
+		policy.base.total_timeout = ptc.conf->timeout;
 		policy.base.max_retries = 0;
 
 		bool flag_ignore_rec_error = false;
@@ -584,7 +584,7 @@ restore_thread_func(void *cont)
 				if (expired) {
 					cf_atomic64_incr(&ptc.conf->expired_records);
 				} else if (rec.bins.size == 0 || !check_set(rec.key.set, ptc.set_vec)) {
-					cf_atomic64_incr(&ptc.conf->ignored_records);
+					cf_atomic64_incr(&ptc.conf->skipped_records);
 				} else {
 					useconds_t backoff = INITIAL_BACKOFF * 1000;
 					int32_t tries;
@@ -1001,8 +1001,9 @@ compare_sets(const char *set1, const char *set2)
 ///
 /// Checks whether a secondary index exists in the cluster and matches the given spec.
 ///
-/// @param as     The Aerospike client.
-/// @param index  The secondary index to look for.
+/// @param as      The Aerospike client.
+/// @param index   The secondary index to look for.
+/// @param timeout The timeout for Aerospike command.
 ///
 /// @result       `INDEX_STATUS_ABSENT`, if the index does not exist.
 ///               `INDEX_STATUS_SAME`, if the index exists and matches the given spec.
@@ -1010,7 +1011,7 @@ compare_sets(const char *set1, const char *set2)
 ///               `INDEX_STATUS_INVALID` in case of an error.
 ///
 static index_status
-check_index(aerospike *as, index_param *index)
+check_index(aerospike *as, index_param *index, uint32_t timeout)
 {
 	if (verbose) {
 		ver("Checking index %s:%s:%s", index->ns, index->set, index->name);
@@ -1024,7 +1025,7 @@ check_index(aerospike *as, index_param *index)
 
 	as_policy_info policy;
 	as_policy_info_init(&policy);
-	policy.timeout = TIMEOUT;
+	policy.timeout = timeout;
 
 	char *resp = NULL;
 	as_error ae;
@@ -1163,12 +1164,13 @@ cleanup0:
 /// @param set_vec    The sets to be restored.
 /// @param count      The number of created secondary indexes.
 /// @param wait       Makes the function wait until each secondary index is fully built.
+/// @param timeout    The timeout for Aerospike command.
 ///
 /// @result           `true`, if successful.
 ///
 static bool
 restore_indexes(aerospike *as, as_vector *index_vec, as_vector *set_vec, volatile uint32_t *count,
-		bool wait)
+		bool wait, uint32_t timeout)
 {
 	inf("Restoring %d secondary index(es)", index_vec->size);
 	int32_t skipped = 0;
@@ -1240,10 +1242,10 @@ restore_indexes(aerospike *as, as_vector *index_vec, as_vector *set_vec, volatil
 
 		as_policy_info policy;
 		as_policy_info_init(&policy);
-		policy.timeout = TIMEOUT;
+		policy.timeout = timeout;
 		as_error ae;
 
-		index_status stat = check_index(as, index);
+		index_status stat = check_index(as, index, timeout);
 
 		if (stat == INDEX_STATUS_DIFFERENT) {
 			if (verbose) {
@@ -1260,7 +1262,7 @@ restore_indexes(aerospike *as, as_vector *index_vec, as_vector *set_vec, volatil
 			// doesn't necessarily mean that the index is gone.
 			for (int32_t tries = 0; tries < MAX_TRIES; ++tries) {
 				sleep(1);
-				stat = check_index(as, index);
+				stat = check_index(as, index, timeout);
 
 				if (stat != INDEX_STATUS_DIFFERENT) {
 					break;
@@ -1349,11 +1351,12 @@ restore_indexes(aerospike *as, as_vector *index_vec, as_vector *set_vec, volatil
 /// @param count    The number of created UDF files.
 /// @param wait     Makes the function wait until each UDF file is acknowledged by all cluster
 ///                 nodes.
+/// @param timeout  The timeout for Aerospike command.
 ///
 /// @result         `true`, if successful.
 ///
 static bool
-restore_udfs(aerospike *as, as_vector *udf_vec, volatile uint32_t *count, bool wait)
+restore_udfs(aerospike *as, as_vector *udf_vec, volatile uint32_t *count, bool wait, uint32_t timeout)
 {
 	inf("Restoring %d UDF file(s)", udf_vec->size);
 
@@ -1387,7 +1390,7 @@ restore_udfs(aerospike *as, as_vector *udf_vec, volatile uint32_t *count, bool w
 
 			as_policy_info policy;
 			as_policy_info_init(&policy);
-			policy.timeout = TIMEOUT;
+			policy.timeout = timeout;
 			as_bytes content;
 			as_bytes_init_wrap(&content, udf->data, udf->size, false);
 			as_error ae;
@@ -1729,6 +1732,8 @@ usage(const char *name)
 	fprintf(stderr, "  -w, --wait\n");
 	fprintf(stderr, "                      Wait for restored secondary indexes to finish building.\n");
 	fprintf(stderr, "                      Wait for restored UDFs to be distributed across the cluster.\n");
+	fprintf(stderr, " -T TIMEOUT, --timeout=TIMEOUT\n");
+	fprintf(stderr, "                      Set the timeout (ms) for commands. Default: 10000\n");
 
 	fprintf(stderr, "\n\n");
 	fprintf(stderr, "Default configuration files are read from the following files in the given order:\n");
@@ -1816,6 +1821,7 @@ main(int32_t argc, char **argv)
 		{ "no-udfs", no_argument, NULL, 'F' },
 		{ "wait", no_argument, NULL, 'w' },
 		{ "services-alternate", no_argument, NULL, 'S' },
+		{ "timeout", required_argument, 0, 'T' },
 		{ NULL, 0, NULL, 0 }
 	};
 
@@ -1832,7 +1838,7 @@ main(int32_t argc, char **argv)
 
 	// option string should start with '-' to avoid argv permutation
 	// we need same argv sequence in third check to support space separated optional argument value
-	while ((optcase = getopt_long(argc, argv, "-h:Sp:A:U:P::n:d:i:t:vm:B:s:urgN:RILFwVZ",
+	while ((optcase = getopt_long(argc, argv, "-h:Sp:A:U:P::n:d:i:t:vm:B:s:urgN:RILFwVZT:",
 			options, 0)) != -1) {
 		switch (optcase) {
 			case 'V':
@@ -1857,7 +1863,7 @@ main(int32_t argc, char **argv)
 	// Reset to optind (internal variable)
 	// to parse all options again
 	optind = 0;
-	while ((optcase = getopt_long(argc, argv, "-h:Sp:A:U:P::n:d:i:t:vm:B:s:urgN:RILFwVZ",
+	while ((optcase = getopt_long(argc, argv, "-h:Sp:A:U:P::n:d:i:t:vm:B:s:urgN:RILFwVZT:",
 			options, 0)) != -1) {
 		switch (optcase) {
 
@@ -1901,7 +1907,7 @@ main(int32_t argc, char **argv)
 	// Reset to optind (internal variable)
 	// to parse all options again
 	optind = 0;
-	while ((optcase = getopt_long(argc, argv, "h:Sp:A:U:P::n:d:i:t:vm:B:s:KurgN:RILFwVZ",
+	while ((optcase = getopt_long(argc, argv, "h:Sp:A:U:P::n:d:i:t:vm:B:s:KurgN:RILFwVZT:",
 			options, 0)) != -1) {
 		switch (optcase) {
 		case 'h':
@@ -2087,6 +2093,15 @@ main(int32_t argc, char **argv)
 			conf.tls.certfile = safe_strdup(optarg);
 			break;
 
+		case 'T':
+			if (!better_atoi(optarg, &tmp)) {
+				err("Invalid timeout value %s", optarg);
+				goto cleanup1;
+			}
+
+			conf.timeout = (uint32_t)tmp;
+			break;
+
 		case CONFIG_FILE_OPT_FILE:
 		case CONFIG_FILE_OPT_INSTANCE:
 		case CONFIG_FILE_OPT_NO_CONFIG_FILE:
@@ -2138,7 +2153,7 @@ main(int32_t argc, char **argv)
 
 	as_config as_conf;
 	as_config_init(&as_conf);
-	as_conf.conn_timeout_ms = TIMEOUT;
+	as_conf.conn_timeout_ms = conf.timeout;
 	as_conf.use_services_alternate = conf.use_services_alternate;
 
 	if (!as_config_add_hosts(&as_conf, conf.host, (uint16_t)conf.port)) {
@@ -2418,13 +2433,13 @@ main(int32_t argc, char **argv)
 		}
 	}
 
-	if (!conf.no_udfs && !restore_udfs(&as, &udf_vec, &conf.udf_count, conf.wait)) {
+	if (!conf.no_udfs && !restore_udfs(&as, &udf_vec, &conf.udf_count, conf.wait, conf.timeout)) {
 		err("Error while restoring UDFs to cluster");
 		goto cleanup8;
 	}
 
 	if (!conf.no_indexes && !conf.indexes_last &&
-			!restore_indexes(&as, &index_vec, &set_vec, &conf.index_count, conf.wait)) {
+			!restore_indexes(&as, &index_vec, &set_vec, &conf.index_count, conf.wait, conf.timeout)) {
 		err("Error while restoring secondary indexes to cluster");
 		goto cleanup8;
 	}
@@ -2477,7 +2492,7 @@ cleanup10:
 
 cleanup9:
 	if (res == EXIT_SUCCESS && !conf.no_indexes && conf.indexes_last &&
-			!restore_indexes(&as, &index_vec, &set_vec, &conf.index_count, conf.wait)) {
+			!restore_indexes(&as, &index_vec, &set_vec, &conf.index_count, conf.wait, conf.timeout)) {
 		err("Error while restoring secondary indexes to cluster");
 		res = EXIT_FAILURE;
 	}
@@ -2622,6 +2637,7 @@ config_default(restore_config *conf)
 	conf->no_generation = false;
 	conf->bandwidth = 0;
 	conf->tps = 0;
+	conf->timeout = TIMEOUT;
 	memset(&conf->tls, 0, sizeof(as_config_tls));
 };
 

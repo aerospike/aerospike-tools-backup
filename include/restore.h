@@ -102,6 +102,7 @@ typedef struct {
 	bool indexes_last;
 	bool no_udfs;
 	bool wait;
+	uint32_t timeout;               ///< timeout for Aerospike commands.
 
 	as_config_tls tls;
 
