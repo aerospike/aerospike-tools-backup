@@ -1058,8 +1058,8 @@ clean_directory(const char *dir_path, bool clear)
 }
 
 ///
-/// Parses a `host:port[,host:port[,...]]` string of (IP address, port) pairs into an array of
-/// node_spec.
+/// Parses a `host:port[,host:port[,...]]` string of (IP address, port) or `host:tls_name:port[,host:tls_name:port[,...]]` string of (IP address, tls_name, port) pairs into an
+/// array of node_spec. tls_name being optional.
 ///
 /// @param node_list     The string to be parsed.
 /// @param node_specs    The created array of node_spec.
@@ -1092,6 +1092,9 @@ parse_node_list(char *node_list, node_spec **node_specs, uint32_t *n_node_specs)
 
 	*n_node_specs = node_vec.size;
 	*node_specs = safe_malloc(sizeof (node_spec) * node_vec.size);
+	for (uint32_t i = 0; i < *n_node_specs; i++) {
+		(*node_specs)[i].tls_name_str = NULL;
+	}
 
 	for (uint32_t i = 0; i < node_vec.size; ++i) {
 		char *node_str = as_vector_get_ptr(&node_vec, i);
@@ -1150,6 +1153,26 @@ parse_node_list(char *node_list, node_spec **node_specs, uint32_t *n_node_specs)
 		}
 
 		uint64_t tmp;
+		
+		if (family == AF_INET6) {
+			length = length + 1;
+		}
+
+		char *new_colon;
+		new_colon = strchr(node_str + length + 1, ':');
+
+		if (new_colon != NULL) {
+			node_str = node_str + length + 1;
+			length = (size_t)(new_colon - node_str);
+			char tls_name[length + 1];
+			memcpy(tls_name, node_str, length);
+			tls_name[length] = '\0';
+
+			(*node_specs)[i].tls_name_str = safe_malloc(sizeof(char) * (length + 1));
+			memcpy((*node_specs)[i].tls_name_str, tls_name, length + 1);
+
+			colon = new_colon;
+		}
 
 		if (!better_atoi(colon + 1, &tmp) || tmp < 1 || tmp > 65535) {
 			err("Invalid node list %s (invalid port value %s)", clone, colon + 1);
@@ -1166,6 +1189,10 @@ parse_node_list(char *node_list, node_spec **node_specs, uint32_t *n_node_specs)
 	goto cleanup1;
 
 cleanup2:
+	for (uint32_t i = 0; i < *n_node_specs; i++) {
+		cf_free((*node_specs)[i].tls_name_str);
+		(*node_specs)[i].tls_name_str = NULL;
+	}
 	cf_free(*node_specs);
 	*node_specs = NULL;
 	*n_node_specs = 0;
@@ -1712,7 +1739,8 @@ usage(const char *name)
 	fprintf(stderr, "                      Default: include all bins.\n");
 	fprintf(stderr, "  -w, --parallel <# nodes>\n");
 	fprintf(stderr, "                      Maximal number of nodes backed up in parallel. Default: 10.\n");
-	fprintf(stderr, "  -l, --node-list <IP addr 1>:<port 1>[,<IP addr 2>:<port 2>[,...]]\n");
+	fprintf(stderr, "  -l, --node-list     <IP addr 1>:<port 1>[,<IP addr 2>:<port 2>[,...]]\n");
+	fprintf(stderr, "                      <IP addr 1>:<TLS_NAME 1>:<port 1>[,<IP addr 2>:<TLS_NAME 2>:<port 2>[,...]]\n");
 	fprintf(stderr, "                      Backup the given cluster nodes only. Default: backup the \n");
 	fprintf(stderr, "                      whole cluster.\n");
 	fprintf(stderr, "  -%%, --percent <percentage>\n");
@@ -2236,6 +2264,22 @@ main(int32_t argc, char **argv)
 
 		conf.host = node_specs[0].addr_string;
 		conf.port = ntohs(node_specs[0].port);
+		
+		if (node_specs[0].family == AF_INET6) {
+			char *dup;
+			sprintf(conf.host, "%s%s%s", "[", (dup = strdup(conf.host)), "]");
+			free(dup);
+		}
+
+		if (node_specs[0].tls_name_str != NULL && strcmp(node_specs[0].tls_name_str, "")) {
+			strcat(conf.host, ":");
+			strcat(conf.host, node_specs[0].tls_name_str);
+
+			for (uint32_t i = 0; i < n_node_specs; i++) {
+				cf_free(node_specs[i].tls_name_str);
+				node_specs[i].tls_name_str = NULL;
+			}
+		}
 	}
 
 	signal(SIGINT, sig_hand);

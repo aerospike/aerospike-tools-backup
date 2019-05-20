@@ -95,6 +95,7 @@ typedef struct {
 		struct in6_addr v6;
 	} ver;
 	in_port_t port;                   ///< The port in network byte order.
+	char *tls_name_str;		  ///< TLS_NAME for server node.
 } node_spec;
 
 ///
