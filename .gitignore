@@ -1,2 +1,4 @@
 bin
 obj
+src/toml/libtoml.a
+src/toml/toml.o

@@ -1725,6 +1725,10 @@ usage(const char *name)
 	fprintf(stderr, "  -f, --priority <priority>\n");
 	fprintf(stderr, "                      The scan priority. 0 (auto), 1 (low), 2 (medium), 3 (high).\n");
 	fprintf(stderr, "                      Default: 0.\n");
+	fprintf(stderr, "  -L, --records-per-second <rps>\n");
+	fprintf(stderr, "                      Limit returned records per second (rps) rate for each server.\n");
+	fprintf(stderr, "                      Do not apply rps limit if records-per-second is zero.\n");
+	fprintf(stderr, "                      Default: 0.\n");
 	fprintf(stderr, "  -c, --no-cluster-change\n");
 	fprintf(stderr, "                      Abort, if the cluster configuration changes during backup.\n");
 	fprintf(stderr, "  -v, --verbose\n");
@@ -1759,12 +1763,6 @@ usage(const char *name)
 	fprintf(stderr, "                      Don't backup any indexes.\n");
 	fprintf(stderr, "  -u, --no-udfs\n");
 	fprintf(stderr, "                      Don't backup any UDFs.\n");
-	fprintf(stderr, "  -R, --no-records\n");
-	fprintf(stderr, "                      Don't backup any records.\n\n");
-	fprintf(stderr, "  -I, --no-indexes\n");
-	fprintf(stderr, "                      Don't backup any indexes.\n\n");
-	fprintf(stderr, "  -u, --no-udfs\n");
-	fprintf(stderr, "                      Don't backup any UDFs.\n\n");
 	fprintf(stderr, "  -a, --modified-after <YYYY-MM-DD_HH:MM:SS>\n");
 	fprintf(stderr, "                      Perform an incremental backup; only include records \n");
 	fprintf(stderr, "                      that changed after the given date and time. The system's \n");
@@ -1862,6 +1860,7 @@ main(int32_t argc, char **argv)
 		{ "modified-after", required_argument, NULL, 'a' },
 		{ "modified-before", required_argument, NULL, 'b' },
 		{ "priority", required_argument, NULL, 'f' },
+		{ "records-per-second", required_argument, NULL, 'L' },
 		{ "percent", required_argument, NULL, '%' },
 		{ "machine", required_argument, NULL, 'm' },
 		{ "estimate", no_argument, NULL, 'e' },
@@ -1896,7 +1895,7 @@ main(int32_t argc, char **argv)
 
 	// option string should start with '-' to avoid argv permutation
 	// we need same argv sequence in third check to support space separated optional argument value
-	while ((opt = getopt_long(argc, argv, "-h:Sp:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b",
+	while ((opt = getopt_long(argc, argv, "-h:Sp:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b:L:",
 					options, 0)) != -1) {
 
 		switch (opt) {
@@ -1920,7 +1919,7 @@ main(int32_t argc, char **argv)
 	// Reset to optind (internal variable)
 	// to parse all options again
 	optind = 0;
-	while ((opt = getopt_long(argc, argv, "-h:Sp:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b",
+	while ((opt = getopt_long(argc, argv, "-h:Sp:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b:L:",
 			options, 0)) != -1) {
 		switch (opt) {
 
@@ -1964,7 +1963,7 @@ main(int32_t argc, char **argv)
 	// Reset to optind (internal variable)
 	// to parse all options again
 	optind = 0;
-	while ((opt = getopt_long(argc, argv, "h:Sp:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b:",
+	while ((opt = getopt_long(argc, argv, "h:Sp:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b:L:",
 			options, 0)) != -1) {
 		switch (opt) {
 		case 'h':
@@ -2040,6 +2039,15 @@ main(int32_t argc, char **argv)
 			}
 
 			scan.priority = (uint32_t)tmp;
+			break;
+
+		case 'L':
+			if (!better_atoi(optarg, &tmp) || tmp < 0) {
+				err("Invalid records-per-second value %s", optarg);
+				goto cleanup1;
+			}
+
+			policy.records_per_second = (uint32_t)tmp;
 			break;
 
 		case 'c':
