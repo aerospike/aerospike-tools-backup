@@ -52,7 +52,8 @@
 ///
 #define escape(_str) escape_space(_str, alloca(escape_space(_str, NULL).len)).str
 
-#define IP_ADDR_SIZE 46 ///< The maximal size of an IPv4 or IPv6 address string (including the
+#define IP_ADDR_SIZE 111 ///< The maximal size of an IPv4 or IPv6 address string +
+						///  maximum size of a X509 common name (including the
                         ///  terminating NUL).
 
 ///
