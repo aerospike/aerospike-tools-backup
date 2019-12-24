@@ -93,6 +93,7 @@ typedef struct {
 	char *node_list;
 	int64_t mod_after;
 	int64_t mod_before;
+    bool  ttl_zero;
 	
 	as_config_tls tls;
 

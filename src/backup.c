@@ -1772,7 +1772,9 @@ usage(const char *name)
 	fprintf(stderr, "  -b, --modified-before <YYYY-MM-DD_HH:MM:SS>\n");
 	fprintf(stderr, "                      Only include records that last changed before the given\n");
 	fprintf(stderr, "                      date and time. May combined with --modified-after to specify\n");
-	fprintf(stderr, "                      a range.\n\n");
+	fprintf(stderr, "                      a range.\n");
+	fprintf(stderr, "  -t, --no-ttl\n");
+	fprintf(stderr, "                      Only include records that have no ttl set (persistent records).\n\n");
 
 	fprintf(stderr, "\n\n");
 	fprintf(stderr, "Default configuration files are read from the following files in the given order:\n");
@@ -1859,6 +1861,7 @@ main(int32_t argc, char **argv)
 		{ "node-list", required_argument, NULL, 'l' },
 		{ "modified-after", required_argument, NULL, 'a' },
 		{ "modified-before", required_argument, NULL, 'b' },
+		{ "no-ttl", no_argument, NULL, 't' },
 		{ "priority", required_argument, NULL, 'f' },
 		{ "records-per-second", required_argument, NULL, 'L' },
 		{ "percent", required_argument, NULL, '%' },
@@ -1895,7 +1898,7 @@ main(int32_t argc, char **argv)
 
 	// option string should start with '-' to avoid argv permutation
 	// we need same argv sequence in third check to support space separated optional argument value
-	while ((opt = getopt_long(argc, argv, "-h:Sp:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b:L:",
+	while ((opt = getopt_long(argc, argv, "-h:Sp:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b:L:t",
 					options, 0)) != -1) {
 
 		switch (opt) {
@@ -1919,7 +1922,7 @@ main(int32_t argc, char **argv)
 	// Reset to optind (internal variable)
 	// to parse all options again
 	optind = 0;
-	while ((opt = getopt_long(argc, argv, "-h:Sp:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b:L:",
+	while ((opt = getopt_long(argc, argv, "-h:Sp:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b:L:t",
 			options, 0)) != -1) {
 		switch (opt) {
 
@@ -1963,7 +1966,7 @@ main(int32_t argc, char **argv)
 	// Reset to optind (internal variable)
 	// to parse all options again
 	optind = 0;
-	while ((opt = getopt_long(argc, argv, "h:Sp:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b:L:",
+	while ((opt = getopt_long(argc, argv, "h:Sp:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b:L:t",
 			options, 0)) != -1) {
 		switch (opt) {
 		case 'h':
@@ -2201,6 +2204,10 @@ main(int32_t argc, char **argv)
 			}
 
 			break;
+            
+        case 't':
+            conf.ttl_zero = true;
+            break;
 
 		case CONFIG_FILE_OPT_FILE:
 		case CONFIG_FILE_OPT_INSTANCE:
@@ -2295,14 +2302,33 @@ main(int32_t argc, char **argv)
 
 	const char *before;
 	const char *after;
+    const char *ttl_zero_msg;
 	char before_buff[100];
 	char after_buff[100];
 
-	if (conf.mod_before > 0 && conf.mod_after > 0) {
-		as_scan_predexp_inita(&scan, 7);
-	} else if (conf.mod_before > 0 || conf.mod_after > 0) {
-		as_scan_predexp_inita(&scan, 3);
-	}
+    uint16_t predexp_size = 0;
+    
+    if (conf.mod_before > 0)
+    {
+        predexp_size += 3;
+    }
+    
+    if (conf.mod_after > 0) 
+    {
+        predexp_size += 3;
+    }
+    
+    if (conf.ttl_zero) 
+    {
+        predexp_size += 3;
+    }
+    
+    predexp_size += (predexp_size / 3) - 1;
+
+    if (predexp_size > 0)
+    {
+        as_scan_predexp_inita(&scan, predexp_size);
+    }
 
 	if (conf.mod_before > 0) {
 		as_scan_predexp_add(&scan, as_predexp_rec_last_update());
@@ -2338,9 +2364,23 @@ main(int32_t argc, char **argv)
 		as_scan_predexp_add(&scan, as_predexp_and(2));
 	}
 
-	inf("Starting %d%% backup of %s (namespace: %s, set: %s, bins: %s, after: %s, before: %s) to %s",
+	if (conf.ttl_zero) {
+		as_scan_predexp_add(&scan, as_predexp_rec_void_time());
+		as_scan_predexp_add(&scan, as_predexp_integer_value(0));
+		as_scan_predexp_add(&scan, as_predexp_integer_equal());
+        
+        ttl_zero_msg = "true";
+	} else {
+		ttl_zero_msg = "false";
+	}
+
+	if (conf.ttl_zero && predexp_size > 3) {
+		as_scan_predexp_add(&scan, as_predexp_and(2));
+	}
+
+	inf("Starting %d%% backup of %s (namespace: %s, set: %s, bins: %s, after: %s, before: %s, no ttl only: %s) to %s",
 			scan.percent, conf.host, scan.ns, scan.set[0] == 0 ? "[all]" : scan.set,
-			conf.bin_list == NULL ? "[all]" : conf.bin_list, after, before,
+			conf.bin_list == NULL ? "[all]" : conf.bin_list, after, before, ttl_zero_msg,
 			conf.output_file != NULL ?
 					strcmp(conf.output_file, "-") == 0 ? "[stdout]" : conf.output_file :
 					conf.directory != NULL ?
@@ -2677,6 +2717,7 @@ config_default(backup_config *conf)
 	conf->node_list = NULL;
 	conf->mod_after = 0;
 	conf->mod_before = 0;
+    conf->ttl_zero = false;
 	conf->directory = NULL;
 	conf->output_file = NULL;
 	conf->compact = false;
