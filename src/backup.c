@@ -270,7 +270,7 @@ open_dir_file(per_node_context *pnc)
 	char file_path[PATH_MAX];
 
 	if ((size_t)snprintf(file_path, sizeof file_path, "%s/%s%s_%05d.asb", pnc->conf->directory, 
-			pnc->conf->prefix, pnc->node_name, pnc->file_count) >= sizeof file_path) {
+			pnc->conf->prefix == NULL ? "" : pnc->conf->prefix, pnc->node_name, pnc->file_count) >= sizeof file_path) {
 		err("Backup file path too long");
 		return false;
 	}
