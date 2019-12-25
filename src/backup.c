@@ -1773,7 +1773,7 @@ usage(const char *name)
 	fprintf(stderr, "                      Only include records that last changed before the given\n");
 	fprintf(stderr, "                      date and time. May combined with --modified-after to specify\n");
 	fprintf(stderr, "                      a range.\n");
-	fprintf(stderr, "  -t, --no-ttl\n");
+	fprintf(stderr, "  -t, --no-ttl-only\n");
 	fprintf(stderr, "                      Only include records that have no ttl set (persistent records).\n\n");
 
 	fprintf(stderr, "\n\n");
@@ -1861,7 +1861,7 @@ main(int32_t argc, char **argv)
 		{ "node-list", required_argument, NULL, 'l' },
 		{ "modified-after", required_argument, NULL, 'a' },
 		{ "modified-before", required_argument, NULL, 'b' },
-		{ "no-ttl", no_argument, NULL, 't' },
+		{ "no-ttl-only", no_argument, NULL, 't' },
 		{ "priority", required_argument, NULL, 'f' },
 		{ "records-per-second", required_argument, NULL, 'L' },
 		{ "percent", required_argument, NULL, '%' },
