@@ -269,8 +269,8 @@ open_dir_file(per_node_context *pnc)
 {
 	char file_path[PATH_MAX];
 
-	if ((size_t)snprintf(file_path, sizeof file_path, "%s/%s_%05d.asb", pnc->conf->directory,
-			pnc->node_name, pnc->file_count) >= sizeof file_path) {
+	if ((size_t)snprintf(file_path, sizeof file_path, "%s/%s%s_%05d.asb", pnc->conf->directory, 
+			pnc->conf->prefix, pnc->node_name, pnc->file_count) >= sizeof file_path) {
 		err("Backup file path too long");
 		return false;
 	}
@@ -1718,6 +1718,8 @@ usage(const char *name)
 	fprintf(stderr, "  -o, --output-file <file>\n");
 	fprintf(stderr, "                      Backup to a single backup file. Use - for stdout.\n");
 	fprintf(stderr, "                      Required, unless -d or -e is used.\n");
+	fprintf(stderr, "  -q, --output-file-prefix <prefix>\n");
+	fprintf(stderr, "                      When using directory parameter, set optional prefix to the name of the files.\n");
 	fprintf(stderr, "  -F, --file-limit\n");
 	fprintf(stderr, "                      Rotate backup files, when their size crosses the given\n");
 	fprintf(stderr, "                      value (in MiB) Only used when backing up to a directory.\n");
@@ -1856,6 +1858,7 @@ main(int32_t argc, char **argv)
 		{ "set", required_argument, NULL, 's' },
 		{ "directory", required_argument, NULL, 'd' },
 		{ "output-file", required_argument, NULL, 'o' },
+		{ "output-file-prefix", required_argument, NULL, 'q' },
 		{ "file-limit", required_argument, NULL, 'F' },
 		{ "remove-files", no_argument, NULL, 'r' },
 		{ "node-list", required_argument, NULL, 'l' },
@@ -1898,7 +1901,7 @@ main(int32_t argc, char **argv)
 
 	// option string should start with '-' to avoid argv permutation
 	// we need same argv sequence in third check to support space separated optional argument value
-	while ((opt = getopt_long(argc, argv, "-h:Sp:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b:L:t",
+	while ((opt = getopt_long(argc, argv, "-h:Sp:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b:L:tq:",
 					options, 0)) != -1) {
 
 		switch (opt) {
@@ -1922,7 +1925,7 @@ main(int32_t argc, char **argv)
 	// Reset to optind (internal variable)
 	// to parse all options again
 	optind = 0;
-	while ((opt = getopt_long(argc, argv, "-h:Sp:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b:L:t",
+	while ((opt = getopt_long(argc, argv, "-h:Sp:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b:L:tq:",
 			options, 0)) != -1) {
 		switch (opt) {
 
@@ -1966,7 +1969,7 @@ main(int32_t argc, char **argv)
 	// Reset to optind (internal variable)
 	// to parse all options again
 	optind = 0;
-	while ((opt = getopt_long(argc, argv, "h:Sp:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b:L:t",
+	while ((opt = getopt_long(argc, argv, "h:Sp:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b:L:tq:",
 			options, 0)) != -1) {
 		switch (opt) {
 		case 'h':
@@ -2016,6 +2019,10 @@ main(int32_t argc, char **argv)
 
 		case 'd':
 			conf.directory = optarg;
+			break;
+
+		case 'q':
+			conf.prefix = optarg;
 			break;
 
 		case 'o':
@@ -2720,6 +2727,7 @@ config_default(backup_config *conf)
     conf->ttl_zero = false;
 	conf->directory = NULL;
 	conf->output_file = NULL;
+	conf->prefix = NULL;
 	conf->compact = false;
 	conf->parallel = DEFAULT_PARALLEL;
 	conf->machine = NULL;

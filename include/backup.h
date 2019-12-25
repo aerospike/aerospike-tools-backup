@@ -104,6 +104,7 @@ typedef struct {
 	                                    ///  single file.
 	char *output_file;                  ///< The backup file. `NULL`, when backing up to a
 	                                    ///  directory.
+	char *prefix;                       ///< Prefix to the name of the files when using directory
 	bool compact;                       ///< Disables base-64 encoding for BLOB bin values.
 	int32_t parallel;                   ///< The maximal number of cluster nodes scanned in
 	                                    ///  parallel.
