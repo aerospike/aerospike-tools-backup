@@ -2022,7 +2022,7 @@ main(int32_t argc, char **argv)
 			break;
 
 		case 'q':
-			conf.prefix = optarg;
+			conf.prefix = strcat(optarg, "_");
 			break;
 
 		case 'o':
