@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2017 Aerospike, Inc.
+ * Copyright 2015-2020 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -1583,7 +1583,7 @@ print_version(void)
 	fprintf(stdout, "Aerospike Restore Utility\n");
 	fprintf(stdout, "Version %s\n", TOOL_VERSION);
 	fprintf(stdout, "C Client Version %s\n", aerospike_client_version);
-	fprintf(stdout, "Copyright 2015-2017 Aerospike. All rights reserved.\n");
+	fprintf(stdout, "Copyright 2015-2020 Aerospike. All rights reserved.\n");
 }
 
 ///
