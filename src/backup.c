@@ -1775,7 +1775,7 @@ usage(const char *name)
 	fprintf(stderr, "                      Only include records that last changed before the given\n");
 	fprintf(stderr, "                      date and time. May combined with --modified-after to specify\n");
 	fprintf(stderr, "                      a range.\n");
-	fprintf(stderr, "  -t, --no-ttl-only\n");
+	fprintf(stderr, "      --no-ttl-only\n");
 	fprintf(stderr, "                      Only include records that have no ttl set (persistent records).\n\n");
 
 	fprintf(stderr, "\n\n");
@@ -1864,7 +1864,7 @@ main(int32_t argc, char **argv)
 		{ "node-list", required_argument, NULL, 'l' },
 		{ "modified-after", required_argument, NULL, 'a' },
 		{ "modified-before", required_argument, NULL, 'b' },
-		{ "no-ttl-only", no_argument, NULL, 't' },
+		{ "no-ttl-only", no_argument, NULL, COMMAND_OPT_NO_TTL_ONLY },
 		{ "priority", required_argument, NULL, 'f' },
 		{ "records-per-second", required_argument, NULL, 'L' },
 		{ "percent", required_argument, NULL, '%' },
@@ -1901,7 +1901,7 @@ main(int32_t argc, char **argv)
 
 	// option string should start with '-' to avoid argv permutation
 	// we need same argv sequence in third check to support space separated optional argument value
-	while ((opt = getopt_long(argc, argv, "-h:Sp:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b:L:tq:",
+	while ((opt = getopt_long(argc, argv, "-h:Sp:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b:L:q:",
 					options, 0)) != -1) {
 
 		switch (opt) {
@@ -1925,7 +1925,7 @@ main(int32_t argc, char **argv)
 	// Reset to optind (internal variable)
 	// to parse all options again
 	optind = 0;
-	while ((opt = getopt_long(argc, argv, "-h:Sp:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b:L:tq:",
+	while ((opt = getopt_long(argc, argv, "-h:Sp:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b:L:q:",
 			options, 0)) != -1) {
 		switch (opt) {
 
@@ -1969,7 +1969,7 @@ main(int32_t argc, char **argv)
 	// Reset to optind (internal variable)
 	// to parse all options again
 	optind = 0;
-	while ((opt = getopt_long(argc, argv, "h:Sp:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b:L:tq:",
+	while ((opt = getopt_long(argc, argv, "h:Sp:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b:L:q:",
 			options, 0)) != -1) {
 		switch (opt) {
 		case 'h':
@@ -2212,7 +2212,7 @@ main(int32_t argc, char **argv)
 
 			break;
             
-        case 't':
+        case COMMAND_OPT_NO_TTL_ONLY:
             conf.ttl_zero = true;
             break;
 
