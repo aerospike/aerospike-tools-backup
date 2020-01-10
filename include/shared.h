@@ -182,6 +182,14 @@ typedef enum {
 	CONFIG_FILE_OPT_ONLY_CONFIG_FILE,
 } cfgfile_opt;
 
+///
+/// Identifies the config and command line options.
+///
+typedef enum {
+	COMMAND_OPT_NO_TTL_ONLY = 3000
+} cmd_opt;
+
+
 typedef struct {
 	void *conf;                                 ///< The global configuration and stats.
 	char (*node_names)[][AS_NODE_NAME_SIZE];    ///< The cluster nodes to be backed up.
