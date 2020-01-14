@@ -2416,7 +2416,7 @@ main(int32_t argc, char **argv)
 		as_scan_predexp_add(&scan, as_predexp_and(2));
 	}
 
-	inf("Starting %d%% backup of %s (namespace: %s, set: %s, bins: %s, after: %s, before: %s, no ttl only: %s, limit: %ld) to %s",
+	inf("Starting %d%% backup of %s (namespace: %s, set: %s, bins: %s, after: %s, before: %s, no ttl only: %s, limit: %" PRId64 ") to %s",
 			scan.percent, conf.host, scan.ns, scan.set[0] == 0 ? "[all]" : scan.set,
 			conf.bin_list == NULL ? "[all]" : conf.bin_list, after, before, ttl_zero_msg, conf.rec_num_max,
 			conf.output_file != NULL ?
