@@ -577,6 +577,15 @@ config_backup(toml_table_t *conftab, backup_config *c, const char *instance,
 
 		} else if (! strcasecmp("directory", name)) {
 			status = config_str(curtab, name, (void*)&c->directory);
+		
+		} else if (! strcasecmp("output-file-prefix", name)) {
+			status = config_str(curtab, name, &c->prefix);
+
+		} else if (! strcasecmp("no-ttl-only", name)) {
+			status = config_bool(curtab, name, &c->ttl_zero);
+
+		} else if (! strcasecmp("record-num", name)) {
+			status = config_int(curtab, name, &c->rec_num_max);
 
 		} else if (! strcasecmp("output-file", name)) {
 			status = config_str(curtab, name, (void*)&c->output_file);
