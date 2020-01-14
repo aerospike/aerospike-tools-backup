@@ -373,6 +373,21 @@ scan_callback(const as_val *val, void *cont)
 		return false;
 	}
 
+	// Check if total num record exceeded and stop if it did
+	uint64_t rec_count_total = cf_atomic64_get(pnc->conf->rec_count_total);
+	if (rec_count_total >= pnc->conf->rec_num_max && pnc->conf->rec_num_max > 0)
+	{
+		ver("Backup exceeded limit total of %" PRIu64 " records. Node %s: %" PRIu64 " out of %" PRIu64 " records", pnc->conf->rec_num_max, 
+			pnc->node_name, pnc->rec_count_node, rec_count_total);
+
+		// if writing to a single file, release the thread
+		if (pnc->conf->output_file != NULL) {
+			safe_unlock();
+		}
+
+		return false;
+	}
+	
 	uint64_t bytes = 0;
 	bool ok = pnc->conf->encoder->put_record(&bytes, pnc->fd, pnc->conf->compact, rec);
 
@@ -772,16 +787,20 @@ backup_thread_func(void *cont)
 				ver("Skipping record backup");
 			}
 		} else if (aerospike_scan_node(pnc.conf->as, &ae, pnc.conf->policy, pnc.conf->scan,
-				pnc.node_name, scan_callback, &pnc) != AEROSPIKE_OK) {
-			if (ae.code == AEROSPIKE_OK) {
-				inf("Node scan for %s aborted", pnc.node_name);
-			} else {
-				err("Error while running node scan for %s - code %d: %s at %s:%d", pnc.node_name,
-						ae.code, ae.message, ae.file, ae.line);
-			}
+				pnc.node_name, scan_callback, &pnc) != AEROSPIKE_OK){
+			// Check if graceful exit by record cound limit
+			uint64_t rec_count_total = cf_atomic64_get(pnc.conf->rec_count_total);
+			if (!(ae.code == AEROSPIKE_OK && rec_count_total >= pnc.conf->rec_num_max && pnc.conf->rec_num_max > 0))	 {
+				if (ae.code == AEROSPIKE_OK) {
+					inf("Node scan for %s aborted", pnc.node_name);
+				} else {
+					err("Error while running node scan for %s - code %d: %s at %s:%d", pnc.node_name,
+							ae.code, ae.message, ae.file, ae.line);
+				}
 
-			stop = true;
-			goto close_file;
+				stop = true;
+				goto close_file;
+			} 
 		}
 
 		inf("Completed backup for node %s, records: %" PRIu64 ", size: %" PRIu64 " "
@@ -1719,7 +1738,7 @@ usage(const char *name)
 	fprintf(stderr, "                      Backup to a single backup file. Use - for stdout.\n");
 	fprintf(stderr, "                      Required, unless -d or -e is used.\n");
 	fprintf(stderr, "  -q, --output-file-prefix <prefix>\n");
-	fprintf(stderr, "                      When using directory parameter, set optional prefix to the name of the files.\n");
+	fprintf(stderr, "                      When using directory parameter, prepend a prefix to the names of the generated files.\n");
 	fprintf(stderr, "  -F, --file-limit\n");
 	fprintf(stderr, "                      Rotate backup files, when their size crosses the given\n");
 	fprintf(stderr, "                      value (in MiB) Only used when backing up to a directory.\n");
@@ -1751,6 +1770,8 @@ usage(const char *name)
 	fprintf(stderr, "                      whole cluster.\n");
 	fprintf(stderr, "  -%%, --percent <percentage>\n");
 	fprintf(stderr, "                      The percentage of records to process. Default: 100.\n");
+	fprintf(stderr, "  -T, --record-num <number of records>\n");
+	fprintf(stderr, "                      The number of records to process. Default: 0 (all records).\n");
 	fprintf(stderr, "  -m, --machine <path>\n");
 	fprintf(stderr, "                      Output machine-readable status updates to the given path, \n");
 	fprintf(stderr,"                       typically a FIFO.\n");
@@ -1868,6 +1889,7 @@ main(int32_t argc, char **argv)
 		{ "priority", required_argument, NULL, 'f' },
 		{ "records-per-second", required_argument, NULL, 'L' },
 		{ "percent", required_argument, NULL, '%' },
+		{ "record-num", required_argument, NULL, 'T' },
 		{ "machine", required_argument, NULL, 'm' },
 		{ "estimate", no_argument, NULL, 'e' },
 		{ "nice", required_argument, NULL, 'N' },
@@ -1901,7 +1923,7 @@ main(int32_t argc, char **argv)
 
 	// option string should start with '-' to avoid argv permutation
 	// we need same argv sequence in third check to support space separated optional argument value
-	while ((opt = getopt_long(argc, argv, "-h:Sp:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b:L:q:",
+	while ((opt = getopt_long(argc, argv, "-h:Sp:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b:L:q:T:",
 					options, 0)) != -1) {
 
 		switch (opt) {
@@ -1925,7 +1947,7 @@ main(int32_t argc, char **argv)
 	// Reset to optind (internal variable)
 	// to parse all options again
 	optind = 0;
-	while ((opt = getopt_long(argc, argv, "-h:Sp:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b:L:q:",
+	while ((opt = getopt_long(argc, argv, "-h:Sp:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b:L:q:T:",
 			options, 0)) != -1) {
 		switch (opt) {
 
@@ -1969,7 +1991,7 @@ main(int32_t argc, char **argv)
 	// Reset to optind (internal variable)
 	// to parse all options again
 	optind = 0;
-	while ((opt = getopt_long(argc, argv, "h:Sp:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b:L:q:",
+	while ((opt = getopt_long(argc, argv, "h:Sp:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:%:m:eN:RIuVZa:b:L:q:T:",
 			options, 0)) != -1) {
 		switch (opt) {
 		case 'h':
@@ -2118,6 +2140,15 @@ main(int32_t argc, char **argv)
 			}
 
 			conf.bandwidth = tmp * 1024 * 1024;
+			break;
+
+		case 'T':
+			if (!better_atoi(optarg, &tmp) || tmp < 0) {
+				err("Invalid record limit %s", optarg);
+				goto cleanup1;
+			}
+
+			conf.rec_num_max = tmp;
 			break;
 
 		case 'R':
@@ -2385,9 +2416,9 @@ main(int32_t argc, char **argv)
 		as_scan_predexp_add(&scan, as_predexp_and(2));
 	}
 
-	inf("Starting %d%% backup of %s (namespace: %s, set: %s, bins: %s, after: %s, before: %s, no ttl only: %s) to %s",
+	inf("Starting %d%% backup of %s (namespace: %s, set: %s, bins: %s, after: %s, before: %s, no ttl only: %s, limit: %" PRId64 ") to %s",
 			scan.percent, conf.host, scan.ns, scan.set[0] == 0 ? "[all]" : scan.set,
-			conf.bin_list == NULL ? "[all]" : conf.bin_list, after, before, ttl_zero_msg,
+			conf.bin_list == NULL ? "[all]" : conf.bin_list, after, before, ttl_zero_msg, conf.rec_num_max,
 			conf.output_file != NULL ?
 					strcmp(conf.output_file, "-") == 0 ? "[stdout]" : conf.output_file :
 					conf.directory != NULL ?
@@ -2733,6 +2764,7 @@ config_default(backup_config *conf)
 	conf->machine = NULL;
 	conf->estimate = false;
 	conf->bandwidth = 0;
+	conf->rec_num_max = 0;
 	conf->no_records = false;
 	conf->no_indexes = false;
 	conf->no_udfs = false;
