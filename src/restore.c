@@ -1763,6 +1763,8 @@ main(int32_t argc, char **argv)
 		// Non Config file options
 		{ "verbose", no_argument, NULL, 'v' },
 		{ "usage", no_argument, NULL, 'Z' },
+		{ "help", no_argument, NULL, 'Z' },
+		{ "options", no_argument, NULL, 'Z' },
 		{ "version", no_argument, NULL, 'V' },
 
 		{ "instance", required_argument, 0, CONFIG_FILE_OPT_INSTANCE},
