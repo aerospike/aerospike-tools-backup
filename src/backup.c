@@ -1771,7 +1771,7 @@ usage(const char *name)
 	fprintf(stderr, "  -%%, --percent <percentage>\n");
 	fprintf(stderr, "                      The percentage of records to process. Default: 100.\n");
 	fprintf(stderr, "  -T, --record-num <number of records>\n");
-	fprintf(stderr, "                      The number of records to process. Default: 0 (all records).\n");
+	fprintf(stderr, "                      An approximate limit for the number of records to process. Default: 0 (all records).\n");
 	fprintf(stderr, "  -m, --machine <path>\n");
 	fprintf(stderr, "                      Output machine-readable status updates to the given path, \n");
 	fprintf(stderr,"                       typically a FIFO.\n");
