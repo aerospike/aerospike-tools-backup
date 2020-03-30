@@ -395,7 +395,7 @@ static void
 show_error(as_error *err, const char *format, ...)
 {
 	va_list args;
-	char buffer[1000];
+	char buffer[2000];
 	va_start(args, format);
 	size_t len = (size_t)vsnprintf(buffer, sizeof buffer, format, args);
 	va_end(args);

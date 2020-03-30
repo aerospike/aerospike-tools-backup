@@ -312,18 +312,18 @@ The first form represents a `NIL`-valued bin. The remaining four forms represent
 
 Actually, the above `["B"]` form is not the only way to represent bytes-valued bins. It gets a little more specific than that. There are other tokens that refer to more specific bytes values. In particular, list-valued and map-valued bins are represented as a bytes value.
 
-| Token   | Type |
-|---------|------|
-| `["B"]` | Generic bytes value. |
-| `["J"]` | Java bytes value. |
-| `["C"]` | C# bytes value. |
-| `["P"]` | Python bytes value. |
-| `["R"]` | Ruby bytes value. |
-| `["H"]` | PHP bytes value. |
-| `["E"]` | Erlang bytes value. |
-| `["M"]` | Map value, opaquely represented as a bytes value. |
-| `["L"]` | List value, opaquely represented as a bytes value. |
-| `["U"]` | LDT value, opaquely represented as a bytes value. Deprecated. |
+| Token   | Type                                                          |
+|---------|---------------------------------------------------------------|
+| `["B"]` | Generic bytes value.                                          |
+| `["J"]` | Java bytes value.                                             |
+| `["C"]` | C# bytes value.                                               |
+| `["P"]` | Python bytes value.                                           |
+| `["R"]` | Ruby bytes value.                                             |
+| `["H"]` | PHP bytes value.                                              |
+| `["E"]` | Erlang bytes value.                                           |
+| `["Y"]` | HyperLogLog, opaquely represented as a bytes value.           |
+| `["M"]` | Map value, opaquely represented as a bytes value.             |
+| `["L"]` | List value, opaquely represented as a bytes value.            |
 
 ### Sample Backup File
 

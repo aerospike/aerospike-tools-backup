@@ -387,7 +387,7 @@ scan_callback(const as_val *val, void *cont)
 
 		return false;
 	}
-	
+
 	uint64_t bytes = 0;
 	bool ok = pnc->conf->encoder->put_record(&bytes, pnc->fd, pnc->conf->compact, rec);
 
@@ -1172,7 +1172,7 @@ parse_node_list(char *node_list, node_spec **node_specs, uint32_t *n_node_specs)
 		}
 
 		uint64_t tmp;
-		
+
 		if (family == AF_INET6) {
 			length = length + 1;
 		}
@@ -1683,47 +1683,47 @@ usage(const char *name)
 	fprintf(stderr, "                      Path to a directory of trusted CA certificates.\n");
 	fprintf(stderr, " --tls-protocols=TLS_PROTOCOLS\n");
 	fprintf(stderr, "                      Set the TLS protocol selection criteria. This format\n"
-                    "                      is the same as Apache's SSLProtocol documented at http\n"
-                    "                      s://httpd.apache.org/docs/current/mod/mod_ssl.html#ssl\n"
-                    "                      protocol . If not specified the asbackup will use '-all\n"
-                    "                      +TLSv1.2' if has support for TLSv1.2,otherwise it will\n"
-                    "                      be '-all +TLSv1'.\n");
+					"                      is the same as Apache's SSLProtocol documented at http\n"
+					"                      s://httpd.apache.org/docs/current/mod/mod_ssl.html#ssl\n"
+					"                      protocol . If not specified the asbackup will use '-all\n"
+					"                      +TLSv1.2' if has support for TLSv1.2,otherwise it will\n"
+					"                      be '-all +TLSv1'.\n");
 	fprintf(stderr, " --tls-cipher-suite=TLS_CIPHER_SUITE\n");
 	fprintf(stderr, "                     Set the TLS cipher selection criteria. The format is\n"
-                	"                     the same as Open_sSL's Cipher List Format documented\n"
-                	"                     at https://www.openssl.org/docs/man1.0.2/apps/ciphers.\n"
-                	"                     html\n");
+					"                     the same as Open_sSL's Cipher List Format documented\n"
+					"                     at https://www.openssl.org/docs/man1.0.2/apps/ciphers.\n"
+					"                     html\n");
 	fprintf(stderr, " --tls-keyfile=TLS_KEYFILE\n");
 	fprintf(stderr, "                      Path to the key for mutual authentication (if\n"
-                    "                      Aerospike Cluster is supporting it).\n");
+					"                      Aerospike Cluster is supporting it).\n");
 	fprintf(stderr, " --tls-keyfile-password=TLS_KEYFILE_PASSWORD\n");
 	fprintf(stderr, "                      Password to load protected tls-keyfile.\n"
-                    "                      It can be one of the following:\n"
-                    "                      1) Environment varaible: 'env:<VAR>'\n"
-                    "                      2) File: 'file:<PATH>'\n"
-                    "                      3) String: 'PASSWORD'\n"
-                    "                      Default: none\n"
-                    "                      User will be prompted on command line if --tls-keyfile-password\n"
-                    "                      specified and no password is given.\n");
+					"                      It can be one of the following:\n"
+					"                      1) Environment varaible: 'env:<VAR>'\n"
+					"                      2) File: 'file:<PATH>'\n"
+					"                      3) String: 'PASSWORD'\n"
+					"                      Default: none\n"
+					"                      User will be prompted on command line if --tls-keyfile-password\n"
+					"                      specified and no password is given.\n");
 	fprintf(stderr, " --tls-certfile=TLS_CERTFILE <path>\n");
 	fprintf(stderr, "                      Path to the chain file for mutual authentication (if\n"
-                    "                      Aerospike Cluster is supporting it).\n");
+					"                      Aerospike Cluster is supporting it).\n");
 	fprintf(stderr, " --tls-cert-blacklist <path>\n");
 	fprintf(stderr, "                      Path to a certificate blacklist file. The file should\n"
-                    "                      contain one line for each blacklisted certificate.\n"
-                    "                      Each line starts with the certificate serial number\n"
-                    "                      expressed in hex. Each entry may optionally specify\n"
-                    "                      the issuer name of the certificate (serial numbers are\n"
-                    "                      only required to be unique per issuer).Example:\n"
-                    "                      867EC87482B2\n"
-                    "                      /C=US/ST=CA/O=Acme/OU=Engineering/CN=TestChainCA\n");
+					"                      contain one line for each blacklisted certificate.\n"
+					"                      Each line starts with the certificate serial number\n"
+					"                      expressed in hex. Each entry may optionally specify\n"
+					"                      the issuer name of the certificate (serial numbers are\n"
+					"                      only required to be unique per issuer).Example:\n"
+					"                      867EC87482B2\n"
+					"                      /C=US/ST=CA/O=Acme/OU=Engineering/CN=TestChainCA\n");
 
 	fprintf(stderr, " --tls-crl-check      Enable CRL checking for leaf certificate. An error\n"
-                	"                      occurs if a valid CRL files cannot be found in\n"
-                    "                      tls_capath.\n");
+					"                      occurs if a valid CRL files cannot be found in\n"
+					"                      tls_capath.\n");
 	fprintf(stderr, " --tls-crl-checkall   Enable CRL checking for entire certificate chain. An\n"
-                	"                      error occurs if a valid CRL files cannot be found in\n"
-                    "                      tls_capath.\n");
+					"                      error occurs if a valid CRL files cannot be found in\n"
+					"                      tls_capath.\n");
 
 
 	fprintf(stderr, "[asbackup]\n");
@@ -1905,7 +1905,7 @@ main(int32_t argc, char **argv)
 
 	backup_config conf;
 	config_default(&conf);
-	
+
 	conf.encoder = &(backup_encoder){
 		text_put_record, text_put_udf_file, text_put_secondary_index
 	};
@@ -2076,7 +2076,7 @@ main(int32_t argc, char **argv)
 			break;
 
 		case 'L':
-			if (!better_atoi(optarg, &tmp) || tmp < 0) {
+			if (!better_atoi(optarg, &tmp)) {
 				err("Invalid records-per-second value %s", optarg);
 				goto cleanup1;
 			}
@@ -2145,7 +2145,7 @@ main(int32_t argc, char **argv)
 			break;
 
 		case 'T':
-			if (!better_atoi(optarg, &tmp) || tmp < 0) {
+			if (!better_atoi(optarg, &tmp)) {
 				err("Invalid record limit %s", optarg);
 				goto cleanup1;
 			}
@@ -2213,10 +2213,10 @@ main(int32_t argc, char **argv)
 			if (optarg) {
 				conf.tls.keyfile_pw = safe_strdup(optarg);
 			} else {
-                                if (optind < argc && NULL != argv[optind] && '-' != argv[optind][0] ) {
-                                        // space separated argument value
-                                        conf.tls.keyfile_pw = safe_strdup(argv[optind++]);
-                                } else {
+				if (optind < argc && NULL != argv[optind] && '-' != argv[optind][0] ) {
+						// space separated argument value
+						conf.tls.keyfile_pw = safe_strdup(argv[optind++]);
+				} else {
 					// No password specified should
 					// force it to default password
 					// to trigger prompt.
@@ -2244,10 +2244,10 @@ main(int32_t argc, char **argv)
 			}
 
 			break;
-            
-        case COMMAND_OPT_NO_TTL_ONLY:
-            conf.ttl_zero = true;
-            break;
+
+		case COMMAND_OPT_NO_TTL_ONLY:
+			conf.ttl_zero = true;
+			break;
 
 		case CONFIG_FILE_OPT_FILE:
 		case CONFIG_FILE_OPT_INSTANCE:
@@ -2319,7 +2319,7 @@ main(int32_t argc, char **argv)
 
 		conf.host = node_specs[0].addr_string;
 		conf.port = ntohs(node_specs[0].port);
-		
+
 		if (node_specs[0].family == AF_INET6) {
 			char *dup;
 			sprintf(conf.host, "%s%s%s", "[", (dup = strdup(conf.host)), "]");
@@ -2342,33 +2342,33 @@ main(int32_t argc, char **argv)
 
 	const char *before;
 	const char *after;
-    const char *ttl_zero_msg;
+	const char *ttl_zero_msg;
 	char before_buff[100];
 	char after_buff[100];
 
-    uint16_t predexp_size = 0;
-    
-    if (conf.mod_before > 0)
-    {
-        predexp_size += 3;
-    }
-    
-    if (conf.mod_after > 0) 
-    {
-        predexp_size += 3;
-    }
-    
-    if (conf.ttl_zero) 
-    {
-        predexp_size += 3;
-    }
-    
-    predexp_size += (predexp_size / 3) - 1;
+	uint16_t predexp_size = 0;
 
-    if (predexp_size > 0)
-    {
-        as_scan_predexp_inita(&scan, predexp_size);
-    }
+	if (conf.mod_before > 0)
+	{
+		predexp_size = (uint16_t)(predexp_size + 3);
+	}
+
+	if (conf.mod_after > 0)
+	{
+		predexp_size = (uint16_t)(predexp_size + 3);
+	}
+
+	if (conf.ttl_zero)
+	{
+		predexp_size = (uint16_t)(predexp_size + 3);
+	}
+
+	predexp_size = (uint16_t)(predexp_size + ((predexp_size / 3) - 1));
+
+	if (predexp_size > 0)
+	{
+		as_scan_predexp_inita(&scan, predexp_size);
+	}
 
 	if (conf.mod_before > 0) {
 		as_scan_predexp_add(&scan, as_predexp_rec_last_update());
@@ -2408,8 +2408,8 @@ main(int32_t argc, char **argv)
 		as_scan_predexp_add(&scan, as_predexp_rec_void_time());
 		as_scan_predexp_add(&scan, as_predexp_integer_value(0));
 		as_scan_predexp_add(&scan, as_predexp_integer_equal());
-        
-        ttl_zero_msg = "true";
+
+		ttl_zero_msg = "true";
 	} else {
 		ttl_zero_msg = "false";
 	}
@@ -2757,7 +2757,7 @@ config_default(backup_config *conf)
 	conf->node_list = NULL;
 	conf->mod_after = 0;
 	conf->mod_before = 0;
-    conf->ttl_zero = false;
+	conf->ttl_zero = false;
 	conf->directory = NULL;
 	conf->output_file = NULL;
 	conf->prefix = NULL;

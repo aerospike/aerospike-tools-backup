@@ -36,12 +36,13 @@ text_bytes_type_to_label(as_bytes_type type)
 		AS_BYTES_RUBY,
 		AS_BYTES_PHP,
 		AS_BYTES_ERLANG,
+		AS_BYTES_HLL,
 		AS_BYTES_MAP,
 		AS_BYTES_LIST
 	};
 
 	static char labels[] = {
-		'B', 'J', 'C', 'P', 'R', 'H', 'E', 'M', 'L'
+		'B', 'J', 'C', 'P', 'R', 'H', 'E', 'Y', 'M', 'L'
 	};
 
 	for (size_t i = 0; i < sizeof types / sizeof types[0]; ++i) {

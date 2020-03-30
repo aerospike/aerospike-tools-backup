@@ -298,10 +298,6 @@ static const int spec_start = 1;
 static const int spec_first_final = 82;
 static const int spec_error = 0;
 
-static const int spec_en_type = 21;
-static const int spec_en_main = 1;
-
-
 #line 228 "src/spec.rl"
 
 

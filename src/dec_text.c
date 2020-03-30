@@ -776,12 +776,13 @@ text_bytes_label_to_type(int32_t label, as_bytes_type *type)
 		AS_BYTES_RUBY,
 		AS_BYTES_PHP,
 		AS_BYTES_ERLANG,
+		AS_BYTES_HLL,
 		AS_BYTES_MAP,
 		AS_BYTES_LIST
 	};
 
 	static char labels[] = {
-		'B', 'J', 'C', 'P', 'R', 'H', 'E', 'M', 'L'
+		'B', 'J', 'C', 'P', 'R', 'H', 'E', 'Y', 'M', 'L'
 	};
 
 	for (size_t i = 0; i < sizeof labels; ++i) {
@@ -822,7 +823,7 @@ text_parse_bin(FILE *fd, bool legacy, as_vector *bin_vec, uint32_t *line_no, uin
 		return false;
 	}
 
-	if (strchr("NIDSXGBJCPRHEMLU", ch) == NULL) {
+	if (strchr("NIDSXGBJCPRHEYMLU", ch) == NULL) {
 		err("Invalid bytes label %s (line %u, col %u)", print_char(ch), line_no[0], col_no[0]);
 		return false;
 	}
