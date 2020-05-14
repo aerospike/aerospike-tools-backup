@@ -1077,6 +1077,66 @@ clean_directory(const char *dir_path, bool clear)
 }
 
 ///
+/// Parses a `partitionID[,partitionID[,...]]` string of (partitionID,partitionID,...) into an
+/// array of partition_specs.
+///
+/// @param partition_list    The string to be parsed.
+/// @param partition_specs   The created array of partition_spec.
+/// @param n_partition_specs The number of elements in the created array.
+///
+/// @result              `true`, if successful.
+///
+static bool
+parse_partition_list(char *partition_list, char ***partition_specs, uint32_t *n_partition_specs)
+{
+	bool res = false;
+	char *clone = safe_strdup(partition_list);
+
+	as_vector partition_vec;
+	as_vector_inita(&partition_vec, sizeof (void *), 25); // need 4096?
+
+	if (partition_list[0] == 0) {
+		err("Empty node list");
+		goto cleanup1;
+	}
+
+	split_string(partition_list, ',', true, &partition_vec);
+
+	*n_partition_specs = partition_vec.size;
+	*partition_specs = safe_malloc(sizeof (char*) * partition_vec.size);
+
+	for (uint32_t i = 0; i < partition_vec.size; ++i) {
+		char *partition_str = as_vector_get_ptr(&partition_vec, i);
+		size_t length = strlen(partition_str);
+
+		if (length == 0) { // This needed?
+			err("Invalid partition list %s (invalid partition number)", clone);
+			goto cleanup2;
+		}
+
+		(*partition_specs)[i] = safe_malloc(sizeof(char) * (length + 1));
+		memcpy((*partition_specs)[i], partition_str, length + 1);
+	}
+
+	res = true;
+	goto cleanup1;
+
+cleanup2:
+	for (uint32_t i = 0; i < *n_partition_specs; i++) {
+		cf_free((*partition_specs)[i]);
+		(*partition_specs)[i] = NULL;
+	}
+	cf_free(*partition_specs);
+	*partition_specs = NULL;
+	*n_partition_specs = 0;
+
+cleanup1:
+	as_vector_destroy(&partition_vec);
+	cf_free(clone);
+	return res;
+}
+
+///
 /// Parses a `host:port[,host:port[,...]]` string of (IP address, port) or `host:tls_name:port[,host:tls_name:port[,...]]` string of (IP address, tls_name, port) pairs into an
 /// array of node_spec. tls_name being optional.
 ///
@@ -1885,6 +1945,7 @@ main(int32_t argc, char **argv)
 		{ "file-limit", required_argument, NULL, 'F' },
 		{ "remove-files", no_argument, NULL, 'r' },
 		{ "node-list", required_argument, NULL, 'l' },
+		{ "partition-list", required_argument, NULL, 'X' },
 		{ "modified-after", required_argument, NULL, 'a' },
 		{ "modified-before", required_argument, NULL, 'b' },
 		{ "no-ttl-only", no_argument, NULL, COMMAND_OPT_NO_TTL_ONLY },
@@ -2118,6 +2179,10 @@ main(int32_t argc, char **argv)
 			conf.node_list = safe_strdup(optarg);
 			break;
 
+		case 'X':
+			conf.partition_list = safe_strdup(optarg);
+			break;
+
 		case '%':
 			if (!better_atoi(optarg, &tmp) || tmp < 1 || tmp > 100) {
 				err("Invalid percentage value %s", optarg);
@@ -2302,6 +2367,20 @@ main(int32_t argc, char **argv)
 	if (conf.estimate && conf.no_records) {
 		err("Invalid options: -e and -R are mutually exclusive.");
 		goto cleanup1;
+	}
+
+	if (conf.partition_list != NULL) {
+		if (verbose) {
+			ver("Parsing partition list %s", conf.partition_list);
+		}
+
+		char **partition_specs = NULL;
+		uint32_t n_partition_specs = 0;
+
+		if (!parse_partition_list(conf.partition_list, &partition_specs, &n_partition_specs)) {
+			err("Error while parsing partition list");
+			goto cleanup2;
+		}
 	}
 
 	node_spec *node_specs = NULL;

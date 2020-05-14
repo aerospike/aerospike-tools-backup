@@ -637,6 +637,9 @@ config_backup(toml_table_t *conftab, backup_config *c, const char *instance,
 		} else if (! strcasecmp("node-list", name)) {
 			status = config_str(curtab, name, (void*)&c->node_list);
 
+		} else if (! strcasecmp("partition-list", name)) {
+			status = config_str(curtab, name, (void*)&c->partition_list);
+
 		} else if (! strcasecmp("percent", name)) {
 
 			status = config_int(curtab, name, (void*)&i_val);

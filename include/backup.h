@@ -91,6 +91,7 @@ typedef struct {
 	bool remove_files;
 	char *bin_list;
 	char *node_list;
+	char *partition_list;
 	int64_t mod_after;
 	int64_t mod_before;
     bool  ttl_zero;
