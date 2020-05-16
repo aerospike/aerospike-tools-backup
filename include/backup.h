@@ -95,6 +95,8 @@ typedef struct {
 	int64_t mod_after;
 	int64_t mod_before;
     bool  ttl_zero;
+	uint32_t partition_count;
+	uint32_t **partition_numbers;
 	
 	as_config_tls tls;
 

@@ -786,6 +786,40 @@ backup_thread_func(void *cont)
 			if (verbose) {
 				ver("Skipping record backup");
 			}
+		} else if (pnc.conf->partition_list != NULL) {
+
+			if (verbose) {
+				ver("Executing partition scan");
+			}
+
+			for (uint32_t i = 0; i < pnc.conf->partition_count; ++i) {
+
+				uint32_t partition_number = *(pnc.conf->partition_numbers[i]);
+
+				if (verbose) {
+					ver("Backing up partition: %u", partition_number);
+				}
+
+				as_partition_filter pf;
+				as_partition_filter_set_id(&pf, partition_number);
+
+				if (aerospike_scan_partitions(pnc.conf->as, &ae, pnc.conf->policy, pnc.conf->scan,
+				&pf, scan_callback, &pnc) != AEROSPIKE_OK) {
+					// Check if graceful exit by record cound limit
+					uint64_t rec_count_total = cf_atomic64_get(pnc.conf->rec_count_total);
+					if (!(ae.code == AEROSPIKE_OK && rec_count_total >= pnc.conf->rec_num_max && pnc.conf->rec_num_max > 0))	 {
+						if (ae.code == AEROSPIKE_OK) {
+							inf("Partition scan for %d aborted", partition_number);
+						} else {
+							err("Error while running partition scan for partition: %d - code %d: %s at %s:%d", partition_number,
+									ae.code, ae.message, ae.file, ae.line);
+						}
+
+						stop = true;
+						goto close_file;
+					}
+				}
+			}
 		} else if (aerospike_scan_node(pnc.conf->as, &ae, pnc.conf->policy, pnc.conf->scan,
 				pnc.node_name, scan_callback, &pnc) != AEROSPIKE_OK){
 			// Check if graceful exit by record cound limit
@@ -1087,7 +1121,7 @@ clean_directory(const char *dir_path, bool clear)
 /// @result              `true`, if successful.
 ///
 static bool
-parse_partition_list(char *partition_list, char ***partition_specs, uint32_t *n_partition_specs)
+parse_partition_list(char *partition_list, uint32_t ***partition_specs, uint32_t *n_partition_specs)
 {
 	bool res = false;
 	char *clone = safe_strdup(partition_list);
@@ -1103,19 +1137,24 @@ parse_partition_list(char *partition_list, char ***partition_specs, uint32_t *n_
 	split_string(partition_list, ',', true, &partition_vec);
 
 	*n_partition_specs = partition_vec.size;
-	*partition_specs = safe_malloc(sizeof (char*) * partition_vec.size);
+	*partition_specs = safe_malloc(sizeof (uint32_t*) * partition_vec.size);
 
 	for (uint32_t i = 0; i < partition_vec.size; ++i) {
 		char *partition_str = as_vector_get_ptr(&partition_vec, i);
 		size_t length = strlen(partition_str);
 
-		if (length == 0) { // This needed?
+		if (length == 0) {
 			err("Invalid partition list %s (invalid partition number)", clone);
 			goto cleanup2;
 		}
 
-		(*partition_specs)[i] = safe_malloc(sizeof(char) * (length + 1));
-		memcpy((*partition_specs)[i], partition_str, length + 1);
+		if (length == 0) { // TODO change to check range
+			err("Invalid partition number %s (valid partition numbers are 0-4095)", partition_str);
+			goto cleanup2;
+		}
+
+		(*partition_specs)[i] = safe_malloc(sizeof(uint32_t) * (length + 1));
+		*((*partition_specs)[i]) = (uint32_t)atoi(partition_str);
 	}
 
 	res = true;
@@ -2374,13 +2413,16 @@ main(int32_t argc, char **argv)
 			ver("Parsing partition list %s", conf.partition_list);
 		}
 
-		char **partition_specs = NULL;
+		uint32_t **partition_specs = NULL;
 		uint32_t n_partition_specs = 0;
 
 		if (!parse_partition_list(conf.partition_list, &partition_specs, &n_partition_specs)) {
 			err("Error while parsing partition list");
 			goto cleanup2;
 		}
+
+		conf.partition_numbers = partition_specs;
+		conf.partition_count = n_partition_specs;
 	}
 
 	node_spec *node_specs = NULL;
@@ -2834,6 +2876,9 @@ config_default(backup_config *conf)
 	conf->remove_files = false;
 	conf->bin_list = NULL;
 	conf->node_list = NULL;
+	conf->partition_list = NULL;
+	conf->partition_numbers = NULL;
+	conf->partition_count = 0;
 	conf->mod_after = 0;
 	conf->mod_before = 0;
 	conf->ttl_zero = false;
