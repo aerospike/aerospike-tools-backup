@@ -789,7 +789,7 @@ backup_thread_func(void *cont)
 		} else if (pnc.conf->partition_list != NULL) {
 
 			if (verbose) {
-				ver("Executing partition scan");
+				ver("Executing partition scan(s).");
 			}
 
 			for (uint32_t i = 0; i < pnc.conf->partition_count; ++i) {
@@ -797,7 +797,7 @@ backup_thread_func(void *cont)
 				uint32_t partition_number = *(pnc.conf->partition_numbers[i]);
 
 				if (verbose) {
-					ver("Backing up partition: %u", partition_number);
+					ver("Backing up partition: %u.", partition_number);
 				}
 
 				as_partition_filter pf;
@@ -1127,7 +1127,7 @@ parse_partition_list(char *partition_list, uint32_t ***partition_specs, uint32_t
 	char *clone = safe_strdup(partition_list);
 
 	as_vector partition_vec;
-	as_vector_inita(&partition_vec, sizeof (void *), 25); // need 4096?
+	as_vector_inita(&partition_vec, sizeof (void *), 4096);
 
 	if (partition_list[0] == 0) {
 		err("Empty node list");
@@ -1148,13 +1148,15 @@ parse_partition_list(char *partition_list, uint32_t ***partition_specs, uint32_t
 			goto cleanup2;
 		}
 
-		if (length == 0) { // TODO change to check range
+		(*partition_specs)[i] = safe_malloc(sizeof(uint32_t) * (length + 1));
+		uint32_t partition_number = (uint32_t)atoi(partition_str);
+
+		if (partition_number >= 4096) {
 			err("Invalid partition number %s (valid partition numbers are 0-4095)", partition_str);
 			goto cleanup2;
 		}
 
-		(*partition_specs)[i] = safe_malloc(sizeof(uint32_t) * (length + 1));
-		*((*partition_specs)[i]) = (uint32_t)atoi(partition_str);
+		*((*partition_specs)[i]) = partition_number;
 	}
 
 	res = true;
@@ -2730,6 +2732,10 @@ main(int32_t argc, char **argv)
 	}
 
 	uint32_t n_threads_ok = 0;
+
+	if (conf.partition_list) {
+		n_threads = 1;
+	}
 
 	if (verbose) {
 		ver("Creating %u backup thread(s)", n_threads);
