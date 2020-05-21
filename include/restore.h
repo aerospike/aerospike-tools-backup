@@ -70,6 +70,7 @@ typedef struct {
 	/// @param total     Increased by the number of bytes read from the file descriptor.
 	/// @param rec       The returned record. Only valid, if the result is
 	///                  [DECODER_RECORD](@ref decoder_status::DECODER_RECORD).
+	/// @param extra_ttl Extra-ttl to be added to expirable records.
 	/// @param expired   Indicates that an expired record was read. Only valid, if the result is
 	///                  [DECODER_RECORD](@ref decoder_status::DECODER_RECORD).
 	/// @param index     The returned secondary index information. Only valid, if the result is
@@ -80,8 +81,8 @@ typedef struct {
 	/// @result          See @ref decoder_status.
 	///
 	decoder_status (*parse)(FILE *fd, bool legacy, as_vector *ns_vec, as_vector *bin_vec,
-			uint32_t *line_no, cf_atomic64 *total, as_record *rec, bool *expired,
-			index_param *index, udf_param *udf);
+			uint32_t *line_no, cf_atomic64 *total, as_record *rec, int32_t extra_ttl,
+			bool *expired, index_param *index, udf_param *udf);
 } backup_decoder;
 
 ///
@@ -122,6 +123,8 @@ typedef struct {
 	bool ignore_rec_error;          ///< Ignore record specific errors.
 	bool no_generation;             ///< Indicates that the generation count of existing records
 	                                ///  should be ignored.
+	int32_t extra_ttl;              ///< Amount of extra time-to-live to add to records that have
+	                                ///  expirable void-times.
 	uint64_t bandwidth;             ///< The B/s cap for throttling.
 	uint32_t tps;                   ///< The TPS cap for throttling.
 	backup_decoder *decoder;        ///< The file format decoder to be used for reading data from a

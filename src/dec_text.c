@@ -716,19 +716,20 @@ text_parse_generation(FILE *fd, bool legacy, uint32_t *line_no, uint32_t *col_no
 ///
 /// Reads and parses an expiration time from the backup file.
 ///
-/// @param fd       The file descriptor of the backup file.
-/// @param legacy   Indicates a version 3.0 backup file.
-/// @param line_no  The current line number.
-/// @param col_no   The current column number.
-/// @param bytes    Increased by the number of bytes read from the file descriptor.
-/// @param rec      The record to receive the generation count.
-/// @param expired  Indicates the the expiration time lies in the past.
+/// @param fd        The file descriptor of the backup file.
+/// @param legacy    Indicates a version 3.0 backup file.
+/// @param line_no   The current line number.
+/// @param col_no    The current column number.
+/// @param bytes     Increased by the number of bytes read from the file descriptor.
+/// @param rec       The record to receive the generation count.
+/// @param extra_ttl Extra-ttl to be added to expirable records.
+/// @param expired   Indicates the the expiration time lies in the past.
 ///
 /// @result         `true`, if successful.
 ///
 static bool
 text_parse_expiration(FILE *fd, bool legacy, uint32_t *line_no, uint32_t *col_no,
-		int64_t *bytes, as_record *rec, bool *expired)
+		int64_t *bytes, as_record *rec, int32_t extra_ttl, bool *expired)
 {
 	int64_t val;
 
@@ -746,6 +747,8 @@ text_parse_expiration(FILE *fd, bool legacy, uint32_t *line_no, uint32_t *col_no
 		rec->ttl = (uint32_t)-1;
 	} else {
 		cf_clock now = cf_secs_since_clepoch();
+
+		val += extra_ttl;
 
 		if ((uint32_t)now >= (uint32_t)val) {
 			*expired = true;
@@ -1114,13 +1117,14 @@ text_parse_bins(FILE *fd, bool legacy, as_vector *bin_vec, uint32_t *line_no, ui
 /// @param col_no   The current column number.
 /// @param bytes    Increased by the number of bytes read from the file descriptor.
 /// @param rec      The record to be populated.
+/// @param extra_ttl Extra-ttl to be added to expirable records.
 /// @param expired  Indicates that the record is expired.
 ///
 /// @result         See @ref decoder_status.
 ///
 static decoder_status
 text_parse_record(FILE *fd, bool legacy, as_vector *ns_vec, as_vector *bin_vec, uint32_t *line_no,
-		uint32_t *col_no, int64_t *bytes, as_record *rec, bool *expired)
+		uint32_t *col_no, int64_t *bytes, as_record *rec, int32_t extra_ttl, bool *expired)
 {
 	decoder_status res = DECODER_ERROR;
 	bool tmp_expired = false;
@@ -1183,7 +1187,7 @@ text_parse_record(FILE *fd, bool legacy, as_vector *ns_vec, as_vector *bin_vec, 
 			break;
 
 		case 5:
-			ok = text_parse_expiration(fd, legacy, line_no, col_no, bytes, rec, &tmp_expired);
+			ok = text_parse_expiration(fd, legacy, line_no, col_no, bytes, rec, extra_ttl, &tmp_expired);
 			break;
 
 		case 6:
@@ -1564,7 +1568,8 @@ text_parse_global(FILE *fd, as_vector *ns_vec, uint32_t *line_no, uint32_t *col_
 ///
 decoder_status
 text_parse(FILE *fd, bool legacy, as_vector *ns_vec, as_vector *bin_vec, uint32_t *orig_line_no,
-		cf_atomic64 *total, as_record *rec, bool *expired, index_param *index, udf_param *udf)
+		cf_atomic64 *total, as_record *rec, int32_t extra_ttl, bool *expired, index_param *index,
+		udf_param *udf)
 {
 	decoder_status res = DECODER_ERROR;
 	int64_t bytes = 0;
@@ -1597,7 +1602,7 @@ text_parse(FILE *fd, bool legacy, as_vector *ns_vec, as_vector *bin_vec, uint32_
 
 	if (ch == RECORD_META_PREFIX[0]) {
 		res = text_parse_record(fd, legacy, ns_vec, bin_vec, line_no, col_no, &bytes, rec,
-				expired);
+				extra_ttl, expired);
 		goto out;
 	}
 
