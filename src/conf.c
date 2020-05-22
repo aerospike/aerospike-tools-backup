@@ -759,6 +759,9 @@ config_restore(toml_table_t *conftab, restore_config *c, const char *instance,
 		} else if (! strcasecmp("no-generation", name)) {
 			status = config_bool(curtab, name, (void*)&c->no_generation);
 
+		} else if (! strcasecmp("extra-ttl", name)) {
+			status = config_int(curtab, name, (void*)&c->extra_ttl);
+
 		} else if (! strcasecmp("nice-list", name)) {
 			status = config_str(curtab, name, (void*)&c->nice_list);
 
