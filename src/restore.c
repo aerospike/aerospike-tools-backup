@@ -536,8 +536,8 @@ restore_thread_func(void *cont)
 
 			cf_clock read_start = verbose ? cf_getus() : 0;
 			decoder_status res = ptc.conf->decoder->parse(ptc.fd, ptc.legacy, ptc.ns_vec,
-					ptc.bin_vec, ptc.line_no, &ptc.conf->total_bytes, &rec, &expired,
-					&index, &udf);
+					ptc.bin_vec, ptc.line_no, &ptc.conf->total_bytes, &rec, ptc.conf->extra_ttl,
+					&expired, &index, &udf);
 			cf_clock read_time = verbose ? cf_getus() - read_start : 0;
 
 			// set the stop flag inside the critical section; see check above
@@ -922,7 +922,7 @@ get_indexes_and_udfs(FILE *fd, as_vector *ns_vec, bool legacy, restore_config *c
 		index_param index;
 		udf_param udf;
 		decoder_status res = conf->decoder->parse(fd, legacy, ns_vec, NULL, line_no, total, NULL,
-				NULL, &index, &udf);
+				conf->extra_ttl, NULL, &index, &udf);
 
 		if (res == DECODER_ERROR || res == DECODER_EOF) {
 			err("Error while reading global data from backup file (line %u) [3]", *line_no);
@@ -1717,6 +1717,9 @@ usage(const char *name)
 	fprintf(stderr, "  -g, --no-generation\n");
 	fprintf(stderr, "                      Don't check the generation of records that already\n");
 	fprintf(stderr, "                      exist in the namespace.\n");
+	fprintf(stderr, "  -l, --extra-ttl\n");
+	fprintf(stderr, "                      For records with epirable void-times, add N seconds of extra-ttl to the\n");
+	fprintf(stderr, "                      recorded void-time.");
 	fprintf(stderr, "  -N, --nice <bandwidth>,<TPS>\n");
 	fprintf(stderr, "                      The limits for read storage bandwidth in MiB/s and \n");
 	fprintf(stderr, "                      write operations in TPS.\n");
@@ -1816,6 +1819,7 @@ main(int32_t argc, char **argv)
 		{ "ignore-record-error", no_argument, NULL, 'K'},
 		{ "replace", no_argument, NULL, 'r' },
 		{ "no-generation", no_argument, NULL, 'g' },
+		{ "extra-ttl", required_argument, NULL, 'l' },
 		{ "nice", required_argument, NULL, 'N' },
 		{ "no-records", no_argument, NULL, 'R' },
 		{ "no-indexes", no_argument, NULL, 'I' },
@@ -1833,7 +1837,6 @@ main(int32_t argc, char **argv)
 	config_default(&conf);
 	
 	conf.decoder = &(backup_decoder){ text_parse };
-
 
 	int32_t optcase;
 	uint64_t tmp;
@@ -1865,7 +1868,7 @@ main(int32_t argc, char **argv)
 	// Reset to optind (internal variable)
 	// to parse all options again
 	optind = 0;
-	while ((optcase = getopt_long(argc, argv, "-h:Sp:A:U:P::n:d:i:t:vm:B:s:urgN:RILFwVZT:",
+	while ((optcase = getopt_long(argc, argv, "-h:Sp:A:U:P::n:d:i:t:vm:B:s:urgl:N:RILFwVZT:",
 			options, 0)) != -1) {
 		switch (optcase) {
 
@@ -1909,7 +1912,7 @@ main(int32_t argc, char **argv)
 	// Reset to optind (internal variable)
 	// to parse all options again
 	optind = 0;
-	while ((optcase = getopt_long(argc, argv, "h:Sp:A:U:P::n:d:i:t:vm:B:s:KurgN:RILFwVZT:",
+	while ((optcase = getopt_long(argc, argv, "h:Sp:A:U:P::n:d:i:t:vm:B:s:Kurgl:N:RILFwVZT:",
 			options, 0)) != -1) {
 		switch (optcase) {
 		case 'h':
@@ -2005,6 +2008,15 @@ main(int32_t argc, char **argv)
 
 		case 'g':
 			conf.no_generation = true;
+			break;
+
+		case 'l':
+			if (! better_atoi(optarg, &tmp)) {
+				err("Invalid extra-ttl value %s", optarg);
+				goto cleanup1;
+			}
+
+			conf.extra_ttl = (int32_t)tmp;
 			break;
 
 		case 'N':
