@@ -1718,7 +1718,7 @@ usage(const char *name)
 	fprintf(stderr, "                      Don't check the generation of records that already\n");
 	fprintf(stderr, "                      exist in the namespace.\n");
 	fprintf(stderr, "  -l, --extra-ttl\n");
-	fprintf(stderr, "                      For records with epirable void-times, add N seconds of extra-ttl to the\n");
+	fprintf(stderr, "                      For records with expirable void-times, add N seconds of extra-ttl to the\n");
 	fprintf(stderr, "                      recorded void-time.");
 	fprintf(stderr, "  -N, --nice <bandwidth>,<TPS>\n");
 	fprintf(stderr, "                      The limits for read storage bandwidth in MiB/s and \n");
