@@ -795,7 +795,6 @@ backup_thread_func(void *cont)
 			for (uint32_t i = 0; i < pnc.conf->partition_count; ++i) {
 
 				uint32_t partition_number = pnc.conf->partition_ids[i];
-				printf("hi: %d", partition_number);
 
 
 				if (verbose) {
@@ -2825,6 +2824,10 @@ cleanup2:
 cleanup1:
 	if (conf.node_list != NULL) {
 		cf_free(conf.node_list);
+	}
+
+	if (conf.partition_ids != NULL) {
+		cf_free(conf.partition_ids);
 	}
 
 	if (conf.bin_list != NULL) {
