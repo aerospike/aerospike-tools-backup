@@ -2830,6 +2830,10 @@ cleanup1:
 		cf_free(conf.partition_ids);
 	}
 
+	if (conf.partition_list != NULL) {
+		cf_free(conf.partition_list);
+	}
+
 	if (conf.bin_list != NULL) {
 		cf_free(conf.bin_list);
 	}
