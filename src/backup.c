@@ -794,7 +794,9 @@ backup_thread_func(void *cont)
 
 			for (uint32_t i = 0; i < pnc.conf->partition_count; ++i) {
 
-				uint32_t partition_number = *(pnc.conf->partition_numbers[i]);
+				uint32_t partition_number = pnc.conf->partition_numbers[i];
+				printf("hi: %d", partition_number);
+
 
 				if (verbose) {
 					ver("Backing up partition: %u.", partition_number);
@@ -1112,16 +1114,16 @@ clean_directory(const char *dir_path, bool clear)
 
 ///
 /// Parses a `partitionID[,partitionID[,...]]` string of (partitionID,partitionID,...) into an
-/// array of partition_specs.
+/// array of partition IDs (uint32_t).
 ///
-/// @param partition_list    The string to be parsed.
-/// @param partition_specs   The created array of partition_spec.
-/// @param n_partition_specs The number of elements in the created array.
+/// @param partition_list      The string to be parsed.
+/// @param partition_ids   The created array of partition numbers.
+/// @param n_partition_ids The number of elements in the created array.
 ///
 /// @result              `true`, if successful.
 ///
 static bool
-parse_partition_list(char *partition_list, uint32_t ***partition_specs, uint32_t *n_partition_specs)
+parse_partition_list(char *partition_list, uint32_t **partition_ids, uint32_t *n_partition_ids)
 {
 	bool res = false;
 	char *clone = safe_strdup(partition_list);
@@ -1136,8 +1138,8 @@ parse_partition_list(char *partition_list, uint32_t ***partition_specs, uint32_t
 
 	split_string(partition_list, ',', true, &partition_vec);
 
-	*n_partition_specs = partition_vec.size;
-	*partition_specs = safe_malloc(sizeof (uint32_t*) * partition_vec.size);
+	*n_partition_ids = partition_vec.size;
+	*partition_ids = safe_malloc(sizeof (uint32_t*) * partition_vec.size);
 
 	for (uint32_t i = 0; i < partition_vec.size; ++i) {
 		char *partition_str = as_vector_get_ptr(&partition_vec, i);
@@ -1148,7 +1150,7 @@ parse_partition_list(char *partition_list, uint32_t ***partition_specs, uint32_t
 			goto cleanup2;
 		}
 
-		(*partition_specs)[i] = safe_malloc(sizeof(uint32_t) * (length + 1));
+		partition_ids[i] = safe_malloc(sizeof(uint32_t) * (length + 1));
 		uint32_t partition_number = (uint32_t)atoi(partition_str);
 
 		if (partition_number >= 4096) {
@@ -1156,20 +1158,20 @@ parse_partition_list(char *partition_list, uint32_t ***partition_specs, uint32_t
 			goto cleanup2;
 		}
 
-		*((*partition_specs)[i]) = partition_number;
+		(*partition_ids)[i] = partition_number;
 	}
 
 	res = true;
 	goto cleanup1;
 
 cleanup2:
-	for (uint32_t i = 0; i < *n_partition_specs; i++) {
-		cf_free((*partition_specs)[i]);
-		(*partition_specs)[i] = NULL;
+	for (uint32_t i = 0; i < *n_partition_ids; i++) {
+		cf_free(partition_ids[i]);
+		partition_ids[i] = NULL;
 	}
-	cf_free(*partition_specs);
-	*partition_specs = NULL;
-	*n_partition_specs = 0;
+	cf_free(partition_ids);
+	partition_ids = NULL;
+	*n_partition_ids = 0;
 
 cleanup1:
 	as_vector_destroy(&partition_vec);
@@ -2415,16 +2417,17 @@ main(int32_t argc, char **argv)
 			ver("Parsing partition list %s", conf.partition_list);
 		}
 
-		uint32_t **partition_specs = NULL;
-		uint32_t n_partition_specs = 0;
+		uint32_t *partition_ids = NULL;
+		uint32_t n_partition_ids = 0;
+		
 
-		if (!parse_partition_list(conf.partition_list, &partition_specs, &n_partition_specs)) {
+		if (!parse_partition_list(conf.partition_list, &partition_ids, &n_partition_ids)) {
 			err("Error while parsing partition list");
 			goto cleanup2;
 		}
 
-		conf.partition_numbers = partition_specs;
-		conf.partition_count = n_partition_specs;
+		conf.partition_numbers = partition_ids;
+		conf.partition_count = n_partition_ids;
 	}
 
 	node_spec *node_specs = NULL;
