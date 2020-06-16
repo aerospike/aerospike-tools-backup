@@ -91,12 +91,9 @@ typedef struct {
 	bool remove_files;
 	char *bin_list;
 	char *node_list;
-	char *partition_list;
 	int64_t mod_after;
 	int64_t mod_before;
     bool  ttl_zero;
-	uint32_t partition_count;
-	uint32_t *partition_numbers;
 	
 	as_config_tls tls;
 
@@ -134,6 +131,9 @@ typedef struct {
 	volatile uint32_t index_count;      ///< The number of secondary indexes backed up.
 	volatile uint32_t udf_count;        ///< The number of UDF files backed up.
 	char *auth_mode;					///< Authentication mode
+	char *partition_list;				///< String containing comma seperated partition IDs to be backed up.
+	uint32_t partition_count;			///< Number of partitions to be backed up.
+	uint32_t *partition_ids;			///< Partition IDs parsed from partition_list.
 } backup_config;
 
 

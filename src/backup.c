@@ -794,7 +794,7 @@ backup_thread_func(void *cont)
 
 			for (uint32_t i = 0; i < pnc.conf->partition_count; ++i) {
 
-				uint32_t partition_number = pnc.conf->partition_numbers[i];
+				uint32_t partition_number = pnc.conf->partition_ids[i];
 				printf("hi: %d", partition_number);
 
 
@@ -1116,7 +1116,7 @@ clean_directory(const char *dir_path, bool clear)
 /// Parses a `partitionID[,partitionID[,...]]` string of (partitionID,partitionID,...) into an
 /// array of partition IDs (uint32_t).
 ///
-/// @param partition_list      The string to be parsed.
+/// @param partition_list  The string to be parsed.
 /// @param partition_ids   The created array of partition numbers.
 /// @param n_partition_ids The number of elements in the created array.
 ///
@@ -1165,7 +1165,7 @@ parse_partition_list(char *partition_list, uint32_t **partition_ids, uint32_t *n
 	goto cleanup1;
 
 cleanup2:
-	for (uint32_t i = 0; i < *n_partition_ids; i++) {
+	for (uint32_t i = 0; i < *n_partition_ids; ++i) {
 		cf_free(partition_ids[i]);
 		partition_ids[i] = NULL;
 	}
@@ -2426,7 +2426,7 @@ main(int32_t argc, char **argv)
 			goto cleanup2;
 		}
 
-		conf.partition_numbers = partition_ids;
+		conf.partition_ids = partition_ids;
 		conf.partition_count = n_partition_ids;
 	}
 
@@ -2886,7 +2886,7 @@ config_default(backup_config *conf)
 	conf->bin_list = NULL;
 	conf->node_list = NULL;
 	conf->partition_list = NULL;
-	conf->partition_numbers = NULL;
+	conf->partition_ids = NULL;
 	conf->partition_count = 0;
 	conf->mod_after = 0;
 	conf->mod_before = 0;
