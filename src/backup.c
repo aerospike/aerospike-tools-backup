@@ -1131,21 +1131,11 @@ init_partition_filters(as_vector *partition_ranges, as_vector *digests, uint32_t
 static bool
 parse_digest(const char *str, as_digest *digest)
 {
-	int len = (int)strlen(str);
+	int size = as_bytes_from_string(digest->value, sizeof(digest->value), str);
 
-	// Digest is always 20 bytes which translates to 40 hex characters.
-	if (len != 40) {
+	if (size != sizeof(digest->value)) {
 		return false;
 	}
-
-    uint8_t *bytes = digest->value;
-
-	for (int i = 0, j = 0; i < len; i += 2, j++) {
-        if (sscanf(str + i, "%2hhx", &bytes[j]) != 1) {
-        	return false;
-        }
-    }
-
     digest->init = true;
     return true;
 }
@@ -1175,7 +1165,7 @@ parse_partition_list(char *partition_list, as_vector *partition_ranges, as_vecto
 		goto cleanup;
 	}
 
-	split_string(partition_list, ',', true, &filters);
+	split_string(clone, ',', true, &filters);
 	init_partition_filters(partition_ranges, digests, filters.size);
 
 	for (uint32_t i = 0; i < filters.size; i++) {
@@ -2528,22 +2518,22 @@ main(int32_t argc, char **argv)
 
 	if (conf.partition_list != NULL) {
 		if (verbose) {
-			ver("Parsing partition list %s", conf.partition_list);
+			ver("Parsing partition-list '%s'", conf.partition_list);
 		}
 
 		if (!parse_partition_list(conf.partition_list, &conf.partition_ranges, &conf.digests)) {
-			err("Error while parsing partition list");
+			err("Error while parsing partition-list '%s'", conf.partition_list);
 			goto cleanup1;
 		}
 	}
 
 	if (conf.after_digest != NULL) {
 		if (verbose) {
-			ver("Parsing after digest %s", conf.after_digest);
+			ver("Parsing after-digest '%s'", conf.after_digest);
 		}
 
 		if (!parse_after_digest(conf.after_digest, &conf.partition_ranges, &conf.digests)) {
-			err("Error while parsing after digest");
+			err("Error while parsing after-digest '%s'", conf.after_digest);
 			goto cleanup1;
 		}
 	}
