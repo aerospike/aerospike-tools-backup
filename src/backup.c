@@ -1235,13 +1235,9 @@ cleanup:
 static bool
 parse_after_digest(char *str, as_vector *partition_ranges, as_vector *digests)
 {	
-	if (! (str[0] == '0' && str[1] == 'x')) {
-		return false;
-	}
-
 	as_digest digest;
 
-	if (! parse_digest(str + 2, &digest)) {
+	if (! parse_digest(str, &digest)) {
 		return false;
 	}
 
