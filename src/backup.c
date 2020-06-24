@@ -19,7 +19,6 @@
 #include <enc_text.h>
 #include <utils.h>
 #include <conf.h>
-#include <aerospike/as_string_builder.h>
 
 #define MAX_PARTITIONS 4096
 
@@ -720,13 +719,12 @@ backup_thread_func(void *cont)
 
 		if (args.filter.digest.init) {
 			uint32_t id = as_partition_getid(args.filter.digest.value, pnc.conf->as->cluster->n_partitions);
-
-			as_string_builder sb;
-			as_string_builder_assign(&sb, sizeof(pnc.desc), pnc.desc);
-			as_string_builder_append(&sb, "partition ");
-			as_string_builder_append_uint(&sb, id);
-			as_string_builder_append(&sb, " after ");
-			as_string_builder_append_bytes(&sb, args.filter.digest.value, sizeof(args.filter.digest.value));
+			uint32_t len = cf_b64_encoded_len(sizeof(args.filter.digest.value));
+			char* str = alloca(len + 1);
+	
+			cf_b64_encode(args.filter.digest.value, sizeof(args.filter.digest.value), str);
+			str[len] = 0;
+			sprintf(pnc.desc, "partition %u after %s", id, str);
 		}
 		else if (args.filter.count > 0) {
 			sprintf(pnc.desc, "partition range %u:%u", args.filter.begin, args.filter.count);
@@ -1124,18 +1122,70 @@ init_partition_filters(as_vector *partition_ranges, as_vector *digests, uint32_t
 }
 
 ///
-/// Parse digest string in hex format into as_digest target.
+/// Parse partition range string in format.
 ///
-/// Example: 0x123456789abcdef12345123456789abcdef12345
+/// range: <begin partition>[:<partition count>]
+/// begin partition: 0 - 4095
+/// partition count: 1 - 4096  Default: 1
+///
+/// Example: 1000:10
+///
+static bool
+parse_partition_range(char *str, partition_range *range)
+{
+	char *p = strchr(str, ':');
+	uint64_t begin = 0;
+	uint64_t count = 1;
+	bool rv = false;
+
+	if (p) {
+		*p++ = 0;
+	}
+
+	if (better_atoi(str, &begin) && begin < MAX_PARTITIONS) {	
+		if (p) {
+			rv = better_atoi(p, &count) && (begin + count) <= MAX_PARTITIONS;
+		}
+		else {
+			rv = true;
+		}
+	}
+
+	if (rv) {
+		range->begin = (uint16_t)begin;
+		range->count = (uint16_t)count;
+		return true;	
+	}
+
+	// Restore colon.
+	if (p) {
+		p--;
+		*p = ':';
+	}
+	return false;
+}
+
+///
+/// Parse digest string in base64 format.
+///
+/// Example: EjRWeJq83vEjRRI0VniavN7xI0U=
 ///
 static bool
 parse_digest(const char *str, as_digest *digest)
 {
-	int size = as_bytes_from_string(digest->value, sizeof(digest->value), str);
+	uint32_t len = (uint32_t)strlen(str);
+	uint8_t* bytes = (uint8_t*)alloca(cf_b64_decoded_buf_size(len));
+	uint32_t size;
+	
+	if (! cf_b64_validate_and_decode(str, len, bytes, &size)) {
+		return false;
+	}
 
 	if (size != sizeof(digest->value)) {
 		return false;
 	}
+
+	memcpy(digest->value, bytes, size);
     digest->init = true;
     return true;
 }
@@ -1147,9 +1197,12 @@ parse_digest(const char *str, as_digest *digest)
 /// filter: <begin partition>[:<partition count>]|<digest>
 /// begin partition: 0 - 4095
 /// partition count: 1 - 4096  Default: 1
-/// digest: 20 byte hash digest in hexidecimal string
+/// digest: base64 encoded string.
+///         This digest only includes records within the digest's partition,
+///         while the --digest argument includes both the digest's partition
+///         and every partition after the digest's partition.
 ///
-/// Example: 0:1000,2222,0x123456789abcdef12345123456789abcdef12345
+/// Example: 0:1000,2222,EjRWeJq83vEjRRI0VniavN7xI0U=
 ///
 static bool
 parse_partition_list(char *partition_list, as_vector *partition_ranges, as_vector *digests)
@@ -1168,55 +1221,27 @@ parse_partition_list(char *partition_list, as_vector *partition_ranges, as_vecto
 	split_string(clone, ',', true, &filters);
 	init_partition_filters(partition_ranges, digests, filters.size);
 
+	partition_range range;
+	as_digest digest;
+
 	for (uint32_t i = 0; i < filters.size; i++) {
 		char *str = as_vector_get_ptr(&filters, i);
 
-		// It's not documented, but --partition-list argument can contain digest
-		// filters as well. This difference is these digests only backup within 
-		// the digests' partition, while the --digest argument includes both the
-		// digest's partition and every partition after the digest's partition. 
-		if (str[0] == '0' && str[1] == 'x') {
-			// Digest filter
-			as_digest digest;
-
-			if (! parse_digest(str + 2, &digest)) {
-				err("Invalid digest '%s'", str);
-				goto cleanup;
-			}
-
-			as_vector_append(digests, &digest);
-			continue;
+		if (parse_partition_range(str, &range)) {
+			as_vector_append(partition_ranges, &range);
 		}
-
-		char *p = strchr(str, ':');
-		uint64_t begin = 0;
-		uint64_t count = 1;
-
-		if (p) {
-			*p++ = 0;
+		else if (parse_digest(str, &digest)) {
+			as_vector_append(digests, &digest);			
 		}
-
-		if (!better_atoi(str, &begin) || begin >= MAX_PARTITIONS) {
-			err("Invalid partition begin '%s'. Valid range: 0-%d", str, MAX_PARTITIONS - 1);
+		else {
+			err("Invalid partition filter '%s'", str);
+			err("format: <filter1>[,<filter2>][,...]");
+			err("filter: <begin partition>[:<partition count>]|<digest>");
+			err("begin partition: 0 - 4095");
+			err("partition count: 1 - 4096  Default: 1");
+			err("digest: base64 encoded string");
 			goto cleanup;
 		}
-
-		if (p) {
-			if (!better_atoi(p, &count)) {
-				err("Invalid partition count '%s'", p);
-				goto cleanup;
-			}
-
-			if (begin + count > MAX_PARTITIONS) {
-				err("Invalid partition range '%s:%s'", str, p);
-				goto cleanup;
-			}
-		}
-
-		partition_range range;
-		range.begin = (uint16_t)begin;
-		range.count = (uint16_t)count;
-		as_vector_append(partition_ranges, &range);
 	}
 	res = true;
 
@@ -1227,10 +1252,10 @@ cleanup:
 }
 
 ///
-/// Parse digest string filter in hex format.
+/// Parse digest string filter in base64 format.
 /// Append results to digest and partition ranges.
 ///
-/// Example: 0x123456789abcdef12345123456789abcdef12345
+/// Example: EjRWeJq83vEjRRI0VniavN7xI0U=
 ///
 static bool
 parse_after_digest(char *str, as_vector *partition_ranges, as_vector *digests)
