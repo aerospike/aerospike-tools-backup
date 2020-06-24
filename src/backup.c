@@ -1158,16 +1158,16 @@ sort_partition_ranges(as_vector *partition_ranges)
 ///
 /// Parse partition range string in format.
 ///
-/// range: <begin partition>[:<partition count>]
+/// range: <begin partition>[-<partition count>]
 /// begin partition: 0 - 4095
 /// partition count: 1 - 4096  Default: 1
 ///
-/// Example: 1000:10
+/// Example: 1000-10
 ///
 static bool
 parse_partition_range(char *str, partition_range *range)
 {
-	char *p = strchr(str, ':');
+	char *p = strchr(str, '-');
 	uint64_t begin = 0;
 	uint64_t count = 1;
 	bool rv = false;
@@ -1191,10 +1191,10 @@ parse_partition_range(char *str, partition_range *range)
 		return true;	
 	}
 
-	// Restore colon.
+	// Restore dash.
 	if (p) {
 		p--;
-		*p = ':';
+		*p = '-';
 	}
 	return false;
 }
@@ -1228,7 +1228,7 @@ parse_digest(const char *str, as_digest *digest)
 /// Parse partition_list string filter in format:
 ///
 ///	format: <filter1>[,<filter2>][,...]
-/// filter: <begin partition>[:<partition count>]|<digest>
+/// filter: <begin partition>[-<partition count>]|<digest>
 /// begin partition: 0 - 4095
 /// partition count: 1 - 4096  Default: 1
 /// digest: base64 encoded string.
@@ -1236,7 +1236,7 @@ parse_digest(const char *str, as_digest *digest)
 ///         while the --digest argument includes both the digest's partition
 ///         and every partition after the digest's partition.
 ///
-/// Example: 0:1000,2222,EjRWeJq83vEjRRI0VniavN7xI0U=
+/// Example: 0-1000,2222,EjRWeJq83vEjRRI0VniavN7xI0U=
 ///
 static bool
 parse_partition_list(char *partition_list, as_vector *partition_ranges, as_vector *digests)
@@ -1270,7 +1270,7 @@ parse_partition_list(char *partition_list, as_vector *partition_ranges, as_vecto
 		else {
 			err("Invalid partition filter '%s'", str);
 			err("format: <filter1>[,<filter2>][,...]");
-			err("filter: <begin partition>[:<partition count>]|<digest>");
+			err("filter: <begin partition>[-<partition count>]|<digest>");
 			err("begin partition: 0 - 4095");
 			err("partition count: 1 - 4096  Default: 1");
 			err("digest: base64 encoded string");
@@ -2019,14 +2019,14 @@ usage(const char *name)
 	fprintf(stderr, "                      List of partition ranges to backup. Range is begin partition id followed by\n");
 	fprintf(stderr, "                      optional count of partitions. If count not specified, count defaults to 1.\n");
 	fprintf(stderr, "                      This argument is mutually exclusive to node-list/digest arguments.\n");
-	fprintf(stderr, "                      Format: <begin 1>[:<count 1>][,<begin 2>[:<count 2>][,...]]\n");
-	fprintf(stderr, "                      Default: 0:4096 (all partitions)\n");
-	fprintf(stderr, "  -D, --digest <digest> \n");
+	fprintf(stderr, "                      Format: <begin 1>[-<count 1>][,<begin 2>[-<count 2>][,...]]\n");
+	fprintf(stderr, "                      Default: 0-4096 (all partitions)\n");
+	fprintf(stderr, "  -D, --after-digest <digest> \n");
 	fprintf(stderr, "                      Backup records after record digest. Used to resume backup with last record\n");
-	fprintf(stderr, "                      received from previous incomplete backup. Mutually exclusive with partition-list.\n");
+	fprintf(stderr, "                      received from previous incomplete backup.\n");
 	fprintf(stderr, "                      This argument is mutually exclusive to node-list/partition-list arguments.\n");
-	fprintf(stderr, "                      Format: Hexidecimal string representing record digest\n");
-	fprintf(stderr, "                      Example: 0x123456789abcdef12345123456789abcdef12345\n");
+	fprintf(stderr, "                      Format: base64 encoded string\n");
+	fprintf(stderr, "                      Example: EjRWeJq83vEjRRI0VniavN7xI0U=\n");
 	fprintf(stderr, "  -%%, --percent <percentage>\n");
 	fprintf(stderr, "                      The percentage of records to process. Default: 100.\n");
 	fprintf(stderr, "  -T, --record-num <number of records>\n");
@@ -2896,14 +2896,14 @@ main(int32_t argc, char **argv)
 		// Create backup task for every partition filter.
 		memset(backup_args.node_name, 0, AS_NODE_NAME_SIZE);
 
-		uint32_t seq = 1;
 		as_vector* digests = &conf.digests;
 
 		for (uint32_t i = 0; i < digests->size; i++) {
 			as_digest *digest = as_vector_get(digests, i);
-			as_partition_filter_set_after(&backup_args.filter, digest);
+			uint32_t id = as_partition_getid(digest->value, MAX_PARTITIONS);
+ 			as_partition_filter_set_after(&backup_args.filter, digest);
 
-			sprintf(backup_args.node_name, "PF%u", seq++);
+			sprintf(backup_args.node_name, "P%u", id);
 			backup_args.first = first;
 			first = false;
 
@@ -2919,7 +2919,7 @@ main(int32_t argc, char **argv)
 			partition_range *range = as_vector_get(partition_ranges, i);
 			as_partition_filter_set_range(&backup_args.filter, range->begin, range->count);
 
-			sprintf(backup_args.node_name, "PF%u", seq++);
+			sprintf(backup_args.node_name, "PR%u-%u", range->begin, range->count);
 			backup_args.first = first;
 			first = false;
 
