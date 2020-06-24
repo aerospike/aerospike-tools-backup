@@ -1122,6 +1122,40 @@ init_partition_filters(as_vector *partition_ranges, as_vector *digests, uint32_t
 }
 
 ///
+/// Sort partition ranges and detect overlap.
+///
+static bool
+sort_partition_ranges(as_vector *partition_ranges)
+{
+	// Use insertion sort because ranges will likely already be in sorted order.
+	partition_range* list = partition_ranges->list;
+	int size = (int)partition_ranges->size;
+	int i, j;
+	partition_range key;
+
+	for (i = 1; i < size; i++) {
+		key = list[i];
+		j = i - 1;
+
+		while (j >= 0 && list[j].begin > key.begin) {
+			list[j + 1] = list[j];
+			j = j - 1;
+		}
+		list[j + 1] = key;
+	}
+
+	// Check for overlap.
+	for (i = 1; i < size; i++) {
+		partition_range* prev = &list[i - 1];
+		
+		if (prev->begin + prev->count > list[i].begin) { 
+			return false;  // overlap 
+		}
+    }
+	return true; // no overlap
+}
+
+///
 /// Parse partition range string in format.
 ///
 /// range: <begin partition>[:<partition count>]
@@ -1243,7 +1277,12 @@ parse_partition_list(char *partition_list, as_vector *partition_ranges, as_vecto
 			goto cleanup;
 		}
 	}
-	res = true;
+
+	res = sort_partition_ranges(partition_ranges);
+
+	if (!res) {
+		err("Range overlap in partition list '%s'", partition_list);
+	}
 
 cleanup:
 	as_vector_destroy(&filters);
