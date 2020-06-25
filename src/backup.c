@@ -1225,18 +1225,18 @@ parse_digest(const char *str, as_digest *digest)
 }
 
 ///
-/// Parse partition_list string filter in format:
+/// Parse partition list string filters.
 ///
-///	format: <filter1>[,<filter2>][,...]
+///	Format: <filter1>[,<filter2>][,...]
 /// filter: <begin partition>[-<partition count>]|<digest>
-/// begin partition: 0 - 4095
-/// partition count: 1 - 4096  Default: 1
+/// begin partition: 0-4095
+/// partition count: 1-4096 Default: 1
 /// digest: base64 encoded string.
 ///         This digest only includes records within the digest's partition,
-///         while the --digest argument includes both the digest's partition
-///         and every partition after the digest's partition.
+///         while the --after-digest argument includes both the digest's
+///         partition and every partition after the digest's partition.
 ///
-/// Example: 0-1000,2222,EjRWeJq83vEjRRI0VniavN7xI0U=
+/// Example: 0-1000,1000-1000,2222,EjRWeJq83vEjRRI0VniavN7xI0U=
 ///
 static bool
 parse_partition_list(char *partition_list, as_vector *partition_ranges, as_vector *digests)
@@ -1271,8 +1271,8 @@ parse_partition_list(char *partition_list, as_vector *partition_ranges, as_vecto
 			err("Invalid partition filter '%s'", str);
 			err("format: <filter1>[,<filter2>][,...]");
 			err("filter: <begin partition>[-<partition count>]|<digest>");
-			err("begin partition: 0 - 4095");
-			err("partition count: 1 - 4096  Default: 1");
+			err("begin partition: 0-4095");
+			err("partition count: 1-4096 Default: 1");
 			err("digest: base64 encoded string");
 			goto cleanup;
 		}
@@ -2016,14 +2016,20 @@ usage(const char *name)
 	fprintf(stderr, "                      This argument is mutually exclusive to partition-list/digest arguments.\n");
 	fprintf(stderr, "                      Default: backup all nodes in the cluster\n");
 	fprintf(stderr, "  -X, --partition-list <list>\n");
-	fprintf(stderr, "                      List of partition ranges to backup. Range is begin partition id followed by\n");
-	fprintf(stderr, "                      optional count of partitions. If count not specified, count defaults to 1.\n");
-	fprintf(stderr, "                      This argument is mutually exclusive to node-list/digest arguments.\n");
-	fprintf(stderr, "                      Format: <begin 1>[-<count 1>][,<begin 2>[-<count 2>][,...]]\n");
+	fprintf(stderr, "                      Backup list of partition filters. Partition filters can be ranges,\n");
+	fprintf(stderr, "                      individual partitions or record's after a digest within a single partition.\n");
+	fprintf(stderr, "                      This argument is mutually exclusive to node-list/after-digest arguments.\n");
+	fprintf(stderr, "                      Format: <filter1>[,<filter2>][,...]\n");
+	fprintf(stderr, "                      filter: <begin partition>[-<partition count>]|<digest>\n");
+	fprintf(stderr, "                      begin partition: 0-4095\n");
+	fprintf(stderr, "                      partition count: 1-4096 Default: 1\n");
+	fprintf(stderr, "                      digest: base64 encoded string\n");
+	fprintf(stderr, "                      Example: 0-1000,1000-1000,2222,EjRWeJq83vEjRRI0VniavN7xI0U=\n");
 	fprintf(stderr, "                      Default: 0-4096 (all partitions)\n");
-	fprintf(stderr, "  -D, --after-digest <digest> \n");
-	fprintf(stderr, "                      Backup records after record digest. Used to resume backup with last record\n");
-	fprintf(stderr, "                      received from previous incomplete backup.\n");
+	fprintf(stderr, "  -D, --after-digest <digest>\n");
+	fprintf(stderr, "                      Backup records after record digest in record's partition plus all succeeding\n");
+	fprintf(stderr, "                      partitions. Used to resume backup with last record received from previous\n");
+	fprintf(stderr, "                      incomplete backup.\n");
 	fprintf(stderr, "                      This argument is mutually exclusive to node-list/partition-list arguments.\n");
 	fprintf(stderr, "                      Format: base64 encoded string\n");
 	fprintf(stderr, "                      Example: EjRWeJq83vEjRRI0VniavN7xI0U=\n");
