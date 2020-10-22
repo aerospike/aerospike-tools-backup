@@ -62,10 +62,15 @@ INCLUDES += -I$(CLIENTREPO)/modules/common/src/include
 INCLUDES += -I/usr/local/opt/openssl/include
 
 LIBRARIES := $(CLIENTREPO)/target/$(PLATFORM)/lib/libaerospike.a
-LIBRARIES += -L/usr/local/opt/openssl/lib
 LIBRARIES += -L/usr/local/lib
-LIBRARIES += -lssl
-LIBRARIES += -lcrypto
+ifeq ($(OPENSSL_STATIC_PATH),)
+  LIBRARIES += -L/usr/local/opt/openssl/lib
+  LIBRARIES += -lssl
+  LIBRARIES += -lcrypto
+else
+  LIBRARIES += $(OPENSSL_STATIC_PATH)/libssl.a
+  LIBRARIES += $(OPENSSL_STATIC_PATH)/libcrypto.a
+endif 
 LIBRARIES += -lpthread
 LIBRARIES += -lm
 LIBRARIES += -lz

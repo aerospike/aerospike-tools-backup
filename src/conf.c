@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2018 Aerospike, Inc.
+ * Copyright 2015-2020 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -636,6 +636,12 @@ config_backup(toml_table_t *conftab, backup_config *c, const char *instance,
 
 		} else if (! strcasecmp("node-list", name)) {
 			status = config_str(curtab, name, (void*)&c->node_list);
+
+		} else if (! strcasecmp("partition-list", name)) {
+			status = config_str(curtab, name, (void*)&c->partition_list);
+
+		} else if (! strcasecmp("after-digest", name)) {
+			status = config_str(curtab, name, (void*)&c->after_digest);
 
 		} else if (! strcasecmp("percent", name)) {
 

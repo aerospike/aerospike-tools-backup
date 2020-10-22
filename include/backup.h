@@ -1,7 +1,7 @@
 /*
  * Aerospike Backup
  *
- * Copyright (c) 2008-2015 Aerospike, Inc. All rights reserved.
+ * Copyright (c) 2008-2020 Aerospike, Inc. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -79,6 +79,14 @@ typedef struct {
 } backup_encoder;
 
 ///
+/// Partition range.
+///
+typedef struct {
+	uint16_t begin;
+	uint16_t count;
+} partition_range;
+
+///
 /// The global backup configuration and stats shared by all backup threads and the counter thread.
 ///
 typedef struct {
@@ -131,8 +139,12 @@ typedef struct {
 	volatile uint32_t index_count;      ///< The number of secondary indexes backed up.
 	volatile uint32_t udf_count;        ///< The number of UDF files backed up.
 	char *auth_mode;					///< Authentication mode
-} backup_config;
 
+	char *partition_list;               ///< String containing partition range and digest filters.
+	char *after_digest;                 ///< String containing digest filter.
+	as_vector partition_ranges;         ///< List of partition range filters (partition_range).
+	as_vector digests;                  ///< List of digest filters (as_digest).
+} backup_config;
 
 ///
 /// The per-node information pushed to the job queue and picked up by the backup threads.
@@ -140,6 +152,7 @@ typedef struct {
 typedef struct {
 	backup_config *conf;                ///< The global backup configuration and stats.
 	char node_name[AS_NODE_NAME_SIZE];  ///< The node ID of the cluster node to be backed up.
+	as_partition_filter filter;         ///< Partition ranges/digest to be backed up. 
 	FILE *shared_fd;                    ///< When backing up to a single file, the file descriptor
 	                                    ///  of that file.
 	uint64_t bytes;                     ///< When backing up to a single file, the number of bytes
@@ -158,7 +171,9 @@ typedef struct {
 /// thread creates one of these for each node that it scans.
 ///
 typedef struct {
-	char node_name[AS_NODE_NAME_SIZE];  ///< The node ID of the currently processed cluster node.
+	char node_name[AS_NODE_NAME_SIZE];  ///< The node ID of the currently processed cluster node for
+	                                    ///  node backups or PF<sequence> for partition scans.
+	char desc[128];                     ///< Task description. 
 	backup_config *conf;                ///< The global backup configuration and stats. Copied from
 	                                    ///  backup_thread_args.conf.
 	FILE *shared_fd;                    ///< When backing up to a single file, the file descriptor
