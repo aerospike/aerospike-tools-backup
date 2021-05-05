@@ -10,14 +10,14 @@ def put_ttl(key, ttl):
 	"""
 	Inserts the given key with the given TTL.
 	"""
-	lib.write_record(lib.SET, key, [u"value"], [u"value"], False, ttl)
+	lib.write_record(lib.SET, key, ["value"], ["value"], False, ttl)
 
 def check_ttl(key, expected_ttl):
 	"""
 	Ensures that the given key has the given TTL.
 	"""
 	meta_key, meta_ttl, record = lib.read_record(lib.SET, key)
-	lib.validate_record(key, record, [u"value"], [u"value"])
+	lib.validate_record(key, record, ["value"], ["value"])
 	lib.validate_meta(key, meta_key, meta_ttl, False, expected_ttl)
 
 def check_expired(key):

@@ -1,7 +1,7 @@
 /*
  * Aerospike Restore
  *
- * Copyright (c) 2008-2016 Aerospike, Inc. All rights reserved.
+ * Copyright (c) 2008-2021 Aerospike, Inc. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -24,6 +24,7 @@
 
 #pragma once
 
+#include <io_proxy.h>
 #include <shared.h>
 
 #define DEFAULT_THREADS 20              ///< The default number of restore threads.
@@ -80,7 +81,7 @@ typedef struct {
 	///
 	/// @result          See @ref decoder_status.
 	///
-	decoder_status (*parse)(FILE *fd, bool legacy, as_vector *ns_vec, as_vector *bin_vec,
+	decoder_status (*parse)(io_read_proxy_t *fd, bool legacy, as_vector *ns_vec, as_vector *bin_vec,
 			uint32_t *line_no, cf_atomic64 *total, as_record *rec, int32_t extra_ttl,
 			bool *expired, index_param *index, udf_param *udf);
 } backup_decoder;
@@ -91,9 +92,8 @@ typedef struct {
 typedef struct {
 
 	char *host;
-	bool use_services_alternate;
-
 	int32_t port;
+	bool use_services_alternate;
 	char *user;
 	char *password;
 	uint32_t threads;
@@ -117,6 +117,9 @@ typedef struct {
 	char *machine;                  ///< The path for the machine-readable output.
 	char *bin_list;                 ///< The bins to be restored.
 	char *set_list;                 ///< The sets to be restored.
+	encryption_key_t* pkey;         ///< The encryption key given by the user
+	compression_opt compress_mode;  ///< The compression mode to be used (default is none)
+	encryption_opt encrypt_mode;    ///< The encryption mode to be used (default is none)
 	bool unique;                    ///< Indicates that existing records shouldn't be touched.
 	bool replace;                   ///< Indicates that existing records should be replaced instead
 	                                ///  of updated.
@@ -165,7 +168,7 @@ typedef struct {
 typedef struct {
 	restore_config *conf;   ///< The global restore configuration and stats.
 	char *path;             ///< The backup file to be restored.
-	FILE *shared_fd;        ///< When restoring from a single file, the file descriptor of that
+	io_read_proxy_t* shared_fd;        ///< When restoring from a single file, the file descriptor of that
 	                        ///  file.
 	uint32_t *line_no;      ///< The current line number.
 	as_vector *ns_vec;      ///< The (optional) source and (also optional) target namespace to be
@@ -183,11 +186,11 @@ typedef struct {
 	restore_config *conf;       ///< The global restore configuration and stats.
 	char *path;                 ///< The backup file to be restored. Copied from
 	                            ///  restore_thread_args.path.
-	FILE *shared_fd;            ///< When restoring from a single file, the file descriptor of that
+	io_read_proxy_t* shared_fd;            ///< When restoring from a single file, the file descriptor of that
 	                            ///  file. Copied from restore_thread_args.shared_fd.
 	uint32_t *line_no;          ///< The current line number. Copied from
 	                            ///  restore_thread_args.line_no.
-	FILE *fd;                   ///< The file descriptor of the currently processed backup file.
+	io_read_proxy_t* fd;                   ///< The file descriptor of the currently processed backup file.
 	void *fd_buf;               ///< When restoring from a directory, the I/O buffer associated with
 	                            ///  the current backup file descriptor.
 	as_vector *ns_vec;          ///< The (optional) source and (also optional) target namespace to
@@ -216,3 +219,8 @@ typedef enum {
 	INDEX_STATUS_DIFFERENT  ///< The secondary index exists, but it does not match the given
 	                        ///  specification.
 } index_status;
+
+extern int32_t restore_main(int32_t argc, char **argv);
+extern void restore_config_default(restore_config *conf);
+extern void restore_config_destroy(restore_config *conf);
+

@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2020 Aerospike, Inc.
+ * Copyright 2015-2021 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -62,7 +62,8 @@ char *DEFAULTPASSWORD = "SomeDefaultRandomPassword";
 //
 
 static bool config_str(toml_table_t *curtab, const char *name, void *ptr);
-static bool config_int(toml_table_t *curtab, const char *name, void *ptr);
+static bool config_int32(toml_table_t *curtab, const char *name, int32_t *ptr);
+static bool config_int64(toml_table_t *curtab, const char *name, int64_t *ptr);
 static bool config_bool(toml_table_t *curtab, const char *name, void *ptr);
 static bool config_parse_file(const char *fname, toml_table_t **tab, char errbuf[]);
 
@@ -189,7 +190,7 @@ config_str(toml_table_t *curtab, const char *name, void *ptr)
 }
 
 static bool
-config_int(toml_table_t *curtab, const char *name, void *ptr)
+config_int32(toml_table_t *curtab, const char *name, int32_t *ptr)
 {
 	const char *value = toml_raw_in(curtab, name);
 	if (! value) {
@@ -198,7 +199,23 @@ config_int(toml_table_t *curtab, const char *name, void *ptr)
 
 	int64_t ival;
 	if (0 == toml_rtoi(value, &ival)) {
-		*((int*)ptr) = (int)ival;
+		*ptr = (int32_t)ival;
+		return true;
+	}
+	return false;
+}
+
+static bool
+config_int64(toml_table_t *curtab, const char *name, int64_t *ptr)
+{
+	const char *value = toml_raw_in(curtab, name);
+	if (! value) {
+		return false;
+	}
+
+	int64_t ival;
+	if (0 == toml_rtoi(value, &ival)) {
+		*ptr = ival;
 		return true;
 	}
 	return false;
@@ -247,13 +264,13 @@ config_restore_cluster(toml_table_t *conftab, restore_config *c, const char *ins
 		if (! strcasecmp("host", name)) {
 			status = config_str(curtab, name, (void*)&c->host);
 
-		} else if (! strcasecmp("services-alternate",  name)) {
-			status = config_bool(curtab, name,
-					(void*)&c->use_services_alternate);
-
 		} else if (! strcasecmp("port", name)) {
 			// TODO make limits check for int for all int
-			status = config_int(curtab, name, (void*)&c->port);
+			status = config_int32(curtab, name, (void*)&c->port);
+
+		} else if (! strcasecmp("use-services-alternate",  name)) {
+			status = config_bool(curtab, name,
+					(void*)&c->use_services_alternate);
 
 		} else if (! strcasecmp("user", name)) {
 			status = config_str(curtab, name, (void*)&c->user);
@@ -339,14 +356,14 @@ config_backup_cluster(toml_table_t *conftab, backup_config *c, const char *insta
 
 		if (! strcasecmp("host", name)) {
 			status = config_str(curtab, name, (void*)&c->host);
-		
-		} else if (! strcasecmp("services-alternate",  name)) {
-			status = config_bool(curtab, name,
-					(void*)&c->use_services_alternate);
 
 		} else if (! strcasecmp("port", name)) {
 			// TODO make limits check for int for all int
-			status = config_int(curtab, name, (void*)&c->port);
+			status = config_int32(curtab, name, (void*)&c->port);
+		
+		} else if (! strcasecmp("use-services-alternate",  name)) {
+			status = config_bool(curtab, name,
+					(void*)&c->use_services_alternate);
 
 		} else if (! strcasecmp("user", name)) {
 			status = config_str(curtab, name, (void*)&c->user);
@@ -568,12 +585,14 @@ config_backup(toml_table_t *conftab, backup_config *c, const char *instance,
 			}
 
 		} else if (! strcasecmp("set", name)) {
-
 			status = config_str(curtab, name, (void*)&s);
 			if (status) {
-				as_strncpy(c->scan->set, s, AS_SET_MAX_SIZE);
+				status = parse_set_list(&c->set_list, s);
 				free(s);
 			}
+
+		} else if (! strcasecmp("remove-files", name)) {
+			status = config_bool(curtab, name, (void*)&c->remove_files);
 
 		} else if (! strcasecmp("directory", name)) {
 			status = config_str(curtab, name, (void*)&c->directory);
@@ -584,37 +603,27 @@ config_backup(toml_table_t *conftab, backup_config *c, const char *instance,
 		} else if (! strcasecmp("no-ttl-only", name)) {
 			status = config_bool(curtab, name, &c->ttl_zero);
 
-		} else if (! strcasecmp("record-num", name)) {
-			status = config_int(curtab, name, &c->rec_num_max);
+		} else if (! strcasecmp("max-records", name)) {
+			status = config_int64(curtab, name, (int64_t*) &c->policy->max_records);
+
+		//} else if (! strcasecmp("record-num", name)) {
+		//	status = config_int64(curtab, name, (int64_t*) &c->rec_num_max);
 
 		} else if (! strcasecmp("output-file", name)) {
 			status = config_str(curtab, name, (void*)&c->output_file);
 
 		} else if (! strcasecmp("file-limit", name)) {
 
-			status = config_int(curtab, name, (void*)&i_val);
+			status = config_int64(curtab, name, (void*)&i_val);
 			if (i_val > 0) {
 				c->file_limit = (uint64_t)i_val * 1024 * 1024;
 			} else {
 				status = false;
 			}
 
-		} else if (! strcasecmp("priority", name)) {
-
-			status = config_int(curtab, name, (void*)&i_val);
-			if (i_val > 0 && i_val <= 3) {
-				c->scan->priority = (uint32_t)i_val;
-			} else {
-				status = false;
-			}
-
 		} else if (! strcasecmp("records-per-second", name)) {
 
-			status = config_int(curtab, name, (void*)&c->policy->records_per_second);
-
-		}else if (! strcasecmp("no-cluster-change", name)) {
-			status = config_bool(curtab, name,
-					(void*)&c->policy->fail_on_cluster_change);
+			status = config_int32(curtab, name, (void*)&c->policy->records_per_second);
 
 		} else if (! strcasecmp("no-bins", name)) {
 			status = config_bool(curtab, name, (void*)&c->scan->no_bins);
@@ -622,20 +631,56 @@ config_backup(toml_table_t *conftab, backup_config *c, const char *instance,
 		} else if (! strcasecmp("compact", name)) {
 			status = config_bool(curtab, name, (void*)&c->compact);
 
-		} else if (! strcasecmp("bin_list", name)) {
-			status = config_str(curtab, name, (void*)&c->bin_list);
-
-		} else if (! strcasecmp("parallel", name)) {
-
-			status = config_int(curtab, name, (void*)&i_val);
-			if (i_val >= 1 && i_val <= MAX_PARALLEL) {
-				c->parallel = (int32_t)i_val;
-			} else {
-				status = false;
+		} else if (! strcasecmp("compress", name)) {
+			char* compress_type;
+			status = config_str(curtab, name, (void*) &compress_type);
+			if (status) {
+				status = parse_compression_type(compress_type, &c->compress_mode) == 0;
+				free(compress_type);
 			}
 
-		} else if (! strcasecmp("node-list", name)) {
-			status = config_str(curtab, name, (void*)&c->node_list);
+		} else if (! strcasecmp("encrypt", name)) {
+			char* encrypt_type;
+			status = config_str(curtab, name, (void*) &encrypt_type);
+			if (status) {
+				status = parse_encryption_type(encrypt_type, &c->encrypt_mode) == 0;
+				free(encrypt_type);
+			}
+
+		} else if (! strcasecmp("encryption-key-file", name)) {
+			if (c->pkey != NULL) {
+				fprintf(stderr, "Cannot specify both encryption-key-file and "
+						"encryption-key-env\n");
+				return false;
+			}
+			else {
+				char* key_file;
+				status = config_str(curtab, name, (void*) &key_file);
+				if (status) {
+					c->pkey = (encryption_key_t*) cf_malloc(sizeof(encryption_key_t));
+					status = io_proxy_read_private_key_file(key_file, c->pkey) == 0;
+					free(key_file);
+				}
+			}
+
+		} else if (! strcasecmp("encryption-key-env", name)) {
+			if (c->pkey != NULL) {
+				fprintf(stderr, "Cannot specify both encryption-key-file and "
+						"encryption-key-env\n");
+				return false;
+			}
+			else {
+				char* env_var;
+				status = config_str(curtab, name, (void*) &env_var);
+				if (status) {
+					c->pkey = parse_encryption_key_env(env_var);
+					status = c->pkey != NULL;
+					free(env_var);
+				}
+			}
+
+		} else if (! strcasecmp("bin-list", name)) {
+			status = config_str(curtab, name, (void*)&c->bin_list);
 
 		} else if (! strcasecmp("partition-list", name)) {
 			status = config_str(curtab, name, (void*)&c->partition_list);
@@ -643,13 +688,20 @@ config_backup(toml_table_t *conftab, backup_config *c, const char *instance,
 		} else if (! strcasecmp("after-digest", name)) {
 			status = config_str(curtab, name, (void*)&c->after_digest);
 
-		} else if (! strcasecmp("percent", name)) {
+		} else if (! strcasecmp("modified-after", name)) {
+			char* mod_after_time;
+			status = config_str(curtab, name, (void*) &mod_after_time);
+			if (status) {
+				status = parse_date_time(mod_after_time, &c->mod_after);
+				free(mod_after_time);
+			}
 
-			status = config_int(curtab, name, (void*)&i_val);
-			if (i_val >= 1 && i_val <= 100) {
-				c->scan->percent = (uint8_t)i_val;
-			} else {
-				status = false;
+		} else if (! strcasecmp("modified-before", name)) {
+			char* mod_before_time;
+			status = config_str(curtab, name, (void*) &mod_before_time);
+			if (status) {
+				status = parse_date_time(mod_before_time, &c->mod_before);
+				free(mod_before_time);
 			}
 
 		} else if (! strcasecmp("machine", name)) {
@@ -660,7 +712,7 @@ config_backup(toml_table_t *conftab, backup_config *c, const char *instance,
 
 		} else if (! strcasecmp("bandwidth", name)) {
 
-			status = config_int(curtab, name, (void*)&i_val);
+			status = config_int64(curtab, name, (void*)&i_val);
 			if (i_val > 0) {
 				c->bandwidth = (uint64_t)i_val * 1024 * 1024;
 			} else {
@@ -735,9 +787,57 @@ config_restore(toml_table_t *conftab, restore_config *c, const char *instance,
 		} else if (! strcasecmp("input-file", name)) {
 			status = config_str(curtab, name, (void*)&c->input_file);
 
+		} else if (! strcasecmp("compress", name)) {
+			char* compress_type;
+			status = config_str(curtab, name, (void*) &compress_type);
+			if (status) {
+				status = parse_compression_type(compress_type, &c->compress_mode) == 0;
+				free(compress_type);
+			}
+
+		} else if (! strcasecmp("encrypt", name)) {
+			char* encrypt_type;
+			status = config_str(curtab, name, (void*) &encrypt_type);
+			if (status) {
+				status = parse_encryption_type(encrypt_type, &c->encrypt_mode) == 0;
+				free(encrypt_type);
+			}
+
+		} else if (! strcasecmp("encryption-key-file", name)) {
+			if (c->pkey != NULL) {
+				fprintf(stderr, "Cannot specify both encryption-key-file and "
+						"encryption-key-env\n");
+				return false;
+			}
+			else {
+				char* key_file;
+				status = config_str(curtab, name, (void*) &key_file);
+				if (status) {
+					c->pkey = (encryption_key_t*) cf_malloc(sizeof(encryption_key_t));
+					status = io_proxy_read_private_key_file(key_file, c->pkey) == 0;
+					free(key_file);
+				}
+			}
+
+		} else if (! strcasecmp("encryption-key-env", name)) {
+			if (c->pkey != NULL) {
+				fprintf(stderr, "Cannot specify both encryption-key-file and "
+						"encryption-key-env\n");
+				return false;
+			}
+			else {
+				char* env_var;
+				status = config_str(curtab, name, (void*) &env_var);
+				if (status) {
+					c->pkey = parse_encryption_key_env(env_var);
+					status = c->pkey != NULL;
+					free(env_var);
+				}
+			}
+
 		} else if (! strcasecmp("threads", name)) {
 
-			status = config_int(curtab, name, (void*)&i_val);
+			status = config_int64(curtab, name, (void*)&i_val);
 			if (i_val >= 1 && i_val <= MAX_THREADS) {
 				c->threads = (uint32_t)i_val;
 			} else {
@@ -766,7 +866,19 @@ config_restore(toml_table_t *conftab, restore_config *c, const char *instance,
 			status = config_bool(curtab, name, (void*)&c->no_generation);
 
 		} else if (! strcasecmp("extra-ttl", name)) {
-			status = config_int(curtab, name, (void*)&c->extra_ttl);
+			status = config_int32(curtab, name, (void*)&c->extra_ttl);
+
+		} else if (! strcasecmp("bandwidth", name)) {
+
+			status = config_int64(curtab, name, (void*)&i_val);
+			if (i_val > 0) {
+				c->bandwidth = (uint64_t)i_val * 1024 * 1024;
+			} else {
+				status = false;
+			}
+
+		} else if (! strcasecmp("tps", name)) {
+			status = config_int32(curtab, name, (void*)&c->tps);
 
 		} else if (! strcasecmp("nice-list", name)) {
 			status = config_str(curtab, name, (void*)&c->nice_list);
@@ -787,7 +899,7 @@ config_restore(toml_table_t *conftab, restore_config *c, const char *instance,
 			status = config_bool(curtab, name, (void*)&c->wait);
 
 		} else if (! strcasecmp("timeout", name)) {
-			status = config_int(curtab, name, (void*)&i_val);
+			status = config_int64(curtab, name, (void*)&i_val);
 			if (i_val >= 0) {
 				c->timeout = (uint32_t)i_val;
 			} else {

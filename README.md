@@ -1,5 +1,8 @@
 ## Aerospike Backup Tools
 
+![Build:Main](https://github.com/citrusleaf/aerospike-tools-backup/workflows/Build:Main/badge.svg)
+[![codecov](https://codecov.io/gh/aerospike/aerospike-tools-backup/branch/main/graph/badge.svg?token=TPGZT8V6AA)](https://codecov.io/gh/aerospike/aerospike-tools-backup)
+
 This is the developer documentation. For user documentation, please consult http://www.aerospike.com/docs/tools/backup.
 
 ## Building

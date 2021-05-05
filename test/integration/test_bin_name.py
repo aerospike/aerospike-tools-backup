@@ -29,7 +29,8 @@ def test_bin_name():
 	Test bin names.
 	"""
 	lib.backup_and_restore(
-		lambda context: put_bins(lib.SET, "key", BIN_NAMES, u"foobar"),
+		lambda context: put_bins(lib.SET, "key", BIN_NAMES, "foobar"),
 		None,
-		lambda context: check_bins(lib.SET, "key", BIN_NAMES, u"foobar")
+		lambda context: check_bins(lib.SET, "key", BIN_NAMES, "foobar")
 	)
+

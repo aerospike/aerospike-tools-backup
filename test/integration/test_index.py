@@ -7,8 +7,8 @@ Tests the representation of indexes in backup files.
 import lib
 
 SET_NAMES = [None] + lib.index_variations(63)
-INDEX_NAMES = [u"normal"] + lib.index_variations(63)
-INDEX_PATHS = [u"normal"] + lib.index_variations(14)
+INDEX_NAMES = ["normal"] + lib.index_variations(63)
+INDEX_PATHS = ["normal"] + lib.index_variations(14)
 
 def create_indexes(create_func):
 	"""
@@ -43,7 +43,7 @@ def test_string_index():
 	lib.backup_and_restore(
 		lambda context: create_indexes(lib.create_string_index),
 		None,
-		lambda context: check_indexes(lib.check_simple_index, u"foobar")
+		lambda context: check_indexes(lib.check_simple_index, "foobar")
 	)
 
 def test_geo_index():
@@ -75,7 +75,7 @@ def test_string_list_index():
 	lib.backup_and_restore(
 		lambda context: create_indexes(lib.create_string_list_index),
 		None,
-		lambda context: check_indexes(lib.check_list_index, u"foobar")
+		lambda context: check_indexes(lib.check_list_index, "foobar")
 	)
 
 def test_integer_map_key_index():
@@ -97,7 +97,7 @@ def test_string_map_key_index():
 	lib.backup_and_restore(
 		lambda context: create_indexes(lib.create_string_map_key_index),
 		None,
-		lambda context: check_indexes(lib.check_map_key_index, u"foobar")
+		lambda context: check_indexes(lib.check_map_key_index, "foobar")
 	)
 
 def test_integer_map_value_index():
@@ -119,5 +119,5 @@ def test_string_map_value_index():
 	lib.backup_and_restore(
 		lambda context: create_indexes(lib.create_string_map_value_index),
 		None,
-		lambda context: check_indexes(lib.check_map_value_index, u"foobar")
+		lambda context: check_indexes(lib.check_map_value_index, "foobar")
 	)

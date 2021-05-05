@@ -30,11 +30,16 @@ def backup_and_restore(fill, check, node_lists):
 
 		lib.reset()
 
+		# give SMD time to get deleted
+		lib.safe_sleep(0.5)
+
 		for path in paths:
 			if lib.is_dir_mode():
 				lib.restore_from_directory(path)
 			else:
 				lib.restore_from_file(path)
+		# give SMD time to be restored
+		lib.safe_sleep(0.5)
 
 		check()
 	except Exception:
@@ -47,14 +52,14 @@ def filler():
 	"""
 	Fills the namespace with a few records.
 	"""
-	for index in xrange(10000):
-		lib.write_record(lib.SET, index, [u"bin-1"], [index])
+	for index in range(10000):
+		lib.write_record(lib.SET, index, ["bin-1"], [index])
 
 def checker():
 	"""
 	Verifies that the expected records are there.
 	"""
-	for index in xrange(10000):
+	for index in range(10000):
 		assert lib.test_record(lib.SET, index), "Key %s is missing" % index
 
 def test_node_list_1():

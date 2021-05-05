@@ -1,7 +1,7 @@
 /*
  * Aerospike Utility Functions
  *
- * Copyright (c) 2008-2016 Aerospike, Inc. All rights reserved.
+ * Copyright (c) 2008-2021 Aerospike, Inc. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -24,7 +24,10 @@
 
 #pragma once
 
+#include <io_proxy.h>
 #include <shared.h>
+
+#include <aerospike/as_vector.h>
 
 #define IO_BUF_SIZE (1024 * 1024 * 16)      ///< We do I/O in blocks of this size.
 #define STACK_BUF_SIZE (1024 * 16)          ///< The size limit for stack-allocated buffers.
@@ -123,9 +126,12 @@ extern void ver(const char *format, ...) __attribute__ ((format (printf, 1, 2)))
 extern void inf(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
 extern void err(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
 extern void err_code(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
+extern int64_t decode_b64(uint8_t** dst_ptr, const char* src);
 extern void hex_dump_ver(const void *data, uint32_t len);
 extern void hex_dump_inf(const void *data, uint32_t len);
 extern void hex_dump_err(const void *data, uint32_t len);
+extern bool str_vector_contains(as_vector* v, const char* str);
+extern char* str_vector_tostring(as_vector* v);
 extern void enable_client_log(void);
 extern void *safe_malloc(size_t size);
 extern char *safe_strdup(const char *string);
@@ -149,9 +155,42 @@ extern bool get_info(aerospike *as, const char *value, const char *node_name, vo
 extern bool get_migrations(aerospike *as, char (*node_names)[][AS_NODE_NAME_SIZE],
 		uint32_t n_node_names, uint64_t *mig_count);
 extern bool parse_index_info(char *ns, char *index_str, index_param *index);
+extern bool parse_set_list(as_vector* dst, const char* set_list);
+extern encryption_key_t* parse_encryption_key_env(const char* env_var_name);
+#ifdef __APPLE__
+extern char* strchrnul(const char* s, int c_in);
+#endif /* __APPLE__ */
 
 #define LIKELY(x) __builtin_expect(!!(x), 1)    ///< Marks an expression that is likely true.
 #define UNLIKELY(x) __builtin_expect(!!(x), 0)  ///< Marks an expression that is unlikely true.
+
+#define MIN(a, b) ((b) > (a) ? (a) : (b))
+#define MAX(a, b) ((a) < (b) ? (b) : (a))
+
+/*
+ * returns true if the given timespec is in the future
+ */
+static __attribute__((always_inline)) inline bool
+timespec_has_not_happened(struct timespec* ts)
+{
+	struct timespec now;
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	return now.tv_sec < ts->tv_sec ||
+		(now.tv_sec == ts->tv_sec && now.tv_nsec < ts->tv_nsec);
+}
+
+/*
+ * returns a string representation of the boolean value
+ */
+static __attribute__((always_inline)) inline const char*
+boolstr(bool val)
+{
+	static const char* str_vals[] = {
+		"false",
+		"true"
+	};
+	return str_vals[val != 0];
+}
 
 ///
 /// Reads a character from a file descriptor. Updates the current line and column number as well as
@@ -167,16 +206,17 @@ extern bool parse_index_info(char *ns, char *index_str, index_param *index);
 /// @result         The read character on success, otherwise `EOF`.
 ///
 static __attribute__((always_inline)) inline int32_t
-read_char(FILE *fd, uint32_t *line_no, uint32_t *col_no, int64_t *bytes)
+read_char(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
+		int64_t *bytes)
 {
 	line_no[0] = line_no[1];
 	col_no[0] = col_no[1];
 
-	int32_t ch = getc_unlocked(fd);
+	int32_t ch = io_proxy_getc_unlocked(fd);
 
 	switch (ch) {
 	case EOF:
-		if (ferror(fd) != 0) {
+		if (io_proxy_error(fd) != 0) {
 			err("Error while reading backup block (line %u, col %u)", line_no[0], col_no[0]);
 			return EOF;
 		}
@@ -216,7 +256,8 @@ read_char(FILE *fd, uint32_t *line_no, uint32_t *col_no, int64_t *bytes)
 /// @result         The decoded byte on success, otherwise `EOF`.
 ///
 static inline int32_t
-read_char_dec(FILE *fd, uint32_t *line_no, uint32_t *col_no, int64_t *bytes, b64_context *b64c)
+read_char_dec(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
+		int64_t *bytes, b64_context *b64c)
 {
 	if (LIKELY(b64c->index < 2)) {
 		return b64c->buffer[b64c->index++];
@@ -256,33 +297,26 @@ read_char_dec(FILE *fd, uint32_t *line_no, uint32_t *col_no, int64_t *bytes, b64
 	return (dig1 << 2) | (dig2 >> 4);
 }
 
-///
-/// Pushes a character back to a file descriptor. Adjusts the current line and column number as
-/// well as the total number of read bytes.
-///
-/// @param ch       The character to be pushed back.
-/// @param fd       The file descriptor.
-/// @param line_no  The line number. `line_no[0]` is the current line, `line_no[1]` is the next
-///                 line.
-/// @param col_no   The column number. `col_no[0]` is the current column, `col_no[1]` is the next
-///                 column.
-/// @param bytes    Incremented, if a character was successfully read.
-///
-/// @result         `true`, if successful.
-///
-static inline bool
-push_char(int32_t ch, FILE *fd, uint32_t *line_no, uint32_t *col_no, int64_t *bytes)
+static inline int
+peek_char(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no, int64_t *bytes)
 {
-	if (UNLIKELY(ungetc(ch, fd) == EOF)) {
-		err("Error while pushing character in backup block (line %u, col %u)", line_no[0],
-				col_no[0]);
-		return false;
-	}
+	(void) bytes;
+	line_no[0] = line_no[1];
+	col_no[0] = col_no[1];
 
-	line_no[1] = line_no[0];
-	col_no[1] = col_no[0];
-	--(*bytes);
-	return true;
+	int32_t ch = io_proxy_peekc_unlocked(fd);
+
+	switch (ch) {
+	case EOF:
+		if (io_proxy_error(fd) != 0) {
+			err("Error while reading backup block (line %u, col %u)", line_no[0], col_no[0]);
+			return EOF;
+		}
+
+		err("Unexpected end of file in backup block (line %u, col %u)", line_no[0], col_no[0]);
+		return EOF;
+	}
+	return ch;
 }
 
 ///
@@ -297,7 +331,8 @@ push_char(int32_t ch, FILE *fd, uint32_t *line_no, uint32_t *col_no, int64_t *by
 /// @result         `true`, if successful.
 ///
 static inline bool
-expect_char(FILE *fd, uint32_t *line_no, uint32_t *col_no, int64_t *bytes, int32_t ch)
+expect_char(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
+		int64_t *bytes, int32_t ch)
 {
 	int32_t x = read_char(fd, line_no, col_no, bytes);
 
@@ -327,7 +362,8 @@ expect_char(FILE *fd, uint32_t *line_no, uint32_t *col_no, int64_t *bytes, int32
 /// @result         `true`, if successful.
 ///
 static inline bool
-read_block(FILE *fd, uint32_t *line_no, uint32_t *col_no, int64_t *bytes, void *buffer, size_t size)
+read_block(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
+		int64_t *bytes, void *buffer, size_t size)
 {
 	for (size_t i = 0; i < size; ++i) {
 		int32_t ch = read_char(fd, line_no, col_no, bytes);
@@ -358,8 +394,8 @@ read_block(FILE *fd, uint32_t *line_no, uint32_t *col_no, int64_t *bytes, void *
 /// @result         `true`, if successful.
 ///
 static inline bool
-read_block_dec(FILE *fd, uint32_t *line_no, uint32_t *col_no, int64_t *bytes, void *buffer,
-		size_t size, b64_context *b64c)
+read_block_dec(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
+		int64_t *bytes, void *buffer, size_t size, b64_context *b64c)
 {
 	for (size_t i = 0; i < size; ++i) {
 		int32_t ch = read_char_dec(fd, line_no, col_no, bytes, b64c);
@@ -384,11 +420,11 @@ read_block_dec(FILE *fd, uint32_t *line_no, uint32_t *col_no, int64_t *bytes, vo
 /// @result        The result returned by `fprintf()`.
 ///
 static inline int32_t
-fprintf_bytes(uint64_t *bytes, FILE *fd, const char *format, ...)
+fprintf_bytes(uint64_t *bytes, io_write_proxy_t *fd, const char *format, ...)
 {
 	va_list args;
 	va_start(args, format);
-	int32_t res = fd != NULL ? vfprintf(fd, format, args) : vsnprintf(NULL, 0, format, args);
+	int32_t res = fd != NULL ? io_proxy_vprintf(fd, format, args) : vsnprintf(NULL, 0, format, args);
 	va_end(args);
 
 	if (LIKELY(res != EOF)) {
@@ -410,13 +446,14 @@ fprintf_bytes(uint64_t *bytes, FILE *fd, const char *format, ...)
 /// @result        The result returned by `fwrite()`.
 ///
 static inline size_t
-fwrite_bytes(uint64_t *bytes, const void *data, size_t len, size_t num, FILE *fd)
+fwrite_bytes(uint64_t *bytes, const void *data, size_t n_bytes, io_write_proxy_t *fd)
 {
-	size_t res = fd != NULL && len > 0 ? fwrite(data, len, num, fd) : num;
+	ssize_t res = fd != NULL && n_bytes > 0 ?
+		io_proxy_write(fd, data, n_bytes) : (ssize_t) n_bytes;
 
-	if (LIKELY(res == num)) {
-		*bytes += num * len;
+	if (LIKELY((size_t) res == n_bytes)) {
+		*bytes += n_bytes;
 	}
 
-	return res;
+	return (size_t) res;
 }

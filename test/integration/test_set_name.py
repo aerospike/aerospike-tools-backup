@@ -32,7 +32,7 @@ def test_set_name():
 	Test set names.
 	"""
 	lib.backup_and_restore(
-		lambda context: put_sets(SET_NAMES, "key", u"value", u"value"),
+		lambda context: put_sets(SET_NAMES, "key", "value", "value"),
 		None,
-		lambda context: check_sets(SET_NAMES, "key", u"value", u"value")
+		lambda context: check_sets(SET_NAMES, "key", "value", "value")
 	)

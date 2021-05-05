@@ -1,7 +1,7 @@
 /*
  * Aerospike Shared Includes
  *
- * Copyright (c) 2008-2017 Aerospike, Inc. All rights reserved.
+ * Copyright (c) 2008-2021 Aerospike, Inc. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -39,6 +39,7 @@
 #include <aerospike/aerospike_udf.h>
 #include <aerospike/as_arraylist.h>
 #include <aerospike/as_bin.h>
+#include <aerospike/as_boolean.h>
 #include <aerospike/as_cluster.h>
 #include <aerospike/as_hashmap.h>
 #include <aerospike/as_info.h>
@@ -111,6 +112,9 @@
 #define DEFAULT_PORT 3000               ///< The default port to connect to.
 
 #define TIMEOUT 10000                   ///< The timeout for all operations (in ms).
+
+#define BOOLEAN_TRUE_CHAR  'T'          ///< The character to encode true boolean values.
+#define BOOLEAN_FALSE_CHAR 'F'          ///< The character to encode false boolean values.
 
 ///
 /// The data type of a path expression.

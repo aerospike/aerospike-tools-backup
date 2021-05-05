@@ -1,0 +1,103 @@
+---
+name: "Tagged Release"
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+# It would be nice if we could pass
+# artifacts between jobs but currently not 
+# possible so have to build again
+  build-libraries:
+    runs-on: ubuntu-latest
+    name: "Tagged Release"
+    env:
+      CLIENTREPO: ${GITHUB_WORKSPACE}/client
+    steps:
+    - name: Download zstd
+      uses: dsaltares/fetch-gh-release-asset@0.0.5
+      with:
+        repo: "facebook/zstd"
+        version: "tags/v1.4.9"
+        file: zstd-1.4.9.tar.gz
+    - name: Cache zstd
+      id: cache-zstd
+      uses: actions/cache@v2
+      env:
+        cache-name: zstd
+      with:
+        path: zstd-1.4.9
+        key: zstd-1.4.9-${{ runner.os }}
+    - name: Build zstd
+      id: build-zstd
+      if: steps.cache-zstd.outputs.cache-hit != 'true'
+      run: |
+        tar xvfz zstd-1.4.9.tar.gz && cd zstd-1.4.9
+        make
+        make test
+    - name: install zstd
+      run: |
+        cd zstd-1.4.9
+        sudo make install
+    - name: Checkout c client
+      uses: actions/checkout@v2
+      with:
+        repository: aerospike/aerospike-client-c
+        submodules: recursive
+        path: client
+    - name: Checkout benchmark
+      uses: actions/checkout@v2
+      with: 
+        path: main
+        submodules: recursive
+    - name: Build client lib
+      run: make
+      working-directory: client
+    - name: Build asbackup
+      run: make
+      working-directory: main
+    - name: Upload asbackup artifact
+      uses: actions/upload-artifact@v2
+      with: 
+        name: asbackup
+        path: main/target/benchmark
+        if-no-files-found: error
+    - name: Upload asrestore artifact
+      uses: actions/upload-artifact@v2
+      with: 
+        name: asrestore
+        path: main/target/benchmark
+        if-no-files-found: error
+  release:
+    needs: build-libraries
+    runs-on: ubuntu-latest
+    
+    steps: 
+      - name: Checkout asbackup
+        uses: actions/checkout@v2
+        with: 
+          submodules: recursive
+      - name: Get artifacts
+        uses: actions/download-artifact@v2
+        with: 
+          path: binaries/
+      - name: Create tarball
+        run: tar -czf binaries.tar.gz binaries
+      - name: Automatic Release
+        uses: marvinpinto/action-automatic-releases@latest
+        with:
+          repo_token: "${{ secrets.GITHUB_TOKEN }}"
+          prerelease: false
+          files: |
+            binaries.tar.gz
+            LICENSE.md
+            README.md     
+      # clean up latest since release has been made       
+      - uses: dev-drprasad/delete-tag-and-release@v0.1.2
+        with:
+          delete_release: true 
+          tag_name: latest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

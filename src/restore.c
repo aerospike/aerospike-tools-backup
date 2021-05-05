@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2020 Aerospike, Inc.
+ * Copyright 2015-2021 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -16,13 +16,17 @@
  */
 
 #include <restore.h>
-#include <dec_text.h>
-#include <utils.h>
+
 #include <conf.h>
+#include <dec_text.h>
+#include <io_proxy.h>
+#include <utils.h>
 
 extern char *aerospike_client_version;  ///< The C client's version string.
 
-static volatile bool stop = false;  ///< Makes background threads exit.
+static pthread_mutex_t g_stop_lock;
+static pthread_cond_t g_stop_cond;
+static volatile bool g_stop = false;  ///< Makes background threads exit.
 
 static pthread_cond_t limit_cond = PTHREAD_COND_INITIALIZER;    ///< Used by the counter thread
                                                                 ///  to signal newly available
@@ -31,7 +35,72 @@ static pthread_cond_t limit_cond = PTHREAD_COND_INITIALIZER;    ///< Used by the
 
 static void print_stat(per_thread_context *, cf_clock *, uint64_t *, cf_clock *, cf_clock *, cf_clock *);
 
-static void config_default(restore_config *conf);
+/*
+ * returns true if the program has stoppped
+ */
+static bool
+has_stopped(void)
+{
+	return as_load_uint8((uint8_t*) &g_stop);
+}
+
+/*
+ * stops the program
+ */
+static void
+stop(void)
+{
+	pthread_mutex_lock(&g_stop_lock);
+
+	// sets the stop variable
+	as_store_uint8((uint8_t*) &g_stop, 1);
+
+	// wakes all threads waiting on the stop condition
+	pthread_cond_broadcast(&g_stop_cond);
+
+	pthread_mutex_unlock(&g_stop_lock);
+}
+
+/*
+ * stops the program, which is safe in interrupt contexts
+ */
+static void
+stop_nolock(void)
+{
+	bool was_locked = (pthread_mutex_trylock(&g_stop_lock) == 0);
+
+	// sets the stop variable
+	as_store_uint8((uint8_t*) &g_stop, 1);
+
+	// wakes all threads waiting on the stop condition
+	// this can potentially miss some threads waiting on a condition variable if
+	// trylock failed, but they will eventually time out
+	pthread_cond_broadcast(&g_stop_cond);
+
+	if (was_locked) {
+		pthread_mutex_unlock(&g_stop_lock);
+	}
+}
+
+/*
+ * sleep on the stop condition, exiting from the sleep early if the program is
+ * stopped
+ */
+static void
+sleep_for(uint64_t n_secs)
+{
+	struct timespec t;
+	clock_gettime(CLOCK_MONOTONIC, &t);
+	t.tv_sec += (int64_t) n_secs;
+
+	pthread_mutex_lock(&g_stop_lock);
+	while (!as_load_uint8((uint8_t*) &g_stop) && timespec_has_not_happened(&t)) {
+		pthread_cond_timedwait(&g_stop_cond, &g_stop_lock, &t);
+	}
+	pthread_mutex_unlock(&g_stop_lock);
+}
+
+
 ///
 /// Closes a backup file and frees the associated I/O buffer.
 ///
@@ -41,9 +110,9 @@ static void config_default(restore_config *conf);
 /// @result        `true`, if successful.
 ///
 static bool
-close_file(FILE **fd, void **fd_buf)
+close_file(io_read_proxy_t *fd, void **fd_buf)
 {
-	if (*fd == NULL) {
+	if (fd->fd == NULL) {
 		return true;
 	}
 
@@ -51,7 +120,7 @@ close_file(FILE **fd, void **fd_buf)
 		ver("Closing backup file");
 	}
 
-	if (*fd == stdin) {
+	if (fd->fd == stdin) {
 		if (verbose) {
 			ver("Not closing stdin");
 		}
@@ -63,14 +132,16 @@ close_file(FILE **fd, void **fd_buf)
 			ver("Closing file descriptor");
 		}
 
-		if (fclose(*fd) == EOF) {
+		FILE* _f = fd->fd;
+		io_proxy_free(fd);
+
+		if (fclose(_f) == EOF) {
 			err_code("Error while closing backup file");
 			return false;
 		}
 	}
 
 	cf_free(*fd_buf);
-	*fd = NULL;
 	*fd_buf = NULL;
 	return true;
 }
@@ -97,9 +168,13 @@ close_file(FILE **fd, void **fd_buf)
 /// @result            `true`, if successful.
 ///
 static bool
-open_file(const char *file_path, as_vector *ns_vec, FILE **fd, void **fd_buf, bool *legacy,
-		uint32_t *line_no, bool *first_file, cf_atomic64 *total, off_t *size)
+open_file(const char *file_path, as_vector *ns_vec, io_read_proxy_t *fd,
+		void **fd_buf, bool *legacy, uint32_t *line_no, bool *first_file,
+		cf_atomic64 *total, off_t *size, compression_opt c_opt,
+		encryption_opt e_opt, encryption_key_t* pkey)
 {
+	FILE* _f;
+
 	if (verbose) {
 		ver("Opening backup file %s", file_path);
 	}
@@ -125,8 +200,9 @@ open_file(const char *file_path, as_vector *ns_vec, FILE **fd, void **fd_buf, bo
 			}
 		}
 
-		*fd = stdin;
-	} else {
+		_f = stdin;
+	}
+	else {
 		if (verbose) {
 			ver("Getting file descriptor");
 		}
@@ -142,7 +218,7 @@ open_file(const char *file_path, as_vector *ns_vec, FILE **fd, void **fd_buf, bo
 			*size = stat_buf.st_size;
 		}
 
-		if ((*fd = fopen(file_path, "r")) == NULL) {
+		if ((_f = fopen(file_path, "r")) == NULL) {
 			err_code("Error while opening backup file %s", file_path);
 			return false;
 		}
@@ -150,8 +226,12 @@ open_file(const char *file_path, as_vector *ns_vec, FILE **fd, void **fd_buf, bo
 		inf("Opened backup file %s", file_path);
 	}
 
+	io_read_proxy_init(fd, _f);
+	io_proxy_init_compression(fd, c_opt);
+	io_proxy_init_encryption(fd, pkey, e_opt);
+
 	*fd_buf = safe_malloc(IO_BUF_SIZE);
-	setbuffer(*fd, *fd_buf, IO_BUF_SIZE);
+	setbuffer(fd->fd, *fd_buf, IO_BUF_SIZE);
 
 	if (verbose) {
 		ver("Validating backup file version");
@@ -161,14 +241,14 @@ open_file(const char *file_path, as_vector *ns_vec, FILE **fd, void **fd_buf, bo
 	char version[13];
 	memset(version, 0, sizeof version);
 
-	if (fgets(version, sizeof version, *fd) == NULL) {
+	if (io_proxy_gets(fd, version, sizeof(version)) == NULL) {
 		err("Error while reading version from backup file %s", file_path);
 		goto cleanup1;
 	}
 
 	if (strncmp("Version ", version, 8) != 0 || version[11] != '\n' || version[12] != 0) {
 		err("Invalid version line in backup file %s", file_path);
-		hex_dump_err(version, sizeof version);
+		hex_dump_err(version, sizeof(version));
 		goto cleanup1;
 	}
 
@@ -192,13 +272,16 @@ open_file(const char *file_path, as_vector *ns_vec, FILE **fd, void **fd_buf, bo
 		*first_file = false;
 	}
 
-	while ((ch = getc_unlocked(*fd)) == META_PREFIX[0]) {
+	while ((ch = io_proxy_peekc_unlocked(fd)) == META_PREFIX[0]) {
+		io_proxy_getc_unlocked(fd);
+
 		if (total != NULL) {
 			cf_atomic64_incr(total);
 		}
 
-		if (fgets(meta, sizeof meta, *fd) == NULL) {
-			err("Error while reading meta data from backup file %s:%u [1]", file_path, *line_no);
+		if (io_proxy_gets(fd, meta, sizeof(meta)) == NULL) {
+			err("Error while reading meta data from backup file %s:%u [1]",
+					file_path, *line_no);
 			goto cleanup1;
 		}
 
@@ -254,22 +337,9 @@ open_file(const char *file_path, as_vector *ns_vec, FILE **fd, void **fd_buf, bo
 	}
 
 	if (ch == EOF) {
-		if (ferror(*fd) != 0) {
+		if (io_proxy_error(fd) != 0) {
 			err("Error while reading meta data from backup file %s [2]", file_path);
 			goto cleanup1;
-		}
-	} else {
-		if (total != NULL) {
-			cf_atomic64_incr(total);
-		}
-
-		if (ungetc(ch, *fd) == EOF) {
-			err("Error while reading meta data from backup file %s [3]", file_path);
-			goto cleanup1;
-		}
-
-		if (total != NULL) {
-			cf_atomic64_decr(total);
 		}
 	}
 
@@ -411,7 +481,7 @@ restore_thread_func(void *cont)
 	void *res = (void *)EXIT_FAILURE;
 
 	while (true) {
-		if (stop) {
+		if (has_stopped()) {
 			if (verbose) {
 				ver("Restore thread detected failure");
 			}
@@ -442,7 +512,6 @@ restore_thread_func(void *cont)
 		ptc.path = args.path;
 		ptc.shared_fd = args.shared_fd;
 		ptc.line_no = args.line_no != NULL ? args.line_no : &line_no;
-		ptc.fd = NULL;
 		ptc.fd_buf = NULL;
 		ptc.ns_vec = args.ns_vec;
 		ptc.bin_vec = args.bin_vec;
@@ -461,12 +530,16 @@ restore_thread_func(void *cont)
 			}
 
 			ptc.fd = ptc.shared_fd;
+		}
 		// restoring from a directory: open the backup file with the given path
-		} else {
+		else {
 			inf("Restoring %s", ptc.path);
 
-			if (!open_file(ptc.path, ptc.ns_vec, &ptc.fd, &ptc.fd_buf, &ptc.legacy, ptc.line_no,
-					NULL, &ptc.conf->total_bytes, NULL)) {
+			ptc.fd = (io_read_proxy_t*) cf_malloc(sizeof(io_read_proxy_t));
+			if (!open_file(ptc.path, ptc.ns_vec, ptc.fd, &ptc.fd_buf,
+						&ptc.legacy, ptc.line_no, NULL, &ptc.conf->total_bytes,
+						NULL, ptc.conf->compress_mode, ptc.conf->encrypt_mode,
+						ptc.conf->pkey)) {
 				err("Error while opening backup file");
 				break;
 			}
@@ -526,7 +599,7 @@ restore_thread_func(void *cont)
 			// check the stop flag inside the critical section; makes sure that we do not try to
 			// read from the shared file descriptor after another thread encountered an error and
 			// set the stop flag
-			if (stop) {
+			if (has_stopped()) {
 				if (ptc.conf->input_file != NULL) {
 					safe_unlock();
 				}
@@ -542,7 +615,7 @@ restore_thread_func(void *cont)
 
 			// set the stop flag inside the critical section; see check above
 			if (res == DECODER_ERROR) {
-				stop = true;
+				stop();
 			}
 
 			if (ptc.conf->input_file != NULL) {
@@ -589,7 +662,7 @@ restore_thread_func(void *cont)
 					useconds_t backoff = INITIAL_BACKOFF * 1000;
 					int32_t tries;
 
-					for (tries = 0; tries < MAX_TRIES && !stop; ++tries) {
+					for (tries = 0; tries < MAX_TRIES && !has_stopped(); ++tries) {
 						as_error ae;
 						policy.key = rec.key.valuep != NULL ? AS_POLICY_KEY_SEND :
 								AS_POLICY_KEY_DIGEST;
@@ -611,7 +684,7 @@ restore_thread_func(void *cont)
 							case AEROSPIKE_ROLE_VIOLATION:
 								err("Error while storing record - code %d: %s at %s:%d",
 										ae.code, ae.message, ae.file, ae.line);
-								stop = true;
+								stop();
 								break;
 
 							// Record specific error either ignored or restore
@@ -626,7 +699,7 @@ restore_thread_func(void *cont)
 								}
 
 								if (! flag_ignore_rec_error) {
-									stop = true;
+									stop();
 									err("Error while storing record - code %d: %s at %s:%d", ae.code, ae.message, ae.file, ae.line);
 									err("Encountered error while restoring. Skipping retries and aborting!!");
 								}
@@ -658,7 +731,7 @@ restore_thread_func(void *cont)
 									err("Error while storing record - code %d: %s at %s:%d",
 											ae.code, ae.message, ae.file, ae.line);
 									err("Encountered too many errors while restoring. Aborting!!");
-									stop = true;
+									stop();
 									break;
 								}
 
@@ -679,7 +752,7 @@ restore_thread_func(void *cont)
 									cf_atomic64_incr(&ptc.conf->backoff_count);
 								} else {
 									backoff = INITIAL_BACKOFF * 1000;
-									sleep(1);
+									sleep_for(1);
 								} 
 								break;
 
@@ -699,7 +772,7 @@ restore_thread_func(void *cont)
 
 					while ((cf_atomic64_get(ptc.conf->total_bytes) >= ptc.conf->bytes_limit ||
 							cf_atomic64_get(ptc.conf->total_records) >= ptc.conf->records_limit) &&
-							!stop) {
+							!has_stopped()) {
 						safe_wait(&limit_cond);
 					}
 
@@ -717,10 +790,15 @@ restore_thread_func(void *cont)
 			}
 
 			ptc.fd = NULL;
+		}
 		// restoring from a directory: close the backup file
-		} else if (!close_file(&ptc.fd, &ptc.fd_buf)) {
-			err("Error while closing backup file");
-			break;
+		else {
+			if (!close_file(ptc.fd, &ptc.fd_buf)) {
+				err("Error while closing backup file");
+				cf_free(ptc.fd);
+				break;
+			}
+			cf_free(ptc.fd);
 		}
 	}
 
@@ -729,7 +807,7 @@ restore_thread_func(void *cont)
 			ver("Indicating failure to other threads");
 		}
 
-		stop = true;
+		stop();
 	}
 
 	if (verbose) {
@@ -763,8 +841,8 @@ counter_thread_func(void *cont)
 	uint64_t prev_records = cf_atomic64_get(conf->total_records);
 
 	while (true) {
-		sleep(1);
-		bool last_iter = stop;
+		sleep_for(1);
+		bool last_iter = has_stopped();
 
 		cf_clock now_ms = cf_getms();
 		uint64_t now_bytes = cf_atomic64_get(conf->total_bytes);
@@ -879,7 +957,7 @@ counter_thread_func(void *cont)
 /// @result           `true`, if successful.
 ///
 static bool
-get_indexes_and_udfs(FILE *fd, as_vector *ns_vec, bool legacy, restore_config *conf,
+get_indexes_and_udfs(io_read_proxy_t* fd, as_vector *ns_vec, bool legacy, restore_config *conf,
 		uint32_t *line_no, cf_atomic64 *total, as_vector *index_vec, as_vector *udf_vec)
 {
 	bool res = false;
@@ -889,29 +967,16 @@ get_indexes_and_udfs(FILE *fd, as_vector *ns_vec, bool legacy, restore_config *c
 	}
 
 	while (true) {
-		int32_t ch = getc_unlocked(fd);
+		int32_t ch = io_proxy_peekc_unlocked(fd);
 
 		if (ch == EOF) {
-			if (ferror(fd) != 0) {
+			if (io_proxy_error(fd) != 0) {
 				err("Error while reading global data from backup file (line %u) [1]", *line_no);
 				goto cleanup1;
 			}
 
 			res = true;
 			goto cleanup0;
-		}
-
-		if (total != NULL) {
-			cf_atomic64_incr(total);
-		}
-
-		if (ungetc(ch, fd) == EOF) {
-			err("Error while reading global data from backup file (line %u) [2]", *line_no);
-			goto cleanup1;
-		}
-
-		if (total != NULL) {
-			cf_atomic64_decr(total);
 		}
 
 		if (ch != GLOBAL_PREFIX[0]) {
@@ -1261,7 +1326,7 @@ restore_indexes(aerospike *as, as_vector *index_vec, as_vector *set_vec, volatil
 			// aerospike_index_remove() is asynchronous. Check the index again, because AEROSPIKE_OK
 			// doesn't necessarily mean that the index is gone.
 			for (int32_t tries = 0; tries < MAX_TRIES; ++tries) {
-				sleep(1);
+				sleep_for(1);
 				stat = check_index(as, index, timeout);
 
 				if (stat != INDEX_STATUS_DIFFERENT) {
@@ -1571,7 +1636,7 @@ sig_hand(int32_t sig)
 {
 	(void)sig;
 	err("### Restore interrupted ###");
-	stop = true;
+	stop_nolock();
 }
 
 ///
@@ -1692,6 +1757,20 @@ usage(const char *name)
 	fprintf(stderr, "  -i, --input-file <file>\n");
 	fprintf(stderr, "                      Restore from a single backup file. Use - for stdin.\n");
 	fprintf(stderr, "                      Required, unless -d is used.\n");
+	fprintf(stderr, "  -z, --compress <compression_algorithm>\n");
+	fprintf(stderr, "                      Enables decompressing of backup files using the specified compression algorithm.\n");
+	fprintf(stderr, "                      This must match the compression mode used when backing up the data.\n");
+	fprintf(stderr, "                      Supported compression algorithms are: zstd\n");
+	fprintf(stderr, "  -y, --encrypt <encryption_algorithm>\n");
+	fprintf(stderr, "                      Enables decryption of backup files using the specified encryption algorithm.\n");
+	fprintf(stderr, "                      This must match the encryption mode used when backing up the data.\n");
+	fprintf(stderr, "                      A private key must be given, either via the --encryption-key-file option or\n");
+	fprintf(stderr, "                      the --encryption-key-env option.\n");
+	fprintf(stderr, "                      Supported encryption algorithms are: aes128, aes256\n");
+	fprintf(stderr, "      --encryption-key-file <path>\n");
+	fprintf(stderr, "                      Grabs the encryption key from the given file, which must be in PEM format.\n");
+	fprintf(stderr, "      --encryption-key-env <env_var_name>\n");
+	fprintf(stderr, "                      Grabs the encryption key from the given environment variable, which must be base-64 encoded.\n");
 	fprintf(stderr, "  -t, --threads\n");
 	fprintf(stderr, "                      The number of restore threads. Default: 20.\n");
 	fprintf(stderr, "  -m, --machine <path>\n");
@@ -1759,7 +1838,7 @@ usage(const char *name)
 /// It all starts here.
 ///
 int32_t
-main(int32_t argc, char **argv)
+restore_main(int32_t argc, char **argv)
 {
 	static struct option options[] = {
 
@@ -1811,6 +1890,11 @@ main(int32_t argc, char **argv)
 		{ "namespace", required_argument, NULL, 'n' },
 		{ "directory", required_argument, NULL, 'd' },
 		{ "input-file", required_argument, NULL, 'i' },
+		{ "compress", required_argument, NULL, 'z' },
+		// TODO clean short names up
+		{ "encrypt", required_argument, NULL, 'y' },
+		{ "encryption-key-file", required_argument, NULL, '1' },
+		{ "encryption-key-env", required_argument, NULL, '2' },
 		{ "threads", required_argument, NULL, 't' },
 		{ "machine", required_argument, NULL, 'm' },
 		{ "bin-list", required_argument, NULL, 'B' },
@@ -1834,7 +1918,7 @@ main(int32_t argc, char **argv)
 	int32_t res = EXIT_FAILURE;
 
 	restore_config conf;
-	config_default(&conf);
+	restore_config_default(&conf);
 	
 	conf.decoder = &(backup_decoder){ text_parse };
 
@@ -1962,6 +2046,44 @@ main(int32_t argc, char **argv)
 
 		case 'i':
 			conf.input_file = safe_strdup(optarg);
+			break;
+
+		case 'z':
+			if (parse_compression_type(optarg, &conf.compress_mode) != 0) {
+				err("Invalid compression type \"%s\"\n", optarg);
+				goto cleanup1;
+			}
+			break;
+
+		case 'y':
+			if (parse_encryption_type(optarg, &conf.encrypt_mode) != 0) {
+				err("Invalid encryption type \"%s\"\n", optarg);
+				goto cleanup1;
+			}
+			break;
+
+		case '1':
+			// encryption key file
+			if (conf.pkey != NULL) {
+				err("Cannot specify both encryption-key-file and encryption-key-env\n");
+				goto cleanup1;
+			}
+			conf.pkey = (encryption_key_t*) cf_malloc(sizeof(encryption_key_t));
+			if (io_proxy_read_private_key_file(optarg, conf.pkey) != 0) {
+				goto cleanup1;
+			}
+			break;
+
+		case '2':
+			// encryption key environment variable
+			if (conf.pkey != NULL) {
+				err("Cannot specify both encryption-key-file and encryption-key-env\n");
+				goto cleanup1;
+			}
+			conf.pkey = parse_encryption_key_env(optarg);
+			if (conf.pkey == NULL) {
+				goto cleanup1;
+			}
 			break;
 
 		case 't':
@@ -2145,6 +2267,12 @@ main(int32_t argc, char **argv)
 
 	if (conf.unique && (conf.replace || conf.no_generation)) {
 		err("Invalid options: --unique is mutually exclusive with --replace and --no-generation.");
+		goto cleanup1;
+	}
+
+	if ((conf.pkey != NULL) ^ (conf.encrypt_mode != IO_PROXY_ENCRYPT_NONE)) {
+		err("Must specify both encryption mode and a private key "
+				"file/environment variable\n");
 		goto cleanup1;
 	}
 
@@ -2356,13 +2484,14 @@ main(int32_t argc, char **argv)
 
 			for (uint32_t i = 0; i < file_vec.size; ++i) {
 				char *path = as_vector_get_ptr(&file_vec, i);
-				FILE *fd;
+				io_read_proxy_t fd;
 				bool first;
 				off_t size;
 				bool legacy;
 
-				if (!open_file(path, restore_args.ns_vec, &fd, &fd_buf, &legacy, &line_no, &first,
-						NULL, &size)) {
+				if (!open_file(path, restore_args.ns_vec, &fd, &fd_buf, &legacy,
+							&line_no, &first, NULL, &size, conf.compress_mode,
+							conf.encrypt_mode, conf.pkey)) {
 					err("Error while triaging backup file %s [1]", path);
 					goto cleanup7;
 				}
@@ -2379,7 +2508,7 @@ main(int32_t argc, char **argv)
 					}
 
 					// read secondary index information and UDF files into index_vec and udf_vec
-					if (!get_indexes_and_udfs(fd, restore_args.ns_vec, legacy, &conf, &line_no,
+					if (!get_indexes_and_udfs(&fd, restore_args.ns_vec, legacy, &conf, &line_no,
 							NULL, conf.no_indexes ? NULL : &index_vec, conf.no_udfs ? NULL : &udf_vec)) {
 						err("Error while reading index and UDF info from backup file %s", path);
 						close_file(&fd, &fd_buf);
@@ -2411,14 +2540,18 @@ main(int32_t argc, char **argv)
 		if (file_vec.size < conf.threads) {
 			conf.threads = file_vec.size;
 		}
+	}
 	// restoring from a single backup file
-	} else {
+	else {
 		inf("Restoring %s", conf.input_file);
 
+		restore_args.shared_fd =
+			(io_read_proxy_t*) cf_malloc(sizeof(io_read_proxy_t));
 		// open the file, file descriptor goes to restore_args.shared_fd
-		if (!open_file(conf.input_file, restore_args.ns_vec, &restore_args.shared_fd, &fd_buf,
+		if (!open_file(conf.input_file, restore_args.ns_vec, restore_args.shared_fd, &fd_buf,
 				&restore_args.legacy, &line_no, NULL, &conf.total_bytes,
-				conf.no_records ? NULL : &conf.estimated_bytes)) {
+				conf.no_records ? NULL : &conf.estimated_bytes,
+				conf.compress_mode, conf.encrypt_mode, conf.pkey)) {
 			err("Error while opening shared backup file");
 			goto cleanup6;
 		}
@@ -2491,7 +2624,7 @@ cleanup10:
 	for (uint32_t i = 0; i < threads_ok; i++) {
 		if (pthread_join(restore_threads[i], &thread_res) != 0) {
 			err_code("Error while joining restore thread");
-			stop = true;
+			stop();
 			res = EXIT_FAILURE;
 		}
 
@@ -2520,9 +2653,13 @@ cleanup7:
 		for (uint32_t i = 0; i < file_vec.size; ++i) {
 			cf_free(as_vector_get_ptr(&file_vec, i));
 		}
-	} else if (!close_file(&restore_args.shared_fd, &fd_buf)) {
-		err("Error while closing shared backup file");
-		res = EXIT_FAILURE;
+	}
+	else {
+		if (!close_file(restore_args.shared_fd, &fd_buf)) {
+			err("Error while closing shared backup file");
+			res = EXIT_FAILURE;
+		}
+		cf_free(restore_args.shared_fd);
 	}
 
 cleanup6:
@@ -2536,7 +2673,7 @@ cleanup6:
 	cf_queue_destroy(job_queue);
 
 cleanup5:
-	stop = true;
+	stop();
 
 	if (verbose) {
 		ver("Waiting for counter thread");
@@ -2563,57 +2700,7 @@ cleanup2:
 	}
 
 cleanup1:
-	if (conf.set_list != NULL) {
-		cf_free(conf.set_list);
-	}
-
-	if (conf.bin_list != NULL) {
-		cf_free(conf.bin_list);
-	}
-
-	if (conf.ns_list != NULL) {
-		cf_free(conf.ns_list);
-	}
-
-	if (conf.input_file != NULL) {
-		cf_free(conf.input_file);
-	}
-
-	if (conf.nice_list != NULL) {
-		cf_free(conf.nice_list);
-	}
-
-	if (conf.tls.cafile != NULL) {
-		cf_free(conf.tls.cafile);
-	}
-
-	if (conf.tls.capath != NULL) {
-		cf_free(conf.tls.capath);
-	}
-
-	if (conf.tls.protocols != NULL) {
-		cf_free(conf.tls.protocols);
-	}
-
-	if (conf.tls.cipher_suite != NULL) {
-		cf_free(conf.tls.cipher_suite);
-	}
-
-	if (conf.tls.cert_blacklist != NULL) {
-		cf_free(conf.tls.cert_blacklist);
-	}
-
-	if (conf.tls.keyfile != NULL) {
-		cf_free(conf.tls.keyfile);
-	}
-
-	if (conf.tls.keyfile_pw != NULL) {
-		cf_free(conf.tls.keyfile_pw);
-	}
-
-	if (conf.tls.certfile != NULL) {
-		cf_free(conf.tls.certfile);
-	}
+	restore_config_destroy(&conf);
 
 	if (verbose) {
 		ver("Exiting with status code %d", res);
@@ -2622,8 +2709,8 @@ cleanup1:
 	return res;
 }
 
-static void
-config_default(restore_config *conf)
+void
+restore_config_default(restore_config *conf)
 {
 	conf->host = DEFAULT_HOST;
 	conf->use_services_alternate = false;
@@ -2645,15 +2732,84 @@ config_default(restore_config *conf)
 	conf->machine = NULL;
 	conf->bin_list = NULL;
 	conf->set_list = NULL;
+	conf->pkey = NULL;
+	conf->compress_mode = IO_PROXY_COMPRESS_NONE;
+	conf->encrypt_mode = IO_PROXY_ENCRYPT_NONE;
 	conf->ignore_rec_error = false;
 	conf->unique = false;
 	conf->replace = false;
+	conf->extra_ttl = 0;
 	conf->no_generation = false;
 	conf->bandwidth = 0;
 	conf->tps = 0;
 	conf->timeout = TIMEOUT;
 	memset(&conf->tls, 0, sizeof(as_config_tls));
-};
+
+	conf->as = NULL;
+	conf->decoder = NULL;
+}
+
+void
+restore_config_destroy(restore_config *conf)
+{
+	if (conf->pkey != NULL) {
+		encryption_key_free(conf->pkey);
+		cf_free(conf->pkey);
+	}
+
+	if (conf->set_list != NULL) {
+		cf_free(conf->set_list);
+	}
+
+	if (conf->bin_list != NULL) {
+		cf_free(conf->bin_list);
+	}
+
+	if (conf->ns_list != NULL) {
+		cf_free(conf->ns_list);
+	}
+
+	if (conf->input_file != NULL) {
+		cf_free(conf->input_file);
+	}
+
+	if (conf->nice_list != NULL) {
+		cf_free(conf->nice_list);
+	}
+
+	if (conf->tls.cafile != NULL) {
+		cf_free(conf->tls.cafile);
+	}
+
+	if (conf->tls.capath != NULL) {
+		cf_free(conf->tls.capath);
+	}
+
+	if (conf->tls.protocols != NULL) {
+		cf_free(conf->tls.protocols);
+	}
+
+	if (conf->tls.cipher_suite != NULL) {
+		cf_free(conf->tls.cipher_suite);
+	}
+
+	if (conf->tls.cert_blacklist != NULL) {
+		cf_free(conf->tls.cert_blacklist);
+	}
+
+	if (conf->tls.keyfile != NULL) {
+		cf_free(conf->tls.keyfile);
+	}
+
+	if (conf->tls.keyfile_pw != NULL) {
+		cf_free(conf->tls.keyfile_pw);
+	}
+
+	if (conf->tls.certfile != NULL) {
+		cf_free(conf->tls.certfile);
+	}
+
+}
 
 static void
 print_stat(per_thread_context *ptc, cf_clock *prev_log, uint64_t *prev_records,	

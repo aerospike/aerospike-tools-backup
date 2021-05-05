@@ -18,6 +18,11 @@ BLOB_VALUES += lib.identifier_variations(1000)
 BLOB_VALUES += lib.identifier_variations(10000)
 BLOB_VALUES = [bytearray(string.encode("UTF-8")) for string in BLOB_VALUES]
 
+BOOLEAN_VALUES = [
+	True,
+	False
+]
+
 INTEGER_VALUES = [
 	0, 1, -1,
 	32767, -32768,
@@ -47,16 +52,16 @@ GEO_VALUES = [
 	})
 ]
 
-MAP_KEYS = [[lib.identifier(10) for _ in xrange(100)] for _ in xrange(50)]
-MAP_VALUES = [[lib.identifier(10) for _ in xrange(100)] for _ in xrange(50)]
+MAP_KEYS = [[lib.identifier(10) for _ in range(100)] for _ in range(50)]
+MAP_VALUES = [[lib.identifier(10) for _ in range(100)] for _ in range(50)]
 
-LIST_VALUES = [[lib.identifier(10) for _ in xrange(100)] for _ in xrange(50)]
+LIST_VALUES = [[lib.identifier(10) for _ in range(100)] for _ in range(50)]
 
 def put_values(set_name, key, values):
 	"""
 	Inserts the given key with bins "bin-0" ... "bin-<n>" with the n given values.
 	"""
-	bin_names = [u"bin-" + str(index) for index in xrange(len(values))]
+	bin_names = ["bin-" + str(index) for index in range(len(values))]
 	lib.write_record(set_name, key, bin_names, values)
 
 def check_values(set_name, key, values):
@@ -64,7 +69,7 @@ def check_values(set_name, key, values):
 	Ensures that the given key has bins "bin-0" ... "bin-<n>" with the n given values.
 	"""
 	meta_key, meta_ttl, record = lib.read_record(set_name, key)
-	bin_names = [u"bin-" + str(index) for index in xrange(len(values))]
+	bin_names = ["bin-" + str(index) for index in range(len(values))]
 	lib.validate_record(key, record, bin_names, values)
 	lib.validate_meta(key, meta_key, meta_ttl)
 
@@ -97,6 +102,16 @@ def test_blob_value_compact():
 		None,
 		lambda context: check_values(lib.SET, "key", BLOB_VALUES),
 		["--compact"]
+	)
+
+def test_boolean_value():
+	"""
+	Test boolean values.
+	"""
+	lib.backup_and_restore(
+		lambda context: put_values(lib.SET, "key", BOOLEAN_VALUES),
+		None,
+		lambda context: check_values(lib.SET, "key", BOOLEAN_VALUES)
 	)
 
 def test_integer_value():

@@ -1,7 +1,7 @@
 /*
  * Aerospike Text Format Decoder
  *
- * Copyright (c) 2008-2015 Aerospike, Inc. All rights reserved.
+ * Copyright (c) 2008-2021 Aerospike, Inc. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -24,9 +24,11 @@
 
 #pragma once
 
+#include <io_proxy.h>
 #include <shared.h>
 #include <restore.h>
 
-decoder_status text_parse(FILE *fd, bool legacy, as_vector *ns_vec, as_vector *bin_vec,
-		uint32_t *orig_line_no, cf_atomic64 *total, as_record *rec, int32_t extra_ttl,
-		bool *expired, index_param *index, udf_param *udf);
+decoder_status text_parse(io_read_proxy_t *fd, bool legacy, as_vector *ns_vec,
+		as_vector *bin_vec, uint32_t *orig_line_no, cf_atomic64 *total,
+		as_record *rec, int32_t extra_ttl, bool *expired, index_param *index,
+		udf_param *udf);

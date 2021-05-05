@@ -31,7 +31,7 @@ def put_keys(set_name, keys, value, send_key):
 	Inserts the given keys with a single "value" bin with the given value.
 	"""
 	for key in keys:
-		lib.write_record(set_name, key, [u"value"], [value], send_key)
+		lib.write_record(set_name, key, ["value"], [value], send_key)
 
 def check_keys(set_name, keys, value, expect_key):
 	"""
@@ -45,8 +45,8 @@ def check_keys(set_name, keys, value, expect_key):
 
 	for key in keys:
 		digest = lib.get_key_digest(set_name, key)
-		meta_key, meta_ttl, record = records[str(digest).encode("hex")]
-		lib.validate_record(key, record, [u"value"], [value])
+		meta_key, meta_ttl, record = records[str(digest).encode().hex()]
+		lib.validate_record(key, record, ["value"], [value])
 		lib.validate_meta(key, meta_key, meta_ttl, expect_key)
 
 def test_string_key():
@@ -54,9 +54,9 @@ def test_string_key():
 	Test string keys, don't store the user key.
 	"""
 	lib.backup_and_restore(
-		lambda context: put_keys(lib.SET, STRING_KEYS, u"foobar", False),
+		lambda context: put_keys(lib.SET, STRING_KEYS, "foobar", False),
 		None,
-		lambda context: check_keys(lib.SET, STRING_KEYS, u"foobar", False)
+		lambda context: check_keys(lib.SET, STRING_KEYS, "foobar", False)
 	)
 
 def test_string_key_stored():
@@ -64,9 +64,9 @@ def test_string_key_stored():
 	Test string keys, store the user key.
 	"""
 	lib.backup_and_restore(
-		lambda context: put_keys(lib.SET, STRING_KEYS, u"foobar", True),
+		lambda context: put_keys(lib.SET, STRING_KEYS, "foobar", True),
 		None,
-		lambda context: check_keys(lib.SET, STRING_KEYS, u"foobar", True)
+		lambda context: check_keys(lib.SET, STRING_KEYS, "foobar", True)
 	)
 
 def test_blob_key():
@@ -74,9 +74,9 @@ def test_blob_key():
 	Test BLOB keys, don't store the user key.
 	"""
 	lib.backup_and_restore(
-		lambda context: put_keys(lib.SET, BLOB_KEYS, u"foobar", False),
+		lambda context: put_keys(lib.SET, BLOB_KEYS, "foobar", False),
 		None,
-		lambda context: check_keys(lib.SET, BLOB_KEYS, u"foobar", False)
+		lambda context: check_keys(lib.SET, BLOB_KEYS, "foobar", False)
 	)
 
 def test_blob_key_stored():
@@ -84,9 +84,9 @@ def test_blob_key_stored():
 	Test BLOB keys, store the user key.
 	"""
 	lib.backup_and_restore(
-		lambda context: put_keys(lib.SET, BLOB_KEYS, u"foobar", True),
+		lambda context: put_keys(lib.SET, BLOB_KEYS, "foobar", True),
 		None,
-		lambda context: check_keys(lib.SET, BLOB_KEYS, u"foobar", True)
+		lambda context: check_keys(lib.SET, BLOB_KEYS, "foobar", True)
 	)
 
 def test_blob_key_stored_compact():
@@ -94,9 +94,9 @@ def test_blob_key_stored_compact():
 	Test BLOB keys, store the user key, pass --compact to backup.
 	"""
 	lib.backup_and_restore(
-		lambda context: put_keys(lib.SET, BLOB_KEYS, u"foobar", True),
+		lambda context: put_keys(lib.SET, BLOB_KEYS, "foobar", True),
 		None,
-		lambda context: check_keys(lib.SET, BLOB_KEYS, u"foobar", True),
+		lambda context: check_keys(lib.SET, BLOB_KEYS, "foobar", True),
 		["--compact"]
 	)
 
@@ -105,9 +105,9 @@ def test_integer_key():
 	Test integer keys, don't store the user key.
 	"""
 	lib.backup_and_restore(
-		lambda context: put_keys(lib.SET, INTEGER_KEYS, u"foobar", False),
+		lambda context: put_keys(lib.SET, INTEGER_KEYS, "foobar", False),
 		None,
-		lambda context: check_keys(lib.SET, INTEGER_KEYS, u"foobar", False)
+		lambda context: check_keys(lib.SET, INTEGER_KEYS, "foobar", False)
 	)
 
 def test_integer_key_stored():
@@ -115,7 +115,7 @@ def test_integer_key_stored():
 	Test integer keys, store the user key.
 	"""
 	lib.backup_and_restore(
-		lambda context: put_keys(lib.SET, INTEGER_KEYS, u"foobar", True),
+		lambda context: put_keys(lib.SET, INTEGER_KEYS, "foobar", True),
 		None,
-		lambda context: check_keys(lib.SET, INTEGER_KEYS, u"foobar", True)
+		lambda context: check_keys(lib.SET, INTEGER_KEYS, "foobar", True)
 	)

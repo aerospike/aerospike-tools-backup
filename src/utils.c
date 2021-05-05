@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 Aerospike, Inc.
+ * Copyright 2015-2021 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -259,6 +259,34 @@ void
 hex_dump_err(const void *data, uint32_t len)
 {
 	hex_dump(data, len, err);
+}
+
+
+bool
+str_vector_contains(as_vector* v, const char* str)
+{
+	for (uint32_t i = 0; i < v->size; i++) {
+		const char* el = (const char*) as_vector_get(v, i);
+		if (strcmp(el, str) == 0) {
+			return true;
+		}
+	}
+	return false;
+}
+
+char*
+str_vector_tostring(as_vector* v)
+{
+	static char buf[1024];
+	uint64_t pos = 0;
+	for (uint32_t i = 0; i < v->size; i++) {
+		pos += (uint64_t) snprintf(buf + pos, sizeof(buf) - pos, "%s",
+				(char*) as_vector_get(v, i));
+		if (i < v->size - 1) {
+			pos += (uint64_t) snprintf(buf + pos, sizeof(buf) - pos, ",");
+		}
+	}
+	return buf;
 }
 
 ///
@@ -1074,3 +1102,103 @@ cleanup1:
 cleanup0:
 	return res;
 }
+
+bool
+parse_set_list(as_vector* dst, const char* set_list)
+{
+	uint64_t i = 0;
+	while (1) {
+		if (set_list[i] == '\'' || set_list[i] == '"') {
+			char* end = strchr(set_list + i + 1, set_list[i]);
+			if (end == NULL) {
+				err("Missing terminating %c in set name", set_list[i]);
+				return false;
+			}
+
+			uint64_t len = (uint64_t) (end - (set_list + i + 1));
+			if (len >= AS_SET_MAX_SIZE) {
+				err("Set name must be no longer than %d characters",
+						AS_SET_MAX_SIZE - 1);
+				return false;
+			}
+			char* slot = (char*) as_vector_reserve(dst);
+			memcpy(slot, set_list + i + 1, len);
+			slot[len] = '\0';
+
+			i += len + 2;
+		}
+		else {
+			char* end = strchrnul(set_list + i, ',');
+			uint64_t len = (uint64_t) (end - (set_list + i));
+			if (len >= AS_SET_MAX_SIZE) {
+				err("Set name must be no longer than %d characters",
+						AS_SET_MAX_SIZE - 1);
+				return false;
+			}
+			char* slot = (char*) as_vector_reserve(dst);
+			memcpy(slot, set_list + i, len);
+			slot[len] = '\0';
+
+			i += len;
+		}
+
+		if (set_list[i] == '\0') {
+			break;
+		}
+		if (set_list[i] != ',') {
+			err("Require ',' to delineate set names");
+			return false;
+		}
+		i++;
+	}
+	return true;
+}
+
+/*
+ * parses a base64 encoded binary string in environment variable "env_var_name"
+ *
+ * returns a pointer to a malloc-ed decoded string, or NULL on failure
+ */
+encryption_key_t*
+parse_encryption_key_env(const char* env_var_name)
+{
+	uint8_t* pkey_data;
+	uint32_t pkey_len;
+	uint32_t encoded_len;
+
+	char* pkey_env = getenv(env_var_name);
+
+	if (pkey_env == NULL) {
+		err("No environment variable \"%s\" found\n", env_var_name);
+		return NULL;
+	}
+
+	encoded_len = (uint32_t) strlen(pkey_env);
+	pkey_data = (uint8_t*) cf_malloc(cf_b64_decoded_buf_size(encoded_len));
+
+	if (!cf_b64_validate_and_decode(pkey_env, encoded_len, pkey_data,
+			&pkey_len)) {
+		err("Unable to decode enviroment variable \"%s\" as base64\n",
+				env_var_name);
+		return NULL;
+	}
+	encryption_key_t* pkey = (encryption_key_t*)
+		cf_malloc(sizeof(encryption_key_t));
+	encryption_key_init(pkey, pkey_data, pkey_len);
+	return pkey;
+}
+
+#ifdef __APPLE__
+
+char*
+strchrnul(const char* s, int c_in)
+{
+	char* res = strchr(s, c_in);
+	if (res == NULL) {
+		res = strchr(s, '\0');
+	}
+	return res;
+}
+
+#endif /* __APPLE__ */
+

@@ -4,3 +4,9 @@ src/toml/libtoml.a
 src/toml/toml.o
 .cproject
 nbproject
+__pycache__
+tmp-*
+test/work
+test_target
+_tmp_python_client
+*.swp

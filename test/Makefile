@@ -31,3 +31,4 @@ test-cs:
 clean:
 						rm -rf bin obj
 						rm -f log-*.txt test.asb
+						rm -rf work

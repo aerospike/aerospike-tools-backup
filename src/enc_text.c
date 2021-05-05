@@ -1,5 +1,5 @@
 /*
- * Copyright 2015 Aerospike, Inc.
+ * Copyright 2015-2021 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -56,6 +56,32 @@ text_bytes_type_to_label(as_bytes_type type)
 }
 
 ///
+/// Writes a boolean to the backup file.
+///
+/// @param bytes    Increased by the number of bytes written to the backup file.
+/// @param fd       The file descriptor of the backup file.
+/// @param prefix1  The first string prefix.
+/// @param prefix2  The second string prefix.
+/// @param val      The integer value to be written.
+///
+/// @result         `true`, if successful.
+///
+static bool
+text_output_boolean(uint64_t *bytes, io_write_proxy_t *fd, const char *prefix1,
+		const char *prefix2, as_val *val)
+{
+	as_boolean *v = as_boolean_fromval(val);
+
+	if (fprintf_bytes(bytes, fd, "%s%s %c\n", prefix1, prefix2,
+				v->value ? BOOLEAN_TRUE_CHAR : BOOLEAN_FALSE_CHAR) < 0) {
+		err_code("Error while writing boolean to backup file");
+		return false;
+	}
+
+	return true;
+}
+
+///
 /// Writes a signed 64-bit integer to the backup file.
 ///
 /// @param bytes    Increased by the number of bytes written to the backup file.
@@ -67,7 +93,8 @@ text_bytes_type_to_label(as_bytes_type type)
 /// @result         `true`, if successful.
 ///
 static bool
-text_output_integer(uint64_t *bytes, FILE *fd, const char *prefix1, const char *prefix2,
+text_output_integer(uint64_t *bytes, io_write_proxy_t *fd, const char *prefix1,
+		const char *prefix2,
 		as_val *val)
 {
 	as_integer *v = as_integer_fromval(val);
@@ -94,7 +121,8 @@ text_output_integer(uint64_t *bytes, FILE *fd, const char *prefix1, const char *
 /// @result         `true`, if successful.
 ///
 static bool
-text_output_double(uint64_t *bytes, FILE *fd, const char *prefix1, const char *prefix2,
+text_output_double(uint64_t *bytes, io_write_proxy_t *fd, const char *prefix1,
+		const char *prefix2,
 		as_val *val)
 {
 	as_double *v = as_double_fromval(val);
@@ -120,7 +148,8 @@ text_output_double(uint64_t *bytes, FILE *fd, const char *prefix1, const char *p
 /// @result         `true`, if successful.
 ///
 static bool
-text_output_data(uint64_t *bytes, FILE *fd, const char *prefix1, const char *prefix2,
+text_output_data(uint64_t *bytes, io_write_proxy_t *fd, const char *prefix1,
+		const char *prefix2,
 		void *buffer, size_t size)
 {
 	if (fprintf_bytes(bytes, fd, "%s%s %zu ", prefix1, prefix2, size) < 0) {
@@ -128,7 +157,7 @@ text_output_data(uint64_t *bytes, FILE *fd, const char *prefix1, const char *pre
 		return false;
 	}
 
-	if (fwrite_bytes(bytes, buffer, size, 1, fd) != 1) {
+	if (fwrite_bytes(bytes, buffer, size, fd) != size) {
 		err_code("Error while writing data to backup file [2]");
 		return false;
 	}
@@ -154,8 +183,8 @@ text_output_data(uint64_t *bytes, FILE *fd, const char *prefix1, const char *pre
 /// @result         `true`, if successful.
 ///
 static bool
-text_output_data_enc(uint64_t *bytes, FILE *fd, const char *prefix1, const char *prefix2,
-		void *buffer, uint32_t size)
+text_output_data_enc(uint64_t *bytes, io_write_proxy_t *fd, const char *prefix1,
+		const char *prefix2, void *buffer, uint32_t size)
 {
 	uint32_t enc_size = cf_b64_encoded_len(size);
 
@@ -188,7 +217,8 @@ text_output_data_enc(uint64_t *bytes, FILE *fd, const char *prefix1, const char 
 /// @result         `true`, if successful.
 ///
 static bool
-text_output_string(uint64_t *bytes, FILE *fd, const char *prefix1, const char *prefix2, as_val *val)
+text_output_string(uint64_t *bytes, io_write_proxy_t *fd, const char *prefix1,
+		const char *prefix2, as_val *val)
 {
 	as_string *v = as_string_fromval(val);
 	return text_output_data(bytes, fd, prefix1, prefix2, v->value, v->len);
@@ -206,7 +236,8 @@ text_output_string(uint64_t *bytes, FILE *fd, const char *prefix1, const char *p
 /// @result         `true`, if successful.
 ///
 static bool
-text_output_geojson(uint64_t *bytes, FILE *fd, const char *prefix1, const char *prefix2, as_val *val)
+text_output_geojson(uint64_t *bytes, io_write_proxy_t *fd, const char *prefix1,
+		const char *prefix2, as_val *val)
 {
 	as_geojson *v = as_geojson_fromval(val);
 	return text_output_data(bytes, fd, prefix1, prefix2, v->value, v->len);
@@ -225,8 +256,8 @@ text_output_geojson(uint64_t *bytes, FILE *fd, const char *prefix1, const char *
 /// @result         `true`, if successful.
 ///
 static bool
-text_output_bytes(uint64_t *bytes, FILE *fd, bool compact, const char *prefix1, const char *prefix2,
-		as_val *val)
+text_output_bytes(uint64_t *bytes, io_write_proxy_t *fd, bool compact,
+		const char *prefix1, const char *prefix2, as_val *val)
 {
 	as_bytes *v = as_bytes_fromval(val);
 	return compact ?
@@ -245,7 +276,7 @@ text_output_bytes(uint64_t *bytes, FILE *fd, bool compact, const char *prefix1, 
 /// @result         `true`, if successful.
 ///
 static bool
-text_output_key(uint64_t *bytes, FILE *fd, bool compact, as_val *key)
+text_output_key(uint64_t *bytes, io_write_proxy_t *fd, bool compact, as_val *key)
 {
 	switch (key->type) {
 	case AS_INTEGER:
@@ -280,7 +311,8 @@ text_output_key(uint64_t *bytes, FILE *fd, bool compact, as_val *key)
 /// @result         `true`, if successful.
 ///
 static bool
-text_output_value(uint64_t *bytes, FILE *fd, bool compact, const char *bin_name, as_val *val)
+text_output_value(uint64_t *bytes, io_write_proxy_t *fd, bool compact,
+		const char *bin_name, as_val *val)
 {
 	if (val == NULL || val->type == AS_NIL) {
 		if (fprintf_bytes(bytes, fd, "- N %s\n", bin_name) < 0) {
@@ -292,6 +324,9 @@ text_output_value(uint64_t *bytes, FILE *fd, bool compact, const char *bin_name,
 	}
 
 	switch (val->type) {
+	case AS_BOOLEAN:
+		return text_output_boolean(bytes, fd, "- Z ", bin_name, val);
+
 	case AS_INTEGER:
 		return text_output_integer(bytes, fd, "- I ", bin_name, val);
 
@@ -342,7 +377,8 @@ text_output_value(uint64_t *bytes, FILE *fd, bool compact, const char *bin_name,
 /// See backup_encoder.put_record for details.
 ///
 bool
-text_put_record(uint64_t *bytes, FILE *fd, bool compact, const as_record *rec)
+text_put_record(uint64_t *bytes, io_write_proxy_t *fd, bool compact,
+		const as_record *rec)
 {
 	uint32_t enc_size = cf_b64_encoded_len(sizeof (as_digest_value)) + 1;
 	char *enc = alloca(enc_size);
@@ -410,7 +446,7 @@ text_udf_type_to_label(as_udf_type type)
 /// See backup_encoder.put_udf_file for details.
 ///
 bool
-text_put_udf_file(uint64_t *bytes, FILE *fd, const as_udf_file *file)
+text_put_udf_file(uint64_t *bytes, io_write_proxy_t *fd, const as_udf_file *file)
 {
 	int32_t type = text_udf_type_to_label(file->type);
 
@@ -424,7 +460,8 @@ text_put_udf_file(uint64_t *bytes, FILE *fd, const as_udf_file *file)
 		return false;
 	}
 
-	if (fwrite_bytes(bytes, file->content.bytes, file->content.size, 1, fd) != 1) {
+	if (fwrite_bytes(bytes, file->content.bytes, file->content.size, fd) !=
+			file->content.size) {
 		err_code("Error while writing UDF function to backup file [2]");
 		return false;
 	}
@@ -469,7 +506,8 @@ text_path_type_to_label(path_type type)
 /// See backup_encoder.put_secondary_index for details.
 ///
 bool
-text_put_secondary_index(uint64_t *bytes, FILE *fd, const index_param *index)
+text_put_secondary_index(uint64_t *bytes, io_write_proxy_t *fd,
+		const index_param *index)
 {
 	if (fprintf_bytes(bytes, fd, GLOBAL_PREFIX "i %s %s %s %c %u",
 			escape(index->ns), index->set != NULL ? escape(index->set) : "", escape(index->name),

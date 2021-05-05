@@ -13,40 +13,52 @@ import codecs
 import random
 import string
 import math
+import signal
+
+import docker
 
 import aerospike
-import aerospike.predicates
+from aerospike import predexp as predexp
 
 PORT = 3000
 NAMESPACE = "test"
-SET = u"test"
+SET = "test"
 CLIENT_ATTEMPTS = 20
 WORK_DIRECTORY = "work"
 STATE_DIRECTORIES = ["state-1", "state-2"]
 UDF_DIRECTORIES = ["udf-1", "udf-2"]
 FAKE_TIME_FILE = "clock_gettime.txt"
 SHOW_ASD_OUTPUT = False
-USE_VALGRIND = True
+
+if sys.platform == "linux":
+	USE_VALGRIND = True
+else:
+	USE_VALGRIND = False
+DOCKER_CLIENT = docker.from_env()
 
 NO_TTL = [0, -1, 4294967295] # these all mean "no TTL" in the test setup
 GLOBALS = {"file_count": 0, "dir_mode": False}
 
-reload(sys)
-sys.setdefaultencoding("UTF-8") # make it easier to work with a mix of unicode and str objects
-
 random.seed(0)
+
+def graceful_exit(sig, frame):
+	signal.signal(signal.SIGINT, g_orig_int_handler)
+	stop()
+	os.kill(os.getpid(), signal.SIGINT)
+
+g_orig_int_handler = signal.getsignal(signal.SIGINT)
+signal.signal(signal.SIGINT, graceful_exit)
 
 def safe_sleep(secs):
 	"""
 	Sleeps, even in the presence of signals.
 	"""
 	start = time.time()
+	end = start + secs
 
-	while True:
-		time.sleep(1)
-
-		if time.time() - start >= secs:
-			break
+	while start < end:
+		time.sleep(end - start)
+		start = time.time()
 
 def enable_dir_mode():
 	"""
@@ -70,10 +82,10 @@ def eq(value1, value2):
 	"""
 	Compares two values. Converts Unicode values to UTF-8 first.
 	"""
-	if isinstance(value1, unicode):
+	if isinstance(value1, str):
 		value1 = value1.encode("UTF-8")
 
-	if isinstance(value2, unicode):
+	if isinstance(value2, str):
 		value2 = value2.encode("UTF-8")
 
 	if isinstance(value1, float) and isinstance(value2, float) and math.isnan(value1):
@@ -89,7 +101,7 @@ def force_unicode(value, message):
 	"""
 	Make sure that the given string is a Unicode string.
 	"""
-	assert not isinstance(value, basestring) or isinstance(value, unicode), message
+	assert not isinstance(value, str) or isinstance(value, str), message
 
 def absolute_path(*path):
 	"""
@@ -104,7 +116,7 @@ def remove_dir(path):
 	"""
 	Removes a directory.
 	"""
-	print "Removing directory", path
+	print("Removing directory", path)
 
 	for root, dirs, files in os.walk(path, False):
 		for name in dirs:
@@ -119,7 +131,7 @@ def remove_work_dir():
 	"""
 	Removes the work directory.
 	"""
-	print "Removing work directory"
+	print("Removing work directory")
 	work = absolute_path(WORK_DIRECTORY)
 
 	if os.path.exists(work):
@@ -129,7 +141,7 @@ def remove_state_dirs():
 	"""
 	Removes the runtime state directories.
 	"""
-	print "Removing state directories"
+	print("Removing state directories")
 
 	for walker in STATE_DIRECTORIES:
 		state = absolute_path(WORK_DIRECTORY, walker)
@@ -148,26 +160,26 @@ def init_work_dir():
 	Creates an empty work directory.
 	"""
 	remove_work_dir()
-	print "Creating work directory"
+	print("Creating work directory")
 	work = absolute_path(WORK_DIRECTORY)
-	os.mkdir(work, 0755)
+	os.mkdir(work, 0o755)
 
 def init_state_dirs():
 	"""
 	Creates empty state directories.
 	"""
 	remove_state_dirs()
-	print "Creating state directories"
+	print("Creating state directories")
 
 	for walker in STATE_DIRECTORIES:
 		state = absolute_path(os.path.join(WORK_DIRECTORY, walker))
-		os.mkdir(state, 0755)
+		os.mkdir(state, 0o755)
 		smd = absolute_path(os.path.join(WORK_DIRECTORY, walker, "smd"))
-		os.mkdir(smd, 0755)
+		os.mkdir(smd, 0o755)
 
 	for walker in UDF_DIRECTORIES:
 		udf = absolute_path(os.path.join(WORK_DIRECTORY, walker))
-		os.mkdir(udf, 0755)
+		os.mkdir(udf, 0o755)
 
 def write_file(path, content):
 	"""
@@ -191,28 +203,28 @@ def run(command, *options):
 	"""
 	Runs the given command with the given options.
 	"""
-	print "Running", command, "with options", options
-	directory = absolute_path("..")
+	print("Running", command, "with options", options)
+	directory = absolute_path("../..")
 	command = [os.path.join("bin", command)] + list(options)
 
 	if USE_VALGRIND:
 		command = ["./val.sh"] + command
 
-	print "Executing", command, "in", directory
+	print("Executing", command, "in", directory)
 	subprocess.check_call(command, cwd=directory)
 
 def backup(*options):
 	"""
 	Runs asbackup with the given options.
 	"""
-	print "Running asbackup"
+	print("Running asbackup")
 	run("asbackup", *options)
 
 def restore(*options):
 	"""
 	Runs asrestore with the given options.
 	"""
-	print "Running asrestore"
+	print("Running asrestore")
 	run("asrestore", *options)
 
 def set_fake_time(seconds):
@@ -221,7 +233,7 @@ def set_fake_time(seconds):
 	where it is picked up by the clock_gettime() interceptor.
 	"""
 	with codecs.open(absolute_path(WORK_DIRECTORY, FAKE_TIME_FILE), "w", "UTF-8") as file_obj:
-		file_obj.write(unicode(seconds) + u"\n")
+		file_obj.write(str(seconds) + "\n")
 
 def unset_fake_time():
 	"""
@@ -247,7 +259,7 @@ def init_interceptor():
 	unset_fake_time()
 	return interceptor
 
-def create_conf_file(temp_file, base, peer_base, index):
+def create_conf_file(temp_file, base, peer_addr, index):
 	"""
 	Create an Aerospike configuration file from the given template.
 	"""
@@ -255,14 +267,14 @@ def create_conf_file(temp_file, base, peer_base, index):
 		temp_content = file_obj.read()
 
 	params = {
-		"state_directory": "work/state-" + str(index),
-		"udf_directory": "work/udf-" + str(index),
+		"state_directory": "/opt/aerospike/work/state-" + str(index),
+		"udf_directory": "/opt/aerospike/work/udf-" + str(index),
 		"service_port": str(base),
 		"fabric_port": str(base + 1),
 		"heartbeat_port": str(base + 2),
 		"info_port": str(base + 3),
-		"peer_connection": "# no peer connection" if not peer_base \
-				else "mesh-seed-address-port 127.0.0.1 " + str(peer_base + 2)
+		"peer_connection": "# no peer connection" if not peer_addr \
+				else "mesh-seed-address-port " + peer_addr[0] + " " + str(peer_addr[1] + 2)
 	}
 
 	temp = string.Template(temp_content)
@@ -274,17 +286,33 @@ def create_conf_file(temp_file, base, peer_base, index):
 
 	return conf_file
 
+def get_file(path, base=None):
+	if base is None:
+		return os.path.basename(os.path.realpath(path))
+	elif path.startswith(base):
+		if path[len(base)] == '/':
+			return path[len(base) + 1:]
+		else:
+			return path[len(base):]
+	else:
+		raise Exception('path %s is not in the directory %s' % (path, base))
+
+def get_dir(path):
+	return os.path.dirname(os.path.realpath(path))
+
 def start(keep_work_dir=False):
 	"""
 	Starts an asd process with the local aerospike.conf and connects the client to it.
 	"""
-	print "Starting asd"
+	print("Starting asd")
 
 	if not keep_work_dir:
 		init_work_dir()
 
 	init_state_dirs()
 	interceptor = init_interceptor()
+
+	"""
 	search_path = [os.sep + os.path.join("usr", "bin")]
 
 	if "ASREPO" in os.environ:
@@ -292,7 +320,7 @@ def start(keep_work_dir=False):
 		uname = os.uname()
 		search_path = [os.path.join(repo, "target", uname[0] + "-" + uname[4], "bin")] + search_path
 
-	print "asd search path is", search_path
+	print("asd search path is", search_path)
 
 	for path in search_path:
 		asd_path = os.path.join(path, "asd")
@@ -307,60 +335,81 @@ def start(keep_work_dir=False):
 		redirect = {"stdout": dev_null, "stderr": subprocess.STDOUT}
 	else:
 		redirect = {}
+	"""
 
 	temp_file = absolute_path("aerospike.conf")
-	conf_file = []
-	conf_file.append(create_conf_file(temp_file, 3000, None, 1))
-	conf_file.append(create_conf_file(temp_file, 4000, 3000, 2))
+	# TODO
+	#os.environ["LD_PRELOAD"] = interceptor
+	mount_dir = absolute_path(WORK_DIRECTORY)
 
-	os.environ["LD_PRELOAD"] = interceptor
+	first_base = 3000
+	first_ip = None
+	for index in range(1, 3):
+		base = first_base + 1000 * (index - 1)
+		conf_file = create_conf_file(temp_file, base,
+				None if index == 1 else (first_ip, first_base),
+				index)
+		cmd = '/usr/bin/asd --foreground --config-file %s --instance %s' % ('/opt/aerospike/work/' + get_file(conf_file, base=mount_dir), str(index - 1))
+		print('running in docker: %s' % cmd)
+		container = DOCKER_CLIENT.containers.run("aerospike/aerospike-server",
+				command=cmd,
+				ports={
+					str(base) + '/tcp': str(base),
+					str(base + 1) + '/tcp': str(base + 1),
+					str(base + 2) + '/tcp': str(base + 2),
+					str(base + 3) + '/tcp': str(base + 3)
+				},
+				volumes={ mount_dir: { 'bind': '/opt/aerospike/work', 'mode': 'rw' } },
+				tty=True, detach=True, name='aerospike-%d' % (index))
+		GLOBALS["asd-" + str(index)] = container
+		if index == 1:
+			container.reload()
+			first_ip = container.attrs["NetworkSettings"]["Networks"]["bridge"]["IPAddress"]
 
-	for index in xrange(1, 3):
-		command = [asd_path, "--config-file", conf_file[index - 1], "--instance", str(index - 1)]
-		print "Executing", command
-		GLOBALS["asd-" + str(index)] = subprocess.Popen(command, cwd=absolute_path("."), **redirect)
+	#del os.environ["LD_PRELOAD"]
 
-	del os.environ["LD_PRELOAD"]
-
-	print "Connecting client"
+	print("Connecting client")
 	config = {"hosts": [("127.0.0.1", PORT)]}
 
-	for attempt in xrange(CLIENT_ATTEMPTS):
+	for attempt in range(CLIENT_ATTEMPTS):
 		try:
 			GLOBALS["client"] = aerospike.client(config).connect()
 			break
 		except Exception:
 			if attempt < CLIENT_ATTEMPTS - 1:
-				safe_sleep(1)
+				safe_sleep(.2)
 			else:
 				raise
 
-	print "Client connected"
-	safe_sleep(5) # let the cluster fully form and the client learn about it
+	# initialize the list of indices, which will contain a list of the names of
+	# all indices created
+	GLOBALS["indexes"] = []
+	GLOBALS["sets"] = []
+
+	print("Client connected")
 
 def stop(keep_work_dir=False):
 	"""
 	Disconnects the client and stops the running asd process.
 	"""
-	print "Disconnecting client"
+	print("Disconnecting client")
 
 	if "client" not in GLOBALS:
-		print "No connected client"
+		print("No connected client")
 	else:
 		GLOBALS["client"].close()
 		GLOBALS.pop("client")
 
-	print "Stopping asd"
+	print("Stopping asd")
 
-	for index in xrange(1, 3):
+	for index in range(1, 3):
 		asd = "asd-" + str(index)
 
 		if asd not in GLOBALS:
-			print "No running", asd, "process"
+			print("No running", asd, "process")
 		else:
-			GLOBALS[asd].terminate()
-			print "Waiting for", asd, "to exit"
-			GLOBALS[asd].wait()
+			GLOBALS[asd].stop()
+			GLOBALS[asd].remove()
 			GLOBALS.pop(asd)
 
 	remove_state_dirs()
@@ -372,8 +421,31 @@ def reset():
 	"""
 	Reset: disconnects the client, stops asd, restarts asd, reconnects the client.
 	"""
-	stop(True)
-	start(True)
+	print("resetting the database")
+	
+	# truncate the set
+	for set_name in GLOBALS["sets"]:
+		if set_name is not None:
+			set_name = set_name.strip()
+		GLOBALS["client"].truncate(NAMESPACE, None if not set_name else set_name, 0)
+	GLOBALS["sets"] = []
+
+	# delete all udfs
+	udfs = []
+	for udf in GLOBALS["client"].udf_list():
+		udfs.append(udf)
+	for udf in udfs:
+		GLOBALS["client"].udf_remove(udf["name"])
+
+	# delete all indexes
+	for index in GLOBALS["indexes"]:
+		try:
+			GLOBALS["client"].index_remove(NAMESPACE, index)
+		except aerospike.exception.IndexNotFound:
+			# the index may not actually be there if we are only backing up certain
+			# sets, but this is ok, so fail silently
+			pass
+	GLOBALS["indexes"] = []
 
 def validate_client():
 	"""
@@ -426,7 +498,7 @@ def read_all_records(set_name):
 		if meta_ttl in NO_TTL:
 			meta_ttl = None
 
-		records[str(meta_key[3]).encode("hex")] = (meta_key[2], meta_ttl, record)
+		records[str(meta_key[3]).encode().hex()] = (meta_key[2], meta_ttl, record)
 
 	return records
 
@@ -449,6 +521,8 @@ def write_record(set_name, key, bin_names, values, send_key=False, ttl=None):
 		record[bin_name] = value
 
 	GLOBALS["client"].put((NAMESPACE, set_name, key), record, meta, policy)
+	if set_name not in GLOBALS["sets"]:
+		GLOBALS["sets"].append(set_name)
 
 def validate_record(key, record, bin_names, values):
 	"""
@@ -496,7 +570,7 @@ def geo_to_string(value):
 	if isinstance(value, dict):
 		result = {}
 
-		for dict_key, dict_value in value.iteritems():
+		for dict_key, dict_value in value.items():
 			result[dict_key] = geo_to_string(dict_value)
 
 		return result
@@ -596,6 +670,7 @@ def create_integer_index(set_name, path, index_name):
 	validate_index_creation(set_name, path, index_name)
 	assert GLOBALS["client"].index_integer_create(NAMESPACE, set_name, path, index_name) == 0, \
 			"Unexpected error while creating index"
+	GLOBALS["indexes"].append(index_name)
 
 def create_integer_list_index(set_name, path, index_name):
 	"""
@@ -604,6 +679,7 @@ def create_integer_list_index(set_name, path, index_name):
 	validate_index_creation(set_name, path, index_name)
 	assert GLOBALS["client"].index_list_create(NAMESPACE, set_name, path, aerospike.INDEX_NUMERIC, \
 			index_name) == 0, "Unexpected error while creating index"
+	GLOBALS["indexes"].append(index_name)
 
 def create_integer_map_key_index(set_name, path, index_name):
 	"""
@@ -612,6 +688,7 @@ def create_integer_map_key_index(set_name, path, index_name):
 	validate_index_creation(set_name, path, index_name)
 	assert GLOBALS["client"].index_map_keys_create(NAMESPACE, set_name, path, \
 			aerospike.INDEX_NUMERIC, index_name) == 0, "Unexpected error while creating index"
+	GLOBALS["indexes"].append(index_name)
 
 def create_integer_map_value_index(set_name, path, index_name):
 	"""
@@ -620,6 +697,7 @@ def create_integer_map_value_index(set_name, path, index_name):
 	validate_index_creation(set_name, path, index_name)
 	assert GLOBALS["client"].index_map_values_create(NAMESPACE, set_name, path, \
 			aerospike.INDEX_NUMERIC, index_name) == 0, "Unexpected error while creating index"
+	GLOBALS["indexes"].append(index_name)
 
 def create_string_index(set_name, path, index_name):
 	"""
@@ -628,6 +706,7 @@ def create_string_index(set_name, path, index_name):
 	validate_index_creation(set_name, path, index_name)
 	assert GLOBALS["client"].index_string_create(NAMESPACE, set_name, path, index_name) == 0, \
 			"Unexpected error while creating index"
+	GLOBALS["indexes"].append(index_name)
 
 def create_geo_index(set_name, path, index_name):
 	"""
@@ -637,6 +716,7 @@ def create_geo_index(set_name, path, index_name):
 	# XXX - geo index requires string bin names
 	assert GLOBALS["client"].index_geo2dsphere_create(NAMESPACE, set_name, str(path), \
 			index_name) == 0, "Unexpected error while creating index"
+	GLOBALS["indexes"].append(index_name)
 
 def create_string_list_index(set_name, path, index_name):
 	"""
@@ -645,6 +725,7 @@ def create_string_list_index(set_name, path, index_name):
 	validate_index_creation(set_name, path, index_name)
 	assert GLOBALS["client"].index_list_create(NAMESPACE, set_name, path, aerospike.INDEX_STRING, \
 			index_name) == 0, "Unexpected error while creating index"
+	GLOBALS["indexes"].append(index_name)
 
 def create_string_map_key_index(set_name, path, index_name):
 	"""
@@ -653,6 +734,7 @@ def create_string_map_key_index(set_name, path, index_name):
 	validate_index_creation(set_name, path, index_name)
 	assert GLOBALS["client"].index_map_keys_create(NAMESPACE, set_name, path, \
 			aerospike.INDEX_STRING, index_name) == 0, "Unexpected error while creating index"
+	GLOBALS["indexes"].append(index_name)
 
 def create_string_map_value_index(set_name, path, index_name):
 	"""
@@ -661,12 +743,13 @@ def create_string_map_value_index(set_name, path, index_name):
 	validate_index_creation(set_name, path, index_name)
 	assert GLOBALS["client"].index_map_values_create(NAMESPACE, set_name, path, \
 			aerospike.INDEX_STRING, index_name) == 0, "Unexpected error while creating index"
+	GLOBALS["indexes"].append(index_name)
 
 def backup_to_file(path, *options):
 	"""
 	Backup to the given file using the default options plus the given options.
 	"""
-	backup("--output", path, \
+	backup("--output-file", path, \
 			"--remove-files", \
 			"--namespace", NAMESPACE, \
 			*options)
@@ -695,7 +778,7 @@ def restore_from_directory(path, *options):
 			*options)
 
 def backup_and_restore(filler, preparer, checker, backup_opts=None, restore_opts=None, \
-		restore_delay=None):
+		restore_delay=None, cleanup=None):
 	"""
 	Do one backup-restore cycle.
 	"""
@@ -705,63 +788,88 @@ def backup_and_restore(filler, preparer, checker, backup_opts=None, restore_opts
 	if restore_opts is None:
 		restore_opts = []
 
-	context = {}
+
 	start()
+	for comp_enc_mode in [
+			[],
+			['--compress=zstd'],
+			['--encrypt=aes128', '--encryption-key-file=test/test_key.pem'],
+			['--compress=zstd', '--encrypt=aes128',
+				'--encryption-key-file=test/test_key.pem'],
+			]:
+		context = {}
+		try:
+			filler(context)
 
-	try:
-		filler(context)
+			if GLOBALS["dir_mode"]:
+				path = temporary_path("dir")
+				backup_to_directory(path, *(backup_opts + comp_enc_mode))
+			else:
+				path = temporary_path("asb")
+				backup_to_file(path, *(backup_opts + comp_enc_mode))
 
-		if GLOBALS["dir_mode"]:
-			path = temporary_path("dir")
-			backup_to_directory(path, *backup_opts)
+			indexes = GLOBALS["indexes"]
+			reset()
+
+			# give SMD time to get deleted
+			safe_sleep(0.5)
+
+			# restart the server/client
+			#stop(True)
+			#start(True)
+
+			if restore_delay is not None:
+				safe_sleep(restore_delay)
+
+			if preparer is not None:
+				preparer(context)
+
+			if GLOBALS["dir_mode"]:
+				restore_from_directory(path, *(restore_opts + comp_enc_mode))
+			else:
+				restore_from_file(path, *(restore_opts + comp_enc_mode))
+			# give SMD time to be restored
+			safe_sleep(0.5)
+
+			checker(context)
+
+			# restore the indices restored by asrestore before resetting
+			GLOBALS["indexes"] = indexes
+			reset()
+		except Exception:
+			if cleanup is not None:
+				cleanup(context)
+			stop(True)
+			raise
 		else:
-			path = temporary_path("asb")
-			backup_to_file(path, *backup_opts)
-
-		reset()
-
-		if restore_delay is not None:
-			safe_sleep(restore_delay)
-
-		if preparer is not None:
-			preparer(context)
-
-		if GLOBALS["dir_mode"]:
-			restore_from_directory(path, *restore_opts)
-		else:
-			restore_from_file(path, *restore_opts)
-
-		checker(context)
-	except Exception:
-		stop(True)
-		raise
-	else:
-		stop()
+			if cleanup is not None:
+				cleanup(context)
+	stop()
 
 def random_alphameric():
 	"""
 	Generates a random alphanumeric character.
 	"""
-	alphabet = u"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+	alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
 	return alphabet[random.randint(0, len(alphabet) - 1)]
 
 def random_ascii():
 	"""
 	Generates a random ASCII character.
 	"""
-	return unichr(random.randint(0, 127))
+	return chr(random.randint(0, 127))
 
 def random_unicode():
 	"""
 	Generates a random 16-bit Unicode character.
 	"""
-	return unichr(random.randint(0, 65535))
+	return chr(random.randint(0, 0xd7ff))
 
 def random_ascii_no_nul():
 	"""
 	Generates a random ASCII character, except NUL.
 	"""
-	return unichr(random.randint(1, 127))
+	return chr(random.randint(1, 127))
 
 def random_unicode_no_nul():
 	"""
@@ -769,7 +877,8 @@ def random_unicode_no_nul():
 	Unicode character that results in a NUL byte in the UTF-8 encoding. So, it's
 	enough to disallow that.
 	"""
-	return unichr(random.randint(1, 65535))
+	res = random.randint(1, 0xd7ff)
+	return chr(res)
 
 CHAR_TYPE_ALPHAMERIC = 0
 CHAR_TYPE_ASCII = 1
@@ -790,7 +899,7 @@ def identifier(max_len, char_type=CHAR_TYPE_ALPHAMERIC):
 	Generates a Unicode string composed of characters of the given type. Makes sure that
 	the encoded string doesn't exceed the given maximal length.
 	"""
-	result = u""
+	result = ""
 
 	while True:
 		char = GENERATOR_FUNCTIONS[char_type]()
@@ -804,38 +913,38 @@ def space_framed_identifier(max_len, char_type=CHAR_TYPE_ALPHAMERIC):
 	"""
 	Generates an identifier that starts and ends with a space character.
 	"""
-	return u" " + identifier(max_len - 2, char_type) + u" "
+	return " " + identifier(max_len - 2, char_type) + " "
 
 def line_feed_framed_identifier(max_len, char_type=CHAR_TYPE_ALPHAMERIC):
 	"""
 	Generates an identifier that starts and ends with a new line character.
 	"""
-	return u"\n" + identifier(max_len - 2, char_type) + u"\n"
+	return "\n" + identifier(max_len - 2, char_type) + "\n"
 
 def identifier_with_space(max_len, char_type=CHAR_TYPE_ALPHAMERIC):
 	"""
 	Generates an identifier that contains a space character.
 	"""
 	basic = identifier(max_len - 1, char_type)
-	return basic[:2] + u" " + basic[2:]
+	return basic[:2] + " " + basic[2:]
 
 def identifier_with_line_feed(max_len, char_type=CHAR_TYPE_ALPHAMERIC):
 	"""
 	Generates an identifier that contains a new line character.
 	"""
 	basic = identifier(max_len - 1, char_type)
-	return basic[:2] + u"\n" + basic[2:]
+	return basic[:2] + "\n" + basic[2:]
 
 def identifier_variations(max_len, allow_nul=True):
 	"""
 	Generates a whole bunch of special-case identifiers.
 	"""
 	variations = []
-	variations.append(u"")
-	variations.append(u" ")
-	variations.append(u"  ")
-	variations.append(u"\n")
-	variations.append(u"\n\n")
+	variations.append("")
+	variations.append(" ")
+	variations.append("  ")
+	variations.append("\n")
+	variations.append("\n\n")
 
 	char_types = [CHAR_TYPE_ALPHAMERIC]
 
@@ -868,8 +977,8 @@ def index_variations(max_len):
 	Generates a whole bunch of identifiers that are suitable for index commands.
 	"""
 	variations = []
-	variations.append(u" ")
-	variations.append(u"  ")
+	variations.append(" ")
+	variations.append("  ")
 	variations.append(identifier(1, CHAR_TYPE_ALPHAMERIC))
 	variations.append(identifier(max_len / 2, CHAR_TYPE_ALPHAMERIC))
 	variations.append(identifier(max_len, CHAR_TYPE_ALPHAMERIC))

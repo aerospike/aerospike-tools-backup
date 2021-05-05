@@ -1,5 +1,5 @@
 /*
- * Copyright 2018-2021 Aerospike, Inc.
+ * Copyright 2021-2021 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -15,17 +15,11 @@
  * the License.
  */
 
-#pragma once
+#include <backup.h>
 
-#include <stdbool.h>
+int32_t
+main(int32_t argc, char **argv)
+{
+	return backup_main(argc, argv);
+}
 
-//==========================================================
-// Public API.
-//
-
-bool config_from_files(void *c, const char* instance, const char* cmd_config_fname, bool is_backup);
-bool config_from_file(void *c, const char* instance, const char* fname, int level, bool is_backup);
-
-bool tls_read_password(char* value, char** ptr);
-
-extern char *DEFAULTPASSWORD;

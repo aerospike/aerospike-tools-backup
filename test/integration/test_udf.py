@@ -15,7 +15,7 @@ def put_udf_files(context, comments):
 	Creates UDF files with the given comments.
 	"""
 	for comment in comments:
-		content = u"--[=======[\n" + comment + u"\n--]=======]\n"
+		content = "--[=======[\n" + comment + "\n--]=======]\n"
 		path = lib.put_udf_file(content)
 		context[os.path.basename(path)] = content
 
@@ -27,6 +27,10 @@ def check_udf_files(context):
 		content = lib.get_udf_file(path)
 		assert lib.eq(content, context[path]), "UDF file %s has invalid content" % path
 
+def clear_udf_files(context):
+	for path in context:
+		os.remove(path)
+
 def test_udf_file():
 	"""
 	Test UDF files.
@@ -34,5 +38,7 @@ def test_udf_file():
 	lib.backup_and_restore(
 		lambda context: put_udf_files(context, COMMENTS),
 		None,
-		check_udf_files
+		check_udf_files,
+		cleanup=clear_udf_files
 	)
+
