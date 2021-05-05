@@ -173,8 +173,18 @@ extern char* strchrnul(const char* s, int c_in);
 static __attribute__((always_inline)) inline bool
 timespec_has_not_happened(struct timespec* ts)
 {
+#ifdef __APPLE__
+	// MacOS uses gettimeofday instead of the monotonic clock for timed waits on
+	// mutexes
+	struct timespec now;
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	TIMEVAL_TO_TIMESPEC(&tv, &now);
+#else
 	struct timespec now;
 	clock_gettime(CLOCK_MONOTONIC, &now);
+#endif /* __APPLE__ */
+
 	return now.tv_sec < ts->tv_sec ||
 		(now.tv_sec == ts->tv_sec && now.tv_nsec < ts->tv_nsec);
 }

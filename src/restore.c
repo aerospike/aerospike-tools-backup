@@ -91,8 +91,17 @@ stop_nolock(void)
 static void
 sleep_for(uint64_t n_secs)
 {
+#ifdef __APPLE__
+	// MacOS uses gettimeofday instead of the monotonic clock for timed waits on
+	// mutexes
+	struct timespec t;
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	TIMEVAL_TO_TIMESPEC(&tv, &t);
+#else
 	struct timespec t;
 	clock_gettime(CLOCK_MONOTONIC, &t);
+#endif /* __APPLE__ */
 	t.tv_sec += (int64_t) n_secs;
 
 	pthread_mutex_lock(&g_stop_lock);
