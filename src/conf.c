@@ -40,8 +40,10 @@
 //==========================================================
 // Typedefs & constants.
 //
+
 #define BACKUP_CONFIG_FILE ".aerospike/astools.conf"
 #define ERR_BUF_SIZE 1024
+
 
 //=========================================================
 // Inline and Macros.
@@ -55,7 +57,9 @@
 //=========================================================
 // Globals.
 //
+
 char *DEFAULTPASSWORD = "SomeDefaultRandomPassword";
+
 
 //=========================================================
 // Forward Declarations.
@@ -66,7 +70,6 @@ static bool config_int32(toml_table_t *curtab, const char *name, int32_t *ptr);
 static bool config_int64(toml_table_t *curtab, const char *name, int64_t *ptr);
 static bool config_bool(toml_table_t *curtab, const char *name, void *ptr);
 static bool config_parse_file(const char *fname, toml_table_t **tab, char errbuf[]);
-
 
 static bool config_backup_cluster(toml_table_t *conftab, backup_config *c, const char *instance, char errbuf[]);
 static bool config_backup(toml_table_t *conftab, backup_config *c, const char *instance, char errbuf[]);
@@ -79,6 +82,7 @@ static bool config_from_dir(void *c, const char *instance, char *dirname, int le
 
 static bool password_env(const char *var, char **ptr);
 static bool password_file(const char *path, char **ptr);
+
 
 //=========================================================
 // Public API.
@@ -170,7 +174,7 @@ tls_read_password(char *value, char **ptr)
 
 
 //=========================================================
-// Local API.
+// Local helpers.
 //
 
 static bool

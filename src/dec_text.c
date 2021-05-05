@@ -15,18 +15,155 @@
  * the License.
  */
 
+//==========================================================
+// Includes.
+//
+
 #include <dec_text.h>
 #include <io_proxy.h>
 #include <utils.h>
 
-///
-/// Ensures that the given string is a prefix of a valid floating-point value.
-///
-/// @param buffer  The string to be tested.
-/// @param len     The string length.
-///
-/// @result         `true`, if successful.
-///
+
+//==========================================================
+// Forward Declarations.
+//
+
+static inline bool text_check_floating_point(const char *buffer, size_t len);
+static inline bool text_nul_read_until(io_read_proxy_t *fd, uint32_t *line_no,
+		uint32_t *col_no, int64_t *bytes, char *buffer, size_t size, bool digits,
+		bool neg, bool fp, char *delim, bool unesc);
+static inline bool text_nul_read_token(io_read_proxy_t *fd, bool legacy,
+		uint32_t *line_no, uint32_t *col_no, int64_t *bytes, char *buffer,
+		size_t size, char *delim);
+static inline bool text_read_size(io_read_proxy_t *fd, bool legacy,
+		uint32_t *line_no, uint32_t *col_no, int64_t *bytes, size_t *value,
+		char *delim);
+static inline bool text_read_boolean(io_read_proxy_t *fd, bool legacy,
+		uint32_t *line_no, uint32_t *col_no, int64_t *bytes, bool *value,
+		char *delim);
+static inline bool text_read_integer(io_read_proxy_t *fd, bool legacy,
+		uint32_t *line_no, uint32_t *col_no, int64_t *bytes, int64_t *value,
+		char *delim);
+static inline bool text_read_double(io_read_proxy_t *fd, bool legacy,
+		uint32_t *line_no, uint32_t *col_no, int64_t *bytes, double *value,
+		char *delim);
+static bool text_parse_string(io_read_proxy_t *fd, bool legacy,
+		uint32_t *line_no, uint32_t *col_no, int64_t *bytes, void **buffer,
+		size_t *size, size_t extra);
+static bool text_parse_data(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
+		uint32_t *col_no, int64_t *bytes, void **buffer, size_t *size,
+		size_t extra);
+static bool text_parse_data_dec(io_read_proxy_t *fd, bool legacy,
+		uint32_t *line_no, uint32_t *col_no, int64_t *bytes, void **buffer,
+		size_t *size, size_t extra);
+static bool text_parse_key(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
+		uint32_t *col_no, int64_t *bytes, as_record *rec);
+static bool text_parse_namespace(io_read_proxy_t *fd, bool legacy,
+		as_vector *ns_vec, uint32_t *line_no, uint32_t *col_no, int64_t *bytes,
+		as_record *rec);
+static bool text_parse_digest(io_read_proxy_t *fd, uint32_t *line_no,
+		uint32_t *col_no, int64_t *bytes, as_record *rec);
+static bool text_parse_set(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
+		uint32_t *col_no, int64_t *bytes, as_record *rec);
+static bool text_parse_generation(io_read_proxy_t *fd, bool legacy,
+		uint32_t *line_no, uint32_t *col_no, int64_t *bytes, as_record *rec);
+static bool text_parse_expiration(io_read_proxy_t *fd, bool legacy,
+		uint32_t *line_no, uint32_t *col_no, int64_t *bytes, as_record *rec,
+		int32_t extra_ttl, bool *expired);
+static bool text_bytes_label_to_type(int32_t label, as_bytes_type *type);
+static bool text_parse_bin(io_read_proxy_t *fd, bool legacy, as_vector *bin_vec,
+		uint32_t *line_no, uint32_t *col_no, int64_t *bytes, as_record *rec);
+static bool text_parse_bins(io_read_proxy_t *fd, bool legacy,
+		as_vector *bin_vec, uint32_t *line_no, uint32_t *col_no, int64_t *bytes,
+		as_record *rec);
+static decoder_status text_parse_record(io_read_proxy_t *fd, bool legacy,
+		as_vector *ns_vec, as_vector *bin_vec, uint32_t *line_no,
+		uint32_t *col_no, int64_t *bytes, as_record *rec, int32_t extra_ttl,
+		bool *expired);
+static decoder_status text_parse_index(io_read_proxy_t *fd, as_vector *ns_vec,
+		uint32_t *line_no, uint32_t *col_no, int64_t *bytes, index_param *index);
+static decoder_status text_parse_udf(io_read_proxy_t *fd, uint32_t *line_no,
+		uint32_t *col_no, int64_t *bytes, udf_param *udf);
+static decoder_status text_parse_global(io_read_proxy_t *fd, as_vector *ns_vec,
+		uint32_t *line_no, uint32_t *col_no, int64_t *bytes, index_param *index,
+		udf_param *udf);
+
+
+//==========================================================
+// Public API.
+//
+
+/*
+ * The interface exposed by the text backup file format decoder.
+ *
+ * See backup_decoder.parse for details.
+ */
+decoder_status
+text_parse(io_read_proxy_t *fd, bool legacy, as_vector *ns_vec,
+		as_vector *bin_vec, uint32_t *orig_line_no, cf_atomic64 *total,
+		as_record *rec, int32_t extra_ttl, bool *expired, index_param *index,
+		udf_param *udf)
+{
+	decoder_status res = DECODER_ERROR;
+	int64_t bytes = 0;
+
+	uint32_t line_no[2] = { *orig_line_no, *orig_line_no };
+	uint32_t col_no[2] = { 1, 2 };
+
+	int32_t ch = io_proxy_getc_unlocked(fd);
+
+	if (ch == EOF) {
+		if (io_proxy_error(fd) != 0) {
+			err("Error while reading backup block (line %u, col %u)", line_no[0], col_no[0]);
+			goto out;
+		}
+
+		if (verbose) {
+			ver("Encountered end of file (line %u, col %u)", line_no[0], col_no[0]);
+		}
+
+		res = DECODER_EOF;
+		goto out;
+	}
+
+	++bytes;
+
+	if (!legacy && ch == GLOBAL_PREFIX[0]) {
+		res = text_parse_global(fd, ns_vec, line_no, col_no, &bytes, index, udf);
+		goto out;
+	}
+
+	if (ch == RECORD_META_PREFIX[0]) {
+		res = text_parse_record(fd, legacy, ns_vec, bin_vec, line_no, col_no, &bytes, rec,
+				extra_ttl, expired);
+		goto out;
+	}
+
+	err("Invalid start character %s in block (line %u, col %u)", print_char(ch), line_no[0],
+			col_no[0]);
+
+out:
+	if (total != NULL) {
+		cf_atomic64_add(total, bytes);
+	}
+
+	*orig_line_no = line_no[1];
+	return res;
+}
+
+
+//==========================================================
+// Local helpers.
+//
+
+/*
+ * Ensures that the given string is a prefix of a valid floating-point value.
+ *
+ * @param buffer  The string to be tested.
+ * @param len     The string length.
+ *
+ * @result         `true`, if successful.
+ */
 static inline bool
 text_check_floating_point(const char *buffer, size_t len)
 {
@@ -84,25 +221,25 @@ text_check_floating_point(const char *buffer, size_t len)
 	return true;
 }
 
-///
-/// Reads from the backup file until one of the delimiter characters is found.
-///
-/// Before it is returned, the data is NUL-terminated.
-///
-/// @param fd       The file descriptor of the backup file.
-/// @param line_no  The current line number.
-/// @param col_no   The current column number.
-/// @param bytes    Increased by the number of bytes read from the file descriptor.
-/// @param buffer   The buffer to store the read data.
-/// @param size     The size of the supplied buffer.
-/// @param digits   Indicates that only digits are valid data.
-/// @param neg      Indicates that, in addition to digits, a minus sign is also valid data.
-/// @param fp       Indicates that only floating point notation is valid data.
-/// @param delim    The delimiter characters as a NUL-terminated string.
-/// @param unesc    Indicates that the read data is to be unescaped.
-///
-/// @result         `true`, if successful.
-///
+/*
+ * Reads from the backup file until one of the delimiter characters is found.
+ *
+ * Before it is returned, the data is NUL-terminated.
+ *
+ * @param fd       The file descriptor of the backup file.
+ * @param line_no  The current line number.
+ * @param col_no   The current column number.
+ * @param bytes    Increased by the number of bytes read from the file descriptor.
+ * @param buffer   The buffer to store the read data.
+ * @param size     The size of the supplied buffer.
+ * @param digits   Indicates that only digits are valid data.
+ * @param neg      Indicates that, in addition to digits, a minus sign is also valid data.
+ * @param fp       Indicates that only floating point notation is valid data.
+ * @param delim    The delimiter characters as a NUL-terminated string.
+ * @param unesc    Indicates that the read data is to be unescaped.
+ *
+ * @result         `true`, if successful.
+ */
 static inline bool
 text_nul_read_until(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
 		int64_t *bytes, char *buffer, size_t size, bool digits, bool neg,
@@ -155,23 +292,23 @@ text_nul_read_until(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
 	}
 }
 
-///
-/// Reads a token from the backup.
-///
-/// The token is delimited by the given delimiter characters. Before it is returned, the token is
-/// NUL-terminated.
-///
-/// @param fd       The file descriptor of the backup file.
-/// @param legacy   Indicates a version 3.0 backup file.
-/// @param line_no  The current line number.
-/// @param col_no   The current column number.
-/// @param bytes    Increased by the number of bytes read from the file descriptor.
-/// @param buffer   The buffer to store the read data.
-/// @param size     The size of the supplied buffer.
-/// @param delim    The delimiter characters as a NUL-terminated string.
-///
-/// @result         `true`, if successful.
-///
+/*
+ * Reads a token from the backup.
+ *
+ * The token is delimited by the given delimiter characters. Before it is returned, the token is
+ * NUL-terminated.
+ *
+ * @param fd       The file descriptor of the backup file.
+ * @param legacy   Indicates a version 3.0 backup file.
+ * @param line_no  The current line number.
+ * @param col_no   The current column number.
+ * @param bytes    Increased by the number of bytes read from the file descriptor.
+ * @param buffer   The buffer to store the read data.
+ * @param size     The size of the supplied buffer.
+ * @param delim    The delimiter characters as a NUL-terminated string.
+ *
+ * @result         `true`, if successful.
+ */
 static inline bool
 text_nul_read_token(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
 		uint32_t *col_no, int64_t *bytes, char *buffer, size_t size,
@@ -181,22 +318,22 @@ text_nul_read_token(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
 			false, false, delim, !legacy);
 }
 
-///
-/// Reads and parses a size integer from the backup file.
-///
-/// The size is a non-negative integer less than or equal to 1024^5. It is delimited by the given
-/// delimiter characters.
-///
-/// @param fd       The file descriptor of the backup file.
-/// @param legacy   Indicates a version 3.0 backup file.
-/// @param line_no  The current line number.
-/// @param col_no   The current column number.
-/// @param bytes    Increased by the number of bytes read from the file descriptor.
-/// @param value    The parsed size.
-/// @param delim    The delimiter characters as a NUL-terminated string.
-///
-/// @result         `true`, if successful.
-///
+/*
+ * Reads and parses a size integer from the backup file.
+ *
+ * The size is a non-negative integer less than or equal to 1024^5. It is delimited by the given
+ * delimiter characters.
+ *
+ * @param fd       The file descriptor of the backup file.
+ * @param legacy   Indicates a version 3.0 backup file.
+ * @param line_no  The current line number.
+ * @param col_no   The current column number.
+ * @param bytes    Increased by the number of bytes read from the file descriptor.
+ * @param value    The parsed size.
+ * @param delim    The delimiter characters as a NUL-terminated string.
+ *
+ * @result         `true`, if successful.
+ */
 static inline bool
 text_read_size(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
 		uint32_t *col_no, int64_t *bytes, size_t *value, char *delim)
@@ -224,21 +361,21 @@ text_read_size(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
 	return true;
 }
 
-///
-/// Reads and parses a boolean from the backup file.
-///
-/// The boolean is delimited by the given delimiter characters.
-///
-/// @param fd       The file descriptor of the backup file.
-/// @param legacy   Indicates a version 3.0 backup file.
-/// @param line_no  The current line number.
-/// @param col_no   The current column number.
-/// @param bytes    Increased by the number of bytes read from the file descriptor.
-/// @param value    The parsed value.
-/// @param delim    The delimiter characters as a NUL-terminated string.
-///
-/// @result         `true`, if successful.
-///
+/*
+ * Reads and parses a boolean from the backup file.
+ *
+ * The boolean is delimited by the given delimiter characters.
+ *
+ * @param fd       The file descriptor of the backup file.
+ * @param legacy   Indicates a version 3.0 backup file.
+ * @param line_no  The current line number.
+ * @param col_no   The current column number.
+ * @param bytes    Increased by the number of bytes read from the file descriptor.
+ * @param value    The parsed value.
+ * @param delim    The delimiter characters as a NUL-terminated string.
+ *
+ * @result         `true`, if successful.
+ */
 static inline bool
 text_read_boolean(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
 		uint32_t *col_no, int64_t *bytes, bool *value, char *delim)
@@ -264,21 +401,21 @@ text_read_boolean(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
 	return true;
 }
 
-///
-/// Reads and parses a signed 64-bit integer from the backup file.
-///
-/// The integer is delimited by the given delimiter characters.
-///
-/// @param fd       The file descriptor of the backup file.
-/// @param legacy   Indicates a version 3.0 backup file.
-/// @param line_no  The current line number.
-/// @param col_no   The current column number.
-/// @param bytes    Increased by the number of bytes read from the file descriptor.
-/// @param value    The parsed value.
-/// @param delim    The delimiter characters as a NUL-terminated string.
-///
-/// @result         `true`, if successful.
-///
+/*
+ * Reads and parses a signed 64-bit integer from the backup file.
+ *
+ * The integer is delimited by the given delimiter characters.
+ *
+ * @param fd       The file descriptor of the backup file.
+ * @param legacy   Indicates a version 3.0 backup file.
+ * @param line_no  The current line number.
+ * @param col_no   The current column number.
+ * @param bytes    Increased by the number of bytes read from the file descriptor.
+ * @param value    The parsed value.
+ * @param delim    The delimiter characters as a NUL-terminated string.
+ *
+ * @result         `true`, if successful.
+ */
 static inline bool
 text_read_integer(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
 		uint32_t *col_no, int64_t *bytes, int64_t *value, char *delim)
@@ -313,21 +450,21 @@ text_read_integer(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
 	return true;
 }
 
-///
-/// Reads and parses a double-precision floating-point value from the backup file.
-///
-/// The value is delimited by the given delimiter characters.
-///
-/// @param fd       The file descriptor of the backup file.
-/// @param legacy   Indicates a version 3.0 backup file.
-/// @param line_no  The current line number.
-/// @param col_no   The current column number.
-/// @param bytes    Increased by the number of bytes read from the file descriptor.
-/// @param value    The parsed value.
-/// @param delim    The delimiter characters as a NUL-terminated string.
-///
-/// @result         `true`, if successful.
-///
+/*
+ * Reads and parses a double-precision floating-point value from the backup file.
+ *
+ * The value is delimited by the given delimiter characters.
+ *
+ * @param fd       The file descriptor of the backup file.
+ * @param legacy   Indicates a version 3.0 backup file.
+ * @param line_no  The current line number.
+ * @param col_no   The current column number.
+ * @param bytes    Increased by the number of bytes read from the file descriptor.
+ * @param value    The parsed value.
+ * @param delim    The delimiter characters as a NUL-terminated string.
+ *
+ * @result         `true`, if successful.
+ */
 static inline bool
 text_read_double(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
 		uint32_t *col_no, int64_t *bytes, double *value, char *delim)
@@ -351,23 +488,23 @@ text_read_double(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
 	return true;
 }
 
-///
-/// Reads and parses a string from the backup file.
-///
-/// The string may contain NUL characters and thus is *not* NUL-terminated. Instead, its size
-/// is returned.
-///
-/// @param fd       The file descriptor of the backup file.
-/// @param legacy   Indicates a version 3.0 backup file.
-/// @param line_no  The current line number.
-/// @param col_no   The current column number.
-/// @param bytes    Increased by the number of bytes read from the file descriptor.
-/// @param buffer   The buffer allocated for the string.
-/// @param size     The size of the string.
-/// @param extra    The amount of extra memory to allocate.
-///
-/// @result         `true`, if successful.
-///
+/*
+ * Reads and parses a string from the backup file.
+ *
+ * The string may contain NUL characters and thus is *not* NUL-terminated. Instead, its size
+ * is returned.
+ *
+ * @param fd       The file descriptor of the backup file.
+ * @param legacy   Indicates a version 3.0 backup file.
+ * @param line_no  The current line number.
+ * @param col_no   The current column number.
+ * @param bytes    Increased by the number of bytes read from the file descriptor.
+ * @param buffer   The buffer allocated for the string.
+ * @param size     The size of the string.
+ * @param extra    The amount of extra memory to allocate.
+ *
+ * @result         `true`, if successful.
+ */
 static bool
 text_parse_string(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
 		uint32_t *col_no, int64_t *bytes, void **buffer, size_t *size,
@@ -393,20 +530,20 @@ text_parse_string(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
 	return true;
 }
 
-///
-/// Reads and parses a BLOB from the backup file.
-///
-/// @param fd       The file descriptor of the backup file.
-/// @param legacy   Indicates a version 3.0 backup file.
-/// @param line_no  The current line number.
-/// @param col_no   The current column number.
-/// @param bytes    Increased by the number of bytes read from the file descriptor.
-/// @param buffer   The buffer allocated for the BLOB.
-/// @param size     The size of the BLOB.
-/// @param extra    The amount of extra memory to allocate.
-///
-/// @result         `true`, if successful.
-///
+/*
+ * Reads and parses a BLOB from the backup file.
+ *
+ * @param fd       The file descriptor of the backup file.
+ * @param legacy   Indicates a version 3.0 backup file.
+ * @param line_no  The current line number.
+ * @param col_no   The current column number.
+ * @param bytes    Increased by the number of bytes read from the file descriptor.
+ * @param buffer   The buffer allocated for the BLOB.
+ * @param size     The size of the BLOB.
+ * @param extra    The amount of extra memory to allocate.
+ *
+ * @result         `true`, if successful.
+ */
 static bool
 text_parse_data(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
 		uint32_t *col_no, int64_t *bytes, void **buffer, size_t *size,
@@ -432,20 +569,20 @@ text_parse_data(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
 	return true;
 }
 
-///
-/// Reads and parses an encoded BLOB from the backup file.
-///
-/// @param fd       The file descriptor of the backup file.
-/// @param legacy   Indicates a version 3.0 backup file.
-/// @param line_no  The current line number.
-/// @param col_no   The current column number.
-/// @param bytes    Increased by the number of bytes read from the file descriptor.
-/// @param buffer   The buffer allocated for the string.
-/// @param size     The size of the string.
-/// @param extra    The amount of extra memory to allocate.
-///
-/// @result         `true`, if successful.
-///
+/*
+ * Reads and parses an encoded BLOB from the backup file.
+ *
+ * @param fd       The file descriptor of the backup file.
+ * @param legacy   Indicates a version 3.0 backup file.
+ * @param line_no  The current line number.
+ * @param col_no   The current column number.
+ * @param bytes    Increased by the number of bytes read from the file descriptor.
+ * @param buffer   The buffer allocated for the string.
+ * @param size     The size of the string.
+ * @param extra    The amount of extra memory to allocate.
+ *
+ * @result         `true`, if successful.
+ */
 static bool
 text_parse_data_dec(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
 		uint32_t *col_no, int64_t *bytes, void **buffer, size_t *size,
@@ -492,18 +629,18 @@ text_parse_data_dec(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
 	return true;
 }
 
-///
-/// Reads and parses a key value from the backup file.
-///
-/// @param fd       The file descriptor of the backup file.
-/// @param legacy   Indicates a version 3.0 backup file.
-/// @param line_no  The current line number.
-/// @param col_no   The current column number.
-/// @param bytes    Increased by the number of bytes read from the file descriptor.
-/// @param rec      The record to receive the key value.
-///
-/// @result         `true`, if successful.
-///
+/*
+ * Reads and parses a key value from the backup file.
+ *
+ * @param fd       The file descriptor of the backup file.
+ * @param legacy   Indicates a version 3.0 backup file.
+ * @param line_no  The current line number.
+ * @param col_no   The current column number.
+ * @param bytes    Increased by the number of bytes read from the file descriptor.
+ * @param rec      The record to receive the key value.
+ *
+ * @result         `true`, if successful.
+ */
 static bool
 text_parse_key(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
 		uint32_t *col_no, int64_t *bytes, as_record *rec)
@@ -635,19 +772,19 @@ text_parse_key(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
 	return expect_char(fd, line_no, col_no, bytes, '\n');
 }
 
-///
-/// Reads and parses a namespace from the backup file.
-///
-/// @param fd       The file descriptor of the backup file.
-/// @param legacy   Indicates a version 3.0 backup file.
-/// @param ns_vec   The (optional) source and (also optional) target namespace to be restored.
-/// @param line_no  The current line number.
-/// @param col_no   The current column number.
-/// @param bytes    Increased by the number of bytes read from the file descriptor.
-/// @param rec      The record to receive the namespace.
-///
-/// @result         `true`, if successful.
-///
+/*
+ * Reads and parses a namespace from the backup file.
+ *
+ * @param fd       The file descriptor of the backup file.
+ * @param legacy   Indicates a version 3.0 backup file.
+ * @param ns_vec   The (optional) source and (also optional) target namespace to be restored.
+ * @param line_no  The current line number.
+ * @param col_no   The current column number.
+ * @param bytes    Increased by the number of bytes read from the file descriptor.
+ * @param rec      The record to receive the namespace.
+ *
+ * @result         `true`, if successful.
+ */
 static bool
 text_parse_namespace(io_read_proxy_t *fd, bool legacy, as_vector *ns_vec,
 		uint32_t *line_no, uint32_t *col_no, int64_t *bytes, as_record *rec)
@@ -676,17 +813,17 @@ text_parse_namespace(io_read_proxy_t *fd, bool legacy, as_vector *ns_vec,
 	return expect_char(fd, line_no, col_no, bytes, '\n');
 }
 
-///
-/// Reads and parses a key digest from the backup file.
-///
-/// @param fd       The file descriptor of the backup file.
-/// @param line_no  The current line number.
-/// @param col_no   The current column number.
-/// @param bytes    Increased by the number of bytes read from the file descriptor.
-/// @param rec      The record to receive the key digest.
-///
-/// @result         `true`, if successful.
-///
+/*
+ * Reads and parses a key digest from the backup file.
+ *
+ * @param fd       The file descriptor of the backup file.
+ * @param line_no  The current line number.
+ * @param col_no   The current column number.
+ * @param bytes    Increased by the number of bytes read from the file descriptor.
+ * @param rec      The record to receive the key digest.
+ *
+ * @result         `true`, if successful.
+ */
 static bool
 text_parse_digest(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
 		int64_t *bytes, as_record *rec)
@@ -703,18 +840,18 @@ text_parse_digest(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
 	return expect_char(fd, line_no, col_no, bytes, '\n');
 }
 
-///
-/// Reads and parses a set from the backup file.
-///
-/// @param fd       The file descriptor of the backup file.
-/// @param legacy   Indicates a version 3.0 backup file.
-/// @param line_no  The current line number.
-/// @param col_no   The current column number.
-/// @param bytes    Increased by the number of bytes read from the file descriptor.
-/// @param rec      The record to receive the set.
-///
-/// @result         `true`, if successful.
-///
+/*
+ * Reads and parses a set from the backup file.
+ *
+ * @param fd       The file descriptor of the backup file.
+ * @param legacy   Indicates a version 3.0 backup file.
+ * @param line_no  The current line number.
+ * @param col_no   The current column number.
+ * @param bytes    Increased by the number of bytes read from the file descriptor.
+ * @param rec      The record to receive the set.
+ *
+ * @result         `true`, if successful.
+ */
 static bool
 text_parse_set(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
 		uint32_t *col_no, int64_t *bytes, as_record *rec)
@@ -728,18 +865,18 @@ text_parse_set(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
 	return expect_char(fd, line_no, col_no, bytes, '\n');
 }
 
-///
-/// Reads and parses a generation count from the backup file.
-///
-/// @param fd       The file descriptor of the backup file.
-/// @param legacy   Indicates a version 3.0 backup file.
-/// @param line_no  The current line number.
-/// @param col_no   The current column number.
-/// @param bytes    Increased by the number of bytes read from the file descriptor.
-/// @param rec      The record to receive the generation count.
-///
-/// @result         `true`, if successful.
-///
+/*
+ * Reads and parses a generation count from the backup file.
+ *
+ * @param fd       The file descriptor of the backup file.
+ * @param legacy   Indicates a version 3.0 backup file.
+ * @param line_no  The current line number.
+ * @param col_no   The current column number.
+ * @param bytes    Increased by the number of bytes read from the file descriptor.
+ * @param rec      The record to receive the generation count.
+ *
+ * @result         `true`, if successful.
+ */
 static bool
 text_parse_generation(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
 		uint32_t *col_no, int64_t *bytes, as_record *rec)
@@ -760,20 +897,20 @@ text_parse_generation(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
 	return expect_char(fd, line_no, col_no, bytes, '\n');
 }
 
-///
-/// Reads and parses an expiration time from the backup file.
-///
-/// @param fd        The file descriptor of the backup file.
-/// @param legacy    Indicates a version 3.0 backup file.
-/// @param line_no   The current line number.
-/// @param col_no    The current column number.
-/// @param bytes     Increased by the number of bytes read from the file descriptor.
-/// @param rec       The record to receive the generation count.
-/// @param extra_ttl Extra-ttl to be added to expirable records.
-/// @param expired   Indicates the the expiration time lies in the past.
-///
-/// @result         `true`, if successful.
-///
+/*
+ * Reads and parses an expiration time from the backup file.
+ *
+ * @param fd        The file descriptor of the backup file.
+ * @param legacy    Indicates a version 3.0 backup file.
+ * @param line_no   The current line number.
+ * @param col_no    The current column number.
+ * @param bytes     Increased by the number of bytes read from the file descriptor.
+ * @param rec       The record to receive the generation count.
+ * @param extra_ttl Extra-ttl to be added to expirable records.
+ * @param expired   Indicates the the expiration time lies in the past.
+ *
+ * @result         `true`, if successful.
+ */
 static bool
 text_parse_expiration(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
 		uint32_t *col_no, int64_t *bytes, as_record *rec, int32_t extra_ttl,
@@ -808,14 +945,14 @@ text_parse_expiration(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
 	return expect_char(fd, line_no, col_no, bytes, '\n');
 }
 
-///
-/// Maps a one-character label to the corresponding BLOB type.
-///
-/// @param label  The one-character label.
-/// @param type   The BLOB type.
-///
-/// @result      `true`, if successful.
-///
+/*
+ * Maps a one-character label to the corresponding BLOB type.
+ *
+ * @param label  The one-character label.
+ * @param type   The BLOB type.
+ *
+ * @result      `true`, if successful.
+ */
 static bool
 text_bytes_label_to_type(int32_t label, as_bytes_type *type)
 {
@@ -846,19 +983,19 @@ text_bytes_label_to_type(int32_t label, as_bytes_type *type)
 	return false;
 }
 
-///
-/// Reads and parses a bin from the backup file.
-///
-/// @param fd       The file descriptor of the backup file.
-/// @param legacy   Indicates a version 3.0 backup file.
-/// @param bin_vec  The bins to be restored, as a vector of bin name strings.
-/// @param line_no  The current line number.
-/// @param col_no   The current column number.
-/// @param bytes    Increased by the number of bytes read from the file descriptor.
-/// @param rec      The record to receive the bin.
-///
-/// @result         `true`, if successful.
-///
+/*
+ * Reads and parses a bin from the backup file.
+ *
+ * @param fd       The file descriptor of the backup file.
+ * @param legacy   Indicates a version 3.0 backup file.
+ * @param bin_vec  The bins to be restored, as a vector of bin name strings.
+ * @param line_no  The current line number.
+ * @param col_no   The current column number.
+ * @param bytes    Increased by the number of bytes read from the file descriptor.
+ * @param rec      The record to receive the bin.
+ *
+ * @result         `true`, if successful.
+ */
 static bool
 text_parse_bin(io_read_proxy_t *fd, bool legacy, as_vector *bin_vec,
 		uint32_t *line_no, uint32_t *col_no, int64_t *bytes, as_record *rec)
@@ -1125,19 +1262,19 @@ text_parse_bin(io_read_proxy_t *fd, bool legacy, as_vector *bin_vec,
 	return true;
 }
 
-///
-/// Reads and parses the bins of a record from the backup file.
-///
-/// @param fd       The file descriptor of the backup file.
-/// @param legacy   Indicates a version 3.0 backup file.
-/// @param bin_vec  The bins to be restored, as a vector of bin name strings.
-/// @param line_no  The current line number.
-/// @param col_no   The current column number.
-/// @param bytes    Increased by the number of bytes read from the file descriptor.
-/// @param rec      The record to receive the bins.
-///
-/// @result         `true`, if successful.
-///
+/*
+ * Reads and parses the bins of a record from the backup file.
+ *
+ * @param fd       The file descriptor of the backup file.
+ * @param legacy   Indicates a version 3.0 backup file.
+ * @param bin_vec  The bins to be restored, as a vector of bin name strings.
+ * @param line_no  The current line number.
+ * @param col_no   The current column number.
+ * @param bytes    Increased by the number of bytes read from the file descriptor.
+ * @param rec      The record to receive the bins.
+ *
+ * @result         `true`, if successful.
+ */
 static bool
 text_parse_bins(io_read_proxy_t *fd, bool legacy, as_vector *bin_vec,
 		uint32_t *line_no, uint32_t *col_no, int64_t *bytes, as_record *rec)
@@ -1175,22 +1312,22 @@ text_parse_bins(io_read_proxy_t *fd, bool legacy, as_vector *bin_vec,
 	return true;
 }
 
-///
-/// Reads and parses a record from the backup file.
-///
-/// @param fd       The file descriptor of the backup file.
-/// @param legacy   Indicates a version 3.0 backup file.
-/// @param ns_vec   The (optional) source and (also optional) target namespace to be restored.
-/// @param bin_vec  The bins to be restored, as a vector of bin name strings.
-/// @param line_no  The current line number.
-/// @param col_no   The current column number.
-/// @param bytes    Increased by the number of bytes read from the file descriptor.
-/// @param rec      The record to be populated.
-/// @param extra_ttl Extra-ttl to be added to expirable records.
-/// @param expired  Indicates that the record is expired.
-///
-/// @result         See @ref decoder_status.
-///
+/*
+ * Reads and parses a record from the backup file.
+ *
+ * @param fd       The file descriptor of the backup file.
+ * @param legacy   Indicates a version 3.0 backup file.
+ * @param ns_vec   The (optional) source and (also optional) target namespace to be restored.
+ * @param bin_vec  The bins to be restored, as a vector of bin name strings.
+ * @param line_no  The current line number.
+ * @param col_no   The current column number.
+ * @param bytes    Increased by the number of bytes read from the file descriptor.
+ * @param rec      The record to be populated.
+ * @param extra_ttl Extra-ttl to be added to expirable records.
+ * @param expired  Indicates that the record is expired.
+ *
+ * @result         See @ref decoder_status.
+ */
 static decoder_status
 text_parse_record(io_read_proxy_t *fd, bool legacy, as_vector *ns_vec,
 		as_vector *bin_vec, uint32_t *line_no, uint32_t *col_no, int64_t *bytes,
@@ -1288,18 +1425,18 @@ cleanup0:
 	return res;
 }
 
-///
-/// Reads and parses secondary index information from the backup file.
-///
-/// @param fd       The file descriptor of the backup file.
-/// @param ns_vec   The (optional) source and (also optional) target namespace to be restored.
-/// @param line_no  The current line number.
-/// @param col_no   The current column number.
-/// @param bytes    Increased by the number of bytes read from the file descriptor.
-/// @param index    The index_param to be populated.
-///
-/// @result         See @ref decoder_status.
-///
+/*
+ * Reads and parses secondary index information from the backup file.
+ *
+ * @param fd       The file descriptor of the backup file.
+ * @param ns_vec   The (optional) source and (also optional) target namespace to be restored.
+ * @param line_no  The current line number.
+ * @param col_no   The current column number.
+ * @param bytes    Increased by the number of bytes read from the file descriptor.
+ * @param index    The index_param to be populated.
+ *
+ * @result         See @ref decoder_status.
+ */
 static decoder_status
 text_parse_index(io_read_proxy_t *fd, as_vector *ns_vec, uint32_t *line_no,
 		uint32_t *col_no, int64_t *bytes, index_param *index)
@@ -1489,17 +1626,17 @@ cleanup0:
 	return res;
 }
 
-///
-/// Reads and parses UDF files from the backup file.
-///
-/// @param fd       The file descriptor of the backup file.
-/// @param line_no  The current line number.
-/// @param col_no   The current column number.
-/// @param bytes    Increased by the number of bytes read from the file descriptor.
-/// @param udf      The udf_param to be populated.
-///
-/// @result         See @ref decoder_status.
-///
+/*
+ * Reads and parses UDF files from the backup file.
+ *
+ * @param fd       The file descriptor of the backup file.
+ * @param line_no  The current line number.
+ * @param col_no   The current column number.
+ * @param bytes    Increased by the number of bytes read from the file descriptor.
+ * @param udf      The udf_param to be populated.
+ *
+ * @result         See @ref decoder_status.
+ */
 static decoder_status
 text_parse_udf(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
 		int64_t *bytes, udf_param *udf)
@@ -1591,20 +1728,20 @@ cleanup0:
 	return res;
 }
 
-///
-/// Reads and parses an entity from the global section (secondary index information, UDF files)
-/// in the backup file.
-///
-/// @param fd       The file descriptor of the backup file.
-/// @param ns_vec   The (optional) source and (also optional) target namespace to be restored.
-/// @param line_no  The current line number.
-/// @param col_no   The current column number.
-/// @param bytes    Increased by the number of bytes read from the file descriptor.
-/// @param index    The index_param to be populated.
-/// @param udf      The udf_param to be populated.
-///
-/// @result         See @ref decoder_status.
-///
+/*
+ * Reads and parses an entity from the global section (secondary index information, UDF files)
+ * in the backup file.
+ *
+ * @param fd       The file descriptor of the backup file.
+ * @param ns_vec   The (optional) source and (also optional) target namespace to be restored.
+ * @param line_no  The current line number.
+ * @param col_no   The current column number.
+ * @param bytes    Increased by the number of bytes read from the file descriptor.
+ * @param index    The index_param to be populated.
+ * @param udf      The udf_param to be populated.
+ *
+ * @result         See @ref decoder_status.
+ */
 static decoder_status
 text_parse_global(io_read_proxy_t *fd, as_vector *ns_vec, uint32_t *line_no,
 		uint32_t *col_no, int64_t *bytes, index_param *index, udf_param *udf)
@@ -1630,62 +1767,4 @@ text_parse_global(io_read_proxy_t *fd, as_vector *ns_vec, uint32_t *line_no,
 	err("Invalid global type character %s in block (line %u, col %u)", print_char(type), line_no[0],
 			col_no[0]);
 	return DECODER_ERROR;
-}
-
-///
-/// The interface exposed by the text backup file format decoder.
-///
-/// See backup_decoder.parse for details.
-///
-decoder_status
-text_parse(io_read_proxy_t *fd, bool legacy, as_vector *ns_vec,
-		as_vector *bin_vec, uint32_t *orig_line_no, cf_atomic64 *total,
-		as_record *rec, int32_t extra_ttl, bool *expired, index_param *index,
-		udf_param *udf)
-{
-	decoder_status res = DECODER_ERROR;
-	int64_t bytes = 0;
-
-	uint32_t line_no[2] = { *orig_line_no, *orig_line_no };
-	uint32_t col_no[2] = { 1, 2 };
-
-	int32_t ch = io_proxy_getc_unlocked(fd);
-
-	if (ch == EOF) {
-		if (io_proxy_error(fd) != 0) {
-			err("Error while reading backup block (line %u, col %u)", line_no[0], col_no[0]);
-			goto out;
-		}
-
-		if (verbose) {
-			ver("Encountered end of file (line %u, col %u)", line_no[0], col_no[0]);
-		}
-
-		res = DECODER_EOF;
-		goto out;
-	}
-
-	++bytes;
-
-	if (!legacy && ch == GLOBAL_PREFIX[0]) {
-		res = text_parse_global(fd, ns_vec, line_no, col_no, &bytes, index, udf);
-		goto out;
-	}
-
-	if (ch == RECORD_META_PREFIX[0]) {
-		res = text_parse_record(fd, legacy, ns_vec, bin_vec, line_no, col_no, &bytes, rec,
-				extra_ttl, expired);
-		goto out;
-	}
-
-	err("Invalid start character %s in block (line %u, col %u)", print_char(ch), line_no[0],
-			col_no[0]);
-
-out:
-	if (total != NULL) {
-		cf_atomic64_add(total, bytes);
-	}
-
-	*orig_line_no = line_no[1];
-	return res;
 }

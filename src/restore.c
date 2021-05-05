@@ -22,6 +22,8 @@
 #include <io_proxy.h>
 #include <utils.h>
 
+#define OPTIONS_SHORT "-h:Sp:A:U:P::n:d:i:t:vm:B:s:urgN:RILFwVZT:y:z:"
+
 extern char *aerospike_client_version;  ///< The C client's version string.
 
 static pthread_mutex_t g_stop_lock;
@@ -1927,8 +1929,7 @@ restore_main(int32_t argc, char **argv)
 
 	// option string should start with '-' to avoid argv permutation
 	// we need same argv sequence in third check to support space separated optional argument value
-	while ((optcase = getopt_long(argc, argv, "-h:Sp:A:U:P::n:d:i:t:vm:B:s:urgN:RILFwVZT:",
-			options, 0)) != -1) {
+	while ((optcase = getopt_long(argc, argv, OPTIONS_SHORT, options, 0)) != -1) {
 		switch (optcase) {
 			case 'V':
 				print_version();
@@ -1952,8 +1953,7 @@ restore_main(int32_t argc, char **argv)
 	// Reset to optind (internal variable)
 	// to parse all options again
 	optind = 0;
-	while ((optcase = getopt_long(argc, argv, "-h:Sp:A:U:P::n:d:i:t:vm:B:s:urgl:N:RILFwVZT:",
-			options, 0)) != -1) {
+	while ((optcase = getopt_long(argc, argv, OPTIONS_SHORT, options, 0)) != -1) {
 		switch (optcase) {
 
 			case CONFIG_FILE_OPT_FILE:
@@ -1996,8 +1996,7 @@ restore_main(int32_t argc, char **argv)
 	// Reset to optind (internal variable)
 	// to parse all options again
 	optind = 0;
-	while ((optcase = getopt_long(argc, argv, "h:Sp:A:U:P::n:d:i:t:vm:B:s:Kurgl:N:RILFwVZT:",
-			options, 0)) != -1) {
+	while ((optcase = getopt_long(argc, argv, OPTIONS_SHORT, options, 0)) != -1) {
 		switch (optcase) {
 		case 'h':
 			conf.host = optarg;

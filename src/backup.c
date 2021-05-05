@@ -33,7 +33,7 @@
 
 #define MAX_PARTITIONS 4096
 
-#define OPTIONS_SHORT "h:Sp:A:U:P::n:s:d:o:F:rf:cvxCB:w:l:X:D:%:m:eN:RIuVZa:b:L:q:T:"
+#define OPTIONS_SHORT "h:Sp:A:U:P::n:s:d:o:F:r:vxCB:X:D:M:m:eN:RIuVZa:b:L:q:z:y:"
 
 
 // The C client's version string
