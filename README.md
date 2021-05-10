@@ -1,7 +1,7 @@
 ## Aerospike Backup Tools
 
 ![Build:Main](https://github.com/citrusleaf/aerospike-tools-backup/workflows/Build:Main/badge.svg)
-[![codecov](https://codecov.io/gh/aerospike/aerospike-tools-backup/branch/main/graph/badge.svg?token=TPGZT8V6AA)](https://codecov.io/gh/aerospike/aerospike-tools-backup)
+[![codecov](https://codecov.io/gh/aerospike/aerospike-tools-backup/branch/main/graph/badge.svg)](https://codecov.io/gh/aerospike/aerospike-tools-backup)
 
 This is the developer documentation. For user documentation, please consult http://www.aerospike.com/docs/tools/backup.
 
@@ -296,6 +296,7 @@ Here's what the above placeholders stand for.
 The record header lines are followed by `{bin-count}`-many lines of bin data. Each bin data line starts with a `["-"] [SP]` prefix. Depending on the bin data type, a bin data line can generally have one of the following five forms.
 
     ["-"] [SP] ["N"] [SP] [escape({bin-name})]
+    ["-"] [SP] ["Z"] [SP] [escape({bin-name})] [SP] [{bool-value}] [LF]
     ["-"] [SP] ["I"] [SP] [escape({bin-name})] [SP] [{int-value}] [LF]
     ["-"] [SP] ["D"] [SP] [escape({bin-name})] [SP] [{float-value}] [LF]
     ["-"] [SP] ["S"] [SP] [escape({bin-name})] [SP] [{string-length}] [SP] [{string-data}] [LF]
@@ -306,6 +307,7 @@ The first form represents a `NIL`-valued bin. The remaining four forms represent
 | Placeholder       | Content |
 |-------------------|---------|
 | `{bin-name}`      | The name of the bin. |
+| `{bool-value}`    | The boolean value of the bin. |
 | `{int-value}`     | The signed decimal 64-bit integer value of the bin. |
 | `{float-value}`   | The decimal 64-bit floating point value of the bin, including `nan`, `+inf`, and `-inf`. |
 | `{string-length}` | The length of the string value of the bin, measured in raw bytes; an unsigned decimal 32-bit value. |

@@ -1,7 +1,7 @@
 name: Build:Main
 on:
   push:
-    branches: [ main, test-ready ]
+    branches: [ master, test-ready ]
 jobs:
   build-libraries:
     runs-on: ubuntu-latest

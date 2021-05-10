@@ -2,7 +2,7 @@ name: Build and Test All
 
 on:
   push:
-    branches: [ main, test-ready ]
+    branches: [ master, test-ready ]
   pull_request:
     branches: [ master ]
 jobs:
