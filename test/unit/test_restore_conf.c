@@ -79,7 +79,7 @@ tmp_file_teardown(void)
 	}
 
 static void
-assert_restore_config_eq(restore_config *c1, restore_config *c2)
+assert_restore_config_eq(restore_config_t *c1, restore_config_t *c2)
 {
 	CMP_STR_FIELD(c1->host, c2->host);
 	CMP_INT_FIELD(c1->port, c2->port);
@@ -103,7 +103,7 @@ assert_restore_config_eq(restore_config *c1, restore_config *c2)
 
 	ck_assert((c1->as == NULL) ^ (c2->as != NULL));
 
-	CMP_INT_FIELD(c1->threads, c2->threads);
+	CMP_INT_FIELD(c1->parallel, c2->parallel);
 	CMP_STR_FIELD(c1->nice_list, c2->nice_list);
 	CMP_INT_FIELD(c1->no_records, c2->no_records);
 	CMP_INT_FIELD(c1->no_indexes, c2->no_indexes);
@@ -143,8 +143,8 @@ assert_restore_config_eq(restore_config *c1, restore_config *c2)
 START_TEST(test_init_empty)
 {
 	tmp_file_init("", "", "");
-	restore_config c1;
-	restore_config c2;
+	restore_config_t c1;
+	restore_config_t c2;
 	restore_config_default(&c1);
 	restore_config_default(&c2);
 
@@ -160,8 +160,8 @@ END_TEST
 START_TEST(test_name) \
 { \
 	tmp_file_init(str_name "=true\n", "", ""); \
-	restore_config c1; \
-	restore_config c2; \
+	restore_config_t c1; \
+	restore_config_t c2; \
 	restore_config_default(&c1); \
 	restore_config_default(&c2); \
 	\
@@ -181,8 +181,8 @@ END_TEST
 START_TEST(test_name) \
 { \
 	tmp_file_init(str_name "=314159\n", "", ""); \
-	restore_config c1; \
-	restore_config c2; \
+	restore_config_t c1; \
+	restore_config_t c2; \
 	restore_config_default(&c1); \
 	restore_config_default(&c2); \
 	\
@@ -201,8 +201,8 @@ END_TEST
 START_TEST(test_name) \
 { \
 	tmp_file_init(str_name "=\"" str_val "\"\n", "", ""); \
-	restore_config c1; \
-	restore_config c2; \
+	restore_config_t c1; \
+	restore_config_t c2; \
 	restore_config_default(&c1); \
 	restore_config_default(&c2); \
 	\
@@ -245,8 +245,8 @@ DEFINE_STR_TEST(test_init_tls_cert_blacklist, "tls-cert-blacklist", tls.cert_bla
 START_TEST(test_init_set_list)
 {
 	tmp_file_init("", "set-list=\"set-1,set-2,set-3\"", "");
-	restore_config c1;
-	restore_config c2;
+	restore_config_t c1;
+	restore_config_t c2;
 	restore_config_default(&c1);
 	restore_config_default(&c2);
 
@@ -263,8 +263,8 @@ END_TEST
 START_TEST(test_init_bin_list)
 {
 	tmp_file_init("", "bin-list=\"bin-1,bin-2,bin-3\"", "");
-	restore_config c1;
-	restore_config c2;
+	restore_config_t c1;
+	restore_config_t c2;
 	restore_config_default(&c1);
 	restore_config_default(&c2);
 
@@ -281,8 +281,8 @@ END_TEST
 START_TEST(test_init_ns_list)
 {
 	tmp_file_init("", "namespace=\"test\"", "");
-	restore_config c1;
-	restore_config c2;
+	restore_config_t c1;
+	restore_config_t c2;
 	restore_config_default(&c1);
 	restore_config_default(&c2);
 
@@ -300,8 +300,8 @@ END_TEST
 START_TEST(test_init_compress_mode)
 {
 	tmp_file_init("", "compress=\"zstd\"\n", "");
-	restore_config c1;
-	restore_config c2;
+	restore_config_t c1;
+	restore_config_t c2;
 	restore_config_default(&c1);
 	restore_config_default(&c2);
 
@@ -318,8 +318,8 @@ END_TEST
 START_TEST(test_init_encryption_mode)
 {
 	tmp_file_init("", "encrypt=\"aes128\"\n", "");
-	restore_config c1;
-	restore_config c2;
+	restore_config_t c1;
+	restore_config_t c2;
 	restore_config_default(&c1);
 	restore_config_default(&c2);
 
@@ -489,8 +489,8 @@ START_TEST(test_init_encrypt_key_file)
 	};
 
 	tmp_file_init("", "encryption-key-file=\"test/test_key.pem\"\n", "");
-	restore_config c1;
-	restore_config c2;
+	restore_config_t c1;
+	restore_config_t c2;
 	restore_config_default(&c1);
 	restore_config_default(&c2);
 
@@ -516,8 +516,8 @@ START_TEST(test_init_encryption_key_env)
 	setenv("TEST_ENCRYPT_KEY_ENV_VAR", "MUFZJlNYl5Orze8BI0VniQ==", true);
 	tmp_file_init("", "encryption-key-env=\"TEST_ENCRYPT_KEY_ENV_VAR\"\n", "");
 
-	restore_config c1;
-	restore_config c2;
+	restore_config_t c1;
+	restore_config_t c2;
 	restore_config_default(&c1);
 	restore_config_default(&c2);
 
@@ -538,8 +538,8 @@ END_TEST
 START_TEST(test_name) \
 { \
 	tmp_file_init("", str_name "=true\n", ""); \
-	restore_config c1; \
-	restore_config c2; \
+	restore_config_t c1; \
+	restore_config_t c2; \
 	restore_config_default(&c1); \
 	restore_config_default(&c2); \
 	\
@@ -559,8 +559,8 @@ END_TEST
 START_TEST(test_name) \
 { \
 	tmp_file_init("", str_name "=314\n", ""); \
-	restore_config c1; \
-	restore_config c2; \
+	restore_config_t c1; \
+	restore_config_t c2; \
 	restore_config_default(&c1); \
 	restore_config_default(&c2); \
 	\
@@ -579,8 +579,8 @@ END_TEST
 START_TEST(test_name) \
 { \
 	tmp_file_init("", str_name "=\"" str_val "\"\n", ""); \
-	restore_config c1; \
-	restore_config c2; \
+	restore_config_t c1; \
+	restore_config_t c2; \
 	restore_config_default(&c1); \
 	restore_config_default(&c2); \
 	\
@@ -592,9 +592,9 @@ START_TEST(test_name) \
 } \
 END_TEST
 
-DEFINE_INT_TEST(test_init_threads, "threads", threads);
+DEFINE_INT_TEST(test_init_parallel, "parallel", parallel);
 // FIXME idk what this is and it isn't documented
-DEFINE_STR_TEST(test_init_nice_list, "nice-list", nice_list, "127.0.0.1,192.168.0.1");
+DEFINE_STR_TEST(test_init_nice_list, "nice", nice_list, "127.0.0.1,192.168.0.1");
 DEFINE_BOOL_TEST(test_init_no_records, "no-records", no_records);
 DEFINE_BOOL_TEST(test_init_no_indexes, "no-indexes", no_indexes);
 DEFINE_BOOL_TEST(test_init_indexes_last, "indexes-last", indexes_last);
@@ -610,7 +610,7 @@ DEFINE_BOOL_TEST(test_init_replace, "replace", replace);
 DEFINE_BOOL_TEST(test_init_ignore_rec_error, "ignore-record-error", ignore_rec_error);
 DEFINE_BOOL_TEST(test_init_no_gen, "no-generation", no_generation);
 DEFINE_INT_TEST(test_init_extra_ttl, "extra-ttl", extra_ttl);
-DEFINE_INT_TEST_MULT(test_init_bandwidth, "bandwidth", bandwidth, 1024 * 1024);
+DEFINE_STR_TEST(test_init_bandwidth, "nice", nice_list, "1024,100");
 DEFINE_INT_TEST(test_init_tps, "tps", tps);
 
 
@@ -652,7 +652,7 @@ Suite* restore_conf_suite()
 	tcase_add_test(tc_init, test_init_encrypt_key_file);
 	tcase_add_test(tc_init, test_init_encryption_key_env);
 
-	tcase_add_test(tc_init, test_init_threads);
+	tcase_add_test(tc_init, test_init_parallel);
 	tcase_add_test(tc_init, test_init_nice_list);
 	tcase_add_test(tc_init, test_init_no_records);
 	tcase_add_test(tc_init, test_init_no_indexes);

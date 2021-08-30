@@ -3,6 +3,9 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+#include <aerospike/as_random.h>
+
+#include <utils.h>
 #include <io_proxy.h>
 
 #include "backup_tests.h"
@@ -613,6 +616,7 @@ START_TEST(test_enc_wrong_key_aes128)
 	buf2[sizeof(buf) - 1] = '\0';
 	ck_assert_str_ne(buf, buf2);
 	io_proxy_free(&rio);
+	fclose(tmp);
 }
 
 START_TEST(test_enc_wrong_key_aes256)
@@ -639,6 +643,7 @@ START_TEST(test_enc_wrong_key_aes256)
 	buf2[sizeof(buf) - 1] = '\0';
 	ck_assert_str_ne(buf, buf2);
 	io_proxy_free(&rio);
+	fclose(tmp);
 }
 
 #define SIZE 1048576
@@ -690,6 +695,165 @@ TEST_MATRIX(test_large_read_getc,
 		cf_free(buf);
 		);
 
+START_TEST(test_always_buffer)
+{
+	char buf[] = "test";
+
+	FILE* tmp = tmpfile();
+	io_write_proxy_t wio;
+	INIT_MATRIX(wio, io_write_proxy_init, tmp, 0);
+	io_proxy_always_buffer(&wio);
+
+	// we have to write something to the file before buf is initialized
+	ck_assert_int_eq(io_proxy_write(&wio, buf, sizeof(buf) - 1), sizeof(buf) - 1);
+	ck_assert_ptr_ne(wio.buffer.src, NULL);
+
+	io_proxy_free(&wio);
+	fclose(tmp);
+}
+
+START_TEST(test_write_file_pos)
+{
+	char buf[] = "abcdefghijklmnopqrstuvwxyz1234567890";
+
+	FILE* tmp = tmpfile();
+	io_write_proxy_t wio;
+	INIT_MATRIX(wio, io_write_proxy_init, tmp, 0);
+
+	ck_assert_int_eq(io_write_proxy_bytes_written(&wio), 0);
+	ck_assert_int_eq(io_proxy_write(&wio, buf, sizeof(buf) - 1), sizeof(buf) - 1);
+	ck_assert_int_eq(io_write_proxy_bytes_written(&wio), sizeof(buf) - 1);
+	ck_assert_int_eq(io_proxy_flush(&wio), 0);
+	ck_assert_int_eq(io_write_proxy_bytes_written(&wio), sizeof(buf) - 1);
+
+	io_proxy_free(&wio);
+	fclose(tmp);
+}
+
+START_TEST(test_read_file_pos)
+{
+	char buf[] = "abcdefghijklmnopqrstuvwxyz1234567890";
+	char buf2[sizeof(buf) + 10];
+
+	FILE* tmp = tmpfile();
+	io_write_proxy_t wio;
+	INIT_MATRIX(wio, io_write_proxy_init, tmp, 0);
+
+	ck_assert_int_eq(io_proxy_write(&wio, buf, sizeof(buf) - 1), sizeof(buf) - 1);
+	ck_assert_int_eq(io_proxy_flush(&wio), 0);
+
+	io_proxy_free(&wio);
+
+	fseek(tmp, 0, SEEK_SET);
+
+	io_read_proxy_t rio;
+	ck_assert_int_eq(io_read_proxy_init(&rio, tmp), 0);
+
+	ck_assert_int_eq(io_read_proxy_estimate_pos(&rio), 0);
+	ck_assert_int_eq(io_proxy_read(&rio, buf2, sizeof(buf2)), sizeof(buf) - 1);
+	ck_assert_int_eq(io_read_proxy_estimate_pos(&rio), sizeof(buf) - 1);
+
+	io_proxy_free(&rio);
+	fclose(tmp);
+}
+
+START_TEST(test_buffered_write_file_pos)
+{
+	char buf[] = "abcdefghijklmnopqrstuvwxyz1234567890";
+
+	FILE* tmp = tmpfile();
+	io_write_proxy_t wio;
+	INIT_MATRIX(wio, io_write_proxy_init, tmp, 0);
+	io_proxy_always_buffer(&wio);
+
+	ck_assert_int_eq(io_write_proxy_bytes_written(&wio), 0);
+	ck_assert_int_eq(io_proxy_write(&wio, buf, sizeof(buf) - 1), sizeof(buf) - 1);
+	// since it's buffered, this write should not have gone through yet
+	ck_assert_int_eq(io_write_proxy_bytes_written(&wio), 0);
+	ck_assert_int_eq(io_proxy_flush(&wio), 0);
+	ck_assert_int_eq(io_write_proxy_bytes_written(&wio), sizeof(buf) - 1);
+
+	io_proxy_free(&wio);
+	fclose(tmp);
+}
+
+START_TEST(test_buffered_read_file_pos)
+{
+	char buf[] = "abcdefghijklmnopqrstuvwxyz1234567890";
+	char buf2[sizeof(buf) + 10];
+
+	FILE* tmp = tmpfile();
+	io_write_proxy_t wio;
+	INIT_MATRIX(wio, io_write_proxy_init, tmp, 0);
+
+	ck_assert_int_eq(io_proxy_write(&wio, buf, sizeof(buf) - 1), sizeof(buf) - 1);
+	ck_assert_int_eq(io_proxy_flush(&wio), 0);
+
+	io_proxy_free(&wio);
+
+	fseek(tmp, 0, SEEK_SET);
+
+	io_read_proxy_t rio;
+	ck_assert_int_eq(io_read_proxy_init(&rio, tmp), 0);
+	io_proxy_always_buffer(&rio);
+
+	ck_assert_int_eq(io_read_proxy_estimate_pos(&rio), 0);
+	ck_assert_int_eq(io_proxy_read(&rio, buf2, sizeof(buf2)), sizeof(buf) - 1);
+	ck_assert_int_eq(io_read_proxy_estimate_pos(&rio), sizeof(buf) - 1);
+
+	io_proxy_free(&rio);
+	fclose(tmp);
+}
+
+START_TEST(test_read_compressed_data_monotonicity)
+{
+	const uint64_t n_chars = 130000;
+	as_random random;
+	as_random_init(&random);
+
+	char* buf = (char*) cf_malloc(n_chars * sizeof(char));
+	char* buf2 = (char*) cf_malloc(n_chars * sizeof(char));
+	for (uint64_t i = 0; i < n_chars; i++) {
+		uint32_t offset = as_random_next_uint32(&random) % 26;
+		buf[i] = 'a' + (char) offset;
+	}
+
+	FILE* tmp = tmpfile();
+	io_write_proxy_t wio;
+	// initialize the write proxy with zstd compression
+	INIT_MATRIX(wio, io_write_proxy_init, tmp, 1);
+
+	ck_assert_int_eq(io_proxy_write(&wio, buf, n_chars), n_chars);
+	ck_assert_int_eq(io_proxy_flush(&wio), 0);
+
+	io_proxy_free(&wio);
+
+	long file_size = ftell(tmp);
+	fseek(tmp, 0, SEEK_SET);
+
+	io_read_proxy_t rio;
+	INIT_MATRIX(rio, io_read_proxy_init, tmp, 1);
+
+	int64_t pos = 0;
+	int64_t last_file_pos = 0;
+	while (pos < (int64_t) n_chars) {
+		int64_t read_amt = (int64_t) (as_random_next_uint32(&random) % 1021) + 1;
+		int64_t expected_read_amt = MIN(read_amt, (int64_t) n_chars - pos);
+		ck_assert_int_eq(io_proxy_read(&rio, buf2, (uint64_t) read_amt), expected_read_amt);
+		pos += expected_read_amt;
+
+		int64_t file_pos = io_read_proxy_estimate_pos(&rio);
+		ck_assert_int_le(last_file_pos, file_pos);
+		last_file_pos = file_pos;
+	}
+	ck_assert_int_eq(last_file_pos, file_size);
+
+	io_proxy_free(&rio);
+	fclose(tmp);
+	cf_free(buf2);
+	cf_free(buf);
+}
+
 
 Suite* io_proxy_suite()
 {
@@ -699,6 +863,7 @@ Suite* io_proxy_suite()
 	TCase* tc_cmp;
 	TCase* tc_enc;
 	TCase* tc_large;
+	TCase* tc_pos;
 
 	s = suite_create("IO Proxy");
 
@@ -755,6 +920,15 @@ Suite* io_proxy_suite()
 	RUN_TEST_MATRIX(test_large_write_putc, tc_large);
 	RUN_TEST_MATRIX(test_large_read_getc, tc_large);
 	suite_add_tcase(s, tc_large);
+
+	tc_pos = tcase_create("Position");
+	tcase_add_test(tc_pos, test_always_buffer);
+	tcase_add_test(tc_pos, test_write_file_pos);
+	tcase_add_test(tc_pos, test_read_file_pos);
+	tcase_add_test(tc_pos, test_buffered_write_file_pos);
+	tcase_add_test(tc_pos, test_buffered_read_file_pos);
+	tcase_add_test(tc_pos, test_read_compressed_data_monotonicity);
+	suite_add_tcase(s, tc_pos);
 
 	return s;
 }

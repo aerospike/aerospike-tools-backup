@@ -15,6 +15,10 @@
  * the License.
  */
 
+//==========================================================
+// Includes.
+//
+
 #include <restore.h>
 
 #include <conf.h>
@@ -22,20 +26,1069 @@
 #include <io_proxy.h>
 #include <utils.h>
 
+
+//==========================================================
+// Typedefs & constants.
+//
+
 #define OPTIONS_SHORT "-h:Sp:A:U:P::n:d:i:t:vm:B:s:urgN:RILFwVZT:y:z:"
 
-extern char *aerospike_client_version;  ///< The C client's version string.
+// The C client's version string.
+extern char *aerospike_client_version;
 
 static pthread_mutex_t g_stop_lock;
 static pthread_cond_t g_stop_cond;
-static volatile bool g_stop = false;  ///< Makes background threads exit.
+// Makes background threads exit.
+static volatile bool g_stop = false;
 
-static pthread_cond_t limit_cond = PTHREAD_COND_INITIALIZER;    ///< Used by the counter thread
-                                                                ///  to signal newly available
-                                                                ///  bandwidth or transactions to
-                                                                ///  the restore threads.
+// Used by threads when reading from one file to ensure mutual exclusion on access
+// to the file
+static pthread_mutex_t file_read_mutex = PTHREAD_MUTEX_INITIALIZER;
+// Used by the counter thread to signal newly available bandwidth or
+// transactions to the restore threads.
+static pthread_cond_t limit_cond = PTHREAD_COND_INITIALIZER;
+static pthread_mutex_t limit_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-static void print_stat(per_thread_context *, cf_clock *, uint64_t *, cf_clock *, cf_clock *, cf_clock *);
+
+//==========================================================
+// Forward Declarations.
+//
+
+static bool has_stopped(void);
+static void stop(void);
+static void stop_nolock(void);
+static void sleep_for(uint64_t n_secs);
+static int update_file_pos(per_thread_context_t* ptc);
+static bool close_file(io_read_proxy_t *fd);
+static bool open_file(const char *file_path, as_vector *ns_vec, io_read_proxy_t *fd,
+		bool *legacy, uint32_t *line_no, bool *first_file, off_t *size,
+		compression_opt c_opt, encryption_opt e_opt, encryption_key_t* pkey);
+static void free_udf(udf_param *param);
+static void free_udfs(as_vector *udf_vec);
+static void free_index(index_param *param);
+static void free_indexes(as_vector *index_vec);
+static bool check_set(char *set, as_vector *set_vec);
+static void * restore_thread_func(void *cont);
+static void * counter_thread_func(void *cont);
+static bool get_indexes_and_udfs(io_read_proxy_t* fd, as_vector *ns_vec, bool legacy,
+		restore_config_t *conf, uint32_t *line_no, as_vector *index_vec,
+		as_vector *udf_vec);
+static const char * print_set(const char *set);
+static bool compare_sets(const char *set1, const char *set2);
+static index_status check_index(aerospike *as, index_param *index, uint32_t timeout);
+static bool restore_indexes(aerospike *as, as_vector *index_vec, as_vector *set_vec,
+		volatile uint32_t *count, bool wait, uint32_t timeout);
+static bool restore_udfs(aerospike *as, as_vector *udf_vec, volatile uint32_t *count,
+		bool wait, uint32_t timeout);
+static bool get_backup_files(const char *dir_path, as_vector *file_vec);
+static bool parse_list(const char *which, size_t size, char *list, as_vector *vec);
+static void sig_hand(int32_t sig);
+static void print_version(void);
+static void usage(const char *name);
+static void print_stat(per_thread_context_t *ptc, cf_clock *prev_log,
+		uint64_t *prev_records,	cf_clock *now, cf_clock *store_time, cf_clock *read_time);
+
+
+//==========================================================
+// Public API.
+//
+
+int32_t
+restore_main(int32_t argc, char **argv)
+{
+	static struct option options[] = {
+
+		// Non Config file options
+		{ "verbose", no_argument, NULL, 'v' },
+		{ "usage", no_argument, NULL, 'Z' },
+		{ "help", no_argument, NULL, 'Z' },
+		{ "options", no_argument, NULL, 'Z' },
+		{ "version", no_argument, NULL, 'V' },
+
+		{ "instance", required_argument, 0, CONFIG_FILE_OPT_INSTANCE},
+		{ "config-file", required_argument, 0, CONFIG_FILE_OPT_FILE},
+		{ "no-config-file", no_argument, 0, CONFIG_FILE_OPT_NO_CONFIG_FILE},
+		{ "only-config-file", required_argument, 0, CONFIG_FILE_OPT_ONLY_CONFIG_FILE},
+
+		// Config options
+		{ "host", required_argument, 0, 'h'},
+		{ "port", required_argument, 0, 'p'},
+		{ "user", required_argument, 0, 'U'},
+		{ "password", optional_argument, 0, 'P'},
+		{ "auth", required_argument, 0, 'A' },
+
+		{ "tlsEnable", no_argument, NULL, TLS_OPT_ENABLE },
+		{ "tlsEncryptOnly", no_argument, NULL, TLS_OPT_ENCRYPT_ONLY },
+		{ "tlsName", no_argument, NULL, TLS_OPT_NAME },
+		{ "tlsCaFile", required_argument, NULL, TLS_OPT_CA_FILE },
+		{ "tlsCaPath", required_argument, NULL, TLS_OPT_CA_PATH },
+		{ "tlsProtocols", required_argument, NULL, TLS_OPT_PROTOCOLS },
+		{ "tlsCipherSuite", required_argument, NULL, TLS_OPT_CIPHER_SUITE },
+		{ "tlsCrlCheck", no_argument, NULL, TLS_OPT_CRL_CHECK },
+		{ "tlsCrlCheckAll", no_argument, NULL, TLS_OPT_CRL_CHECK_ALL },
+		{ "tlsCertBlackList", required_argument, NULL, TLS_OPT_CERT_BLACK_LIST },
+		{ "tlsLogSessionInfo", no_argument, NULL, TLS_OPT_LOG_SESSION_INFO },
+		{ "tlsKeyFile", required_argument, NULL, TLS_OPT_KEY_FILE },
+		{ "tlsCertFile", required_argument, NULL, TLS_OPT_CERT_FILE },
+
+		{ "tls-enable", no_argument, NULL, TLS_OPT_ENABLE },
+		{ "tls-name", no_argument, NULL, TLS_OPT_NAME },
+		{ "tls-cafile", required_argument, NULL, TLS_OPT_CA_FILE },
+		{ "tls-capath", required_argument, NULL, TLS_OPT_CA_PATH },
+		{ "tls-protocols", required_argument, NULL, TLS_OPT_PROTOCOLS },
+		{ "tls-cipher-suite", required_argument, NULL, TLS_OPT_CIPHER_SUITE },
+		{ "tls-crl-check", no_argument, NULL, TLS_OPT_CRL_CHECK },
+		{ "tls-crl-check-all", no_argument, NULL, TLS_OPT_CRL_CHECK_ALL },
+		{ "tls-cert-blackList", required_argument, NULL, TLS_OPT_CERT_BLACK_LIST },
+		{ "tls-keyfile", required_argument, NULL, TLS_OPT_KEY_FILE },
+		{ "tls-keyfile-password", optional_argument, NULL, TLS_OPT_KEY_FILE_PASSWORD },
+		{ "tls-certfile", required_argument, NULL, TLS_OPT_CERT_FILE },
+
+		// asrestore section in config file
+		{ "namespace", required_argument, NULL, 'n' },
+		{ "directory", required_argument, NULL, 'd' },
+		{ "input-file", required_argument, NULL, 'i' },
+		{ "compress", required_argument, NULL, 'z' },
+		{ "encrypt", required_argument, NULL, 'y' },
+		{ "encryption-key-file", required_argument, NULL, '1' },
+		{ "encryption-key-env", required_argument, NULL, '2' },
+		{ "parallel", required_argument, NULL, 't' },
+		{ "threads", required_argument, NULL, '_' },
+		{ "machine", required_argument, NULL, 'm' },
+		{ "bin-list", required_argument, NULL, 'B' },
+		{ "set-list", required_argument, NULL, 's' },
+		{ "unique", no_argument, NULL, 'u' },
+		{ "ignore-record-error", no_argument, NULL, 'K'},
+		{ "replace", no_argument, NULL, 'r' },
+		{ "no-generation", no_argument, NULL, 'g' },
+		{ "extra-ttl", required_argument, NULL, 'l' },
+		{ "nice", required_argument, NULL, 'N' },
+		{ "no-records", no_argument, NULL, 'R' },
+		{ "no-indexes", no_argument, NULL, 'I' },
+		{ "indexes-last", no_argument, NULL, 'L' },
+		{ "no-udfs", no_argument, NULL, 'F' },
+		{ "wait", no_argument, NULL, 'w' },
+		{ "services-alternate", no_argument, NULL, 'S' },
+		{ "timeout", required_argument, 0, 'T' },
+		{ NULL, 0, NULL, 0 }
+	};
+
+	int32_t res = EXIT_FAILURE;
+
+	restore_config_t conf;
+	restore_config_default(&conf);
+	
+	conf.decoder = &(backup_decoder_t){ text_parse };
+
+	int32_t optcase;
+	uint64_t tmp;
+
+	// Don't print error messages for the first two argument parsers
+	opterr = 0;
+
+	// option string should start with '-' to avoid argv permutation
+	// we need same argv sequence in third check to support space separated optional argument value
+	while ((optcase = getopt_long(argc, argv, OPTIONS_SHORT, options, 0)) != -1) {
+		switch (optcase) {
+			case 'V':
+				print_version();
+				res = EXIT_SUCCESS;
+				goto cleanup1;
+
+			case 'Z':
+				usage(argv[0]);
+				res = EXIT_SUCCESS;
+				goto cleanup1;
+		}
+	}
+
+
+
+	char *config_fname = NULL;
+	bool read_conf_files = true;
+	bool read_only_conf_file = false;
+	char *instance = NULL;
+
+	// Reset to optind (internal variable)
+	// to parse all options again
+	optind = 1;
+	while ((optcase = getopt_long(argc, argv, OPTIONS_SHORT, options, 0)) != -1) {
+		switch (optcase) {
+
+			case CONFIG_FILE_OPT_FILE:
+				config_fname = optarg;
+				break;
+
+			case CONFIG_FILE_OPT_INSTANCE:
+				instance = optarg;
+				break;
+
+			case CONFIG_FILE_OPT_NO_CONFIG_FILE:
+				read_conf_files = false;
+				break;
+
+			case CONFIG_FILE_OPT_ONLY_CONFIG_FILE:
+				config_fname = optarg;
+				read_only_conf_file = true;
+				break;
+
+		}
+	}
+
+	if (read_conf_files) {
+		if (read_only_conf_file) {
+			if (! config_from_file(&conf, instance, config_fname, 0, false)) {
+				return false;
+			}
+		} else {
+			if (! config_from_files(&conf, instance, config_fname, false)) {
+				return false;
+			}
+		}
+	} else {
+		if (read_only_conf_file) {
+			fprintf(stderr, "--no-config-file and only-config-file are mutually exclusive option. Please enable only one.\n");
+			return false;
+		}
+	}
+
+	// Now print error messages
+	opterr = 1;
+	// Reset to optind (internal variable)
+	// to parse all options again
+	optind = 1;
+	while ((optcase = getopt_long(argc, argv, OPTIONS_SHORT, options, 0)) != -1) {
+		switch (optcase) {
+		case 'h':
+			conf.host = optarg;
+			break;
+
+		case 'p':
+			if (!better_atoi(optarg, &tmp) || tmp < 1 || tmp > 65535) {
+				err("Invalid port value %s", optarg);
+				goto cleanup1;
+			}
+
+			conf.port = (int32_t)tmp;
+			break;
+
+		case 'U':
+			conf.user = optarg;
+			break;
+
+		case 'P':
+			if (optarg) {
+				conf.password = optarg;
+			} else {
+				if (optind < argc && NULL != argv[optind] && '-' != argv[optind][0] ) {
+					// space separated argument value
+					conf.password = argv[optind++];
+				} else {
+					// No password specified should
+					// force it to default password
+					// to trigger prompt.
+					conf.password = DEFAULTPASSWORD;
+				}
+			}
+			break;
+
+		case 'A':
+			conf.auth_mode = optarg;
+			break;
+
+		case 'n':
+			conf.ns_list = safe_strdup(optarg);
+			break;
+
+		case 'd':
+			conf.directory = optarg;
+			break;
+
+		case 'i':
+			conf.input_file = safe_strdup(optarg);
+			break;
+
+		case 'z':
+			if (parse_compression_type(optarg, &conf.compress_mode) != 0) {
+				err("Invalid compression type \"%s\"\n", optarg);
+				goto cleanup1;
+			}
+			break;
+
+		case 'y':
+			if (parse_encryption_type(optarg, &conf.encrypt_mode) != 0) {
+				err("Invalid encryption type \"%s\"\n", optarg);
+				goto cleanup1;
+			}
+			break;
+
+		case '1':
+			// encryption key file
+			if (conf.pkey != NULL) {
+				err("Cannot specify both encryption-key-file and encryption-key-env\n");
+				goto cleanup1;
+			}
+			conf.pkey = (encryption_key_t*) cf_malloc(sizeof(encryption_key_t));
+			if (io_proxy_read_private_key_file(optarg, conf.pkey) != 0) {
+				goto cleanup1;
+			}
+			break;
+
+		case '2':
+			// encryption key environment variable
+			if (conf.pkey != NULL) {
+				err("Cannot specify both encryption-key-file and encryption-key-env\n");
+				goto cleanup1;
+			}
+			conf.pkey = parse_encryption_key_env(optarg);
+			if (conf.pkey == NULL) {
+				goto cleanup1;
+			}
+			break;
+
+		case '_':
+			err("WARNING: '--threads' option is deprecated, use `--parallel` instead");
+		case 't':
+			if (!better_atoi(optarg, &tmp) || tmp < 1 || tmp > MAX_THREADS) {
+				err("Invalid threads value %s", optarg);
+				goto cleanup1;
+			}
+
+			conf.parallel = (uint32_t)tmp;
+			break;
+
+		case 'v':
+			if (verbose) {
+				enable_client_log();
+			} else {
+				verbose = true;
+			}
+
+			break;
+
+		case 'm':
+			conf.machine = optarg;
+			break;
+
+		case 'B':
+			conf.bin_list = safe_strdup(optarg);
+			break;
+
+		case 's':
+			conf.set_list = safe_strdup(optarg);
+			break;
+
+		case 'K':
+			conf.ignore_rec_error = true;
+			break;
+
+		case 'u':
+			conf.unique = true;
+			break;
+
+		case 'r':
+			conf.replace = true;
+			break;
+
+		case 'g':
+			conf.no_generation = true;
+			break;
+
+		case 'l':
+			if (! better_atoi(optarg, &tmp)) {
+				err("Invalid extra-ttl value %s", optarg);
+				goto cleanup1;
+			}
+
+			conf.extra_ttl = (int32_t)tmp;
+			break;
+
+		case 'N':
+			conf.nice_list = safe_strdup(optarg);
+			break;
+
+		case 'R':
+			conf.no_records = true;
+			break;
+
+		case 'I':
+			conf.no_indexes = true;
+			break;
+
+		case 'L':
+			conf.indexes_last = true;
+			break;
+
+		case 'F':
+			conf.no_udfs = true;
+			break;
+
+		case 'w':
+			conf.wait = true;
+			break;
+
+		case 'S':
+			conf.use_services_alternate = true;
+			break;
+
+		case TLS_OPT_ENABLE:
+			conf.tls.enable = true;
+			break;
+
+		case TLS_OPT_NAME:
+			conf.tls_name = safe_strdup(optarg);
+			break;
+
+		case TLS_OPT_CA_FILE:
+			conf.tls.cafile = safe_strdup(optarg);
+			break;
+
+		case TLS_OPT_CA_PATH:
+			conf.tls.capath = safe_strdup(optarg);
+			break;
+
+		case TLS_OPT_PROTOCOLS:
+			conf.tls.protocols = safe_strdup(optarg);
+			break;
+
+		case TLS_OPT_CIPHER_SUITE:
+			conf.tls.cipher_suite = safe_strdup(optarg);
+			break;
+
+		case TLS_OPT_CRL_CHECK:
+			conf.tls.crl_check = true;
+			break;
+
+		case TLS_OPT_CRL_CHECK_ALL:
+			conf.tls.crl_check_all = true;
+			break;
+
+		case TLS_OPT_CERT_BLACK_LIST:
+			conf.tls.cert_blacklist = safe_strdup(optarg);
+			break;
+
+		case TLS_OPT_LOG_SESSION_INFO:
+			conf.tls.log_session_info = true;
+			break;
+
+		case TLS_OPT_KEY_FILE:
+			conf.tls.keyfile = safe_strdup(optarg);
+			break;
+
+		case TLS_OPT_KEY_FILE_PASSWORD:
+			if (optarg) {
+				conf.tls.keyfile_pw = safe_strdup(optarg);
+			} else {
+				if (optind < argc && NULL != argv[optind] && '-' != argv[optind][0] ) {
+					// space separated argument value
+					conf.tls.keyfile_pw = safe_strdup(argv[optind++]);
+				} else {
+					// No password specified should
+					// force it to default password
+					// to trigger prompt.
+					conf.tls.keyfile_pw = safe_strdup(DEFAULTPASSWORD);
+				}
+			}
+			break;
+
+		case TLS_OPT_CERT_FILE:
+			conf.tls.certfile = safe_strdup(optarg);
+			break;
+
+		case 'T':
+			if (!better_atoi(optarg, &tmp)) {
+				err("Invalid timeout value %s", optarg);
+				goto cleanup1;
+			}
+
+			conf.timeout = (uint32_t)tmp;
+			break;
+
+		case CONFIG_FILE_OPT_FILE:
+		case CONFIG_FILE_OPT_INSTANCE:
+		case CONFIG_FILE_OPT_NO_CONFIG_FILE:
+		case CONFIG_FILE_OPT_ONLY_CONFIG_FILE:
+			break;
+
+		default:
+			fprintf(stderr, "Run with --help for usage information and flag options\n");
+			goto cleanup1;
+		}
+	}
+
+	if (optind < argc) {
+		err("Unexpected trailing argument %s", argv[optind]);
+		goto cleanup1;
+	}
+
+	if (conf.directory != NULL && conf.input_file != NULL) {
+		err("Invalid options: --directory and --input-file are mutually exclusive.");
+		goto cleanup1;
+	}
+
+	if (conf.directory == NULL && conf.input_file == NULL) {
+		err("Please specify a directory (-d option) or an input file (-i option)");
+		goto cleanup1;
+	}
+
+	if (conf.unique && (conf.replace || conf.no_generation)) {
+		err("Invalid options: --unique is mutually exclusive with --replace and --no-generation.");
+		goto cleanup1;
+	}
+
+	if ((conf.pkey != NULL) ^ (conf.encrypt_mode != IO_PROXY_ENCRYPT_NONE)) {
+		err("Must specify both encryption mode and a private key "
+				"file/environment variable\n");
+		goto cleanup1;
+	}
+
+	signal(SIGINT, sig_hand);
+	signal(SIGTERM, sig_hand);
+
+	inf("Starting restore to %s (bins: %s, sets: %s) from %s", conf.host,
+			conf.bin_list == NULL ? "[all]" : conf.bin_list,
+			conf.set_list == NULL ? "[all]" : conf.set_list,
+			conf.input_file != NULL ?
+					strcmp(conf.input_file, "-") == 0 ? "[stdin]" : conf.input_file :
+					conf.directory);
+
+	FILE *mach_fd = NULL;
+
+	if (conf.machine != NULL && (mach_fd = fopen(conf.machine, "a")) == NULL) {
+		err_code("Error while opening machine-readable file %s", conf.machine);
+		goto cleanup1;
+	}
+
+	as_config as_conf;
+	as_config_init(&as_conf);
+	as_conf.conn_timeout_ms = conf.timeout;
+	as_conf.use_services_alternate = conf.use_services_alternate;
+
+	if (conf.tls_name != NULL) {
+		as_config_set_cluster_name(&as_conf, conf.tls_name);
+	}
+
+	if (!as_config_add_hosts(&as_conf, conf.host, (uint16_t)conf.port)) {
+		err("Invalid host(s) string %s", conf.host);
+		goto cleanup2;
+	}
+
+	if (conf.auth_mode && ! as_auth_mode_from_string(&as_conf.auth_mode, conf.auth_mode)) {
+		err("Invalid authentication mode %s. Allowed values are INTERNAL / EXTERNAL / EXTERNAL_INSECURE\n",
+				conf.auth_mode);
+		goto cleanup2;
+	}
+
+	if (conf.user) {
+		if (strcmp(conf.password, DEFAULTPASSWORD) == 0) {
+			conf.password = getpass("Enter Password: ");
+		}
+
+		if (! as_config_set_user(&as_conf, conf.user, conf.password)) {
+			printf("Invalid password for user name `%s`\n", conf.user);
+			goto cleanup2;
+		}
+	}
+
+	if (conf.tls.keyfile && conf.tls.keyfile_pw) {
+		if (strcmp(conf.tls.keyfile_pw, DEFAULTPASSWORD) == 0) {
+			conf.tls.keyfile_pw = getpass("Enter TLS-Keyfile Password: ");
+		}
+
+		if (!tls_read_password(conf.tls.keyfile_pw, &conf.tls.keyfile_pw)) {
+			goto cleanup2;
+		}
+	}
+
+	memcpy(&as_conf.tls, &conf.tls, sizeof(as_config_tls));
+	memset(&conf.tls, 0, sizeof(conf.tls));
+
+	aerospike as;
+	aerospike_init(&as, &as_conf);
+	conf.as = &as;
+	as_error ae;
+
+	if (verbose) {
+		ver("Connecting to cluster");
+	}
+
+	if (aerospike_connect(&as, &ae) != AEROSPIKE_OK) {
+		err("Error while connecting to %s:%d - code %d: %s at %s:%d", conf.host, conf.port, ae.code,
+				ae.message, ae.file, ae.line);
+		goto cleanup3;
+	}
+
+	char (*node_names)[][AS_NODE_NAME_SIZE] = NULL;
+	uint32_t n_node_names;
+	get_node_names(as.cluster, NULL, 0, &node_names, &n_node_names);
+
+	inf("Processing %u node(s)", n_node_names);
+	conf.estimated_bytes = 0;
+	cf_atomic64_set(&conf.total_bytes, 0);
+	cf_atomic64_set(&conf.total_records, 0);
+	cf_atomic64_set(&conf.expired_records, 0);
+	cf_atomic64_set(&conf.skipped_records, 0);
+	cf_atomic64_set(&conf.ignored_records, 0);
+	cf_atomic64_set(&conf.inserted_records, 0);
+	cf_atomic64_set(&conf.existed_records, 0);
+	cf_atomic64_set(&conf.fresher_records, 0);
+	cf_atomic64_set(&conf.backoff_count, 0);
+	conf.index_count = 0;
+	conf.udf_count = 0;
+
+	pthread_t counter_thread;
+	counter_thread_args counter_args;
+	counter_args.conf = &conf;
+	counter_args.node_names = node_names;
+	counter_args.n_node_names = n_node_names;
+	counter_args.mach_fd = mach_fd;
+
+	if (verbose) {
+		ver("Creating counter thread");
+	}
+
+	if (pthread_create(&counter_thread, NULL, counter_thread_func, &counter_args) != 0) {
+		err_code("Error while creating counter thread");
+		goto cleanup4;
+	}
+
+	pthread_t restore_threads[MAX_THREADS];
+	restore_thread_args restore_args;
+	restore_args.conf = &conf;
+	restore_args.path = NULL;
+	restore_args.shared_fd = NULL;
+	restore_args.line_no = NULL;
+	restore_args.legacy = false;
+	cf_queue *job_queue = cf_queue_create(sizeof (restore_thread_args), true);
+
+	if (job_queue == NULL) {
+		err_code("Error while allocating job queue");
+		goto cleanup5;
+	}
+
+	uint32_t line_no;
+	as_vector file_vec, index_vec, udf_vec, ns_vec, nice_vec, bin_vec, set_vec;
+	as_vector_inita(&file_vec, sizeof (void *), 25)
+	as_vector_inita(&index_vec, sizeof (index_param), 25);
+	as_vector_inita(&udf_vec, sizeof (udf_param), 25);
+	as_vector_inita(&ns_vec, sizeof (void *), 25);
+	as_vector_inita(&nice_vec, sizeof (void *), 25);
+	as_vector_inita(&bin_vec, sizeof (void *), 25);
+	as_vector_inita(&set_vec, sizeof (void *), 25);
+
+	if (conf.ns_list != NULL && !parse_list("namespace", AS_MAX_NAMESPACE_SIZE, conf.ns_list,
+			&ns_vec)) {
+		err("Error while parsing namespace list");
+		goto cleanup6;
+	}
+
+	if (ns_vec.size > 2) {
+		err("Invalid namespace option");
+		goto cleanup6;
+	}
+
+	if (conf.nice_list != NULL) {
+		if (!parse_list("nice", 10, conf.nice_list, &nice_vec)) {
+			err("Error while parsing nice list");
+			goto cleanup6;
+		}
+
+		if (nice_vec.size != 2) {
+			err("Invalid nice option");
+			goto cleanup6;
+		}
+
+		char *item0 = as_vector_get_ptr(&nice_vec, 0);
+		char *item1 = as_vector_get_ptr(&nice_vec ,1);
+
+		if (!better_atoi(item0, &tmp) || tmp < 1) {
+			err("Invalid bandwidth value %s", item0);
+			goto cleanup6;
+		}
+
+		conf.bandwidth = tmp * 1024 * 1024;
+
+		if (!better_atoi(item1, &tmp) || tmp < 1 || tmp > 1000000000) {
+			err("Invalid TPS value %s", item1);
+			goto cleanup6;
+		}
+
+		conf.tps = (uint32_t)tmp;
+	}
+
+	conf.bytes_limit = conf.bandwidth;
+	conf.records_limit = conf.tps;
+
+	if (conf.bin_list != NULL && !parse_list("bin", AS_BIN_NAME_MAX_SIZE, conf.bin_list,
+			&bin_vec)) {
+		err("Error while parsing bin list");
+		goto cleanup6;
+	}
+
+	if (conf.set_list != NULL && !parse_list("set", AS_SET_MAX_SIZE, conf.set_list, &set_vec)) {
+		err("Error while parsing set list");
+		goto cleanup6;
+	}
+
+	restore_args.ns_vec = &ns_vec;
+	restore_args.bin_vec = &bin_vec;
+	restore_args.set_vec = &set_vec;
+
+	// restoring from a directory
+	if (conf.directory != NULL) {
+		if (!get_backup_files(conf.directory, &file_vec)) {
+			err("Error while getting backup files");
+			goto cleanup6;
+		}
+
+		if (file_vec.size == 0) {
+			err("No backup files found");
+			goto cleanup6;
+		}
+
+		if (!conf.no_indexes || !conf.no_udfs) {
+			if (verbose) {
+				ver("Triaging %u backup file(s)", file_vec.size);
+			}
+
+			for (uint32_t i = 0; i < file_vec.size; ++i) {
+				char *path = as_vector_get_ptr(&file_vec, i);
+				io_read_proxy_t fd;
+				bool first;
+				off_t size;
+				bool legacy;
+
+				if (!open_file(path, restore_args.ns_vec, &fd, &legacy,
+							&line_no, &first, &size, conf.compress_mode,
+							conf.encrypt_mode, conf.pkey)) {
+					err("Error while triaging backup file %s [1]", path);
+					goto cleanup7;
+				}
+
+				if (!conf.no_records) {
+					conf.estimated_bytes += size;
+				}
+
+				// backup file contains a META_FIRST_FILE tag, so it may contain secondary index
+				// information and UDF files
+				if (first) {
+					if (verbose) {
+						ver("Found first backup file: %s", path);
+					}
+
+					// read secondary index information and UDF files into index_vec and udf_vec
+					if (!get_indexes_and_udfs(&fd, restore_args.ns_vec, legacy, &conf, &line_no,
+							conf.no_indexes ? NULL : &index_vec, conf.no_udfs ? NULL : &udf_vec)) {
+						err("Error while reading index and UDF info from backup file %s", path);
+						close_file(&fd);
+						goto cleanup7;
+					}
+				}
+
+				if (!close_file(&fd)) {
+					err("Error while triaging backup file %s [2]", path);
+					goto cleanup8;
+				}
+			}
+		}
+
+		if (verbose) {
+			ver("Pushing %u exclusive job(s) to job queue", file_vec.size);
+		}
+
+		// push a job for each backup file
+		for (uint32_t i = 0; i < file_vec.size; ++i) {
+			restore_args.path = as_vector_get_ptr(&file_vec, i);
+
+			if (cf_queue_push(job_queue, &restore_args) != CF_QUEUE_OK) {
+				err("Error while queueing restore job");
+				goto cleanup8;
+			}
+		}
+
+		if (file_vec.size < conf.parallel) {
+			conf.parallel = file_vec.size;
+		}
+	}
+	// restoring from a single backup file
+	else {
+		inf("Restoring %s", conf.input_file);
+
+		restore_args.shared_fd =
+			(io_read_proxy_t*) cf_malloc(sizeof(io_read_proxy_t));
+		// open the file, file descriptor goes to restore_args.shared_fd
+		if (!open_file(conf.input_file, restore_args.ns_vec, restore_args.shared_fd,
+				&restore_args.legacy, &line_no, NULL,
+				conf.no_records ? NULL : &conf.estimated_bytes,
+				conf.compress_mode, conf.encrypt_mode, conf.pkey)) {
+			err("Error while opening shared backup file");
+			goto cleanup6;
+		}
+
+		if (verbose) {
+			ver("Pushing %u shared job(s) to job queue", conf.parallel);
+		}
+
+		// read secondary index information and UDF files into index_vec and udf_vec
+		if ((!conf.no_indexes || !conf.no_udfs) && !get_indexes_and_udfs(restore_args.shared_fd,
+				restore_args.ns_vec, restore_args.legacy, &conf, &line_no,
+				conf.no_indexes ? NULL : &index_vec, conf.no_udfs ? NULL : &udf_vec)) {
+			err("Error while reading index and UDF info from backup file %s", conf.input_file);
+			goto cleanup7;
+		}
+
+		restore_args.line_no = &line_no;
+		restore_args.path = conf.input_file;
+
+		// push an identical job for each thread; all threads use restore_args.shared_fd for reading
+		for (uint32_t i = 0; i < conf.parallel; ++i) {
+			if (cf_queue_push(job_queue, &restore_args) != CF_QUEUE_OK) {
+				err("Error while queueing restore job");
+				goto cleanup8;
+			}
+		}
+	}
+
+	if (!conf.no_udfs && !restore_udfs(&as, &udf_vec, &conf.udf_count, conf.wait, conf.timeout)) {
+		err("Error while restoring UDFs to cluster");
+		goto cleanup8;
+	}
+
+	if (!conf.no_indexes && !conf.indexes_last &&
+			!restore_indexes(&as, &index_vec, &set_vec, &conf.index_count, conf.wait, conf.timeout)) {
+		err("Error while restoring secondary indexes to cluster");
+		goto cleanup8;
+	}
+
+	if (conf.no_records) {
+		res = EXIT_SUCCESS;
+		goto cleanup9;
+	}
+
+	inf("Restoring records");
+	uint32_t threads_ok = 0;
+
+	if (verbose) {
+		ver("Creating %u restore thread(s)", conf.parallel);
+	}
+
+	for (uint32_t i = 0; i < conf.parallel; ++i) {
+		if (pthread_create(&restore_threads[i], NULL, restore_thread_func, job_queue) != 0) {
+			err_code("Error while creating restore thread");
+			goto cleanup10;
+		}
+
+		++threads_ok;
+	}
+
+	res = EXIT_SUCCESS;
+
+cleanup10:
+	if (verbose) {
+		ver("Waiting for %u restore thread(s)", threads_ok);
+	}
+
+	void *thread_res;
+
+	for (uint32_t i = 0; i < threads_ok; i++) {
+		if (pthread_join(restore_threads[i], &thread_res) != 0) {
+			err_code("Error while joining restore thread");
+			stop();
+			res = EXIT_FAILURE;
+		}
+
+		if (thread_res != (void *)EXIT_SUCCESS) {
+			if (verbose) {
+				ver("Restore thread failed");
+			}
+
+			res = EXIT_FAILURE;
+		}
+	}
+
+cleanup9:
+	if (res == EXIT_SUCCESS && !conf.no_indexes && conf.indexes_last &&
+			!restore_indexes(&as, &index_vec, &set_vec, &conf.index_count, conf.wait, conf.timeout)) {
+		err("Error while restoring secondary indexes to cluster");
+		res = EXIT_FAILURE;
+	}
+
+cleanup8:
+	free_indexes(&index_vec);
+	free_udfs(&udf_vec);
+
+cleanup7:
+	if (conf.directory != NULL) {
+		for (uint32_t i = 0; i < file_vec.size; ++i) {
+			cf_free(as_vector_get_ptr(&file_vec, i));
+		}
+	}
+	else {
+		if (!close_file(restore_args.shared_fd)) {
+			err("Error while closing shared backup file");
+			res = EXIT_FAILURE;
+		}
+		cf_free(restore_args.shared_fd);
+	}
+
+cleanup6:
+	as_vector_destroy(&set_vec);
+	as_vector_destroy(&bin_vec);
+	as_vector_destroy(&nice_vec);
+	as_vector_destroy(&ns_vec);
+	as_vector_destroy(&udf_vec);
+	as_vector_destroy(&index_vec);
+	as_vector_destroy(&file_vec);
+	cf_queue_destroy(job_queue);
+
+cleanup5:
+	stop();
+
+	if (verbose) {
+		ver("Waiting for counter thread");
+	}
+
+	if (pthread_join(counter_thread, NULL) != 0) {
+		err_code("Error while joining counter thread");
+		res = EXIT_FAILURE;
+	}
+
+cleanup4:
+	if (node_names != NULL) {
+		cf_free(node_names);
+	}
+
+	aerospike_close(&as, &ae);
+
+cleanup3:
+	aerospike_destroy(&as);
+
+cleanup2:
+	if (mach_fd != NULL) {
+		fclose(mach_fd);
+	}
+
+cleanup1:
+	restore_config_destroy(&conf);
+
+	if (verbose) {
+		ver("Exiting with status code %d", res);
+	}
+
+	return res;
+}
+
+void
+restore_config_default(restore_config_t *conf)
+{
+	conf->host = DEFAULT_HOST;
+	conf->use_services_alternate = false;
+	conf->port = DEFAULT_PORT;
+	conf->user = NULL;
+	conf->password = DEFAULTPASSWORD;
+	conf->auth_mode = NULL;
+
+	conf->parallel = DEFAULT_THREADS;
+	conf->nice_list = NULL;
+	conf->no_records = false;
+	conf->no_indexes = false;
+	conf->indexes_last = false;
+	conf->no_udfs = false;
+	conf->wait = false;
+	conf->ns_list = NULL;
+	conf->directory = NULL;
+	conf->input_file = NULL;
+	conf->machine = NULL;
+	conf->bin_list = NULL;
+	conf->set_list = NULL;
+	conf->pkey = NULL;
+	conf->compress_mode = IO_PROXY_COMPRESS_NONE;
+	conf->encrypt_mode = IO_PROXY_ENCRYPT_NONE;
+	conf->ignore_rec_error = false;
+	conf->unique = false;
+	conf->replace = false;
+	conf->extra_ttl = 0;
+	conf->no_generation = false;
+	conf->bandwidth = 0;
+	conf->tps = 0;
+	conf->timeout = TIMEOUT;
+
+	memset(&conf->tls, 0, sizeof(as_config_tls));
+	conf->tls_name = NULL;
+	conf->as = NULL;
+	conf->decoder = NULL;
+}
+
+void
+restore_config_destroy(restore_config_t *conf)
+{
+	if (conf->pkey != NULL) {
+		encryption_key_free(conf->pkey);
+		cf_free(conf->pkey);
+	}
+
+	if (conf->set_list != NULL) {
+		cf_free(conf->set_list);
+	}
+
+	if (conf->bin_list != NULL) {
+		cf_free(conf->bin_list);
+	}
+
+	if (conf->ns_list != NULL) {
+		cf_free(conf->ns_list);
+	}
+
+	if (conf->input_file != NULL) {
+		cf_free(conf->input_file);
+	}
+
+	if (conf->nice_list != NULL) {
+		cf_free(conf->nice_list);
+	}
+
+	if (conf->tls_name != NULL) {
+		cf_free(conf->tls_name);
+	}
+
+	if (conf->tls.cafile != NULL) {
+		cf_free(conf->tls.cafile);
+	}
+
+	if (conf->tls.capath != NULL) {
+		cf_free(conf->tls.capath);
+	}
+
+	if (conf->tls.protocols != NULL) {
+		cf_free(conf->tls.protocols);
+	}
+
+	if (conf->tls.cipher_suite != NULL) {
+		cf_free(conf->tls.cipher_suite);
+	}
+
+	if (conf->tls.cert_blacklist != NULL) {
+		cf_free(conf->tls.cert_blacklist);
+	}
+
+	if (conf->tls.keyfile != NULL) {
+		cf_free(conf->tls.keyfile);
+	}
+
+	if (conf->tls.keyfile_pw != NULL) {
+		cf_free(conf->tls.keyfile_pw);
+	}
+
+	if (conf->tls.certfile != NULL) {
+		cf_free(conf->tls.certfile);
+	}
+
+}
+
+
+//==========================================================
+// Local helpers.
+//
 
 /*
  * returns true if the program has stoppped
@@ -111,17 +1164,36 @@ sleep_for(uint64_t n_secs)
 	pthread_mutex_unlock(&g_stop_lock);
 }
 
+/*
+ * To be called after data has been read from the io_proxy. Updates the total
+ * number of bytes read from all files globally
+ */
+static int
+update_file_pos(per_thread_context_t* ptc)
+{
+	int64_t pos = io_read_proxy_estimate_pos(ptc->fd);
+	if (pos < 0) {
+		err("Failed to get the file position (%ld)", pos);
+		return -1;
+	}
+	uint64_t diff = (uint64_t) pos - ptc->byte_count_file;
 
-///
-/// Closes a backup file and frees the associated I/O buffer.
-///
-/// @param fd      The file descriptor of the backup file to be closed.
-/// @param fd_buf  The I/O buffer that was allocated for the file descriptor.
-///
-/// @result        `true`, if successful.
-///
+	ptc->byte_count_file = (uint64_t) pos;
+	cf_atomic64_add(&ptc->conf->total_bytes, (int64_t) diff);
+
+	return 0;
+}
+
+
+/*
+ * Closes a backup file and frees the associated I/O buffer.
+ *
+ * @param fd      The file descriptor of the backup file to be closed.
+ *
+ * @result        `true`, if successful.
+ */
 static bool
-close_file(io_read_proxy_t *fd, void **fd_buf)
+close_file(io_read_proxy_t *fd)
 {
 	if (fd->fd == NULL) {
 		return true;
@@ -152,37 +1224,34 @@ close_file(io_read_proxy_t *fd, void **fd_buf)
 		}
 	}
 
-	cf_free(*fd_buf);
-	*fd_buf = NULL;
 	return true;
 }
 
-///
-/// Opens and validates a backup file.
-///
-///   - Opens the backup file.
-///   - Allocates an I/O buffer for it.
-///   - Validates the version header and meta data (e.g., the namespace).
-///
-/// @param file_path   The path of the backup file to be opened.
-/// @param ns_vec      The (optional) source and (also optional) target namespace to be restored.
-/// @param fd          The file descriptor of the opened backup file.
-/// @param fd_buf      The I/O buffer allocated for the file descriptor.
-/// @param legacy      Indicates a version 3.0 backup file.
-/// @param line_no     The current line number.
-/// @param first_file  Indicates that the backup file may contain secondary index information and
-///                    UDF files, i.e., it was the first backup file written during backup.
-/// @param total       Increased by the number of bytes read from the opened backup file (version
-///                    header, meta data).
-/// @param size        The size of the opened backup file.
-///
-/// @result            `true`, if successful.
-///
+/*
+ * Opens and validates a backup file.
+ *
+ *   - Opens the backup file.
+ *   - Allocates an I/O buffer for it.
+ *   - Validates the version header and meta data (e.g., the namespace).
+ *
+ * @param file_path   The path of the backup file to be opened.
+ * @param ns_vec      The (optional) source and (also optional) target namespace to be restored.
+ * @param fd          The file descriptor of the opened backup file.
+ * @param legacy      Indicates a version 3.0 backup file.
+ * @param line_no     The current line number.
+ * @param first_file  Indicates that the backup file may contain secondary index information and
+ *                    UDF files, i.e., it was the first backup file written during backup.
+ * @param total       Increased by the number of bytes read from the opened backup file (version
+ *                    header, meta data).
+ * @param size        The size of the opened backup file.
+ *
+ * @result            `true`, if successful.
+ */
 static bool
 open_file(const char *file_path, as_vector *ns_vec, io_read_proxy_t *fd,
-		void **fd_buf, bool *legacy, uint32_t *line_no, bool *first_file,
-		cf_atomic64 *total, off_t *size, compression_opt c_opt,
-		encryption_opt e_opt, encryption_key_t* pkey)
+		bool *legacy, uint32_t *line_no, bool *first_file,
+		off_t *size, compression_opt c_opt, encryption_opt e_opt,
+		encryption_key_t* pkey)
 {
 	FILE* _f;
 
@@ -241,9 +1310,6 @@ open_file(const char *file_path, as_vector *ns_vec, io_read_proxy_t *fd,
 	io_proxy_init_compression(fd, c_opt);
 	io_proxy_init_encryption(fd, pkey, e_opt);
 
-	*fd_buf = safe_malloc(IO_BUF_SIZE);
-	setbuffer(fd->fd, *fd_buf, IO_BUF_SIZE);
-
 	if (verbose) {
 		ver("Validating backup file version");
 	}
@@ -275,20 +1341,12 @@ open_file(const char *file_path, as_vector *ns_vec, io_read_proxy_t *fd,
 	char meta[MAX_META_LINE - 1 + 1 + 1];
 	*line_no = 2;
 
-	if (total != NULL) {
-		cf_atomic64_add(total, 12);
-	}
-
 	if (first_file != NULL) {
 		*first_file = false;
 	}
 
 	while ((ch = io_proxy_peekc_unlocked(fd)) == META_PREFIX[0]) {
 		io_proxy_getc_unlocked(fd);
-
-		if (total != NULL) {
-			cf_atomic64_incr(total);
-		}
 
 		if (io_proxy_gets(fd, meta, sizeof(meta)) == NULL) {
 			err("Error while reading meta data from backup file %s:%u [1]",
@@ -297,10 +1355,6 @@ open_file(const char *file_path, as_vector *ns_vec, io_read_proxy_t *fd,
 		}
 
 		for (uint32_t i = 0; i < sizeof meta; ++i) {
-			if (total != NULL) {
-				cf_atomic64_incr(total);
-			}
-
 			if (meta[i] == '\n') {
 				meta[i] = 0;
 				break;
@@ -358,7 +1412,7 @@ open_file(const char *file_path, as_vector *ns_vec, io_read_proxy_t *fd,
 	goto cleanup0;
 
 cleanup1:
-	close_file(fd, fd_buf);
+	close_file(fd);
 
 	if (size != NULL) {
 		*size = 0;
@@ -368,11 +1422,11 @@ cleanup0:
 	return res;
 }
 
-///
-/// Deallocates the fields of a udf_param UDF file record.
-///
-/// @param param  The udf_param to be deallocated.
-///
+/*
+ * Deallocates the fields of a udf_param UDF file record.
+ *
+ * @param param  The udf_param to be deallocated.
+ */
 static void
 free_udf(udf_param *param)
 {
@@ -380,11 +1434,11 @@ free_udf(udf_param *param)
 	cf_free(param->data);
 }
 
-///
-/// Deallocates a vector of udf_param UDF file records.
-///
-/// @param udf_vec  The vector of udf_param records to be deallocated.
-///
+/*
+ * Deallocates a vector of udf_param UDF file records.
+ *
+ * @param udf_vec  The vector of udf_param records to be deallocated.
+ */
 static void
 free_udfs(as_vector *udf_vec)
 {
@@ -398,11 +1452,11 @@ free_udfs(as_vector *udf_vec)
 	}
 }
 
-///
-/// Deallocates the fields of an index_param secondary index information record.
-///
-/// @param param  The index_param to be deallocated.
-///
+/*
+ * Deallocates the fields of an index_param secondary index information record.
+ *
+ * @param param  The index_param to be deallocated.
+ */
 static void
 free_index(index_param *param)
 {
@@ -418,11 +1472,11 @@ free_index(index_param *param)
 	as_vector_destroy(&param->path_vec);
 }
 
-///
-/// Deallocates a vector of index_param secondary index information records.
-///
-/// @param index_vec  The vector of index_param records to be deallocated.
-///
+/*
+ * Deallocates a vector of index_param secondary index information records.
+ *
+ * @param index_vec  The vector of index_param records to be deallocated.
+ */
 static void
 free_indexes(as_vector *index_vec)
 {
@@ -436,14 +1490,14 @@ free_indexes(as_vector *index_vec)
 	}
 }
 
-///
-/// Checks whether the given vector of set names contains the given set name.
-///
-/// @param set      The set name to be looked for.
-/// @param set_vec  The vector of set names to be searched.
-///
-/// @result         `true`, if the vector contains the set name or if the vector is empty.
-///
+/*
+ * Checks whether the given vector of set names contains the given set name.
+ *
+ * @param set      The set name to be looked for.
+ * @param set_vec  The vector of set names to be searched.
+ *
+ * @result         `true`, if the vector contains the set name or if the vector is empty.
+ */
 static bool
 check_set(char *set, as_vector *set_vec)
 {
@@ -462,25 +1516,25 @@ check_set(char *set, as_vector *set_vec)
 	return false;
 }
 
-///
-/// Main restore worker thread function.
-///
-///   - Pops the restore_thread_args for a backup file off the job queue.
-///     - When restoring from a single file, all restore_thread_args elements in the queue are
-///       identical and there are initially as many elements in the queue as there are threads.
-///     - When restoring from a directory, the queue initially contains one element for each backup
-///       file in the directory.
-///   - Initializes a per_thread_context for that backup file.
-///   - If restoring from a single file: uses the shared file descriptor given by
-///     restore_thread_args.shared_fd.
-///   - If restoring from a directory: opens the backup file given by restore_thread_args.path.
-///   - Reads the records from the backup file and stores them in the database.
-///   - Secondary indexes and UDF files are not handled here. They are handled on the main thread.
-///
-/// @param cont  The job queue.
-///
-/// @result      `EXIT_SUCCESS` on success, `EXIT_FAILURE` otherwise.
-///
+/*
+ * Main restore worker thread function.
+ *
+ *   - Pops the restore_thread_args for a backup file off the job queue.
+ *     - When restoring from a single file, all restore_thread_args elements in the queue are
+ *       identical and there are initially as many elements in the queue as there are threads.
+ *     - When restoring from a directory, the queue initially contains one element for each backup
+ *       file in the directory.
+ *   - Initializes a per_thread_context for that backup file.
+ *   - If restoring from a single file: uses the shared file descriptor given by
+ *     restore_thread_args.shared_fd.
+ *   - If restoring from a directory: opens the backup file given by restore_thread_args.path.
+ *   - Reads the records from the backup file and stores them in the database.
+ *   - Secondary indexes and UDF files are not handled here. They are handled on the main thread.
+ *
+ * @param cont  The job queue.
+ *
+ * @result      `EXIT_SUCCESS` on success, `EXIT_FAILURE` otherwise.
+ */
 static void *
 restore_thread_func(void *cont)
 {
@@ -518,12 +1572,11 @@ restore_thread_func(void *cont)
 		}
 
 		uint32_t line_no;
-		per_thread_context ptc;
+		per_thread_context_t ptc;
 		ptc.conf = args.conf;
 		ptc.path = args.path;
 		ptc.shared_fd = args.shared_fd;
 		ptc.line_no = args.line_no != NULL ? args.line_no : &line_no;
-		ptc.fd_buf = NULL;
 		ptc.ns_vec = args.ns_vec;
 		ptc.bin_vec = args.bin_vec;
 		ptc.set_vec = args.set_vec;
@@ -546,10 +1599,11 @@ restore_thread_func(void *cont)
 		else {
 			inf("Restoring %s", ptc.path);
 
+			ptc.byte_count_file = 0;
 			ptc.fd = (io_read_proxy_t*) cf_malloc(sizeof(io_read_proxy_t));
-			if (!open_file(ptc.path, ptc.ns_vec, ptc.fd, &ptc.fd_buf,
-						&ptc.legacy, ptc.line_no, NULL, &ptc.conf->total_bytes,
-						NULL, ptc.conf->compress_mode, ptc.conf->encrypt_mode,
+			if (!open_file(ptc.path, ptc.ns_vec, ptc.fd,
+						&ptc.legacy, ptc.line_no, NULL, NULL,
+						ptc.conf->compress_mode, ptc.conf->encrypt_mode,
 						ptc.conf->pkey)) {
 				err("Error while opening backup file");
 				break;
@@ -604,7 +1658,7 @@ restore_thread_func(void *cont)
 
 			// restoring from a single backup file: allow one thread at a time to read
 			if (ptc.conf->input_file != NULL) {
-				safe_lock();
+				safe_lock(&file_read_mutex);
 			}
 
 			// check the stop flag inside the critical section; makes sure that we do not try to
@@ -612,16 +1666,16 @@ restore_thread_func(void *cont)
 			// set the stop flag
 			if (has_stopped()) {
 				if (ptc.conf->input_file != NULL) {
-					safe_unlock();
+					safe_unlock(&file_read_mutex);
 				}
 
 				break;
 			}
 
 			cf_clock read_start = verbose ? cf_getus() : 0;
-			decoder_status res = ptc.conf->decoder->parse(ptc.fd, ptc.legacy, ptc.ns_vec,
-					ptc.bin_vec, ptc.line_no, &ptc.conf->total_bytes, &rec, ptc.conf->extra_ttl,
-					&expired, &index, &udf);
+			decoder_status res = ptc.conf->decoder->parse(ptc.fd, ptc.legacy,
+					ptc.ns_vec, ptc.bin_vec, ptc.line_no, &rec,
+					ptc.conf->extra_ttl, &expired, &index, &udf);
 			cf_clock read_time = verbose ? cf_getus() - read_start : 0;
 
 			// set the stop flag inside the critical section; see check above
@@ -630,7 +1684,12 @@ restore_thread_func(void *cont)
 			}
 
 			if (ptc.conf->input_file != NULL) {
-				safe_unlock();
+				safe_unlock(&file_read_mutex);
+			}
+			// only update the file pos in dir mode
+			else if (update_file_pos(&ptc) < 0) {
+				err("Error while restoring backup file %s (line %u)", ptc.path, *ptc.line_no);
+				stop();
 			}
 
 			if (res == DECODER_EOF) {
@@ -708,13 +1767,13 @@ restore_thread_func(void *cont)
 									ver("Error while storing record - code %d: %s at %s:%d",
 											ae.code, ae.message, ae.file, ae.line);
 								}
+								cf_atomic64_incr(&ptc.conf->ignored_records);
 
 								if (! flag_ignore_rec_error) {
 									stop();
 									err("Error while storing record - code %d: %s at %s:%d", ae.code, ae.message, ae.file, ae.line);
 									err("Encountered error while restoring. Skipping retries and aborting!!");
 								}
-								cf_atomic64_incr(&ptc.conf->ignored_records);
 								break;
 
 							// Conditional error based on input config. No
@@ -769,7 +1828,7 @@ restore_thread_func(void *cont)
 
 						}
 
-						if (! do_retry) {
+						if (!do_retry) {
 							break;
 						}
 					}
@@ -779,15 +1838,15 @@ restore_thread_func(void *cont)
 				as_record_destroy(&rec);
 
 				if (ptc.conf->bandwidth > 0 && ptc.conf->tps > 0) {
-					safe_lock();
+					safe_lock(&limit_mutex);
 
 					while ((cf_atomic64_get(ptc.conf->total_bytes) >= ptc.conf->bytes_limit ||
-							cf_atomic64_get(ptc.conf->total_records) >= ptc.conf->records_limit) &&
+								cf_atomic64_get(ptc.conf->total_records) >= ptc.conf->records_limit) &&
 							!has_stopped()) {
-						safe_wait(&limit_cond);
+						safe_wait(&limit_cond, &limit_mutex);
 					}
 
-					safe_unlock();
+					safe_unlock(&limit_mutex);
 				}
 
 				continue;
@@ -804,7 +1863,7 @@ restore_thread_func(void *cont)
 		}
 		// restoring from a directory: close the backup file
 		else {
-			if (!close_file(ptc.fd, &ptc.fd_buf)) {
+			if (!close_file(ptc.fd)) {
 				err("Error while closing backup file");
 				cf_free(ptc.fd);
 				break;
@@ -828,15 +1887,15 @@ restore_thread_func(void *cont)
 	return res;
 }
 
-///
-/// Main counter thread function.
-///
-/// Outputs human-readable and machine-readable progress information.
-///
-/// @param cont  The arguments for the thread, passed as a counter_thread_args.
-///
-/// @result      Always `EXIT_SUCCESS`.
-///
+/*
+ * Main counter thread function.
+ *
+ * Outputs human-readable and machine-readable progress information.
+ *
+ * @param cont  The arguments for the thread, passed as a counter_thread_args.
+ *
+ * @result      Always `EXIT_SUCCESS`.
+ */
 static void *
 counter_thread_func(void *cont)
 {
@@ -845,7 +1904,7 @@ counter_thread_func(void *cont)
 	}
 
 	counter_thread_args *args = (counter_thread_args *)cont;
-	restore_config *conf = args->conf;
+	restore_config_t *conf = args->conf;
 	uint32_t iter = 0;
 	cf_clock prev_ms = cf_getms();
 	uint64_t prev_bytes = cf_atomic64_get(conf->total_bytes);
@@ -860,7 +1919,7 @@ counter_thread_func(void *cont)
 		uint64_t now_records = cf_atomic64_get(conf->total_records);
 
 		int32_t percent = conf->estimated_bytes == 0 ? -1 :
-				(int32_t)(now_bytes * 100 / (uint64_t)conf->estimated_bytes);
+			(int32_t)(now_bytes * 100 / (uint64_t)conf->estimated_bytes);
 		uint32_t ms = (uint32_t)(now_ms - prev_ms);
 		uint64_t bytes = now_bytes - prev_bytes;
 		uint64_t records = now_records - prev_records;
@@ -891,6 +1950,7 @@ counter_thread_func(void *cont)
 					udf_count, index_count, now_records,
 					ms == 0 ? 0 : bytes * 1000 / 1024 / ms, ms == 0 ? 0 : records * 1000 / ms,
 					records == 0 ? 0 : bytes / records, backoff_count);
+
 			inf("Expired %" PRIu64 " : skipped %" PRIu64 " : err_ignored %" PRIu64 " "
 					": inserted %" PRIu64 ": failed %" PRIu64 " (existed %" PRIu64 " "
 					", fresher %" PRIu64 ")", expired_records, skipped_records,
@@ -915,7 +1975,7 @@ counter_thread_func(void *cont)
 			}
 		}
 
-		safe_lock();
+		safe_lock(&limit_mutex);
 
 		if (conf->bandwidth > 0 && conf->tps > 0) {
 			if (ms > 0) {
@@ -926,7 +1986,7 @@ counter_thread_func(void *cont)
 			safe_signal(&limit_cond);
 		}
 
-		safe_unlock();
+		safe_unlock(&limit_mutex);
 
 		if (last_iter) {
 			if (args->mach_fd != NULL && (fprintf(args->mach_fd,
@@ -950,26 +2010,25 @@ counter_thread_func(void *cont)
 	return (void *)EXIT_SUCCESS;
 }
 
-///
-/// Reads, parses, and returns the secondary index information and UDF files from the given
-/// backup file descriptor.
-///
-/// Assumes that the file pointer points to the beginning of the global section of the backup file.
-///
-/// @param fd         The file descriptor to read from.
-/// @param ns_vec     The (optional) source and (also optional) target namespace to be restored.
-/// @param legacy     Indicates a version 3.0 backup file.
-/// @param conf       The restore configuration.
-/// @param line_no    The current line number.
-/// @param total      Increased by the number of bytes read from the file descriptor.
-/// @param index_vec  The secondary index information, as a vector of index_param.
-/// @param udf_vec    The UDF files, as a vector of udf_param.
-///
-/// @result           `true`, if successful.
-///
+/*
+ * Reads, parses, and returns the secondary index information and UDF files from the given
+ * backup file descriptor.
+ *
+ * Assumes that the file pointer points to the beginning of the global section of the backup file.
+ *
+ * @param fd         The file descriptor to read from.
+ * @param ns_vec     The (optional) source and (also optional) target namespace to be restored.
+ * @param legacy     Indicates a version 3.0 backup file.
+ * @param conf       The restore configuration.
+ * @param line_no    The current line number.
+ * @param index_vec  The secondary index information, as a vector of index_param.
+ * @param udf_vec    The UDF files, as a vector of udf_param.
+ *
+ * @result           `true`, if successful.
+ */
 static bool
-get_indexes_and_udfs(io_read_proxy_t* fd, as_vector *ns_vec, bool legacy, restore_config *conf,
-		uint32_t *line_no, cf_atomic64 *total, as_vector *index_vec, as_vector *udf_vec)
+get_indexes_and_udfs(io_read_proxy_t* fd, as_vector *ns_vec, bool legacy, restore_config_t *conf,
+		uint32_t *line_no, as_vector *index_vec, as_vector *udf_vec)
 {
 	bool res = false;
 
@@ -997,7 +2056,7 @@ get_indexes_and_udfs(io_read_proxy_t* fd, as_vector *ns_vec, bool legacy, restor
 
 		index_param index;
 		udf_param udf;
-		decoder_status res = conf->decoder->parse(fd, legacy, ns_vec, NULL, line_no, total, NULL,
+		decoder_status res = conf->decoder->parse(fd, legacy, ns_vec, NULL, line_no, NULL,
 				conf->extra_ttl, NULL, &index, &udf);
 
 		if (res == DECODER_ERROR || res == DECODER_EOF) {
@@ -1036,27 +2095,27 @@ cleanup0:
 	return res;
 }
 
-///
-/// Creates a printable secondary index set specification.
-///
-/// @param set  The set specification to be printed.
-///
-/// @result     The printable set specification.
-///
+/*
+ * Creates a printable secondary index set specification.
+ *
+ * @param set  The set specification to be printed.
+ *
+ * @result     The printable set specification.
+ */
 static const char *
 print_set(const char *set)
 {
 	return set != NULL && set[0] != 0 ? set : "[none]";
 }
 
-///
-/// Compares two secondary index set specifications for equality.
-///
-/// @param set1  The first set specification.
-/// @param set2  The second set specification.
-///
-/// @result      `true`, if the set specifications are equal.
-///
+/*
+ * Compares two secondary index set specifications for equality.
+ *
+ * @param set1  The first set specification.
+ * @param set2  The second set specification.
+ *
+ * @result      `true`, if the set specifications are equal.
+ */
 static bool
 compare_sets(const char *set1, const char *set2)
 {
@@ -1074,18 +2133,18 @@ compare_sets(const char *set1, const char *set2)
 	return false;
 }
 
-///
-/// Checks whether a secondary index exists in the cluster and matches the given spec.
-///
-/// @param as      The Aerospike client.
-/// @param index   The secondary index to look for.
-/// @param timeout The timeout for Aerospike command.
-///
-/// @result       `INDEX_STATUS_ABSENT`, if the index does not exist.
-///               `INDEX_STATUS_SAME`, if the index exists and matches the given spec.
-///               `INDEX_STATUS_DIFFERENT`, if the index exists, but does not match the given spec.
-///               `INDEX_STATUS_INVALID` in case of an error.
-///
+/*
+ * Checks whether a secondary index exists in the cluster and matches the given spec.
+ *
+ * @param as      The Aerospike client.
+ * @param index   The secondary index to look for.
+ * @param timeout The timeout for Aerospike command.
+ *
+ * @result       `INDEX_STATUS_ABSENT`, if the index does not exist.
+ *               `INDEX_STATUS_SAME`, if the index exists and matches the given spec.
+ *               `INDEX_STATUS_DIFFERENT`, if the index exists, but does not match the given spec.
+ *               `INDEX_STATUS_INVALID` in case of an error.
+ */
 static index_status
 check_index(aerospike *as, index_param *index, uint32_t timeout)
 {
@@ -1232,18 +2291,18 @@ cleanup0:
 	return res;
 }
 
-///
-/// Creates the given secondary indexes in the cluster.
-///
-/// @param as         The Aerospike client.
-/// @param index_vec  The secondary index information, as a vector of index_param.
-/// @param set_vec    The sets to be restored.
-/// @param count      The number of created secondary indexes.
-/// @param wait       Makes the function wait until each secondary index is fully built.
-/// @param timeout    The timeout for Aerospike command.
-///
-/// @result           `true`, if successful.
-///
+/*
+ * Creates the given secondary indexes in the cluster.
+ *
+ * @param as         The Aerospike client.
+ * @param index_vec  The secondary index information, as a vector of index_param.
+ * @param set_vec    The sets to be restored.
+ * @param count      The number of created secondary indexes.
+ * @param wait       Makes the function wait until each secondary index is fully built.
+ * @param timeout    The timeout for Aerospike command.
+ *
+ * @result           `true`, if successful.
+ */
 static bool
 restore_indexes(aerospike *as, as_vector *index_vec, as_vector *set_vec, volatile uint32_t *count,
 		bool wait, uint32_t timeout)
@@ -1419,18 +2478,18 @@ restore_indexes(aerospike *as, as_vector *index_vec, as_vector *set_vec, volatil
 	return true;
 }
 
-///
-/// Creates the given UDF files in the cluster.
-///
-/// @param as       The Aerospike client.
-/// @param udf_vec  The UDF files, as a vector of udf_param.
-/// @param count    The number of created UDF files.
-/// @param wait     Makes the function wait until each UDF file is acknowledged by all cluster
-///                 nodes.
-/// @param timeout  The timeout for Aerospike command.
-///
-/// @result         `true`, if successful.
-///
+/*
+ * Creates the given UDF files in the cluster.
+ *
+ * @param as       The Aerospike client.
+ * @param udf_vec  The UDF files, as a vector of udf_param.
+ * @param count    The number of created UDF files.
+ * @param wait     Makes the function wait until each UDF file is acknowledged by all cluster
+ *                 nodes.
+ * @param timeout  The timeout for Aerospike command.
+ *
+ * @result         `true`, if successful.
+ */
 static bool
 restore_udfs(aerospike *as, as_vector *udf_vec, volatile uint32_t *count, bool wait, uint32_t timeout)
 {
@@ -1526,14 +2585,14 @@ restore_udfs(aerospike *as, as_vector *udf_vec, volatile uint32_t *count, bool w
 	return true;
 }
 
-///
-/// Scans the given directory for backup files.
-///
-/// @param dir_path  The path of the directory to be scanned.
-/// @param file_vec  The paths of the found backup files, as a vector of strings.
-///
-/// @result          `true`, if successful.
-///
+/*
+ * Scans the given directory for backup files.
+ *
+ * @param dir_path  The path of the directory to be scanned.
+ * @param file_vec  The paths of the found backup files, as a vector of strings.
+ *
+ * @result          `true`, if successful.
+ */
 static bool
 get_backup_files(const char *dir_path, as_vector *file_vec)
 {
@@ -1595,16 +2654,16 @@ cleanup0:
 	return res;
 }
 
-///
-/// Parses a `item1[,item2[,...]]` string into a vector of strings.
-///
-/// @param which  The type of the list to be parsed. Only used in error messages.
-/// @param size   Maximal length of each individual list item.
-/// @param list   The string to be parsed.
-/// @param vec    The populated vector.
-///
-/// @result       `true`, if successful.
-///
+/*
+ * Parses a `item1[,item2[,...]]` string into a vector of strings.
+ *
+ * @param which  The type of the list to be parsed. Only used in error messages.
+ * @param size   Maximal length of each individual list item.
+ * @param list   The string to be parsed.
+ * @param vec    The populated vector.
+ *
+ * @result       `true`, if successful.
+ */
 static bool
 parse_list(const char *which, size_t size, char *list, as_vector *vec)
 {
@@ -1637,11 +2696,11 @@ cleanup0:
 	return res;
 }
 
-///
-/// Signal handler for `SIGINT` and `SIGTERM`.
-///
-/// @param sig  The signal number.
-///
+/*
+ * Signal handler for `SIGINT` and `SIGTERM`.
+ *
+ * @param sig  The signal number.
+ */
 static void
 sig_hand(int32_t sig)
 {
@@ -1650,23 +2709,23 @@ sig_hand(int32_t sig)
 	stop_nolock();
 }
 
-///
-/// Print the tool's version information.
-///
+/*
+ * Print the tool's version information.
+ */
 static void
 print_version(void)
 {
 	fprintf(stdout, "Aerospike Restore Utility\n");
 	fprintf(stdout, "Version %s\n", TOOL_VERSION);
 	fprintf(stdout, "C Client Version %s\n", aerospike_client_version);
-	fprintf(stdout, "Copyright 2015-2020 Aerospike. All rights reserved.\n");
+	fprintf(stdout, "Copyright 2015-2021 Aerospike. All rights reserved.\n");
 }
 
-///
-/// Displays usage information.
-///
-/// @param name  The actual name of the `asbackup` binary.
-///
+/*
+ * Displays usage information.
+ *
+ * @param name  The actual name of the `asbackup` binary.
+ */
 static void
 usage(const char *name)
 {
@@ -1710,6 +2769,7 @@ usage(const char *name)
 	fprintf(stderr, " --tls-enable         Enable TLS on connections. By default TLS is disabled.\n");
 	// Deprecated
 	//fprintf(stderr, " --tls-encrypt-only   Disable TLS certificate verification.\n");
+	fprintf(stderr, " --tls-name           The default tls-name to use to authenticate each TLS socket connection.\n");
 	fprintf(stderr, " --tls-cafile=TLS_CAFILE\n");
 	fprintf(stderr, "                      Path to a trusted CA certificate file.\n");
 	fprintf(stderr, " --tls-capath=TLS_CAPATH.\n");
@@ -1761,7 +2821,7 @@ usage(const char *name)
 
 	fprintf(stderr, "[asrestore]\n");
 	fprintf(stderr, "  -n, --namespace <namespace>\n");
-	fprintf(stderr, "                      The namespace to be backed up. Required.\n");
+	fprintf(stderr, "                      Used to restore to a different namespace.\n");
 	fprintf(stderr, "  -d, --directory <directory>\n");
 	fprintf(stderr, "                      The directory that holds the backup files. Required, \n");
 	fprintf(stderr, "                      unless -i is used.\n");
@@ -1782,8 +2842,10 @@ usage(const char *name)
 	fprintf(stderr, "                      Grabs the encryption key from the given file, which must be in PEM format.\n");
 	fprintf(stderr, "      --encryption-key-env <env_var_name>\n");
 	fprintf(stderr, "                      Grabs the encryption key from the given environment variable, which must be base-64 encoded.\n");
-	fprintf(stderr, "  -t, --threads\n");
+	fprintf(stderr, "  -t, --parallel\n");
 	fprintf(stderr, "                      The number of restore threads. Default: 20.\n");
+	fprintf(stderr, "  -t, --threads\n");
+	fprintf(stderr, "                      The number of restore threads. DEPRECATED: use 'parallel' now. Default: 20.\n");
 	fprintf(stderr, "  -m, --machine <path>\n");
 	fprintf(stderr, "                      Output machine-readable status updates to the given path, \n");
 	fprintf(stderr,"                       typically a FIFO.\n");
@@ -1809,7 +2871,7 @@ usage(const char *name)
 	fprintf(stderr, "                      exist in the namespace.\n");
 	fprintf(stderr, "  -l, --extra-ttl\n");
 	fprintf(stderr, "                      For records with expirable void-times, add N seconds of extra-ttl to the\n");
-	fprintf(stderr, "                      recorded void-time.");
+	fprintf(stderr, "                      recorded void-time.\n");
 	fprintf(stderr, "  -N, --nice <bandwidth>,<TPS>\n");
 	fprintf(stderr, "                      The limits for read storage bandwidth in MiB/s and \n");
 	fprintf(stderr, "                      write operations in TPS.\n");
@@ -1844,983 +2906,8 @@ usage(const char *name)
 	fprintf(stderr, "                      Read only this configuration file.\n");
 }
 
-
-///
-/// It all starts here.
-///
-int32_t
-restore_main(int32_t argc, char **argv)
-{
-	static struct option options[] = {
-
-		// Non Config file options
-		{ "verbose", no_argument, NULL, 'v' },
-		{ "usage", no_argument, NULL, 'Z' },
-		{ "help", no_argument, NULL, 'Z' },
-		{ "options", no_argument, NULL, 'Z' },
-		{ "version", no_argument, NULL, 'V' },
-
-		{ "instance", required_argument, 0, CONFIG_FILE_OPT_INSTANCE},
-		{ "config-file", required_argument, 0, CONFIG_FILE_OPT_FILE},
-		{ "no-config-file", no_argument, 0, CONFIG_FILE_OPT_NO_CONFIG_FILE},
-		{ "only-config-file", required_argument, 0, CONFIG_FILE_OPT_ONLY_CONFIG_FILE},
-
-		// Config options
-		{ "host", required_argument, 0, 'h'},
-		{ "port", required_argument, 0, 'p'},
-		{ "user", required_argument, 0, 'U'},
-		{ "password", optional_argument, 0, 'P'},
-		{ "auth", required_argument, 0, 'A' },
-
-		{ "tlsEnable", no_argument, NULL, TLS_OPT_ENABLE },
-		{ "tlsEncryptOnly", no_argument, NULL, TLS_OPT_ENCRYPT_ONLY },
-		{ "tlsCaFile", required_argument, NULL, TLS_OPT_CA_FILE },
-		{ "tlsCaPath", required_argument, NULL, TLS_OPT_CA_PATH },
-		{ "tlsProtocols", required_argument, NULL, TLS_OPT_PROTOCOLS },
-		{ "tlsCipherSuite", required_argument, NULL, TLS_OPT_CIPHER_SUITE },
-		{ "tlsCrlCheck", no_argument, NULL, TLS_OPT_CRL_CHECK },
-		{ "tlsCrlCheckAll", no_argument, NULL, TLS_OPT_CRL_CHECK_ALL },
-		{ "tlsCertBlackList", required_argument, NULL, TLS_OPT_CERT_BLACK_LIST },
-		{ "tlsLogSessionInfo", no_argument, NULL, TLS_OPT_LOG_SESSION_INFO },
-		{ "tlsKeyFile", required_argument, NULL, TLS_OPT_KEY_FILE },
-		{ "tlsCertFile", required_argument, NULL, TLS_OPT_CERT_FILE },
-
-		{ "tls-enable", no_argument, NULL, TLS_OPT_ENABLE },
-		{ "tls-cafile", required_argument, NULL, TLS_OPT_CA_FILE },
-		{ "tls-capath", required_argument, NULL, TLS_OPT_CA_PATH },
-		{ "tls-protocols", required_argument, NULL, TLS_OPT_PROTOCOLS },
-		{ "tls-cipher-suite", required_argument, NULL, TLS_OPT_CIPHER_SUITE },
-		{ "tls-crl-check", no_argument, NULL, TLS_OPT_CRL_CHECK },
-		{ "tls-crl-check-all", no_argument, NULL, TLS_OPT_CRL_CHECK_ALL },
-		{ "tls-cert-blackList", required_argument, NULL, TLS_OPT_CERT_BLACK_LIST },
-		{ "tls-keyfile", required_argument, NULL, TLS_OPT_KEY_FILE },
-		{ "tls-keyfile-password", optional_argument, NULL, TLS_OPT_KEY_FILE_PASSWORD },
-		{ "tls-certfile", required_argument, NULL, TLS_OPT_CERT_FILE },
-
-		// asrestore section in config file
-		{ "namespace", required_argument, NULL, 'n' },
-		{ "directory", required_argument, NULL, 'd' },
-		{ "input-file", required_argument, NULL, 'i' },
-		{ "compress", required_argument, NULL, 'z' },
-		// TODO clean short names up
-		{ "encrypt", required_argument, NULL, 'y' },
-		{ "encryption-key-file", required_argument, NULL, '1' },
-		{ "encryption-key-env", required_argument, NULL, '2' },
-		{ "threads", required_argument, NULL, 't' },
-		{ "machine", required_argument, NULL, 'm' },
-		{ "bin-list", required_argument, NULL, 'B' },
-		{ "set-list", required_argument, NULL, 's' },
-		{ "unique", no_argument, NULL, 'u' },
-		{ "ignore-record-error", no_argument, NULL, 'K'},
-		{ "replace", no_argument, NULL, 'r' },
-		{ "no-generation", no_argument, NULL, 'g' },
-		{ "extra-ttl", required_argument, NULL, 'l' },
-		{ "nice", required_argument, NULL, 'N' },
-		{ "no-records", no_argument, NULL, 'R' },
-		{ "no-indexes", no_argument, NULL, 'I' },
-		{ "indexes-last", no_argument, NULL, 'L' },
-		{ "no-udfs", no_argument, NULL, 'F' },
-		{ "wait", no_argument, NULL, 'w' },
-		{ "services-alternate", no_argument, NULL, 'S' },
-		{ "timeout", required_argument, 0, 'T' },
-		{ NULL, 0, NULL, 0 }
-	};
-
-	int32_t res = EXIT_FAILURE;
-
-	restore_config conf;
-	restore_config_default(&conf);
-	
-	conf.decoder = &(backup_decoder){ text_parse };
-
-	int32_t optcase;
-	uint64_t tmp;
-
-	// option string should start with '-' to avoid argv permutation
-	// we need same argv sequence in third check to support space separated optional argument value
-	while ((optcase = getopt_long(argc, argv, OPTIONS_SHORT, options, 0)) != -1) {
-		switch (optcase) {
-			case 'V':
-				print_version();
-				res = EXIT_SUCCESS;
-				goto cleanup1;
-
-			case 'Z':
-				usage(argv[0]);
-				res = EXIT_SUCCESS;
-				goto cleanup1;
-		}
-	}
-
-
-
-	char *config_fname = NULL;
-	bool read_conf_files = true;
-	bool read_only_conf_file = false;
-	char *instance = NULL;
-
-	// Reset to optind (internal variable)
-	// to parse all options again
-	optind = 0;
-	while ((optcase = getopt_long(argc, argv, OPTIONS_SHORT, options, 0)) != -1) {
-		switch (optcase) {
-
-			case CONFIG_FILE_OPT_FILE:
-				config_fname = optarg;
-				break;
-
-			case CONFIG_FILE_OPT_INSTANCE:
-				instance = optarg;
-				break;
-
-			case CONFIG_FILE_OPT_NO_CONFIG_FILE:
-				read_conf_files = false;
-				break;
-
-			case CONFIG_FILE_OPT_ONLY_CONFIG_FILE:
-				config_fname = optarg;
-				read_only_conf_file = true;
-				break;
-
-		}
-	}
-
-	if (read_conf_files) {
-		if (read_only_conf_file) {
-			if (! config_from_file(&conf, instance, config_fname, 0, false)) {
-				return false;
-			}
-		} else {
-			if (! config_from_files(&conf, instance, config_fname, false)) {
-				return false;
-			}
-		}
-	} else {
-		if (read_only_conf_file) {
-			fprintf(stderr, "--no-config-file and only-config-file are mutually exclusive option. Please enable only one.\n");
-			return false;
-		}
-	}
-
-	// Reset to optind (internal variable)
-	// to parse all options again
-	optind = 0;
-	while ((optcase = getopt_long(argc, argv, OPTIONS_SHORT, options, 0)) != -1) {
-		switch (optcase) {
-		case 'h':
-			conf.host = optarg;
-			break;
-
-		case 'p':
-			if (!better_atoi(optarg, &tmp) || tmp < 1 || tmp > 65535) {
-				err("Invalid port value %s", optarg);
-				goto cleanup1;
-			}
-
-			conf.port = (int32_t)tmp;
-			break;
-
-		case 'U':
-			conf.user = optarg;
-			break;
-
-		case 'P':
-			if (optarg) {
-				conf.password = optarg;
-			} else {
-				if (optind < argc && NULL != argv[optind] && '-' != argv[optind][0] ) {
-					// space separated argument value
-					conf.password = argv[optind++];
-				} else {
-					// No password specified should
-					// force it to default password
-					// to trigger prompt.
-					conf.password = DEFAULTPASSWORD;
-				}
-			}
-			break;
-
-		case 'A':
-			conf.auth_mode = optarg;
-			break;
-
-		case 'n':
-			conf.ns_list = safe_strdup(optarg);
-			break;
-
-		case 'd':
-			conf.directory = optarg;
-			break;
-
-		case 'i':
-			conf.input_file = safe_strdup(optarg);
-			break;
-
-		case 'z':
-			if (parse_compression_type(optarg, &conf.compress_mode) != 0) {
-				err("Invalid compression type \"%s\"\n", optarg);
-				goto cleanup1;
-			}
-			break;
-
-		case 'y':
-			if (parse_encryption_type(optarg, &conf.encrypt_mode) != 0) {
-				err("Invalid encryption type \"%s\"\n", optarg);
-				goto cleanup1;
-			}
-			break;
-
-		case '1':
-			// encryption key file
-			if (conf.pkey != NULL) {
-				err("Cannot specify both encryption-key-file and encryption-key-env\n");
-				goto cleanup1;
-			}
-			conf.pkey = (encryption_key_t*) cf_malloc(sizeof(encryption_key_t));
-			if (io_proxy_read_private_key_file(optarg, conf.pkey) != 0) {
-				goto cleanup1;
-			}
-			break;
-
-		case '2':
-			// encryption key environment variable
-			if (conf.pkey != NULL) {
-				err("Cannot specify both encryption-key-file and encryption-key-env\n");
-				goto cleanup1;
-			}
-			conf.pkey = parse_encryption_key_env(optarg);
-			if (conf.pkey == NULL) {
-				goto cleanup1;
-			}
-			break;
-
-		case 't':
-			if (!better_atoi(optarg, &tmp) || tmp < 1 || tmp > MAX_THREADS) {
-				err("Invalid threads value %s", optarg);
-				goto cleanup1;
-			}
-
-			conf.threads = (uint32_t)tmp;
-			break;
-
-		case 'v':
-			if (verbose) {
-				enable_client_log();
-			} else {
-				verbose = true;
-			}
-
-			break;
-
-		case 'm':
-			conf.machine = optarg;
-			break;
-
-		case 'B':
-			conf.bin_list = safe_strdup(optarg);
-			break;
-
-		case 's':
-			conf.set_list = safe_strdup(optarg);
-			break;
-
-		case 'K':
-			conf.ignore_rec_error = true;
-			break;
-
-		case 'u':
-			conf.unique = true;
-			break;
-
-		case 'r':
-			conf.replace = true;
-			break;
-
-		case 'g':
-			conf.no_generation = true;
-			break;
-
-		case 'l':
-			if (! better_atoi(optarg, &tmp)) {
-				err("Invalid extra-ttl value %s", optarg);
-				goto cleanup1;
-			}
-
-			conf.extra_ttl = (int32_t)tmp;
-			break;
-
-		case 'N':
-			conf.nice_list = safe_strdup(optarg);
-			break;
-
-		case 'R':
-			conf.no_records = true;
-			break;
-
-		case 'I':
-			conf.no_indexes = true;
-			break;
-
-		case 'L':
-			conf.indexes_last = true;
-			break;
-
-		case 'F':
-			conf.no_udfs = true;
-			break;
-
-		case 'w':
-			conf.wait = true;
-			break;
-
-		case 'S':
-			conf.use_services_alternate = true;
-			break;
-
-		case TLS_OPT_ENABLE:
-			conf.tls.enable = true;
-			break;
-
-		case TLS_OPT_CA_FILE:
-			conf.tls.cafile = safe_strdup(optarg);
-			break;
-
-		case TLS_OPT_CA_PATH:
-			conf.tls.capath = safe_strdup(optarg);
-			break;
-
-		case TLS_OPT_PROTOCOLS:
-			conf.tls.protocols = safe_strdup(optarg);
-			break;
-
-		case TLS_OPT_CIPHER_SUITE:
-			conf.tls.cipher_suite = safe_strdup(optarg);
-			break;
-
-		case TLS_OPT_CRL_CHECK:
-			conf.tls.crl_check = true;
-			break;
-
-		case TLS_OPT_CRL_CHECK_ALL:
-			conf.tls.crl_check_all = true;
-			break;
-
-		case TLS_OPT_CERT_BLACK_LIST:
-			conf.tls.cert_blacklist = safe_strdup(optarg);
-			break;
-
-		case TLS_OPT_LOG_SESSION_INFO:
-			conf.tls.log_session_info = true;
-			break;
-
-		case TLS_OPT_KEY_FILE:
-			conf.tls.keyfile = safe_strdup(optarg);
-			break;
-
-		case TLS_OPT_KEY_FILE_PASSWORD:
-			if (optarg) {
-				conf.tls.keyfile_pw = safe_strdup(optarg);
-			} else {
-				if (optind < argc && NULL != argv[optind] && '-' != argv[optind][0] ) {
-					// space separated argument value
-					conf.tls.keyfile_pw = safe_strdup(argv[optind++]);
-				} else {
-					// No password specified should
-					// force it to default password
-					// to trigger prompt.
-					conf.tls.keyfile_pw = safe_strdup(DEFAULTPASSWORD);
-				}
-			}
-			break;
-
-		case TLS_OPT_CERT_FILE:
-			conf.tls.certfile = safe_strdup(optarg);
-			break;
-
-		case 'T':
-			if (!better_atoi(optarg, &tmp)) {
-				err("Invalid timeout value %s", optarg);
-				goto cleanup1;
-			}
-
-			conf.timeout = (uint32_t)tmp;
-			break;
-
-		case CONFIG_FILE_OPT_FILE:
-		case CONFIG_FILE_OPT_INSTANCE:
-		case CONFIG_FILE_OPT_NO_CONFIG_FILE:
-		case CONFIG_FILE_OPT_ONLY_CONFIG_FILE:
-			break;
-
-		default:
-			usage(argv[0]);
-			goto cleanup1;
-		}
-	}
-
-	if (optind < argc) {
-		err("Unexpected trailing argument %s", argv[optind]);
-		goto cleanup1;
-	}
-
-	if (conf.directory != NULL && conf.input_file != NULL) {
-		err("Invalid options: --directory and --input-file are mutually exclusive.");
-		goto cleanup1;
-	}
-
-	if (conf.directory == NULL && conf.input_file == NULL) {
-		err("Please specify a directory (-d option) or an input file (-i option)");
-		goto cleanup1;
-	}
-
-	if (conf.unique && (conf.replace || conf.no_generation)) {
-		err("Invalid options: --unique is mutually exclusive with --replace and --no-generation.");
-		goto cleanup1;
-	}
-
-	if ((conf.pkey != NULL) ^ (conf.encrypt_mode != IO_PROXY_ENCRYPT_NONE)) {
-		err("Must specify both encryption mode and a private key "
-				"file/environment variable\n");
-		goto cleanup1;
-	}
-
-	signal(SIGINT, sig_hand);
-	signal(SIGTERM, sig_hand);
-
-	inf("Starting restore to %s (bins: %s, sets: %s) from %s", conf.host,
-			conf.bin_list == NULL ? "[all]" : conf.bin_list,
-			conf.set_list == NULL ? "[all]" : conf.set_list,
-			conf.input_file != NULL ?
-					strcmp(conf.input_file, "-") == 0 ? "[stdin]" : conf.input_file :
-					conf.directory);
-
-	FILE *mach_fd = NULL;
-
-	if (conf.machine != NULL && (mach_fd = fopen(conf.machine, "a")) == NULL) {
-		err_code("Error while opening machine-readable file %s", conf.machine);
-		goto cleanup1;
-	}
-
-	as_config as_conf;
-	as_config_init(&as_conf);
-	as_conf.conn_timeout_ms = conf.timeout;
-	as_conf.use_services_alternate = conf.use_services_alternate;
-
-	if (!as_config_add_hosts(&as_conf, conf.host, (uint16_t)conf.port)) {
-		err("Invalid host(s) string %s", conf.host);
-		goto cleanup2;
-	}
-
-	if (conf.auth_mode && ! as_auth_mode_from_string(&as_conf.auth_mode, conf.auth_mode)) {
-		err("Invalid authentication mode %s. Allowed values are INTERNAL / EXTERNAL / EXTERNAL_INSECURE\n",
-				conf.auth_mode);
-		goto cleanup2;
-	}
-
-	if (conf.user) {
-		if (strcmp(conf.password, DEFAULTPASSWORD) == 0) {
-			conf.password = getpass("Enter Password: ");
-		}
-
-		if (! as_config_set_user(&as_conf, conf.user, conf.password)) {
-			printf("Invalid password for user name `%s`\n", conf.user);
-			goto cleanup2;
-		}
-	}
-
-	if (conf.tls.keyfile && conf.tls.keyfile_pw) {
-		if (strcmp(conf.tls.keyfile_pw, DEFAULTPASSWORD) == 0) {
-			conf.tls.keyfile_pw = getpass("Enter TLS-Keyfile Password: ");
-		}
-
-		if (!tls_read_password(conf.tls.keyfile_pw, &conf.tls.keyfile_pw)) {
-			goto cleanup2;
-		}
-	}
-
-	memcpy(&as_conf.tls, &conf.tls, sizeof(as_config_tls));
-	memset(&conf.tls, 0, sizeof(conf.tls));
-
-	aerospike as;
-	aerospike_init(&as, &as_conf);
-	conf.as = &as;
-	as_error ae;
-
-	if (verbose) {
-		ver("Connecting to cluster");
-	}
-
-	if (aerospike_connect(&as, &ae) != AEROSPIKE_OK) {
-		err("Error while connecting to %s:%d - code %d: %s at %s:%d", conf.host, conf.port, ae.code,
-				ae.message, ae.file, ae.line);
-		goto cleanup3;
-	}
-
-	char (*node_names)[][AS_NODE_NAME_SIZE] = NULL;
-	uint32_t n_node_names;
-	get_node_names(as.cluster, NULL, 0, &node_names, &n_node_names);
-
-	inf("Processing %u node(s)", n_node_names);
-	conf.estimated_bytes = 0;
-	cf_atomic64_set(&conf.total_bytes, 0);
-	cf_atomic64_set(&conf.total_records, 0);
-	cf_atomic64_set(&conf.expired_records, 0);
-	cf_atomic64_set(&conf.skipped_records, 0);
-	cf_atomic64_set(&conf.ignored_records, 0);
-	cf_atomic64_set(&conf.inserted_records, 0);
-	cf_atomic64_set(&conf.existed_records, 0);
-	cf_atomic64_set(&conf.fresher_records, 0);
-	cf_atomic64_set(&conf.backoff_count, 0);
-	conf.index_count = 0;
-	conf.udf_count = 0;
-
-	pthread_t counter_thread;
-	counter_thread_args counter_args;
-	counter_args.conf = &conf;
-	counter_args.node_names = node_names;
-	counter_args.n_node_names = n_node_names;
-	counter_args.mach_fd = mach_fd;
-
-	if (verbose) {
-		ver("Creating counter thread");
-	}
-
-	if (pthread_create(&counter_thread, NULL, counter_thread_func, &counter_args) != 0) {
-		err_code("Error while creating counter thread");
-		goto cleanup4;
-	}
-
-	pthread_t restore_threads[MAX_THREADS];
-	restore_thread_args restore_args;
-	restore_args.conf = &conf;
-	restore_args.path = NULL;
-	restore_args.shared_fd = NULL;
-	restore_args.line_no = NULL;
-	restore_args.legacy = false;
-	cf_queue *job_queue = cf_queue_create(sizeof (restore_thread_args), true);
-
-	if (job_queue == NULL) {
-		err_code("Error while allocating job queue");
-		goto cleanup5;
-	}
-
-	uint32_t line_no;
-	void *fd_buf = NULL;
-	as_vector file_vec, index_vec, udf_vec, ns_vec, nice_vec, bin_vec, set_vec;
-	as_vector_inita(&file_vec, sizeof (void *), 25)
-	as_vector_inita(&index_vec, sizeof (index_param), 25);
-	as_vector_inita(&udf_vec, sizeof (udf_param), 25);
-	as_vector_inita(&ns_vec, sizeof (void *), 25);
-	as_vector_inita(&nice_vec, sizeof (void *), 25);
-	as_vector_inita(&bin_vec, sizeof (void *), 25);
-	as_vector_inita(&set_vec, sizeof (void *), 25);
-
-	if (conf.ns_list != NULL && !parse_list("namespace", AS_MAX_NAMESPACE_SIZE, conf.ns_list,
-			&ns_vec)) {
-		err("Error while parsing namespace list");
-		goto cleanup6;
-	}
-
-	if (ns_vec.size > 2) {
-		err("Invalid namespace option");
-		goto cleanup6;
-	}
-
-	if (conf.nice_list != NULL) {
-		if (!parse_list("nice", 10, conf.nice_list, &nice_vec)) {
-			err("Error while parsing nice list");
-			goto cleanup6;
-		}
-
-		if (nice_vec.size != 2) {
-			err("Invalid nice option");
-			goto cleanup6;
-		}
-
-		char *item0 = as_vector_get_ptr(&nice_vec, 0);
-		char *item1 = as_vector_get_ptr(&nice_vec ,1);
-
-		if (!better_atoi(item0, &tmp) || tmp < 1) {
-			err("Invalid bandwidth value %s", item0);
-			goto cleanup6;
-		}
-
-		conf.bandwidth = tmp * 1024 * 1024;
-
-		if (!better_atoi(item1, &tmp) || tmp < 1 || tmp > 1000000000) {
-			err("Invalid TPS value %s", item1);
-			goto cleanup6;
-		}
-
-		conf.tps = (uint32_t)tmp;
-	}
-
-	conf.bytes_limit = conf.bandwidth;
-	conf.records_limit = conf.tps;
-
-	if (conf.bin_list != NULL && !parse_list("bin", AS_BIN_NAME_MAX_SIZE, conf.bin_list,
-			&bin_vec)) {
-		err("Error while parsing bin list");
-		goto cleanup6;
-	}
-
-	if (conf.set_list != NULL && !parse_list("set", AS_SET_MAX_SIZE, conf.set_list, &set_vec)) {
-		err("Error while parsing set list");
-		goto cleanup6;
-	}
-
-	restore_args.ns_vec = &ns_vec;
-	restore_args.bin_vec = &bin_vec;
-	restore_args.set_vec = &set_vec;
-
-	// restoring from a directory
-	if (conf.directory != NULL) {
-		if (!get_backup_files(conf.directory, &file_vec)) {
-			err("Error while getting backup files");
-			goto cleanup6;
-		}
-
-		if (file_vec.size == 0) {
-			err("No backup files found");
-			goto cleanup6;
-		}
-
-		if (!conf.no_indexes || !conf.no_udfs) {
-			if (verbose) {
-				ver("Triaging %u backup file(s)", file_vec.size);
-			}
-
-			for (uint32_t i = 0; i < file_vec.size; ++i) {
-				char *path = as_vector_get_ptr(&file_vec, i);
-				io_read_proxy_t fd;
-				bool first;
-				off_t size;
-				bool legacy;
-
-				if (!open_file(path, restore_args.ns_vec, &fd, &fd_buf, &legacy,
-							&line_no, &first, NULL, &size, conf.compress_mode,
-							conf.encrypt_mode, conf.pkey)) {
-					err("Error while triaging backup file %s [1]", path);
-					goto cleanup7;
-				}
-
-				if (!conf.no_records) {
-					conf.estimated_bytes += size;
-				}
-
-				// backup file contains a META_FIRST_FILE tag, so it may contain secondary index
-				// information and UDF files
-				if (first) {
-					if (verbose) {
-						ver("Found first backup file: %s", path);
-					}
-
-					// read secondary index information and UDF files into index_vec and udf_vec
-					if (!get_indexes_and_udfs(&fd, restore_args.ns_vec, legacy, &conf, &line_no,
-							NULL, conf.no_indexes ? NULL : &index_vec, conf.no_udfs ? NULL : &udf_vec)) {
-						err("Error while reading index and UDF info from backup file %s", path);
-						close_file(&fd, &fd_buf);
-						goto cleanup7;
-					}
-				}
-
-				if (!close_file(&fd, &fd_buf)) {
-					err("Error while triaging backup file %s [2]", path);
-					goto cleanup8;
-				}
-			}
-		}
-
-		if (verbose) {
-			ver("Pushing %u exclusive job(s) to job queue", file_vec.size);
-		}
-
-		// push a job for each backup file
-		for (uint32_t i = 0; i < file_vec.size; ++i) {
-			restore_args.path = as_vector_get_ptr(&file_vec, i);
-
-			if (cf_queue_push(job_queue, &restore_args) != CF_QUEUE_OK) {
-				err("Error while queueing restore job");
-				goto cleanup8;
-			}
-		}
-
-		if (file_vec.size < conf.threads) {
-			conf.threads = file_vec.size;
-		}
-	}
-	// restoring from a single backup file
-	else {
-		inf("Restoring %s", conf.input_file);
-
-		restore_args.shared_fd =
-			(io_read_proxy_t*) cf_malloc(sizeof(io_read_proxy_t));
-		// open the file, file descriptor goes to restore_args.shared_fd
-		if (!open_file(conf.input_file, restore_args.ns_vec, restore_args.shared_fd, &fd_buf,
-				&restore_args.legacy, &line_no, NULL, &conf.total_bytes,
-				conf.no_records ? NULL : &conf.estimated_bytes,
-				conf.compress_mode, conf.encrypt_mode, conf.pkey)) {
-			err("Error while opening shared backup file");
-			goto cleanup6;
-		}
-
-		if (verbose) {
-			ver("Pushing %u shared job(s) to job queue", conf.threads);
-		}
-
-		// read secondary index information and UDF files into index_vec and udf_vec
-		if ((!conf.no_indexes || !conf.no_udfs) && !get_indexes_and_udfs(restore_args.shared_fd,
-				restore_args.ns_vec, restore_args.legacy, &conf, &line_no, &conf.total_bytes,
-				conf.no_indexes ? NULL : &index_vec, conf.no_udfs ? NULL : &udf_vec)) {
-			err("Error while reading index and UDF info from backup file %s", conf.input_file);
-			goto cleanup7;
-		}
-
-		restore_args.line_no = &line_no;
-		restore_args.path = conf.input_file;
-
-		// push an identical job for each thread; all threads use restore_args.shared_fd for reading
-		for (uint32_t i = 0; i < conf.threads; ++i) {
-			if (cf_queue_push(job_queue, &restore_args) != CF_QUEUE_OK) {
-				err("Error while queueing restore job");
-				goto cleanup8;
-			}
-		}
-	}
-
-	if (!conf.no_udfs && !restore_udfs(&as, &udf_vec, &conf.udf_count, conf.wait, conf.timeout)) {
-		err("Error while restoring UDFs to cluster");
-		goto cleanup8;
-	}
-
-	if (!conf.no_indexes && !conf.indexes_last &&
-			!restore_indexes(&as, &index_vec, &set_vec, &conf.index_count, conf.wait, conf.timeout)) {
-		err("Error while restoring secondary indexes to cluster");
-		goto cleanup8;
-	}
-
-	if (conf.no_records) {
-		res = EXIT_SUCCESS;
-		goto cleanup9;
-	}
-
-	inf("Restoring records");
-	uint32_t threads_ok = 0;
-
-	if (verbose) {
-		ver("Creating %u restore thread(s)", conf.threads);
-	}
-
-	for (uint32_t i = 0; i < conf.threads; ++i) {
-		if (pthread_create(&restore_threads[i], NULL, restore_thread_func, job_queue) != 0) {
-			err_code("Error while creating restore thread");
-			goto cleanup10;
-		}
-
-		++threads_ok;
-	}
-
-	res = EXIT_SUCCESS;
-
-cleanup10:
-	if (verbose) {
-		ver("Waiting for %u restore thread(s)", threads_ok);
-	}
-
-	void *thread_res;
-
-	for (uint32_t i = 0; i < threads_ok; i++) {
-		if (pthread_join(restore_threads[i], &thread_res) != 0) {
-			err_code("Error while joining restore thread");
-			stop();
-			res = EXIT_FAILURE;
-		}
-
-		if (thread_res != (void *)EXIT_SUCCESS) {
-			if (verbose) {
-				ver("Restore thread failed");
-			}
-
-			res = EXIT_FAILURE;
-		}
-	}
-
-cleanup9:
-	if (res == EXIT_SUCCESS && !conf.no_indexes && conf.indexes_last &&
-			!restore_indexes(&as, &index_vec, &set_vec, &conf.index_count, conf.wait, conf.timeout)) {
-		err("Error while restoring secondary indexes to cluster");
-		res = EXIT_FAILURE;
-	}
-
-cleanup8:
-	free_indexes(&index_vec);
-	free_udfs(&udf_vec);
-
-cleanup7:
-	if (conf.directory != NULL) {
-		for (uint32_t i = 0; i < file_vec.size; ++i) {
-			cf_free(as_vector_get_ptr(&file_vec, i));
-		}
-	}
-	else {
-		if (!close_file(restore_args.shared_fd, &fd_buf)) {
-			err("Error while closing shared backup file");
-			res = EXIT_FAILURE;
-		}
-		cf_free(restore_args.shared_fd);
-	}
-
-cleanup6:
-	as_vector_destroy(&set_vec);
-	as_vector_destroy(&bin_vec);
-	as_vector_destroy(&nice_vec);
-	as_vector_destroy(&ns_vec);
-	as_vector_destroy(&udf_vec);
-	as_vector_destroy(&index_vec);
-	as_vector_destroy(&file_vec);
-	cf_queue_destroy(job_queue);
-
-cleanup5:
-	stop();
-
-	if (verbose) {
-		ver("Waiting for counter thread");
-	}
-
-	if (pthread_join(counter_thread, NULL) != 0) {
-		err_code("Error while joining counter thread");
-		res = EXIT_FAILURE;
-	}
-
-cleanup4:
-	if (node_names != NULL) {
-		cf_free(node_names);
-	}
-
-	aerospike_close(&as, &ae);
-
-cleanup3:
-	aerospike_destroy(&as);
-
-cleanup2:
-	if (mach_fd != NULL) {
-		fclose(mach_fd);
-	}
-
-cleanup1:
-	restore_config_destroy(&conf);
-
-	if (verbose) {
-		ver("Exiting with status code %d", res);
-	}
-
-	return res;
-}
-
-void
-restore_config_default(restore_config *conf)
-{
-	conf->host = DEFAULT_HOST;
-	conf->use_services_alternate = false;
-	conf->port = DEFAULT_PORT;
-	conf->user = NULL;
-	conf->password = DEFAULTPASSWORD;
-	conf->auth_mode = NULL;
-
-	conf->threads = DEFAULT_THREADS;
-	conf->nice_list = NULL;
-	conf->no_records = false;
-	conf->no_indexes = false;
-	conf->indexes_last = false;
-	conf->no_udfs = false;
-	conf->wait = false;
-	conf->ns_list = NULL;
-	conf->directory = NULL;
-	conf->input_file = NULL;
-	conf->machine = NULL;
-	conf->bin_list = NULL;
-	conf->set_list = NULL;
-	conf->pkey = NULL;
-	conf->compress_mode = IO_PROXY_COMPRESS_NONE;
-	conf->encrypt_mode = IO_PROXY_ENCRYPT_NONE;
-	conf->ignore_rec_error = false;
-	conf->unique = false;
-	conf->replace = false;
-	conf->extra_ttl = 0;
-	conf->no_generation = false;
-	conf->bandwidth = 0;
-	conf->tps = 0;
-	conf->timeout = TIMEOUT;
-	memset(&conf->tls, 0, sizeof(as_config_tls));
-
-	conf->as = NULL;
-	conf->decoder = NULL;
-}
-
-void
-restore_config_destroy(restore_config *conf)
-{
-	if (conf->pkey != NULL) {
-		encryption_key_free(conf->pkey);
-		cf_free(conf->pkey);
-	}
-
-	if (conf->set_list != NULL) {
-		cf_free(conf->set_list);
-	}
-
-	if (conf->bin_list != NULL) {
-		cf_free(conf->bin_list);
-	}
-
-	if (conf->ns_list != NULL) {
-		cf_free(conf->ns_list);
-	}
-
-	if (conf->input_file != NULL) {
-		cf_free(conf->input_file);
-	}
-
-	if (conf->nice_list != NULL) {
-		cf_free(conf->nice_list);
-	}
-
-	if (conf->tls.cafile != NULL) {
-		cf_free(conf->tls.cafile);
-	}
-
-	if (conf->tls.capath != NULL) {
-		cf_free(conf->tls.capath);
-	}
-
-	if (conf->tls.protocols != NULL) {
-		cf_free(conf->tls.protocols);
-	}
-
-	if (conf->tls.cipher_suite != NULL) {
-		cf_free(conf->tls.cipher_suite);
-	}
-
-	if (conf->tls.cert_blacklist != NULL) {
-		cf_free(conf->tls.cert_blacklist);
-	}
-
-	if (conf->tls.keyfile != NULL) {
-		cf_free(conf->tls.keyfile);
-	}
-
-	if (conf->tls.keyfile_pw != NULL) {
-		cf_free(conf->tls.keyfile_pw);
-	}
-
-	if (conf->tls.certfile != NULL) {
-		cf_free(conf->tls.certfile);
-	}
-
-}
-
 static void
-print_stat(per_thread_context *ptc, cf_clock *prev_log, uint64_t *prev_records,	
+print_stat(per_thread_context_t *ptc, cf_clock *prev_log, uint64_t *prev_records,	
 		cf_clock *now, cf_clock *store_time, cf_clock *read_time)
 {
 	ptc->read_time += *read_time;
@@ -2848,3 +2935,4 @@ print_stat(per_thread_context *ptc, cf_clock *prev_log, uint64_t *prev_records,
 	*prev_log = *now;
 	*prev_records = ptc->stat_records;
 }
+

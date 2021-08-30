@@ -44,7 +44,14 @@
  * number of encrypt blocks to buffer (to make one large encrypt call rather
  * than many small ones)
  */
-#define N_BUFFERED_BLOCKS 32
+#define N_BUFFERED_BLOCKS 256
+
+/*
+ * the default size to make the io_proxy buffer when not using compression or
+ * encryption
+ */
+#define IO_PROXY_DEFAULT_BUFFER_SIZE \
+	(N_BUFFERED_BLOCKS * AES_BLOCK_SIZE)
 
 /*
  * specifies which type of io_proxy this is (read vs. write)
@@ -64,6 +71,12 @@
  * can be checked with io_proxy_error
  */
 #define IO_PROXY_ERROR 0x20
+
+/*
+ * indicates that the io proxy should buffer writes to the file even if no
+ * compression/encryption is being done
+ */
+#define IO_PROXY_ALWAYS_BUFFER 0x40
 
 /*
  * the size in bytes of the buffer used by io_proxy_printf
@@ -119,6 +132,21 @@ typedef struct io_proxy_s {
 	FILE* fd;
 
 	consumer_buffer_t buffer;
+
+	// write_proxy: the total number of bytes written to the file, after compression
+	// read_proxy: the total number of bytes read from the file
+	uint64_t byte_cnt;
+
+	union {
+		// for write_proxy: the total number of uncomrpessed bytes that have
+		// passed through io->buffer
+		uint64_t raw_byte_cnt;
+
+		// for read_proxy: the total number of compressed bytes that have passed
+		// through all buffers (i.e. have already been read and are no longer
+		// sitting in any buffer)
+		uint64_t parsed_byte_cnt;
+	};
 
 	// global offset of this buffer in the file being written to, modulo
 	// AES_BLOCK_SIZE
@@ -192,6 +220,11 @@ int io_write_proxy_init(io_write_proxy_t*, FILE* file);
 int io_read_proxy_init(io_read_proxy_t*, FILE* file);
 
 /*
+ * sets the IO_PROXY_ALWAYS_BUFFER flag
+ */
+void io_proxy_always_buffer(io_proxy_t*);
+
+/*
  * enables encrypting of data through this io proxy
  *
  * this must be called before any read/write calls are made on the proxy
@@ -223,6 +256,16 @@ int io_proxy_init_compression(io_proxy_t*, compression_opt comp_mode);
 void io_proxy_free(io_proxy_t*);
 
 /*
+ * returns true if the io_proxy has compression enabled
+ */
+__attribute__((pure)) bool io_proxy_do_compress(const io_proxy_t* io);
+
+/*
+ * returns true if the io_proxy has encryption enabled
+ */
+__attribute__((pure)) bool io_proxy_do_encrypt(const io_proxy_t* io);
+
+/*
  * parses the compression string, assigning the matching enum value to opt and
  * returning 0, or returning -1 if the type is unknown
  */
@@ -234,6 +277,23 @@ int parse_compression_type(const char* comp_str, compression_opt* opt);
  */
 int parse_encryption_type(const char* enc_str, encryption_opt* opt);
 
+
+/*
+ * returns the number of bytes that have been written to the file, excluding
+ * those that are still in the buffers
+ */
+int64_t io_write_proxy_bytes_written(const io_write_proxy_t*);
+
+/*
+ * returns the raw number of uncomrpessed bytes that have been passed to the
+ * file
+ */
+int64_t io_write_proxy_absolute_pos(const io_write_proxy_t*);
+
+/*
+ * returns an estimate of the number of compressed bytes read from the file
+ */
+int64_t io_read_proxy_estimate_pos(const io_read_proxy_t*);
 
 /*
  * writes a block of text to the io proxy, returning the number of bytes

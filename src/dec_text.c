@@ -30,62 +30,62 @@
 
 static inline bool text_check_floating_point(const char *buffer, size_t len);
 static inline bool text_nul_read_until(io_read_proxy_t *fd, uint32_t *line_no,
-		uint32_t *col_no, int64_t *bytes, char *buffer, size_t size, bool digits,
+		uint32_t *col_no, char *buffer, size_t size, bool digits,
 		bool neg, bool fp, char *delim, bool unesc);
 static inline bool text_nul_read_token(io_read_proxy_t *fd, bool legacy,
-		uint32_t *line_no, uint32_t *col_no, int64_t *bytes, char *buffer,
+		uint32_t *line_no, uint32_t *col_no, char *buffer,
 		size_t size, char *delim);
 static inline bool text_read_size(io_read_proxy_t *fd, bool legacy,
-		uint32_t *line_no, uint32_t *col_no, int64_t *bytes, size_t *value,
+		uint32_t *line_no, uint32_t *col_no, size_t *value,
 		char *delim);
 static inline bool text_read_boolean(io_read_proxy_t *fd, bool legacy,
-		uint32_t *line_no, uint32_t *col_no, int64_t *bytes, bool *value,
+		uint32_t *line_no, uint32_t *col_no, bool *value,
 		char *delim);
 static inline bool text_read_integer(io_read_proxy_t *fd, bool legacy,
-		uint32_t *line_no, uint32_t *col_no, int64_t *bytes, int64_t *value,
+		uint32_t *line_no, uint32_t *col_no, int64_t *value,
 		char *delim);
 static inline bool text_read_double(io_read_proxy_t *fd, bool legacy,
-		uint32_t *line_no, uint32_t *col_no, int64_t *bytes, double *value,
+		uint32_t *line_no, uint32_t *col_no, double *value,
 		char *delim);
 static bool text_parse_string(io_read_proxy_t *fd, bool legacy,
-		uint32_t *line_no, uint32_t *col_no, int64_t *bytes, void **buffer,
+		uint32_t *line_no, uint32_t *col_no, void **buffer,
 		size_t *size, size_t extra);
 static bool text_parse_data(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
-		uint32_t *col_no, int64_t *bytes, void **buffer, size_t *size,
+		uint32_t *col_no, void **buffer, size_t *size,
 		size_t extra);
 static bool text_parse_data_dec(io_read_proxy_t *fd, bool legacy,
-		uint32_t *line_no, uint32_t *col_no, int64_t *bytes, void **buffer,
+		uint32_t *line_no, uint32_t *col_no, void **buffer,
 		size_t *size, size_t extra);
 static bool text_parse_key(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
-		uint32_t *col_no, int64_t *bytes, as_record *rec);
+		uint32_t *col_no, as_record *rec);
 static bool text_parse_namespace(io_read_proxy_t *fd, bool legacy,
-		as_vector *ns_vec, uint32_t *line_no, uint32_t *col_no, int64_t *bytes,
+		as_vector *ns_vec, uint32_t *line_no, uint32_t *col_no,
 		as_record *rec);
 static bool text_parse_digest(io_read_proxy_t *fd, uint32_t *line_no,
-		uint32_t *col_no, int64_t *bytes, as_record *rec);
+		uint32_t *col_no, as_record *rec);
 static bool text_parse_set(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
-		uint32_t *col_no, int64_t *bytes, as_record *rec);
+		uint32_t *col_no, as_record *rec);
 static bool text_parse_generation(io_read_proxy_t *fd, bool legacy,
-		uint32_t *line_no, uint32_t *col_no, int64_t *bytes, as_record *rec);
+		uint32_t *line_no, uint32_t *col_no, as_record *rec);
 static bool text_parse_expiration(io_read_proxy_t *fd, bool legacy,
-		uint32_t *line_no, uint32_t *col_no, int64_t *bytes, as_record *rec,
+		uint32_t *line_no, uint32_t *col_no, as_record *rec,
 		int32_t extra_ttl, bool *expired);
 static bool text_bytes_label_to_type(int32_t label, as_bytes_type *type);
 static bool text_parse_bin(io_read_proxy_t *fd, bool legacy, as_vector *bin_vec,
-		uint32_t *line_no, uint32_t *col_no, int64_t *bytes, as_record *rec);
+		uint32_t *line_no, uint32_t *col_no, as_record *rec);
 static bool text_parse_bins(io_read_proxy_t *fd, bool legacy,
-		as_vector *bin_vec, uint32_t *line_no, uint32_t *col_no, int64_t *bytes,
+		as_vector *bin_vec, uint32_t *line_no, uint32_t *col_no,
 		as_record *rec);
 static decoder_status text_parse_record(io_read_proxy_t *fd, bool legacy,
 		as_vector *ns_vec, as_vector *bin_vec, uint32_t *line_no,
-		uint32_t *col_no, int64_t *bytes, as_record *rec, int32_t extra_ttl,
+		uint32_t *col_no, as_record *rec, int32_t extra_ttl,
 		bool *expired);
 static decoder_status text_parse_index(io_read_proxy_t *fd, as_vector *ns_vec,
-		uint32_t *line_no, uint32_t *col_no, int64_t *bytes, index_param *index);
+		uint32_t *line_no, uint32_t *col_no, index_param *index);
 static decoder_status text_parse_udf(io_read_proxy_t *fd, uint32_t *line_no,
-		uint32_t *col_no, int64_t *bytes, udf_param *udf);
+		uint32_t *col_no, udf_param *udf);
 static decoder_status text_parse_global(io_read_proxy_t *fd, as_vector *ns_vec,
-		uint32_t *line_no, uint32_t *col_no, int64_t *bytes, index_param *index,
+		uint32_t *line_no, uint32_t *col_no, index_param *index,
 		udf_param *udf);
 
 
@@ -100,12 +100,10 @@ static decoder_status text_parse_global(io_read_proxy_t *fd, as_vector *ns_vec,
  */
 decoder_status
 text_parse(io_read_proxy_t *fd, bool legacy, as_vector *ns_vec,
-		as_vector *bin_vec, uint32_t *orig_line_no, cf_atomic64 *total,
-		as_record *rec, int32_t extra_ttl, bool *expired, index_param *index,
-		udf_param *udf)
+		as_vector *bin_vec, uint32_t *orig_line_no, as_record *rec,
+		int32_t extra_ttl, bool *expired, index_param *index, udf_param *udf)
 {
 	decoder_status res = DECODER_ERROR;
-	int64_t bytes = 0;
 
 	uint32_t line_no[2] = { *orig_line_no, *orig_line_no };
 	uint32_t col_no[2] = { 1, 2 };
@@ -126,15 +124,13 @@ text_parse(io_read_proxy_t *fd, bool legacy, as_vector *ns_vec,
 		goto out;
 	}
 
-	++bytes;
-
 	if (!legacy && ch == GLOBAL_PREFIX[0]) {
-		res = text_parse_global(fd, ns_vec, line_no, col_no, &bytes, index, udf);
+		res = text_parse_global(fd, ns_vec, line_no, col_no, index, udf);
 		goto out;
 	}
 
 	if (ch == RECORD_META_PREFIX[0]) {
-		res = text_parse_record(fd, legacy, ns_vec, bin_vec, line_no, col_no, &bytes, rec,
+		res = text_parse_record(fd, legacy, ns_vec, bin_vec, line_no, col_no, rec,
 				extra_ttl, expired);
 		goto out;
 	}
@@ -143,10 +139,6 @@ text_parse(io_read_proxy_t *fd, bool legacy, as_vector *ns_vec,
 			col_no[0]);
 
 out:
-	if (total != NULL) {
-		cf_atomic64_add(total, bytes);
-	}
-
 	*orig_line_no = line_no[1];
 	return res;
 }
@@ -229,7 +221,6 @@ text_check_floating_point(const char *buffer, size_t len)
  * @param fd       The file descriptor of the backup file.
  * @param line_no  The current line number.
  * @param col_no   The current column number.
- * @param bytes    Increased by the number of bytes read from the file descriptor.
  * @param buffer   The buffer to store the read data.
  * @param size     The size of the supplied buffer.
  * @param digits   Indicates that only digits are valid data.
@@ -242,14 +233,14 @@ text_check_floating_point(const char *buffer, size_t len)
  */
 static inline bool
 text_nul_read_until(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
-		int64_t *bytes, char *buffer, size_t size, bool digits, bool neg,
+		char *buffer, size_t size, bool digits, bool neg,
 		bool fp, char *delim, bool unesc)
 {
 	size_t len = 0;
 	bool esc = false;
 
 	while (true) {
-		int32_t ch = peek_char(fd, line_no, col_no, bytes);
+		int32_t ch = peek_char(fd, line_no, col_no);
 
 		if (ch == EOF) {
 			return false;
@@ -257,7 +248,7 @@ text_nul_read_until(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
 
 		if (unesc && ch == '\\' && !esc) {
 			esc = true;
-			read_char(fd, line_no, col_no, bytes);
+			read_char(fd, line_no, col_no);
 			continue;
 		}
 
@@ -266,7 +257,7 @@ text_nul_read_until(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
 			buffer[len] = 0;
 			return true;
 		}
-		read_char(fd, line_no, col_no, bytes);
+		read_char(fd, line_no, col_no);
 
 		esc = false;
 
@@ -302,7 +293,6 @@ text_nul_read_until(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
  * @param legacy   Indicates a version 3.0 backup file.
  * @param line_no  The current line number.
  * @param col_no   The current column number.
- * @param bytes    Increased by the number of bytes read from the file descriptor.
  * @param buffer   The buffer to store the read data.
  * @param size     The size of the supplied buffer.
  * @param delim    The delimiter characters as a NUL-terminated string.
@@ -311,10 +301,10 @@ text_nul_read_until(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
  */
 static inline bool
 text_nul_read_token(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
-		uint32_t *col_no, int64_t *bytes, char *buffer, size_t size,
+		uint32_t *col_no, char *buffer, size_t size,
 		char *delim)
 {
-	return text_nul_read_until(fd, line_no, col_no, bytes, buffer, size, false,
+	return text_nul_read_until(fd, line_no, col_no, buffer, size, false,
 			false, false, delim, !legacy);
 }
 
@@ -328,7 +318,6 @@ text_nul_read_token(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
  * @param legacy   Indicates a version 3.0 backup file.
  * @param line_no  The current line number.
  * @param col_no   The current column number.
- * @param bytes    Increased by the number of bytes read from the file descriptor.
  * @param value    The parsed size.
  * @param delim    The delimiter characters as a NUL-terminated string.
  *
@@ -336,11 +325,11 @@ text_nul_read_token(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
  */
 static inline bool
 text_read_size(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
-		uint32_t *col_no, int64_t *bytes, size_t *value, char *delim)
+		uint32_t *col_no, size_t *value, char *delim)
 {
 	char buffer[MAX_TOKEN_SIZE];
 
-	if (!text_nul_read_until(fd, line_no, col_no, bytes, buffer, sizeof buffer,
+	if (!text_nul_read_until(fd, line_no, col_no, buffer, sizeof buffer,
 				true, false, false, delim, !legacy)) {
 		return false;
 	}
@@ -370,7 +359,6 @@ text_read_size(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
  * @param legacy   Indicates a version 3.0 backup file.
  * @param line_no  The current line number.
  * @param col_no   The current column number.
- * @param bytes    Increased by the number of bytes read from the file descriptor.
  * @param value    The parsed value.
  * @param delim    The delimiter characters as a NUL-terminated string.
  *
@@ -378,11 +366,11 @@ text_read_size(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
  */
 static inline bool
 text_read_boolean(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
-		uint32_t *col_no, int64_t *bytes, bool *value, char *delim)
+		uint32_t *col_no, bool *value, char *delim)
 {
 	char buffer[MAX_TOKEN_SIZE];
 
-	if (!text_nul_read_until(fd, line_no, col_no, bytes, buffer, sizeof buffer,
+	if (!text_nul_read_until(fd, line_no, col_no, buffer, sizeof buffer,
 				false, false, false, delim, !legacy)) {
 		return false;
 	}
@@ -410,7 +398,6 @@ text_read_boolean(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
  * @param legacy   Indicates a version 3.0 backup file.
  * @param line_no  The current line number.
  * @param col_no   The current column number.
- * @param bytes    Increased by the number of bytes read from the file descriptor.
  * @param value    The parsed value.
  * @param delim    The delimiter characters as a NUL-terminated string.
  *
@@ -418,11 +405,11 @@ text_read_boolean(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
  */
 static inline bool
 text_read_integer(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
-		uint32_t *col_no, int64_t *bytes, int64_t *value, char *delim)
+		uint32_t *col_no, int64_t *value, char *delim)
 {
 	char buffer[MAX_TOKEN_SIZE];
 
-	if (!text_nul_read_until(fd, line_no, col_no, bytes, buffer, sizeof buffer,
+	if (!text_nul_read_until(fd, line_no, col_no, buffer, sizeof buffer,
 				true, true, false, delim, !legacy)) {
 		return false;
 	}
@@ -459,7 +446,6 @@ text_read_integer(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
  * @param legacy   Indicates a version 3.0 backup file.
  * @param line_no  The current line number.
  * @param col_no   The current column number.
- * @param bytes    Increased by the number of bytes read from the file descriptor.
  * @param value    The parsed value.
  * @param delim    The delimiter characters as a NUL-terminated string.
  *
@@ -467,11 +453,11 @@ text_read_integer(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
  */
 static inline bool
 text_read_double(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
-		uint32_t *col_no, int64_t *bytes, double *value, char *delim)
+		uint32_t *col_no, double *value, char *delim)
 {
 	char buffer[MAX_TOKEN_SIZE];
 
-	if (!text_nul_read_until(fd, line_no, col_no, bytes, buffer, sizeof buffer,
+	if (!text_nul_read_until(fd, line_no, col_no, buffer, sizeof buffer,
 				false, false, true, delim, !legacy)) {
 		return false;
 	}
@@ -498,7 +484,6 @@ text_read_double(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
  * @param legacy   Indicates a version 3.0 backup file.
  * @param line_no  The current line number.
  * @param col_no   The current column number.
- * @param bytes    Increased by the number of bytes read from the file descriptor.
  * @param buffer   The buffer allocated for the string.
  * @param size     The size of the string.
  * @param extra    The amount of extra memory to allocate.
@@ -507,21 +492,21 @@ text_read_double(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
  */
 static bool
 text_parse_string(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
-		uint32_t *col_no, int64_t *bytes, void **buffer, size_t *size,
+		uint32_t *col_no, void **buffer, size_t *size,
 		size_t extra)
 {
-	if (!text_read_size(fd, legacy, line_no, col_no, bytes, size, " ")) {
+	if (!text_read_size(fd, legacy, line_no, col_no, size, " ")) {
 		err("Error while reading string size");
 		return false;
 	}
 
-	if (!expect_char(fd, line_no, col_no, bytes, ' ')) {
+	if (!expect_char(fd, line_no, col_no, ' ')) {
 		return false;
 	}
 
 	*buffer = safe_malloc(*size + extra);
 
-	if (!read_block(fd, line_no, col_no, bytes, *buffer, *size)) {
+	if (!read_block(fd, line_no, col_no, *buffer, *size)) {
 		err("Error while reading string data");
 		cf_free(*buffer);
 		return false;
@@ -537,7 +522,6 @@ text_parse_string(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
  * @param legacy   Indicates a version 3.0 backup file.
  * @param line_no  The current line number.
  * @param col_no   The current column number.
- * @param bytes    Increased by the number of bytes read from the file descriptor.
  * @param buffer   The buffer allocated for the BLOB.
  * @param size     The size of the BLOB.
  * @param extra    The amount of extra memory to allocate.
@@ -546,21 +530,21 @@ text_parse_string(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
  */
 static bool
 text_parse_data(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
-		uint32_t *col_no, int64_t *bytes, void **buffer, size_t *size,
+		uint32_t *col_no, void **buffer, size_t *size,
 		size_t extra)
 {
-	if (!text_read_size(fd, legacy, line_no, col_no, bytes, size, " ")) {
+	if (!text_read_size(fd, legacy, line_no, col_no, size, " ")) {
 		err("Error while reading data size");
 		return false;
 	}
 
-	if (!expect_char(fd, line_no, col_no, bytes, ' ')) {
+	if (!expect_char(fd, line_no, col_no, ' ')) {
 		return false;
 	}
 
 	*buffer = safe_malloc(*size + extra);
 
-	if (!read_block(fd, line_no, col_no, bytes, *buffer, *size)) {
+	if (!read_block(fd, line_no, col_no, *buffer, *size)) {
 		err("Error while reading data");
 		cf_free(*buffer);
 		return false;
@@ -576,7 +560,6 @@ text_parse_data(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
  * @param legacy   Indicates a version 3.0 backup file.
  * @param line_no  The current line number.
  * @param col_no   The current column number.
- * @param bytes    Increased by the number of bytes read from the file descriptor.
  * @param buffer   The buffer allocated for the string.
  * @param size     The size of the string.
  * @param extra    The amount of extra memory to allocate.
@@ -585,12 +568,12 @@ text_parse_data(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
  */
 static bool
 text_parse_data_dec(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
-		uint32_t *col_no, int64_t *bytes, void **buffer, size_t *size,
+		uint32_t *col_no, void **buffer, size_t *size,
 		size_t extra)
 {
 	size_t enc_size;
 
-	if (!text_read_size(fd, legacy, line_no, col_no, bytes, &enc_size, " ")) {
+	if (!text_read_size(fd, legacy, line_no, col_no, &enc_size, " ")) {
 		err("Error while reading encoded data size");
 		return false;
 	}
@@ -601,25 +584,17 @@ text_parse_data_dec(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
 		return false;
 	}
 
-	if (!expect_char(fd, line_no, col_no, bytes, ' ')) {
+	if (!expect_char(fd, line_no, col_no, ' ')) {
 		return false;
 	}
 
-	int64_t orig_bytes = *bytes;
 	b64_context b64_cont = { 0, 9999, { 99, 99 }};
 	// over-estimates the decoded size by up to 2 bytes (includes the padding)
 	size_t dec_size = enc_size / 4 * 3;
 	*buffer = safe_malloc(dec_size + extra);
 
-	if (!read_block_dec(fd, line_no, col_no, bytes, *buffer, dec_size, &b64_cont)) {
+	if (!read_block_dec(fd, line_no, col_no, *buffer, dec_size, &b64_cont)) {
 		err("Error while reading encoded data");
-		cf_free(*buffer);
-		return false;
-	}
-
-	if ((size_t)(*bytes - orig_bytes) != enc_size) {
-		err("Encoded data size mismatch: %zu vs. %" PRId64 " (line %u, col %u)", enc_size,
-				*bytes - orig_bytes, line_no[0], col_no[0]);
 		cf_free(*buffer);
 		return false;
 	}
@@ -636,16 +611,15 @@ text_parse_data_dec(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
  * @param legacy   Indicates a version 3.0 backup file.
  * @param line_no  The current line number.
  * @param col_no   The current column number.
- * @param bytes    Increased by the number of bytes read from the file descriptor.
  * @param rec      The record to receive the key value.
  *
  * @result         `true`, if successful.
  */
 static bool
 text_parse_key(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
-		uint32_t *col_no, int64_t *bytes, as_record *rec)
+		uint32_t *col_no, as_record *rec)
 {
-	int32_t ch = read_char(fd, line_no, col_no, bytes);
+	int32_t ch = read_char(fd, line_no, col_no);
 
 	if (ch == EOF) {
 		return false;
@@ -658,11 +632,11 @@ text_parse_key(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
 
 	switch (ch) {
 	case 'I':
-		if (!expect_char(fd, line_no, col_no, bytes, ' ')) {
+		if (!expect_char(fd, line_no, col_no, ' ')) {
 			return false;
 		}
 
-		if (!text_read_integer(fd, legacy, line_no, col_no, bytes, &int_val, "\n")) {
+		if (!text_read_integer(fd, legacy, line_no, col_no, &int_val, "\n")) {
 			err("Error while reading integer key value");
 			return false;
 		}
@@ -676,11 +650,11 @@ text_parse_key(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
 		break;
 
 	case 'D':
-		if (!expect_char(fd, line_no, col_no, bytes, ' ')) {
+		if (!expect_char(fd, line_no, col_no, ' ')) {
 			return false;
 		}
 
-		if (!text_read_double(fd, legacy, line_no, col_no, bytes, &fp_val, "\n")) {
+		if (!text_read_double(fd, legacy, line_no, col_no, &fp_val, "\n")) {
 			err("Error while reading floating-point key value");
 			return false;
 		}
@@ -696,17 +670,17 @@ text_parse_key(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
 
 	case 'S':
 	case 'X':
-		if (!expect_char(fd, line_no, col_no, bytes, ' ')) {
+		if (!expect_char(fd, line_no, col_no, ' ')) {
 			return false;
 		}
 
-		if (ch == 'S' && !text_parse_string(fd, legacy, line_no, col_no, bytes,
+		if (ch == 'S' && !text_parse_string(fd, legacy, line_no, col_no,
 				&buffer, &size, 1)) {
 			err("Error while reading string key value");
 			return false;
 		}
 
-		if (ch == 'X' && !text_parse_data_dec(fd, legacy, line_no, col_no, bytes,
+		if (ch == 'X' && !text_parse_data_dec(fd, legacy, line_no, col_no,
 				&buffer, &size, 1)) {
 			err("Error while reading encoded string key value");
 			return false;
@@ -724,27 +698,27 @@ text_parse_key(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
 		break;
 
 	case 'B':
-		if ((ch = peek_char(fd, line_no, col_no, bytes)) == EOF) {
+		if ((ch = peek_char(fd, line_no, col_no)) == EOF) {
 			return false;
 		}
 
 		bool compact = ch == '!';
 
 		if (compact) {
-			read_char(fd, line_no, col_no, bytes);
+			read_char(fd, line_no, col_no);
 		}
 
-		if (!expect_char(fd, line_no, col_no, bytes, ' ')) {
+		if (!expect_char(fd, line_no, col_no, ' ')) {
 			return false;
 		}
 
 		if (compact &&
-				!text_parse_data(fd, legacy, line_no, col_no, bytes, &buffer, &size, 0)) {
+				!text_parse_data(fd, legacy, line_no, col_no, &buffer, &size, 0)) {
 			err("Error while reading key bytes");
 			return false;
 		}
 
-		if (!compact && !text_parse_data_dec(fd, legacy, line_no, col_no, bytes,
+		if (!compact && !text_parse_data_dec(fd, legacy, line_no, col_no,
 				&buffer, &size, 0)) {
 			err("Error while reading encoded key bytes");
 			return false;
@@ -769,7 +743,7 @@ text_parse_key(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
 		return false;
 	}
 
-	return expect_char(fd, line_no, col_no, bytes, '\n');
+	return expect_char(fd, line_no, col_no, '\n');
 }
 
 /*
@@ -780,16 +754,15 @@ text_parse_key(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
  * @param ns_vec   The (optional) source and (also optional) target namespace to be restored.
  * @param line_no  The current line number.
  * @param col_no   The current column number.
- * @param bytes    Increased by the number of bytes read from the file descriptor.
  * @param rec      The record to receive the namespace.
  *
  * @result         `true`, if successful.
  */
 static bool
 text_parse_namespace(io_read_proxy_t *fd, bool legacy, as_vector *ns_vec,
-		uint32_t *line_no, uint32_t *col_no, int64_t *bytes, as_record *rec)
+		uint32_t *line_no, uint32_t *col_no, as_record *rec)
 {
-	if (!text_nul_read_token(fd, legacy, line_no, col_no, bytes, rec->key.ns,
+	if (!text_nul_read_token(fd, legacy, line_no, col_no, rec->key.ns,
 				sizeof rec->key.ns, "\n")) {
 		err("Error while reading namespace token");
 		return false;
@@ -810,7 +783,7 @@ text_parse_namespace(io_read_proxy_t *fd, bool legacy, as_vector *ns_vec,
 		}
 	}
 
-	return expect_char(fd, line_no, col_no, bytes, '\n');
+	return expect_char(fd, line_no, col_no, '\n');
 }
 
 /*
@@ -819,25 +792,24 @@ text_parse_namespace(io_read_proxy_t *fd, bool legacy, as_vector *ns_vec,
  * @param fd       The file descriptor of the backup file.
  * @param line_no  The current line number.
  * @param col_no   The current column number.
- * @param bytes    Increased by the number of bytes read from the file descriptor.
  * @param rec      The record to receive the key digest.
  *
  * @result         `true`, if successful.
  */
 static bool
 text_parse_digest(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
-		int64_t *bytes, as_record *rec)
+		as_record *rec)
 {
 	b64_context b64_cont = { 0, 9999, { 99, 99 }};
 
-	if (!read_block_dec(fd, line_no, col_no, bytes, rec->key.digest.value,
+	if (!read_block_dec(fd, line_no, col_no, rec->key.digest.value,
 			sizeof rec->key.digest.value, &b64_cont)) {
 		err("Error while reading encoded digest string");
 		return false;
 	}
 
 	rec->key.digest.init = true;
-	return expect_char(fd, line_no, col_no, bytes, '\n');
+	return expect_char(fd, line_no, col_no, '\n');
 }
 
 /*
@@ -847,22 +819,21 @@ text_parse_digest(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
  * @param legacy   Indicates a version 3.0 backup file.
  * @param line_no  The current line number.
  * @param col_no   The current column number.
- * @param bytes    Increased by the number of bytes read from the file descriptor.
  * @param rec      The record to receive the set.
  *
  * @result         `true`, if successful.
  */
 static bool
 text_parse_set(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
-		uint32_t *col_no, int64_t *bytes, as_record *rec)
+		uint32_t *col_no, as_record *rec)
 {
-	if (!text_nul_read_token(fd, legacy, line_no, col_no, bytes, rec->key.set, sizeof rec->key.set,
+	if (!text_nul_read_token(fd, legacy, line_no, col_no, rec->key.set, sizeof rec->key.set,
 			"\n")) {
 		err("Error while reading set token");
 		return false;
 	}
 
-	return expect_char(fd, line_no, col_no, bytes, '\n');
+	return expect_char(fd, line_no, col_no, '\n');
 }
 
 /*
@@ -872,18 +843,17 @@ text_parse_set(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
  * @param legacy   Indicates a version 3.0 backup file.
  * @param line_no  The current line number.
  * @param col_no   The current column number.
- * @param bytes    Increased by the number of bytes read from the file descriptor.
  * @param rec      The record to receive the generation count.
  *
  * @result         `true`, if successful.
  */
 static bool
 text_parse_generation(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
-		uint32_t *col_no, int64_t *bytes, as_record *rec)
+		uint32_t *col_no, as_record *rec)
 {
 	int64_t val;
 
-	if (!text_read_integer(fd, legacy, line_no, col_no, bytes, &val, "\n")) {
+	if (!text_read_integer(fd, legacy, line_no, col_no, &val, "\n")) {
 		err("Error while reading generation count");
 		return false;
 	}
@@ -894,7 +864,7 @@ text_parse_generation(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
 	}
 
 	rec->gen = (uint16_t)val;
-	return expect_char(fd, line_no, col_no, bytes, '\n');
+	return expect_char(fd, line_no, col_no, '\n');
 }
 
 /*
@@ -904,7 +874,6 @@ text_parse_generation(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
  * @param legacy    Indicates a version 3.0 backup file.
  * @param line_no   The current line number.
  * @param col_no    The current column number.
- * @param bytes     Increased by the number of bytes read from the file descriptor.
  * @param rec       The record to receive the generation count.
  * @param extra_ttl Extra-ttl to be added to expirable records.
  * @param expired   Indicates the the expiration time lies in the past.
@@ -913,12 +882,12 @@ text_parse_generation(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
  */
 static bool
 text_parse_expiration(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
-		uint32_t *col_no, int64_t *bytes, as_record *rec, int32_t extra_ttl,
+		uint32_t *col_no, as_record *rec, int32_t extra_ttl,
 		bool *expired)
 {
 	int64_t val;
 
-	if (!text_read_integer(fd, legacy, line_no, col_no, bytes, &val, "\n")) {
+	if (!text_read_integer(fd, legacy, line_no, col_no, &val, "\n")) {
 		err("Error while reading expiration time");
 		return false;
 	}
@@ -942,7 +911,7 @@ text_parse_expiration(io_read_proxy_t *fd, bool legacy, uint32_t *line_no,
 		}
 	}
 
-	return expect_char(fd, line_no, col_no, bytes, '\n');
+	return expect_char(fd, line_no, col_no, '\n');
 }
 
 /*
@@ -991,21 +960,20 @@ text_bytes_label_to_type(int32_t label, as_bytes_type *type)
  * @param bin_vec  The bins to be restored, as a vector of bin name strings.
  * @param line_no  The current line number.
  * @param col_no   The current column number.
- * @param bytes    Increased by the number of bytes read from the file descriptor.
  * @param rec      The record to receive the bin.
  *
  * @result         `true`, if successful.
  */
 static bool
 text_parse_bin(io_read_proxy_t *fd, bool legacy, as_vector *bin_vec,
-		uint32_t *line_no, uint32_t *col_no, int64_t *bytes, as_record *rec)
+		uint32_t *line_no, uint32_t *col_no, as_record *rec)
 {
-	if (!expect_char(fd, line_no, col_no, bytes, '-') ||
-			!expect_char(fd, line_no, col_no, bytes, ' ')) {
+	if (!expect_char(fd, line_no, col_no, '-') ||
+			!expect_char(fd, line_no, col_no, ' ')) {
 		return false;
 	}
 
-	int32_t ch = read_char(fd, line_no, col_no, bytes);
+	int32_t ch = read_char(fd, line_no, col_no);
 
 	if (ch == EOF) {
 		return false;
@@ -1016,7 +984,7 @@ text_parse_bin(io_read_proxy_t *fd, bool legacy, as_vector *bin_vec,
 		return false;
 	}
 
-	int32_t ch2 = peek_char(fd, line_no, col_no, bytes);
+	int32_t ch2 = peek_char(fd, line_no, col_no);
 
 	if (ch2 == EOF) {
 		return false;
@@ -1025,16 +993,16 @@ text_parse_bin(io_read_proxy_t *fd, bool legacy, as_vector *bin_vec,
 	bool compact = ch2 == '!';
 
 	if (compact) {
-		read_char(fd, line_no, col_no, bytes);
+		read_char(fd, line_no, col_no);
 	}
 
-	if (!expect_char(fd, line_no, col_no, bytes, ' ')) {
+	if (!expect_char(fd, line_no, col_no, ' ')) {
 		return false;
 	}
 
 	char name[MAX_TOKEN_SIZE];
 
-	if (!text_nul_read_token(fd, legacy, line_no, col_no, bytes, name, sizeof name, " \n")) {
+	if (!text_nul_read_token(fd, legacy, line_no, col_no, name, sizeof name, " \n")) {
 		err("Error while reading bin name token");
 		return false;
 	}
@@ -1051,7 +1019,7 @@ text_parse_bin(io_read_proxy_t *fd, bool legacy, as_vector *bin_vec,
 	}
 
 	if (ch == 'N') {
-		if (!expect_char(fd, line_no, col_no, bytes, '\n')) {
+		if (!expect_char(fd, line_no, col_no, '\n')) {
 			return false;
 		}
 
@@ -1063,19 +1031,19 @@ text_parse_bin(io_read_proxy_t *fd, bool legacy, as_vector *bin_vec,
 		return true;
 	}
 
-	if (!expect_char(fd, line_no, col_no, bytes, ' ')) {
+	if (!expect_char(fd, line_no, col_no, ' ')) {
 		return false;
 	}
 
 	if (ch == 'Z') {
 		bool val;
 
-		if (!text_read_boolean(fd, legacy, line_no, col_no, bytes, &val, "\n")) {
+		if (!text_read_boolean(fd, legacy, line_no, col_no, &val, "\n")) {
 			err("Error while reading boolean bin value");
 			return false;
 		}
 
-		if (!expect_char(fd, line_no, col_no, bytes, '\n')) {
+		if (!expect_char(fd, line_no, col_no, '\n')) {
 			return false;
 		}
 
@@ -1091,12 +1059,12 @@ text_parse_bin(io_read_proxy_t *fd, bool legacy, as_vector *bin_vec,
 	if (ch == 'I') {
 		int64_t val;
 
-		if (!text_read_integer(fd, legacy, line_no, col_no, bytes, &val, "\n")) {
+		if (!text_read_integer(fd, legacy, line_no, col_no, &val, "\n")) {
 			err("Error while reading integer bin value");
 			return false;
 		}
 
-		if (!expect_char(fd, line_no, col_no, bytes, '\n')) {
+		if (!expect_char(fd, line_no, col_no, '\n')) {
 			return false;
 		}
 
@@ -1112,12 +1080,12 @@ text_parse_bin(io_read_proxy_t *fd, bool legacy, as_vector *bin_vec,
 	if (ch == 'D') {
 		double val;
 
-		if (!text_read_double(fd, legacy, line_no, col_no, bytes, &val, "\n")) {
+		if (!text_read_double(fd, legacy, line_no, col_no, &val, "\n")) {
 			err("Error while reading floating-point bin value");
 			return false;
 		}
 
-		if (!expect_char(fd, line_no, col_no, bytes, '\n')) {
+		if (!expect_char(fd, line_no, col_no, '\n')) {
 			return false;
 		}
 
@@ -1134,19 +1102,19 @@ text_parse_bin(io_read_proxy_t *fd, bool legacy, as_vector *bin_vec,
 		void *buffer;
 		size_t size;
 
-		if (ch == 'S' && !text_parse_string(fd, legacy, line_no, col_no, bytes,
+		if (ch == 'S' && !text_parse_string(fd, legacy, line_no, col_no,
 				&buffer, &size, 1)) {
 			err("Error while reading string bin value");
 			return false;
 		}
 
-		if (ch == 'X' && !text_parse_data_dec(fd, legacy, line_no, col_no, bytes,
+		if (ch == 'X' && !text_parse_data_dec(fd, legacy, line_no, col_no,
 				&buffer, &size, 1)) {
 			err("Error while reading encoded string bin value");
 			return false;
 		}
 
-		if (!expect_char(fd, line_no, col_no, bytes, '\n')) {
+		if (!expect_char(fd, line_no, col_no, '\n')) {
 			return false;
 		}
 
@@ -1179,12 +1147,12 @@ text_parse_bin(io_read_proxy_t *fd, bool legacy, as_vector *bin_vec,
 		void *buffer;
 		size_t size;
 
-		if (!text_parse_string(fd, legacy, line_no, col_no, bytes, &buffer, &size, 1)) {
+		if (!text_parse_string(fd, legacy, line_no, col_no, &buffer, &size, 1)) {
 			err("Error while reading geojson bin value");
 			return false;
 		}
 
-		if (!expect_char(fd, line_no, col_no, bytes, '\n')) {
+		if (!expect_char(fd, line_no, col_no, '\n')) {
 			return false;
 		}
 
@@ -1229,12 +1197,12 @@ text_parse_bin(io_read_proxy_t *fd, bool legacy, as_vector *bin_vec,
 		return false;
 	}
 
-	if (compact && !text_parse_data(fd, legacy, line_no, col_no, bytes, &buffer, &size, 0)) {
+	if (compact && !text_parse_data(fd, legacy, line_no, col_no, &buffer, &size, 0)) {
 		err("Error while reading data bin value");
 		return false;
 	}
 
-	if (!compact && !text_parse_data_dec(fd, legacy, line_no, col_no, bytes, &buffer, &size, 0)) {
+	if (!compact && !text_parse_data_dec(fd, legacy, line_no, col_no, &buffer, &size, 0)) {
 		err("Error while reading encoded data bin value");
 		return false;
 	}
@@ -1244,7 +1212,7 @@ text_parse_bin(io_read_proxy_t *fd, bool legacy, as_vector *bin_vec,
 		return false;
 	}
 
-	if (!expect_char(fd, line_no, col_no, bytes, '\n')) {
+	if (!expect_char(fd, line_no, col_no, '\n')) {
 		return false;
 	}
 
@@ -1270,18 +1238,17 @@ text_parse_bin(io_read_proxy_t *fd, bool legacy, as_vector *bin_vec,
  * @param bin_vec  The bins to be restored, as a vector of bin name strings.
  * @param line_no  The current line number.
  * @param col_no   The current column number.
- * @param bytes    Increased by the number of bytes read from the file descriptor.
  * @param rec      The record to receive the bins.
  *
  * @result         `true`, if successful.
  */
 static bool
 text_parse_bins(io_read_proxy_t *fd, bool legacy, as_vector *bin_vec,
-		uint32_t *line_no, uint32_t *col_no, int64_t *bytes, as_record *rec)
+		uint32_t *line_no, uint32_t *col_no, as_record *rec)
 {
 	int64_t val;
 
-	if (!text_read_integer(fd, legacy, line_no, col_no, bytes, &val, "\n")) {
+	if (!text_read_integer(fd, legacy, line_no, col_no, &val, "\n")) {
 		err("Error while reading bin count");
 		return false;
 	}
@@ -1291,7 +1258,7 @@ text_parse_bins(io_read_proxy_t *fd, bool legacy, as_vector *bin_vec,
 		return false;
 	}
 
-	if (!expect_char(fd, line_no, col_no, bytes, '\n')) {
+	if (!expect_char(fd, line_no, col_no, '\n')) {
 		return false;
 	}
 
@@ -1304,7 +1271,7 @@ text_parse_bins(io_read_proxy_t *fd, bool legacy, as_vector *bin_vec,
 	}
 
 	for (uint32_t i = 0; i < n_bins; ++i) {
-		if (!text_parse_bin(fd, legacy, bin_vec, line_no, col_no, bytes, rec)) {
+		if (!text_parse_bin(fd, legacy, bin_vec, line_no, col_no, rec)) {
 			return false;
 		}
 	}
@@ -1321,7 +1288,6 @@ text_parse_bins(io_read_proxy_t *fd, bool legacy, as_vector *bin_vec,
  * @param bin_vec  The bins to be restored, as a vector of bin name strings.
  * @param line_no  The current line number.
  * @param col_no   The current column number.
- * @param bytes    Increased by the number of bytes read from the file descriptor.
  * @param rec      The record to be populated.
  * @param extra_ttl Extra-ttl to be added to expirable records.
  * @param expired  Indicates that the record is expired.
@@ -1330,7 +1296,7 @@ text_parse_bins(io_read_proxy_t *fd, bool legacy, as_vector *bin_vec,
  */
 static decoder_status
 text_parse_record(io_read_proxy_t *fd, bool legacy, as_vector *ns_vec,
-		as_vector *bin_vec, uint32_t *line_no, uint32_t *col_no, int64_t *bytes,
+		as_vector *bin_vec, uint32_t *line_no, uint32_t *col_no,
 		as_record *rec, int32_t extra_ttl, bool *expired)
 {
 	decoder_status res = DECODER_ERROR;
@@ -1345,11 +1311,11 @@ text_parse_record(io_read_proxy_t *fd, bool legacy, as_vector *ns_vec,
 	as_record_init(rec, 100);
 
 	for (uint32_t i = 0; i < 7; ++i) {
-		if (!expect_char(fd, line_no, col_no, bytes, ' ')) {
+		if (!expect_char(fd, line_no, col_no, ' ')) {
 			goto cleanup1;
 		}
 
-		int32_t ch = read_char(fd, line_no, col_no, bytes);
+		int32_t ch = read_char(fd, line_no, col_no);
 
 		if (ch == EOF) {
 			goto cleanup1;
@@ -1366,7 +1332,7 @@ text_parse_record(io_read_proxy_t *fd, bool legacy, as_vector *ns_vec,
 			goto cleanup1;
 		}
 
-		if (!expect_char(fd, line_no, col_no, bytes, ' ')) {
+		if (!expect_char(fd, line_no, col_no, ' ')) {
 			goto cleanup1;
 		}
 
@@ -1374,31 +1340,31 @@ text_parse_record(io_read_proxy_t *fd, bool legacy, as_vector *ns_vec,
 
 		switch (i) {
 		case 0:
-			ok = text_parse_key(fd, legacy, line_no, col_no, bytes, rec);
+			ok = text_parse_key(fd, legacy, line_no, col_no, rec);
 			break;
 
 		case 1:
-			ok = text_parse_namespace(fd, legacy, ns_vec, line_no, col_no, bytes, rec);
+			ok = text_parse_namespace(fd, legacy, ns_vec, line_no, col_no, rec);
 			break;
 
 		case 2:
-			ok = text_parse_digest(fd, line_no, col_no, bytes, rec);
+			ok = text_parse_digest(fd, line_no, col_no, rec);
 			break;
 
 		case 3:
-			ok = text_parse_set(fd, legacy, line_no, col_no, bytes, rec);
+			ok = text_parse_set(fd, legacy, line_no, col_no, rec);
 			break;
 
 		case 4:
-			ok = text_parse_generation(fd, legacy, line_no, col_no, bytes, rec);
+			ok = text_parse_generation(fd, legacy, line_no, col_no, rec);
 			break;
 
 		case 5:
-			ok = text_parse_expiration(fd, legacy, line_no, col_no, bytes, rec, extra_ttl, &tmp_expired);
+			ok = text_parse_expiration(fd, legacy, line_no, col_no, rec, extra_ttl, &tmp_expired);
 			break;
 
 		case 6:
-			ok = text_parse_bins(fd, legacy, bin_vec, line_no, col_no, bytes, rec);
+			ok = text_parse_bins(fd, legacy, bin_vec, line_no, col_no, rec);
 			break;
 		}
 
@@ -1408,7 +1374,7 @@ text_parse_record(io_read_proxy_t *fd, bool legacy, as_vector *ns_vec,
 		}
 
 		if (i < 6) {
-			if (!expect_char(fd, line_no, col_no, bytes, RECORD_META_PREFIX[0])) {
+			if (!expect_char(fd, line_no, col_no, RECORD_META_PREFIX[0])) {
 				goto cleanup1;
 			}
 		}
@@ -1432,14 +1398,13 @@ cleanup0:
  * @param ns_vec   The (optional) source and (also optional) target namespace to be restored.
  * @param line_no  The current line number.
  * @param col_no   The current column number.
- * @param bytes    Increased by the number of bytes read from the file descriptor.
  * @param index    The index_param to be populated.
  *
  * @result         See @ref decoder_status.
  */
 static decoder_status
 text_parse_index(io_read_proxy_t *fd, as_vector *ns_vec, uint32_t *line_no,
-		uint32_t *col_no, int64_t *bytes, index_param *index)
+		uint32_t *col_no, index_param *index)
 {
 	decoder_status res = DECODER_ERROR;
 
@@ -1452,7 +1417,7 @@ text_parse_index(io_read_proxy_t *fd, as_vector *ns_vec, uint32_t *line_no,
 		ver("Parsing index in line %u", line_no[0]);
 	}
 
-	if (!expect_char(fd, line_no, col_no, bytes, ' ')) {
+	if (!expect_char(fd, line_no, col_no, ' ')) {
 		goto cleanup0;
 	}
 
@@ -1461,23 +1426,23 @@ text_parse_index(io_read_proxy_t *fd, as_vector *ns_vec, uint32_t *line_no,
 	char name[MAX_TOKEN_SIZE];
 	size_t n_paths;
 
-	if (!text_nul_read_token(fd, false, line_no, col_no, bytes, ns, sizeof ns, " ")) {
+	if (!text_nul_read_token(fd, false, line_no, col_no, ns, sizeof ns, " ")) {
 		goto cleanup0;
 	}
 
-	if (!expect_char(fd, line_no, col_no, bytes, ' ')) {
+	if (!expect_char(fd, line_no, col_no, ' ')) {
 		goto cleanup0;
 	}
 
-	if (!text_nul_read_token(fd, false, line_no, col_no, bytes, set, sizeof set, " ")) {
+	if (!text_nul_read_token(fd, false, line_no, col_no, set, sizeof set, " ")) {
 		goto cleanup0;
 	}
 
-	if (!expect_char(fd, line_no, col_no, bytes, ' ')) {
+	if (!expect_char(fd, line_no, col_no, ' ')) {
 		goto cleanup0;
 	}
 
-	if (!text_nul_read_token(fd, false, line_no, col_no, bytes, name, sizeof name, " ")) {
+	if (!text_nul_read_token(fd, false, line_no, col_no, name, sizeof name, " ")) {
 		goto cleanup0;
 	}
 
@@ -1496,11 +1461,11 @@ text_parse_index(io_read_proxy_t *fd, as_vector *ns_vec, uint32_t *line_no,
 		}
 	}
 
-	if (!expect_char(fd, line_no, col_no, bytes, ' ')) {
+	if (!expect_char(fd, line_no, col_no, ' ')) {
 		goto cleanup0;
 	}
 
-	int32_t ch = read_char(fd, line_no, col_no, bytes);
+	int32_t ch = read_char(fd, line_no, col_no);
 
 	if (ch == EOF) {
 		goto cleanup0;
@@ -1533,11 +1498,11 @@ text_parse_index(io_read_proxy_t *fd, as_vector *ns_vec, uint32_t *line_no,
 	index->set = safe_strdup(set);
 	index->name = safe_strdup(name);
 
-	if (!expect_char(fd, line_no, col_no, bytes, ' ')) {
+	if (!expect_char(fd, line_no, col_no, ' ')) {
 		goto cleanup1;
 	}
 
-	if (!text_read_size(fd, false, line_no, col_no, bytes, &n_paths, " ")) {
+	if (!text_read_size(fd, false, line_no, col_no, &n_paths, " ")) {
 		goto cleanup1;
 	}
 
@@ -1550,21 +1515,21 @@ text_parse_index(io_read_proxy_t *fd, as_vector *ns_vec, uint32_t *line_no,
 	path_param path;
 
 	for (size_t i = 0; i < n_paths; ++i) {
-		if (!expect_char(fd, line_no, col_no, bytes, ' ')) {
+		if (!expect_char(fd, line_no, col_no, ' ')) {
 			goto cleanup2;
 		}
 
-		if (!text_nul_read_token(fd, false, line_no, col_no, bytes, name, sizeof name, " ")) {
+		if (!text_nul_read_token(fd, false, line_no, col_no, name, sizeof name, " ")) {
 			goto cleanup2;
 		}
 
 		path.path = safe_strdup(name);
 
-		if (!expect_char(fd, line_no, col_no, bytes, ' ')) {
+		if (!expect_char(fd, line_no, col_no, ' ')) {
 			goto cleanup3;
 		}
 
-		ch = read_char(fd, line_no, col_no, bytes);
+		ch = read_char(fd, line_no, col_no);
 
 		if (ch == EOF) {
 			goto cleanup3;
@@ -1589,7 +1554,7 @@ text_parse_index(io_read_proxy_t *fd, as_vector *ns_vec, uint32_t *line_no,
 			goto cleanup3;
 		}
 
-		if (!expect_char(fd, line_no, col_no, bytes, i == n_paths - 1 ? '\n' : ' ')) {
+		if (!expect_char(fd, line_no, col_no, i == n_paths - 1 ? '\n' : ' ')) {
 			goto cleanup3;
 		}
 
@@ -1632,14 +1597,13 @@ cleanup0:
  * @param fd       The file descriptor of the backup file.
  * @param line_no  The current line number.
  * @param col_no   The current column number.
- * @param bytes    Increased by the number of bytes read from the file descriptor.
  * @param udf      The udf_param to be populated.
  *
  * @result         See @ref decoder_status.
  */
 static decoder_status
 text_parse_udf(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
-		int64_t *bytes, udf_param *udf)
+		udf_param *udf)
 {
 	decoder_status res = DECODER_ERROR;
 
@@ -1652,11 +1616,11 @@ text_parse_udf(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
 		ver("Parsing UDF file in line %u", line_no[0]);
 	}
 
-	if (!expect_char(fd, line_no, col_no, bytes, ' ')) {
+	if (!expect_char(fd, line_no, col_no, ' ')) {
 		goto cleanup0;
 	}
 
-	int32_t ch = read_char(fd, line_no, col_no, bytes);
+	int32_t ch = read_char(fd, line_no, col_no);
 
 	if (ch == EOF) {
 		goto cleanup0;
@@ -1673,22 +1637,22 @@ text_parse_udf(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
 		goto cleanup0;
 	}
 
-	if (!expect_char(fd, line_no, col_no, bytes, ' ')) {
+	if (!expect_char(fd, line_no, col_no, ' ')) {
 		goto cleanup0;
 	}
 
 	char name[MAX_TOKEN_SIZE];
 	size_t size;
 
-	if (!text_nul_read_token(fd, false, line_no, col_no, bytes, name, sizeof name, " ")) {
+	if (!text_nul_read_token(fd, false, line_no, col_no, name, sizeof name, " ")) {
 		goto cleanup0;
 	}
 
-	if (!expect_char(fd, line_no, col_no, bytes, ' ')) {
+	if (!expect_char(fd, line_no, col_no, ' ')) {
 		goto cleanup0;
 	}
 
-	if (!text_read_size(fd, false, line_no, col_no, bytes, &size, " ")) {
+	if (!text_read_size(fd, false, line_no, col_no, &size, " ")) {
 		goto cleanup0;
 	}
 
@@ -1697,7 +1661,7 @@ text_parse_udf(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
 		goto cleanup0;
 	}
 
-	if (!expect_char(fd, line_no, col_no, bytes, ' ')) {
+	if (!expect_char(fd, line_no, col_no, ' ')) {
 		goto cleanup0;
 	}
 
@@ -1705,11 +1669,11 @@ text_parse_udf(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
 	udf->size = (uint32_t)size;
 	udf->data = safe_malloc(size);
 
-	if (!read_block(fd, line_no, col_no, bytes, udf->data, udf->size)) {
+	if (!read_block(fd, line_no, col_no, udf->data, udf->size)) {
 		goto cleanup1;
 	}
 
-	if (!expect_char(fd, line_no, col_no, bytes, '\n')) {
+	if (!expect_char(fd, line_no, col_no, '\n')) {
 		goto cleanup1;
 	}
 
@@ -1736,7 +1700,6 @@ cleanup0:
  * @param ns_vec   The (optional) source and (also optional) target namespace to be restored.
  * @param line_no  The current line number.
  * @param col_no   The current column number.
- * @param bytes    Increased by the number of bytes read from the file descriptor.
  * @param index    The index_param to be populated.
  * @param udf      The udf_param to be populated.
  *
@@ -1744,24 +1707,24 @@ cleanup0:
  */
 static decoder_status
 text_parse_global(io_read_proxy_t *fd, as_vector *ns_vec, uint32_t *line_no,
-		uint32_t *col_no, int64_t *bytes, index_param *index, udf_param *udf)
+		uint32_t *col_no, index_param *index, udf_param *udf)
 {
-	if (!expect_char(fd, line_no, col_no, bytes, ' ')) {
+	if (!expect_char(fd, line_no, col_no, ' ')) {
 		return DECODER_ERROR;
 	}
 
-	int32_t type = read_char(fd, line_no, col_no, bytes);
+	int32_t type = read_char(fd, line_no, col_no);
 
 	if (type == EOF) {
 		return DECODER_ERROR;
 	}
 
 	if (type == 'i') {
-		return text_parse_index(fd, ns_vec, line_no, col_no, bytes, index);
+		return text_parse_index(fd, ns_vec, line_no, col_no, index);
 	}
 
 	if (type == 'u') {
-		return text_parse_udf(fd, line_no, col_no, bytes, udf);
+		return text_parse_udf(fd, line_no, col_no, udf);
 	}
 
 	err("Invalid global type character %s in block (line %u, col %u)", print_char(type), line_no[0],

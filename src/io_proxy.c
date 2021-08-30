@@ -22,6 +22,8 @@
 
 #include <io_proxy.h>
 
+#include <math.h>
+
 #ifdef __APPLE__
 #include <machine/endian.h>
 #else
@@ -66,8 +68,6 @@ static void _consumer_buffer_decrypt(io_proxy_t* io, consumer_buffer_t* dst,
 		consumer_buffer_t* src);
 static __attribute__((pure)) bool _is_write_proxy(io_proxy_t* io);
 static __attribute__((pure)) bool _is_read_proxy(io_proxy_t* io);
-static __attribute__((pure)) bool _do_compress(const io_proxy_t* io);
-static __attribute__((pure)) bool _do_encrypt(const io_proxy_t* io);
 static __attribute__((pure)) uint64_t _get_pkey_digest_len(uint8_t flags);
 static __attribute__((pure)) bool _at_eof(io_proxy_t* io);
 static __attribute__((pure)) uint64_t _calc_output_buffer_len(
@@ -151,6 +151,12 @@ io_read_proxy_init(io_write_proxy_t* io, FILE* file)
 	return _proxy_init(io, file, IO_READ_PROXY);
 }
 
+void
+io_proxy_always_buffer(io_proxy_t* io)
+{
+	io->flags |= IO_PROXY_ALWAYS_BUFFER;
+}
+
 int
 io_proxy_init_encryption(io_proxy_t* io, const encryption_key_t* pkey,
 		encryption_opt encrypt_mode)
@@ -211,7 +217,6 @@ io_proxy_init_encryption(io_proxy_t* io, const encryption_key_t* pkey,
 	cf_free(pkey_digest);
 
 	io->flags |= (uint8_t) encrypt_mode;
-	__atomic_thread_fence(__ATOMIC_RELEASE);
 	return 0;
 }
 
@@ -235,7 +240,6 @@ io_proxy_init_encryption_file(io_proxy_t* io, const char* pkey_file_path,
 
 	encryption_key_free(&pkey);
 
-	__atomic_thread_fence(__ATOMIC_RELEASE);
 	return res;
 }
 
@@ -255,14 +259,13 @@ io_proxy_init_compression(io_proxy_t* io, compression_opt compress_mode)
 	}
 	io->flags |= (uint8_t) compress_mode;
 
-	__atomic_thread_fence(__ATOMIC_RELEASE);
 	return 0;
 }
 
 void
 io_proxy_free(io_proxy_t* io)
 {
-	if (_do_compress(io)) {
+	if (io_proxy_do_compress(io)) {
 		if (_is_write_proxy(io)) {
 			ZSTD_freeCCtx(io->cctx);
 		}
@@ -274,7 +277,7 @@ io_proxy_free(io_proxy_t* io)
 			_consumer_buffer_free(&io->comp_buffer);
 		}
 	}
-	if (_do_encrypt(io)) {
+	if (io_proxy_do_encrypt(io)) {
 		memset(&io->pkey_digest, 0, sizeof(AES_KEY));
 		memset(&io->decrypt_pkey_digest, 0, sizeof(AES_KEY));
 
@@ -284,9 +287,21 @@ io_proxy_free(io_proxy_t* io)
 			_consumer_buffer_free(&io->encrypt_buffer);
 		}
 	}
-	if ((_do_compress(io) || _do_encrypt(io)) && io->initialized) {
+	if ((io_proxy_do_compress(io) || io_proxy_do_encrypt(io)) && io->initialized) {
 		_consumer_buffer_free(&io->buffer);
 	}
+}
+
+__attribute__((pure)) bool
+io_proxy_do_compress(const io_proxy_t* io)
+{
+	return (io->flags & IO_PROXY_COMPRESS_MASK) != 0;
+}
+
+__attribute__((pure)) bool
+io_proxy_do_encrypt(const io_proxy_t* io)
+{
+	return (io->flags & IO_PROXY_ENCRYPT_MASK) != 0;
 }
 
 int
@@ -318,12 +333,85 @@ parse_encryption_type(const char* enc_str, encryption_opt* opt)
 	return 0;
 }
 
+int64_t
+io_write_proxy_bytes_written(const io_write_proxy_t* io)
+{
+	if (UNLIKELY(!io->initialized)) {
+		return 0;
+	}
+	else if (io->buffer.src == NULL) {
+		int64_t res = ftell(io->fd);
+		return res;
+	}
+	else {
+		return (int64_t) io->byte_cnt;
+	}
+}
+
+int64_t
+io_write_proxy_absolute_pos(const io_write_proxy_t* io)
+{
+	if (UNLIKELY(!io->initialized)) {
+		return 0;
+	}
+	else if (io->buffer.src == NULL) {
+		int64_t res = ftell(io->fd);
+		return res;
+	}
+	else {
+		return (int64_t) (io->raw_byte_cnt + (io->buffer.pos - io->buffer.data_pos));
+	}
+}
+
+int64_t
+io_read_proxy_estimate_pos(const io_read_proxy_t* io)
+{
+	if (UNLIKELY(!io->initialized)) {
+		return 0;
+	}
+	else if (io->buffer.src == NULL) {
+		return ftell(io->fd);
+	}
+	else {
+		// queued_bytes is the total number of (potentially) compressed bytes of
+		// data read from the file sitting in intermediate buffers
+		uint64_t queued_bytes = 0;
+		if (io_proxy_do_compress(io)) {
+			queued_bytes += io->decomp_buffer.pos - io->decomp_buffer.data_pos;
+		}
+		if (io_proxy_do_encrypt(io)) {
+			queued_bytes += io->decrypt_buffer.pos - io->decrypt_buffer.data_pos;
+		}
+
+		// buffer_fraction_parsed is the fraction of inflated bytes left in buffer
+		// that has not been parsed yet
+		double buffer_fraction_parsed;
+		if (io->buffer.pos == 0) {
+			buffer_fraction_parsed = 1;
+		}
+		else {
+			buffer_fraction_parsed =
+				(double) io->buffer.data_pos / (double) io->buffer.pos;
+		}
+
+		// total_in_buffers is the total number of bytes that have been read from
+		// the file and are sitting in one of the buffers
+		uint64_t total_in_buffers = io->byte_cnt - io->parsed_byte_cnt;
+
+		// an estimate of the number of bytes that were decompressed into the data
+		// that has already been parsed
+		uint64_t inflated_estimate = (uint64_t)
+			nearbyintl((double) (total_in_buffers - queued_bytes) *
+					buffer_fraction_parsed);
+
+		return (int64_t) (io->parsed_byte_cnt + inflated_estimate);
+	}
+}
+
 ssize_t
 io_proxy_write(io_write_proxy_t* io, const void* buf, size_t n_bytes)
 {
 	uint64_t init_n_bytes = n_bytes;
-
-	__atomic_thread_fence(__ATOMIC_ACQUIRE);
 
 	if (_init_write_fn(io) != 0) {
 		return -1;
@@ -348,16 +436,12 @@ io_proxy_write(io_write_proxy_t* io, const void* buf, size_t n_bytes)
 		}
 	}
 
-	__atomic_thread_fence(__ATOMIC_RELEASE);
-
 	return (ssize_t) (init_n_bytes - n_bytes);
 }
 
 int32_t
 io_proxy_putc(io_write_proxy_t* io, char c)
 {
-	__atomic_thread_fence(__ATOMIC_ACQUIRE);
-
 	if (_init_write_fn(io) != 0) {
 		return -1;
 	}
@@ -377,8 +461,6 @@ io_proxy_putc(io_write_proxy_t* io, char c)
 			return EOF;
 		}
 	}
-
-	__atomic_thread_fence(__ATOMIC_RELEASE);
 
 	return (int32_t) c;
 }
@@ -416,8 +498,6 @@ io_proxy_read(io_read_proxy_t* io, void* buf, size_t n_bytes)
 {
 	uint64_t init_n_bytes = n_bytes;
 
-	__atomic_thread_fence(__ATOMIC_ACQUIRE);
-
 	if (_init_read_fn(io) != 0) {
 		return -1;
 	}
@@ -444,8 +524,6 @@ io_proxy_read(io_read_proxy_t* io, void* buf, size_t n_bytes)
 		_consumer_buffer_read(&io->buffer, &buf, (uint64_t*) &n_bytes);
 	}
 
-	__atomic_thread_fence(__ATOMIC_RELEASE);
-
 	return (ssize_t) (init_n_bytes - n_bytes);
 }
 
@@ -453,8 +531,6 @@ int32_t
 io_proxy_getc(io_read_proxy_t* io)
 {
 	int32_t res;
-
-	__atomic_thread_fence(__ATOMIC_ACQUIRE);
 
 	if (_init_read_fn(io) != 0) {
 		return -1;
@@ -482,8 +558,6 @@ io_proxy_getc(io_read_proxy_t* io)
 		res = _consumer_buffer_getc(&io->buffer);
 	}
 
-	__atomic_thread_fence(__ATOMIC_RELEASE);
-
 	return res;
 }
 
@@ -491,8 +565,6 @@ int32_t
 io_proxy_getc_unlocked(io_read_proxy_t* io)
 {
 	int32_t res;
-
-	__atomic_thread_fence(__ATOMIC_ACQUIRE);
 
 	if (_init_read_fn(io) != 0) {
 		return -1;
@@ -519,8 +591,6 @@ io_proxy_getc_unlocked(io_read_proxy_t* io)
 
 		res = _consumer_buffer_getc(&io->buffer);
 	}
-
-	__atomic_thread_fence(__ATOMIC_RELEASE);
 
 	return res;
 }
@@ -554,8 +624,6 @@ io_proxy_peekc_unlocked(io_read_proxy_t* io)
 {
 	int32_t c;
 
-	__atomic_thread_fence(__ATOMIC_ACQUIRE);
-
 	if (_init_read_fn(io) != 0) {
 		return -1;
 	}
@@ -587,8 +655,6 @@ io_proxy_peekc_unlocked(io_read_proxy_t* io)
 int
 io_proxy_flush(io_write_proxy_t* io)
 {
-	__atomic_thread_fence(__ATOMIC_ACQUIRE);
-
 	if (UNLIKELY(!_is_write_proxy(io))) {
 		fprintf(stderr, "Cannot flush a read proxy\n");
 		return -1;
@@ -598,8 +664,6 @@ io_proxy_flush(io_write_proxy_t* io)
 		return ret;
 	}
 	fflush(io->fd);
-
-	__atomic_thread_fence(__ATOMIC_RELEASE);
 
 	return 0;
 }
@@ -620,12 +684,14 @@ static int
 _proxy_init(io_proxy_t* io, FILE* file, uint8_t options)
 {
 	io->fd = file;
+	io->byte_cnt = 0;
+	// raw_byte_cnt and parsed_byte_cnt are unioned together, so only clear one
+	io->raw_byte_cnt = 0;
 	io->initialized = 0;
 	io->flags = options;
 
 	io->num = 0;
 
-	__atomic_thread_fence(__ATOMIC_RELEASE);
 	return 0;
 }
 
@@ -906,18 +972,6 @@ _is_read_proxy(io_proxy_t* io)
 	return (io->flags & IO_PROXY_TYPE_MASK) == IO_READ_PROXY;
 }
 
-static __attribute__((pure)) bool
-_do_compress(const io_proxy_t* io)
-{
-	return (io->flags & IO_PROXY_COMPRESS_MASK) != 0;
-}
-
-static __attribute__((pure)) bool
-_do_encrypt(const io_proxy_t* io)
-{
-	return (io->flags & IO_PROXY_ENCRYPT_MASK) != 0;
-}
-
 static __attribute__((pure)) uint64_t
 _get_pkey_digest_len(uint8_t flags)
 {
@@ -938,14 +992,17 @@ _at_eof(io_proxy_t* io)
 static __attribute__((pure)) uint64_t
 _calc_output_buffer_len(const io_proxy_t* io)
 {
-	if (_do_encrypt(io)) {
-		if (_do_compress(io)) {
+	if (io_proxy_do_encrypt(io)) {
+		if (io_proxy_do_compress(io)) {
 			return MAX(ZSTD_CStreamOutSize(), N_BUFFERED_BLOCKS * AES_BLOCK_SIZE);
 		}
 		return N_BUFFERED_BLOCKS * AES_BLOCK_SIZE;
 	}
-	if (_do_compress(io)) {
+	if (io_proxy_do_compress(io)) {
 		return ZSTD_CStreamOutSize();
+	}
+	if (io->flags & IO_PROXY_ALWAYS_BUFFER) {
+		return IO_PROXY_DEFAULT_BUFFER_SIZE;
 	}
 	// no buffer is needed for straight reading/writing
 	return 0;
@@ -958,13 +1015,13 @@ _calc_output_buffer_len(const io_proxy_t* io)
 static __attribute__((pure)) uint64_t
 _calc_input_buffer_len(const io_proxy_t* io)
 {
-	if (_do_encrypt(io)) {
-		if (_do_compress(io)) {
+	if (io_proxy_do_encrypt(io)) {
+		if (io_proxy_do_compress(io)) {
 			return MAX(ZSTD_CStreamInSize(), N_BUFFERED_BLOCKS * AES_BLOCK_SIZE);
 		}
 		return N_BUFFERED_BLOCKS * AES_BLOCK_SIZE;
 	}
-	if (_do_compress(io)) {
+	if (io_proxy_do_compress(io)) {
 		return ZSTD_CStreamInSize();
 	}
 	// no buffer is needed for straight reading/writing
@@ -1054,14 +1111,14 @@ _init_fn(io_write_proxy_t* io, bool write)
 			memset(&io->buffer, 0, sizeof(io->buffer));
 		}
 
-		if (_do_compress(io)) {
+		if (io_proxy_do_compress(io)) {
 			// comp_buffer and decomp_buffer alias each other
 			_consumer_buffer_init(&io->comp_buffer, buf_len);
 		}
 		else {
 			memset(&io->comp_buffer, 0, sizeof(io->comp_buffer));
 		}
-		if (_do_encrypt(io)) {
+		if (io_proxy_do_encrypt(io)) {
 			// encrypt_buffer and decrypt_buffer alias each other
 			_consumer_buffer_init(&io->encrypt_buffer, buf_len);
 
@@ -1104,6 +1161,9 @@ _init_fn(io_write_proxy_t* io, bool write)
 				}
 				AES_decrypt(iv_buf.src, io->iv, &io->decrypt_pkey_digest);
 				_consumer_buffer_free(&iv_buf);
+
+				// increment byte_cnt by the number of bytes just read from the file
+				io->byte_cnt += AES_BLOCK_SIZE;
 			}
 			// increment the IV for the first block of encrypted data
 			_ctr128_add_to(io->iv, io->iv, 1);
@@ -1149,11 +1209,15 @@ _commit_write(io_write_proxy_t* io, ZSTD_EndDirective z_ed)
 	consumer_buffer_t *trans_buffer;
 	uint64_t rem_bytes;
 
+	// we will be consuming all of io->buffer, so add that to the total raw
+	// byte count
+	io->raw_byte_cnt += io->buffer.pos - io->buffer.data_pos;
+
 	do {
 		trans_buffer = &io->buffer;
 		rem_bytes = 0;
 
-		if (_do_compress(io)) {
+		if (io_proxy_do_compress(io)) {
 			int64_t rem = _consumer_buffer_compress(io, &io->comp_buffer,
 					trans_buffer, z_ed);
 			if (rem < 0) {
@@ -1163,7 +1227,7 @@ _commit_write(io_write_proxy_t* io, ZSTD_EndDirective z_ed)
 
 			trans_buffer = &io->comp_buffer;
 		}
-		if (_do_encrypt(io)) {
+		if (io_proxy_do_encrypt(io)) {
 			int all_consumed = _consumer_buffer_encrypt(io, &io->encrypt_buffer,
 					trans_buffer);
 			rem_bytes += (uint64_t) !all_consumed;
@@ -1171,6 +1235,7 @@ _commit_write(io_write_proxy_t* io, ZSTD_EndDirective z_ed)
 		}
 
 		// write the contents of the buffer to the fd now
+		uint64_t n_bytes = trans_buffer->pos - trans_buffer->data_pos;
 		int64_t res = _consumer_buffer_fwrite(trans_buffer, io->fd);
 		if (res < 0) {
 			// an io error happened on the file
@@ -1179,6 +1244,7 @@ _commit_write(io_write_proxy_t* io, ZSTD_EndDirective z_ed)
 		}
 		rem_bytes += (uint64_t) res;
 		rem_bytes += io->buffer.pos - io->buffer.data_pos;
+		io->byte_cnt += n_bytes - (trans_buffer->pos - trans_buffer->data_pos);
 
 		// if z_ed is ZSTD_e_end, we need to flush all buffers, otherwise we
 		// only need to fully flush the first buffer
@@ -1216,18 +1282,32 @@ _buffer_read_block(io_write_proxy_t* io)
 	consumer_buffer_t* decrypt_buffer;
 	consumer_buffer_t* in_buffer = &io->buffer;
 
-	bool decompress = _do_compress(io);
-	bool decrypt  = _do_encrypt(io);
+	bool decompress = io_proxy_do_compress(io);
+	bool decrypt  = io_proxy_do_encrypt(io);
+
+	// since we have consumed all bytes from io->buffer, but since its pos has
+	// been reset, the only way to count the amount of data that was in
+	// io->buffer is to take the total amount of data that was in all the
+	// buffers (io->byte_cnt - io->parsed_byte_cnt) and subtract the amount of
+	// data queued for compression and encryption
+	uint64_t parsed_bytes = io->byte_cnt - io->parsed_byte_cnt;
 
 	if (decompress) {
 		decomp_buffer = in_buffer;
 		in_buffer = &io->decomp_buffer;
+
+		parsed_bytes -= io->decomp_buffer.pos - io->decomp_buffer.data_pos;
 	}
 
 	if (decrypt) {
 		decrypt_buffer = in_buffer;
 		in_buffer = &io->decrypt_buffer;
+
+		parsed_bytes -= io->decrypt_buffer.pos - io->decrypt_buffer.data_pos;
 	}
+
+	// parsed_bytes is now the amount of data that was in io->buffer
+	io->parsed_byte_cnt += parsed_bytes;
 
 	do {
 		trans_buffer = in_buffer;
@@ -1254,16 +1334,22 @@ _buffer_read_block(io_write_proxy_t* io)
 			break;
 		}
 
+		// to count the number of bytes read directly from the file, which is
+		// just the pos of the buffer after the read minus the pos before
+		io->byte_cnt -= in_buffer->pos;
 		int status = _consumer_buffer_fread(in_buffer, io->fd);
 		if (status < 0) {
 			// an io error happened on the file
 			_io_proxy_set_error(io);
 			return status;
 		}
+		io->byte_cnt += in_buffer->pos;
+
 		if (status == 0) {
 			io->flags |= IO_READ_PROXY_EOF;
 		}
 	} while (io->buffer.pos < io->buffer.size);
+
 	return 0;
 }
 

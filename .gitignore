@@ -10,3 +10,4 @@ test/work
 test_target
 _tmp_python_client
 *.swp
+astools.conf

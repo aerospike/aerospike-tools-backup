@@ -23,8 +23,6 @@
 #define MUTEX_INIT PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP   ///< Mutex initializer on Linux.
 #endif
 
-static pthread_mutex_t mutex = MUTEX_INIT;                  ///< Mutex used by safe_lock(),
-                                                            ///  safe_unlock(), and safe_wait().
 bool verbose = false;                                       ///< Enables verbose logging.
 
 ///
@@ -384,9 +382,9 @@ safe_strdup(const char *string)
 /// A wrapper around `pthread_mutex_lock()` that uses @ref mutex and that exits on errors.
 ///
 void
-safe_lock(void)
+safe_lock(pthread_mutex_t* mutex)
 {
-	if (pthread_mutex_lock(&mutex) != 0) {
+	if (pthread_mutex_lock(mutex) != 0) {
 		err_code("Error while locking mutex");
 		exit(EXIT_FAILURE);
 	}
@@ -396,9 +394,9 @@ safe_lock(void)
 /// A wrapper around `pthread_mutex_unlock()` that uses @ref mutex and that exits on errors.
 ///
 void
-safe_unlock(void)
+safe_unlock(pthread_mutex_t* mutex)
 {
-	if (pthread_mutex_unlock(&mutex) != 0) {
+	if (pthread_mutex_unlock(mutex) != 0) {
 		err_code("Error while unlocking mutex");
 		exit(EXIT_FAILURE);
 	}
@@ -408,9 +406,9 @@ safe_unlock(void)
 /// A version of `pthread_cond_wait()` that uses @ref mutex and that exits on errors.
 ///
 void
-safe_wait(pthread_cond_t *cond)
+safe_wait(pthread_cond_t* cond, pthread_mutex_t* mutex)
 {
-	if (pthread_cond_wait(cond, &mutex) != 0) {
+	if (pthread_cond_wait(cond, mutex) != 0) {
 		err_code("Error while waiting for condition");
 		exit(EXIT_FAILURE);
 	}
@@ -764,14 +762,21 @@ print_char(int32_t ch)
 	static char buff[MAX_THREADS * 4][5];
 	static uint32_t index = 0;
 
-	safe_lock();
-	uint32_t i = index++;
-
-	if (index >= MAX_THREADS * 4) {
-		index = 0;
-	}
-
-	safe_unlock();
+	/*
+	 * atomically perform the following operation:
+	 *
+	 * uint32_t i = index++;
+	 * if (index >= MAX_THREADS * 4) {
+	 *     index = 0;
+	 * }
+	 *
+	 * use weak atomic compare exchange since this is very cheap, and relaxed
+	 * memory ordering on both success and fail since there are no other
+	 * synchronization requirements
+	 */
+	uint32_t i = __atomic_load_n(&index, __ATOMIC_RELAXED);
+	while (!__atomic_compare_exchange_n(&index, &i, (i + 1) % (MAX_THREADS * 4),
+				true, __ATOMIC_RELAXED, __ATOMIC_RELAXED));
 
 	if (ch >= 32 && ch <= 126) {
 		snprintf(buff[i], sizeof buff[i], "\"%c\"", ch);

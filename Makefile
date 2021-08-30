@@ -26,9 +26,6 @@ ifndef CLIENTREPO
 $(error Please set the CLIENTREPO environment variable)
 endif
 
-# when set, statically link zstd
-LINK_ZSTD_STATIC ?= 0
-
 OS := $(shell uname -s)
 ARCH := $(shell uname -m)
 PLATFORM := $(OS)-$(ARCH)
@@ -49,7 +46,7 @@ LD := $(CC)
 LDFLAGS := $(CFLAGS)
 
 ifeq ($(OS), Linux)
-LDFLAGS += -pthread -fstack-protector -Wa,--noexecstack
+LDFLAGS += -pthread
 endif
 
 TEST_CFLAGS := -std=gnu99 $(DWARF) -g -O2 -march=nocona -fno-common -fno-strict-aliasing \
@@ -67,13 +64,9 @@ DIR_TEST_BIN := test_target
 DIR_TEST_OBJ := $(DIR_TEST_BIN)/obj
 DIR_BIN := bin
 DIR_LIB := lib
-DIR_LOCAL_LIB := /usr/local/lib
 DIR_DOCS := docs
 DIR_ENV := env
 DIR_TOML := src/toml
-
-# directory used to clone the python client for building from source
-PYTHON_TMP_DIR=$(DIR_ENV)/_tmp_python_client
 
 INCLUDES := -I$(DIR_INC)
 INCLUDES += -I$(DIR_TOML)
@@ -90,15 +83,15 @@ ifeq ($(OPENSSL_STATIC_PATH),)
 else
   LIBRARIES += $(OPENSSL_STATIC_PATH)/libssl.a
   LIBRARIES += $(OPENSSL_STATIC_PATH)/libcrypto.a
-endif 
+endif
 LIBRARIES += -lpthread
 LIBRARIES += -lm
 LIBRARIES += -lz
 
-ifeq ($(LINK_ZSTD_STATIC),1)
-  LIBRARIES += $(DIR_LOCAL_LIB)/libzstd.a
-else
+ifeq ($(ZSTD_STATIC_PATH),)
   LIBRARIES += -lzstd
+else
+  LIBRARIES += $(ZSTD_STATIC_PATH)/libzstd.a
 endif
 
 
@@ -111,16 +104,14 @@ endif
 
 src_to_obj = $(1:$(DIR_SRC)/%.c=$(DIR_OBJ)/%.o)
 obj_to_dep = $(1:%.o=%.d)
-src_to_lib = 
+src_to_lib =
 
 BACKUP_SRC_MAIN := $(DIR_SRC)/backup_main.c
 RESTORE_SRC_MAIN := $(DIR_SRC)/restore_main.c
-FILL_SRC_MAIN := $(DIR_SRC)/fill.c
-SPEED_SRC_MAIN := $(DIR_SRC)/speed.c
 FLAGS_SRC_MAIN := $(DIR_SRC)/flags.c
 TOML_SRC_MAIN := $(DIR_SRC)/toml/toml.c
 HELPER_SRCS := $(filter-out $(BACKUP_SRC_MAIN) $(RESTORE_SRC_MAIN) \
-	$(FILL_SRC_MAIN) $(SPEED_SRC_MAIN) $(FLAGS_SRC_MAIN) $(TOML_SRC_MAIN),\
+	$(FLAGS_SRC_MAIN) $(TOML_SRC_MAIN),\
 	$(shell find $(DIR_SRC) -name '*.c' -type f))
 
 BACKUP_SRC := $(BACKUP_SRC_MAIN) $(HELPER_SRCS)
@@ -133,36 +124,15 @@ RESTORE_INC := $(patsubts $(DIR_SRC)/%.c,%(DIR_OBJ)/%.o,%(RESTORE_SRC))
 RESTORE_OBJ := $(call src_to_obj, $(RESTORE_SRC))
 RESTORE_DEP := $(call obj_to_dep, $(RESTORE_OBJ))
 
-FILL_INC := $(DIR_INC)/spec.h
-FILL_SRC := $(FILL_SRC_MAIN) $(DIR_SRC)/spec.c
-FILL_OBJ := $(call src_to_obj, $(FILL_SRC))
-FILL_DEP := $(call obj_to_dep, $(FILL_OBJ))
-
 BACKUP := $(DIR_BIN)/asbackup
 RESTORE := $(DIR_BIN)/asrestore
-FILL := $(DIR_BIN)/fill
 TOML := $(DIR_TOML)/libtoml.a
 
-INCS := $(BACKUP_INC) $(RESTORE_INC) $(FILL_INC)
-SRCS := $(BACKUP_SRC) $(RESTORE_SRC) $(FILL_SRC)
-OBJS := $(BACKUP_OBJ) $(RESTORE_OBJ) $(FILL_OBJ)
-DEPS := $(BACKUP_DEP) $(RESTORE_DEP) $(FILL_DEP)
-BINS := $(TOML) $(BACKUP) $(RESTORE) $(FILL)
-
-ifeq ($(OS), Linux)
-SPEED_INC :=
-SPEED_SRC := $(DIR_SRC)/speed.c
-SPEED_OBJ := $(call src_to_obj, $(SPEED_SRC))
-SPEED_DEP := $(call obj_to_dep, $(SPEED_OBJ))
-
-SPEED := $(DIR_BIN)/speed
-
-INCS += $(SPEED_INC)
-SRCS += $(SPEED_SRC)
-OBJS += $(SPEED_OBJ)
-DEPS += $(SPEED_DEP)
-BINS += $(SPEED)
-endif
+INCS := $(BACKUP_INC) $(RESTORE_INC)
+SRCS := $(BACKUP_SRC) $(RESTORE_SRC)
+OBJS := $(BACKUP_OBJ) $(RESTORE_OBJ)
+DEPS := $(BACKUP_DEP) $(RESTORE_DEP)
+BINS := $(TOML) $(BACKUP) $(RESTORE)
 
 # sort removes duplicates
 INCS := $(sort $(INCS))
@@ -191,16 +161,15 @@ clean:
 	if [ -d $(DIR_TEST_BIN) ]; then rm -r $(DIR_TEST_BIN); fi
 	if [ -d $(DIR_DOCS) ]; then rm -r $(DIR_DOCS); fi
 	if [ -d $(DIR_ENV) ]; then rm -rf $(DIR_ENV); fi
-	if [ -d $(PYTHON_TMP_DIR) ]; then rm -rf $(PYTHON_TMP_DIR); fi
 
 .PHONY: info
 info:
 	@echo
-	@echo "  NAME:       " $(NAME) 
+	@echo "  NAME:       " $(NAME)
 	@echo "  OS:         " $(OS)
 	@echo "  ARCH:       " $(ARCH)
 	@echo "  CLIENTREPO: " $(CLIENT_PATH)
-	@echo "  WD:         " $(shell pwd)	
+	@echo "  WD:         " $(shell pwd)
 	@echo
 	@echo "  PATHS:"
 	@echo "      source:     " $(SOURCE)
@@ -216,10 +185,6 @@ info:
 	@echo "      command:    " $(LD)
 	@echo "      flags:      " $(LDFLAGS)
 	@echo
-
-.PHONY: ragel
-ragel:
-	ragel $(DIR_SRC)/spec.rl
 
 $(DIR_DOCS): $(INCS) $(SRCS) README.md
 	if [ ! -d $(DIR_DOCS) ]; then mkdir $(DIR_DOCS); fi
@@ -241,22 +206,11 @@ $(BACKUP): $(BACKUP_OBJ) | $(DIR_BIN)
 $(RESTORE): $(RESTORE_OBJ) | $(DIR_BIN)
 	$(CC) $(LDFLAGS) -o $(RESTORE) $(RESTORE_OBJ) $(LIBRARIES)
 
-$(FILL): $(FILL_OBJ) | $(DIR_BIN)
-	$(CC) $(LDFLAGS) -o $(FILL) $(FILL_OBJ) $(LIBRARIES)
-
 $(TOML):
 	$(MAKE) -C $(DIR_TOML)
 
 -include $(BACKUP_DEP)
 -include $(RESTORE_DEP)
--include $(FILL_DEP)
-
-ifeq ($(OS), Linux)
-$(SPEED): $(SPEED_OBJ) | $(DIR_BIN)
-	$(CC) $(LDFLAGS) -o $(SPEED) $(SPEED_OBJ) $(LIBRARIES)
-
--include $(SPEED_DEP)
-endif
 
 .PHONY: test
 test: unit integration

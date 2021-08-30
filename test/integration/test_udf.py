@@ -27,10 +27,6 @@ def check_udf_files(context):
 		content = lib.get_udf_file(path)
 		assert lib.eq(content, context[path]), "UDF file %s has invalid content" % path
 
-def clear_udf_files(context):
-	for path in context:
-		os.remove(path)
-
 def test_udf_file():
 	"""
 	Test UDF files.
@@ -38,7 +34,6 @@ def test_udf_file():
 	lib.backup_and_restore(
 		lambda context: put_udf_files(context, COMMENTS),
 		None,
-		check_udf_files,
-		cleanup=clear_udf_files
+		check_udf_files
 	)
 

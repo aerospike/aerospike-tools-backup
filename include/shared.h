@@ -163,6 +163,7 @@ typedef struct {
 typedef enum {
 	TLS_OPT_ENABLE = 1000,      ///< The `--tls-enable` option.
 	TLS_OPT_ENCRYPT_ONLY,       ///< The `--tls-encrypt-only` option.
+	TLS_OPT_NAME,               ///< The `--tls-name` option.
 	TLS_OPT_CA_FILE,            ///< The `--tls-cafile` option.
 	TLS_OPT_CA_PATH,            ///< The `--tls-capath` option.
 	TLS_OPT_PROTOCOLS,          ///< The `--tls-protocols` option.

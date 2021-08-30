@@ -1,3 +1,5 @@
+aerospike
 docker
 pytest
 pylint
+six

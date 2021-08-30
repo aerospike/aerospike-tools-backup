@@ -33,7 +33,7 @@
 
 #define MAX_PARTITIONS 4096
 
-#define OPTIONS_SHORT "h:Sp:A:U:P::n:s:d:o:F:r:vxCB:X:D:M:m:eN:RIuVZa:b:L:q:z:y:"
+#define OPTIONS_SHORT "h:Sp:A:U:P::n:s:d:o:F:rvxCB:l:X:D:M:m:eN:RIuVZa:b:L:q:w:z:y:f:"
 
 
 // The C client's version string
@@ -46,12 +46,23 @@ static volatile bool g_stop = false;
 
 // Indicates that the one-time work (secondary indexes and UDF files) is complete.
 static volatile bool one_shot_done = false;
+
+// Used by threads when writing to one file to ensure mutual exclusion on access
+// to the file
+static pthread_mutex_t file_write_mutex = PTHREAD_MUTEX_INITIALIZER;
 // Signals completion of the one-time work (secondary indexes and UDF files) to
 // other threads.
 static pthread_cond_t one_shot_cond = PTHREAD_COND_INITIALIZER;
+static pthread_mutex_t one_shot_mutex = PTHREAD_MUTEX_INITIALIZER;
 // Used by the counter thread to signal newly available bandwidth to the backup
 // threads.
 static pthread_cond_t bandwidth_cond = PTHREAD_COND_INITIALIZER;
+static pthread_mutex_t bandwidth_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+// Used when reading/updating rec_count_total_committed/byte_count_total_committed
+// in the global backup_config_t, since these values must always be read/updated
+// together
+static pthread_mutex_t committed_count_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 
 //==========================================================
@@ -61,28 +72,39 @@ static pthread_cond_t bandwidth_cond = PTHREAD_COND_INITIALIZER;
 static void wait_one_shot(void);
 static void signal_one_shot(void);
 static bool has_stopped(void);
-static void
-stop(void);
+static void stop(void);
 static void stop_nolock(void);
 static void sleep_for(uint64_t n_secs);
 static void disk_space_check(const char *dir, uint64_t disk_space);
-static bool close_file(io_write_proxy_t *fd, void **fd_buf);
-static bool open_file(uint64_t *bytes, const char *file_path, const char *ns,
-		uint64_t disk_space, io_write_proxy_t *fd, void **fd_buf,
+static int update_file_pos(backup_job_context_t* bjc);
+static bool close_file(io_write_proxy_t *fd);
+static bool open_file(const char *file_path, const char *ns,
+		uint64_t disk_space, io_write_proxy_t *fd,
 		compression_opt c_opt, encryption_opt e_opt, encryption_key_t* pkey);
-static bool close_dir_file(per_node_context *pnc);
-static bool open_dir_file(per_node_context *pnc);
+static bool close_dir_file(backup_job_context_t *bjc);
+static bool open_dir_file(backup_job_context_t *bjc);
 static bool scan_callback(const as_val *val, void *cont);
-static bool process_secondary_indexes(per_node_context *pnc);
-static bool process_udfs(per_node_context *pnc);
+static bool process_secondary_indexes(backup_job_context_t *bjc);
+static bool process_udfs(backup_job_context_t *bjc);
 static void * backup_thread_func(void *cont);
 static void * counter_thread_func(void *cont);
 static bool clean_output_file(const char *file_path, bool clear);
 static bool clean_directory(const char *dir_path, bool clear);
+static void init_partition_filters(as_vector *partition_ranges,
+		as_vector *digests, uint32_t capacity);
+static bool sort_partition_ranges(as_vector* partition_ranges);
 static bool parse_partition_range(char *str, as_partition_filter *range);
 static bool parse_digest(const char *str, as_digest *digest);
-static bool parse_after_digest(char *str, as_partition_filter* filter);
+static bool parse_partition_list(char *partition_list,
+		as_vector *partition_ranges, as_vector *digests);
+static bool parse_after_digest(char *str, as_vector* partition_ranges,
+		as_vector* digests);
+static bool parse_node_list(char *node_list, node_spec **node_specs,
+		uint32_t *n_node_specs);
 static bool parse_sets(as_vector* set_list, as_scan* scan, as_policy_scan* policy);
+bool calc_node_list_partitions(as_cluster *clust, const as_namespace ns,
+		char (*node_names)[][AS_NODE_NAME_SIZE], uint32_t n_node_names,
+		as_vector* partition_ranges);
 static bool init_scan_bins(char *bin_list, as_scan *scan);
 static bool check_for_ldt_callback(void *context_, const char *key, const char *value);
 static bool check_for_ldt(aerospike *as, const char *namespace,
@@ -92,7 +114,7 @@ static bool set_count_callback(void *context_, const char *key_, const char *val
 static bool get_object_count(aerospike *as, const char *namespace, as_vector* set_list,
 		char (*node_names)[][AS_NODE_NAME_SIZE], uint32_t n_node_names, uint64_t *obj_count);
 static void show_estimate(FILE *mach_fd, uint64_t *samples, uint32_t n_samples,
-		uint64_t rec_count_estimate);
+		uint64_t rec_count_estimate, io_write_proxy_t* fd);
 static void sig_hand(int32_t sig);
 static int32_t safe_join(pthread_t thread, void **thread_res);
 static void print_version(void);
@@ -129,6 +151,7 @@ backup_main(int32_t argc, char **argv)
 
 		{ "tlsEnable", no_argument, NULL, TLS_OPT_ENABLE },
 		{ "tlsEncryptOnly", no_argument, NULL, TLS_OPT_ENCRYPT_ONLY },
+		{ "tlsName", no_argument, NULL, TLS_OPT_NAME },
 		{ "tlsCaFile", required_argument, NULL, TLS_OPT_CA_FILE },
 		{ "tlsCaPath", required_argument, NULL, TLS_OPT_CA_PATH },
 		{ "tlsProtocols", required_argument, NULL, TLS_OPT_PROTOCOLS },
@@ -141,26 +164,28 @@ backup_main(int32_t argc, char **argv)
 		{ "tlsCertFile", required_argument, NULL, TLS_OPT_CERT_FILE },
 
 		{ "tls-enable", no_argument, NULL, TLS_OPT_ENABLE },
+		{ "tls-name", no_argument, NULL, TLS_OPT_NAME },
 		{ "tls-cafile", required_argument, NULL, TLS_OPT_CA_FILE },
 		{ "tls-capath", required_argument, NULL, TLS_OPT_CA_PATH },
 		{ "tls-protocols", required_argument, NULL, TLS_OPT_PROTOCOLS },
 		{ "tls-cipher-suite", required_argument, NULL, TLS_OPT_CIPHER_SUITE },
 		{ "tls-crl-check", no_argument, NULL, TLS_OPT_CRL_CHECK },
 		{ "tls-crl-check-all", no_argument, NULL, TLS_OPT_CRL_CHECK_ALL },
-		{ "tls-cert-blackList", required_argument, NULL, TLS_OPT_CERT_BLACK_LIST },
+		{ "tls-cert-blacklist", required_argument, NULL, TLS_OPT_CERT_BLACK_LIST },
 		{ "tls-keyfile", required_argument, NULL, TLS_OPT_KEY_FILE },
 		{ "tls-keyfile-password", optional_argument, NULL, TLS_OPT_KEY_FILE_PASSWORD },
 		{ "tls-certfile", required_argument, NULL, TLS_OPT_CERT_FILE },
 
 		// asbackup section in config file
 		{ "compact", no_argument, NULL, 'C' },
+		{ "parallel", required_argument, NULL, 'w' },
 		{ "compress", required_argument, NULL, 'z' },
 		{ "encrypt", required_argument, NULL, 'y' },
 		{ "encryption-key-file", required_argument, NULL, '1' },
 		{ "encryption-key-env", required_argument, NULL, '2' },
-		{ "parallel", required_argument, NULL, 'w' },
 		{ "no-bins", no_argument, NULL, 'x' },
 		{ "bin-list", required_argument, NULL, 'B' },
+		{ "node-list", required_argument, NULL, 'l' },
 		{ "no-records", no_argument, NULL, 'R' },
 		{ "no-indexes", no_argument, NULL, 'I' },
 		{ "no-udfs", no_argument, NULL, 'u' },
@@ -172,8 +197,9 @@ backup_main(int32_t argc, char **argv)
 		{ "output-file-prefix", required_argument, NULL, 'q' },
 		{ "file-limit", required_argument, NULL, 'F' },
 		{ "remove-files", no_argument, NULL, 'r' },
-		{ "partition-filter", required_argument, NULL, 'X' },
+		{ "partition-list", required_argument, NULL, 'X' },
 		{ "after-digest", required_argument, NULL, 'D' },
+		{ "filter-exp", required_argument, NULL, 'f' },
 		{ "modified-after", required_argument, NULL, 'a' },
 		{ "modified-before", required_argument, NULL, 'b' },
 		{ "no-ttl-only", no_argument, NULL, COMMAND_OPT_NO_TTL_ONLY },
@@ -189,10 +215,10 @@ backup_main(int32_t argc, char **argv)
 
 	enable_client_log();
 
-	backup_config conf;
+	backup_config_t conf;
 	backup_config_default(&conf);
 
-	conf.encoder = &(backup_encoder){
+	conf.encoder = &(backup_encoder_t){
 		text_put_record, text_put_udf_file, text_put_secondary_index
 	};
 
@@ -202,12 +228,17 @@ backup_main(int32_t argc, char **argv)
 	conf.policy = &policy;
 
 	as_scan scan;
-	as_scan_init(&scan, "", "");
+	as_namespace ns = "";
+	as_set set = "";
+	as_scan_init(&scan, ns, set);
 	scan.deserialize_list_map = false;
 	conf.scan = &scan;
 
 	int32_t opt;
 	uint64_t tmp;
+
+	// Don't print error messages for the first two argument parsers
+	opterr = 0;
 
 	// Option string should start with '-' to avoid argv permutation.
 	// We need same argv sequence in third check to support space separated
@@ -233,7 +264,7 @@ backup_main(int32_t argc, char **argv)
 	char *instance = NULL;
 
 	// Reset optind (internal variable) to parse all options again
-	optind = 0;
+	optind = 1;
 	while ((opt = getopt_long(argc, argv, "-" OPTIONS_SHORT, options, 0)) != -1) {
 		switch (opt) {
 
@@ -269,13 +300,16 @@ backup_main(int32_t argc, char **argv)
 		}
 	} else { 
 		if (read_only_conf_file) {
-			fprintf(stderr, "--no-config-file and only-config-file are mutually exclusive option. Please enable only one.\n");
+			err("--no-config-file and only-config-file are mutually exclusive "
+					"option. Please enable only one.");
 			return false;
 		}
 	}
 
+	// Now print error messages
+	opterr = 1;
 	// Reset optind (internal variable) to parse all options again
-	optind = 0;
+	optind = 1;
 	while ((opt = getopt_long(argc, argv, OPTIONS_SHORT, options, 0)) != -1) {
 		switch (opt) {
 		case 'h':
@@ -372,16 +406,24 @@ backup_main(int32_t argc, char **argv)
 			conf.compact = true;
 			break;
 
+		case 'w':
+			if (!better_atoi(optarg, &tmp) || tmp < 1 || tmp > MAX_PARALLEL) {
+				err("Invalid parallelism value %s", optarg);
+				goto cleanup1;
+			}
+			conf.parallel = (int32_t) tmp;
+			break;
+
 		case 'z':
 			if (parse_compression_type(optarg, &conf.compress_mode) != 0) {
-				err("Invalid compression type \"%s\"\n", optarg);
+				err("Invalid compression type \"%s\"", optarg);
 				goto cleanup1;
 			}
 			break;
 
 		case 'y':
 			if (parse_encryption_type(optarg, &conf.encrypt_mode) != 0) {
-				err("Invalid encryption type \"%s\"\n", optarg);
+				err("Invalid encryption type \"%s\"", optarg);
 				goto cleanup1;
 			}
 			break;
@@ -389,7 +431,7 @@ backup_main(int32_t argc, char **argv)
 		case '1':
 			// encryption key file
 			if (conf.pkey != NULL) {
-				err("Cannot specify both encryption-key-file and encryption-key-env\n");
+				err("Cannot specify both encryption-key-file and encryption-key-env");
 				goto cleanup1;
 			}
 			conf.pkey = (encryption_key_t*) cf_malloc(sizeof(encryption_key_t));
@@ -401,7 +443,7 @@ backup_main(int32_t argc, char **argv)
 		case '2':
 			// encryption key environment variable
 			if (conf.pkey != NULL) {
-				err("Cannot specify both encryption-key-file and encryption-key-env\n");
+				err("Cannot specify both encryption-key-file and encryption-key-env");
 				goto cleanup1;
 			}
 			conf.pkey = parse_encryption_key_env(optarg);
@@ -414,12 +456,20 @@ backup_main(int32_t argc, char **argv)
 			conf.bin_list = safe_strdup(optarg);
 			break;
 
+		case 'l':
+			conf.node_list = safe_strdup(optarg);
+			break;
+
 		case 'X':
 			conf.partition_list = safe_strdup(optarg);
 			break;
 
 		case 'D':
 			conf.after_digest = safe_strdup(optarg);
+			break;
+
+		case 'f':
+			conf.filter_exp = safe_strdup(optarg);
 			break;
 
 		case 'M':
@@ -466,6 +516,10 @@ backup_main(int32_t argc, char **argv)
 
 		case TLS_OPT_ENABLE:
 			conf.tls.enable = true;
+			break;
+
+		case TLS_OPT_NAME:
+			conf.tls_name = safe_strdup(optarg);
 			break;
 
 		case TLS_OPT_CA_FILE:
@@ -550,7 +604,7 @@ backup_main(int32_t argc, char **argv)
 			break;
 
 		default:
-			usage(argv[0]);
+			fprintf(stderr, "Run with --help for usage information and flag options\n");
 			goto cleanup1;
 		}
 	}
@@ -573,13 +627,18 @@ backup_main(int32_t argc, char **argv)
 		goto cleanup1;
 	}
 
+	if (conf.set_list.size > 1 && conf.filter_exp != NULL) {
+		err("Multi-set backup and filter-exp are mutually exclusive");
+		goto cleanup1;
+	}
+
 	if (!parse_sets(&conf.set_list, &scan, &policy)) {
 		goto cleanup1;
 	}
 
 	if ((conf.pkey != NULL) ^ (conf.encrypt_mode != IO_PROXY_ENCRYPT_NONE)) {
 		err("Must specify both encryption mode and a private key "
-				"file/environment variable\n");
+				"file/environment variable");
 		goto cleanup1;
 	}
 
@@ -604,16 +663,32 @@ backup_main(int32_t argc, char **argv)
 	}
 
 	if (conf.partition_list != NULL && conf.after_digest != NULL) {
-		err("digest and partition-list arguments are mutually exclusive");
+		err("after-digest and partition-list arguments are mutually exclusive");
 		goto cleanup1;
 	}
+	if (conf.node_list != NULL &&
+			(conf.partition_list != NULL || conf.after_digest != NULL)) {
+		err("node-list is mutually exclusive with after-digest and partition-list");
+		goto cleanup1;
+	}
+	if (policy.max_records != 0 &&
+			(conf.partition_list != NULL || conf.after_digest != NULL ||
+			 conf.node_list != NULL)) {
+		err("max-records and partition-list/after-digest/node-list arguments are "
+				"mutually exclusive");
+		goto cleanup1;
+	}
+
+	node_spec* node_specs = NULL;
+	uint32_t n_node_specs = 0;
 
 	if (conf.partition_list != NULL) {
 		if (verbose) {
 			ver("Parsing partition-list '%s'", conf.partition_list);
 		}
 
-		if (!parse_partition_range(conf.partition_list, &conf.p_filter)) {
+		if (!parse_partition_list(conf.partition_list, &conf.partition_ranges,
+					&conf.digests)) {
 			err("Error while parsing partition-list '%s'", conf.partition_list);
 			goto cleanup1;
 		}
@@ -623,14 +698,58 @@ backup_main(int32_t argc, char **argv)
 			ver("Parsing after-digest '%s'", conf.after_digest);
 		}
 
-		if (!parse_after_digest(conf.after_digest, &conf.p_filter)) {
+		if (!parse_after_digest(conf.after_digest, &conf.partition_ranges,
+					&conf.digests)) {
 			err("Error while parsing after-digest '%s'", conf.after_digest);
 			goto cleanup1;
 		}
 	}
-	else {
-		// neither partition_list nor after_digest are set, filter out nothing
-		as_partition_filter_set_range(&conf.p_filter, 0, 0);
+	else if (conf.node_list != NULL) {
+		if (verbose) {
+			ver("Parsing node list %s", conf.node_list);
+		}
+
+		if (!parse_node_list(conf.node_list, &node_specs, &n_node_specs)) {
+			err("Error while parsing node list");
+			goto cleanup1;
+		}
+
+		conf.host = node_specs[0].addr_string;
+		conf.port = ntohs(node_specs[0].port);
+
+		if (node_specs[0].family == AF_INET6) {
+			if (strnlen(conf.host, IP_ADDR_SIZE) > IP_ADDR_SIZE - 3) {
+				err("Hostname \"%.*s\" too long (max is %d characters)",
+						IP_ADDR_SIZE, conf.host, IP_ADDR_SIZE - 3);
+				goto cleanup1;
+			}
+			snprintf(conf.host, IP_ADDR_SIZE, "[%.*s]", IP_ADDR_SIZE - 3, conf.host);
+		}
+
+		if (node_specs[0].tls_name_str != NULL && strcmp(node_specs[0].tls_name_str, "")) {
+			conf.tls_name = node_specs[0].tls_name_str;
+		}
+	}
+
+	if (conf.filter_exp != NULL) {
+		uint32_t b64_len = (uint32_t) strlen(conf.filter_exp);
+		as_exp* expr = (as_exp*) cf_malloc(sizeof(as_exp) +
+				cf_b64_decoded_buf_size(b64_len));
+
+		if (!cf_b64_validate_and_decode(conf.filter_exp, b64_len,
+					expr->packed, &expr->packed_sz)) {
+			err("Invalide base64 encoded string: %s", conf.filter_exp);
+			goto cleanup1;
+		}
+		conf.policy->base.filter_exp = expr;
+	}
+
+	if (conf.estimate) {
+		if (conf.filter_exp != NULL || conf.node_list != NULL ||
+				conf.mod_after > 0 || conf.mod_before > 0 || conf.ttl_zero ||
+				conf.after_digest != NULL || conf.partition_list != NULL) {
+			inf("Warning: using estimate with any of the following will ignore their effects when calculating estimated time/storage: filter-exp, node-list, modified-after, modified-before, no-ttl-only, after-digest, partition-list");
+		}
 	}
 
 	signal(SIGINT, sig_hand);
@@ -739,13 +858,18 @@ backup_main(int32_t argc, char **argv)
 	as_conf.conn_timeout_ms = TIMEOUT;
 	as_conf.use_services_alternate = conf.use_services_alternate;
 
+	if (conf.tls_name != NULL) {
+		as_config_set_cluster_name(&as_conf, conf.tls_name);
+	}
+
 	if (! as_config_add_hosts(&as_conf, conf.host, (uint16_t)conf.port)) {
 		err("Invalid conf.host(s) string %s", conf.host);
 		goto cleanup3;
 	}
 
 	if (conf.auth_mode && ! as_auth_mode_from_string(&as_conf.auth_mode, conf.auth_mode)) {
-		err("Invalid authentication mode %s. Allowed values are INTERNAL / EXTERNAL / EXTERNAL_INSECURE\n",
+		err("Invalid authentication mode %s. Allowed values are INTERNAL / "
+				"EXTERNAL / EXTERNAL_INSECURE",
 				conf.auth_mode);
 		goto cleanup3;
 	}
@@ -756,7 +880,7 @@ backup_main(int32_t argc, char **argv)
 		}
 
 		if (! as_config_set_user(&as_conf, conf.user, conf.password)) {
-			printf("Invalid password for user name `%s`\n", conf.user);
+			err("Invalid password for user name `%s`", conf.user);
 			goto cleanup3;
 		}
 	}
@@ -776,11 +900,11 @@ backup_main(int32_t argc, char **argv)
 
 	// initialize the global lock + condition variable used for the stop condition
 	if (pthread_mutex_init(&g_stop_lock, NULL) != 0) {
-		err("Failed to initialize mutex\n");
+		err("Failed to initialize mutex");
 		goto cleanup3;
 	}
 	if (pthread_cond_init(&g_stop_cond, NULL) != 0) {
-		err("Failed to initialize condition variable\n");
+		err("Failed to initialize condition variable");
 		pthread_mutex_destroy(&g_stop_lock);
 		goto cleanup3;
 	}
@@ -800,16 +924,30 @@ backup_main(int32_t argc, char **argv)
 		goto cleanup4;
 	}
 
-	node_spec *node_specs = NULL;
-	uint32_t n_node_specs = 0;
-
 	char (*node_names)[][AS_NODE_NAME_SIZE] = NULL;
 	uint32_t n_node_names;
 	get_node_names(as.cluster, node_specs, n_node_specs, &node_names, &n_node_names);
 
+	if (n_node_names < n_node_specs) {
+		err("Invalid node list. Potentially duplicate nodes or nodes from different clusters.");
+		goto cleanup5;
+	}
+
+	if (conf.node_list != NULL) {
+		// calculate partitions from these nodes
+		as_vector_init(&conf.partition_ranges, sizeof(as_partition_filter), 8);
+		if (!calc_node_list_partitions(as.cluster, scan.ns, node_names, n_node_names,
+				&conf.partition_ranges)) {
+			goto cleanup5;
+		}
+	}
+
 	inf("Processing %u node(s)", n_node_names);
 	cf_atomic64_set(&conf.rec_count_total, 0);
 	cf_atomic64_set(&conf.byte_count_total, 0);
+	cf_atomic64_set(&conf.file_count, 0);
+	cf_atomic64_set(&conf.rec_count_total_committed, 0);
+	cf_atomic64_set(&conf.byte_count_total_committed, 0);
 	conf.byte_count_limit = conf.bandwidth;
 	conf.index_count = 0;
 	conf.udf_count = 0;
@@ -863,46 +1001,123 @@ backup_main(int32_t argc, char **argv)
 		goto cleanup5;
 	}
 
-	pthread_t backup_threads[1];
-	uint32_t n_threads = 1;
+	pthread_t backup_threads[MAX_PARALLEL];
+	uint32_t n_threads = (uint32_t) conf.parallel;
 	static uint64_t samples[NUM_SAMPLES];
 	static uint32_t n_samples = 0;
-	backup_thread_args backup_args;
+	backup_thread_args_t backup_args;
 	backup_args.conf = &conf;
 	backup_args.shared_fd = NULL;
-	backup_args.bytes = 0;
 	backup_args.samples = samples;
 	backup_args.n_samples = &n_samples;
-	cf_queue *job_queue = cf_queue_create(sizeof (backup_thread_args), true);
+	cf_queue *job_queue = cf_queue_create(sizeof(backup_thread_args_t), true);
 
 	if (job_queue == NULL) {
 		err_code("Error while allocating job queue");
 		goto cleanup6;
 	}
 
-	void *fd_buf = NULL;
-
 	// backing up to a single backup file: open the file now and store the file descriptor in
 	// backup_args.shared_fd; it'll be shared by all backup threads
 	if (conf.output_file != NULL) {
 		backup_args.shared_fd = (io_write_proxy_t*) cf_malloc(sizeof(io_write_proxy_t));
-		if (!open_file(&backup_args.bytes, conf.output_file, conf.scan->ns, 0,
-					backup_args.shared_fd, &fd_buf, conf.compress_mode,
-					conf.encrypt_mode, conf.pkey)) {
+		if (!open_file(conf.output_file, conf.scan->ns, 0, backup_args.shared_fd,
+					conf.compress_mode, conf.encrypt_mode, conf.pkey)) {
 			err("Error while opening shared backup file");
+			goto cleanup7;
+		}
+	}
+	else if (conf.estimate) {
+		backup_args.shared_fd = (io_write_proxy_t*) cf_malloc(sizeof(io_write_proxy_t));
+
+		if (!open_file(NULL, conf.scan->ns, 0, backup_args.shared_fd,
+					conf.compress_mode, conf.encrypt_mode, conf.pkey)) {
+			goto cleanup7;
+		}
+	}
+	else {
+		backup_args.file_queue = cf_queue_create(sizeof(queued_backup_fd_t), true);
+
+		if (backup_args.file_queue == NULL) {
+			err("Failed to create cf_queue");
 			goto cleanup7;
 		}
 	}
 
 	bool first = true;
 
-	// Create a single backup task
-	memcpy(&backup_args.filter, &conf.p_filter, sizeof(as_partition_filter));
-	backup_args.first = first;
-	first = false;
-	if (cf_queue_push(job_queue, &backup_args) != CF_QUEUE_OK) {
-		err("Error while queueing backup job");
-		goto cleanup8;
+
+	as_vector* digests = &conf.digests;
+	as_vector* partition_ranges = &conf.partition_ranges;
+
+	if (digests->size == 0 && partition_ranges->size <= 1) {
+		// since only one partition range is being backed up, evenly divide the range into 'n_threads' segments
+		as_partition_filter range;
+
+		if (partition_ranges->size == 0) {
+			as_partition_filter_set_range(&range, 0, MAX_PARTITIONS);
+		}
+		else {
+			range = *(as_partition_filter*) as_vector_get(partition_ranges, 0);
+		}
+
+		if (n_threads > range.count) {
+			inf("Warning: --parallel %u is higher than the number of partitions being "
+					"backed up (%u), setting number of threads to %u.",
+					n_threads, range.count, range.count);
+			n_threads = range.count;
+		}
+
+		for (uint32_t i = 0; i < n_threads; i++) {
+			uint16_t begin = (uint16_t) ((uint32_t) range.begin + ((uint32_t) range.count * i) / n_threads);
+			uint16_t count = (uint16_t) ((uint32_t) range.begin + ((uint32_t) range.count * (i + 1)) / n_threads) - begin;
+			as_partition_filter_set_range(&backup_args.filter, begin, count);
+
+			backup_args.first = first;
+			first = false;
+
+			if (cf_queue_push(job_queue, &backup_args) != CF_QUEUE_OK) {
+				err("Error while queueing backup job");
+				goto cleanup8;
+			}
+		}
+	}
+	else {
+		// Create backup task for every partition filter.
+
+		for (uint32_t i = 0; i < digests->size; i++) {
+			as_digest *digest = as_vector_get(digests, i);
+			as_partition_filter_set_after(&backup_args.filter, digest);
+
+			backup_args.first = first;
+			first = false;
+
+			if (cf_queue_push(job_queue, &backup_args) != CF_QUEUE_OK) {
+				err("Error while queueing backup job");
+				goto cleanup8;
+			}
+		}
+
+		for (uint32_t i = 0; i < partition_ranges->size; i++) {
+			as_partition_filter *range = as_vector_get(partition_ranges, i);
+			memcpy(&backup_args.filter, range, sizeof(as_partition_filter));
+
+			backup_args.first = first;
+			first = false;
+
+			if (cf_queue_push(job_queue, &backup_args) != CF_QUEUE_OK) {
+				err("Error while queueing backup job");
+				goto cleanup8;
+			}
+		}
+
+		uint32_t n_filters = digests->size + partition_ranges->size;
+		if (n_threads > n_filters) {
+			inf("Warning: --parallel %u is higher than the number of partition "
+					"filters given (%u), setting number of threads to %u.",
+					n_threads, n_filters, n_filters);
+			n_threads = n_filters;
+		}
 	}
 
 	uint32_t n_threads_ok = 0;
@@ -944,12 +1159,31 @@ cleanup9:
 		}
 	}
 
-cleanup8:
-	if (conf.output_file != NULL && !close_file(backup_args.shared_fd, &fd_buf)) {
-		err("Error while closing shared backup file");
-		res = EXIT_FAILURE;
+	if (conf.estimate) {
+		io_proxy_flush(backup_args.shared_fd);
+		show_estimate(mach_fd, samples, n_samples, rec_count_estimate,
+				backup_args.shared_fd);
 	}
-	cf_free(backup_args.shared_fd);
+	else if (conf.output_file == NULL) {
+		// backing up to a directory, clear out the file queue
+		queued_backup_fd_t queued_fd;
+		while (cf_queue_pop(backup_args.file_queue, &queued_fd, CF_QUEUE_NOWAIT) == CF_QUEUE_OK) {
+			close_file(queued_fd.fd);
+			cf_free(queued_fd.fd);
+		}
+	}
+
+cleanup8:
+	if (conf.output_file != NULL || conf.estimate) {
+		if (!close_file(backup_args.shared_fd)) {
+			err("Error while closing shared backup file");
+			res = EXIT_FAILURE;
+		}
+		cf_free(backup_args.shared_fd);
+	}
+	else {
+		cf_queue_destroy(backup_args.file_queue);
+	}
 
 cleanup7:
 	cf_queue_destroy(job_queue);
@@ -966,11 +1200,11 @@ cleanup6:
 		res = EXIT_FAILURE;
 	}
 
-	if (conf.estimate) {
-		show_estimate(mach_fd, samples, n_samples, rec_count_estimate);
+cleanup5:
+	if (node_names != NULL) {
+		cf_free(node_names);
 	}
 
-cleanup5:
 	aerospike_close(&as, &ae);
 
 cleanup4:
@@ -997,7 +1231,7 @@ cleanup1:
 }
 
 void
-backup_config_default(backup_config *conf)
+backup_config_default(backup_config_t *conf)
 {
 	conf->host = NULL;
 	conf->port = -1;
@@ -1008,8 +1242,12 @@ backup_config_default(backup_config *conf)
 
 	as_vector_init(&conf->set_list, sizeof(as_set), 8);
 	conf->bin_list = NULL;
+	conf->node_list = NULL;
 	conf->partition_list = NULL;
 	conf->after_digest = NULL;
+	conf->filter_exp = NULL;
+	memset(&conf->partition_ranges, 0, sizeof(as_vector));
+	memset(&conf->digests, 0, sizeof(as_vector));
 	conf->mod_after = 0;
 	conf->mod_before = 0;
 	conf->ttl_zero = false;
@@ -1019,6 +1257,7 @@ backup_config_default(backup_config *conf)
 	conf->output_file = NULL;
 	conf->prefix = NULL;
 	conf->compact = false;
+	conf->parallel = DEFAULT_PARALLEL;
 	conf->compress_mode = IO_PROXY_COMPRESS_NONE;
 	conf->encrypt_mode = IO_PROXY_ENCRYPT_NONE;
 	conf->pkey = NULL;
@@ -1038,6 +1277,7 @@ backup_config_default(backup_config *conf)
 	conf->udf_count = 0;
 
 	memset(&conf->tls, 0, sizeof(as_config_tls));
+	conf->tls_name = NULL;
 	conf->as = NULL;
 	conf->policy = NULL;
 	conf->scan = NULL;
@@ -1045,7 +1285,7 @@ backup_config_default(backup_config *conf)
 }
 
 void
-backup_config_destroy(backup_config *conf)
+backup_config_destroy(backup_config_t *conf)
 {
 	if (conf->pkey != NULL) {
 		encryption_key_free(conf->pkey);
@@ -1060,10 +1300,21 @@ backup_config_destroy(backup_config *conf)
 		cf_free(conf->after_digest);
 	}
 
+	if (conf->filter_exp != NULL) {
+		cf_free(conf->filter_exp);
+	}
+	as_exp_destroy(conf->policy->base.filter_exp);
+
 	as_vector_destroy(&conf->set_list);
+	as_vector_destroy(&conf->partition_ranges);
+	as_vector_destroy(&conf->digests);
 
 	if (conf->bin_list != NULL) {
 		cf_free(conf->bin_list);
+	}
+
+	if (conf->tls_name != NULL) {
+		cf_free(conf->tls_name);
 	}
 
 	if (conf->tls.cafile != NULL) {
@@ -1110,13 +1361,13 @@ backup_config_destroy(backup_config *conf)
 static void
 wait_one_shot(void)
 {
-	safe_lock();
+	safe_lock(&one_shot_mutex);
 
 	while (!one_shot_done) {
-		safe_wait(&one_shot_cond);
+		safe_wait(&one_shot_cond, &one_shot_mutex);
 	}
 
-	safe_unlock();
+	safe_unlock(&one_shot_mutex);
 }
 
 /*
@@ -1125,10 +1376,10 @@ wait_one_shot(void)
 static void
 signal_one_shot(void)
 {
-	safe_lock();
+	safe_lock(&one_shot_mutex);
 	one_shot_done = true;
 	safe_signal(&one_shot_cond);
-	safe_unlock();
+	safe_unlock(&one_shot_mutex);
 }
 
 /*
@@ -1235,13 +1486,33 @@ disk_space_check(const char *dir, uint64_t disk_space)
 }
 
 /*
+ * To be called after data has been written to the io_proxy. Checks if any data
+ * was written to the file, and if so, updates the global byte counts
+ */
+static int
+update_file_pos(backup_job_context_t* bjc)
+{
+	int64_t pos = io_write_proxy_bytes_written(bjc->fd);
+	if (pos < 0) {
+		err("Failed to get the file position");
+		return -1;
+	}
+	uint64_t diff = (uint64_t) pos - bjc->byte_count_file;
+
+	bjc->byte_count_file = (uint64_t) pos;
+	bjc->byte_count_job += diff;
+	cf_atomic64_add(&bjc->conf->byte_count_total, (int64_t) diff);
+
+	return 0;
+}
+
+/*
  * Closes a backup file and frees the associated I/O buffer.
  *
  * @param fd      The file descriptor of the backup file to be closed.
- * @param fd_buf  The I/O buffer that was allocated for the file descriptor.
  */
 static bool
-close_file(io_write_proxy_t *fd, void **fd_buf)
+close_file(io_write_proxy_t *fd)
 {
 	if (fd->fd == NULL) {
 		return true;
@@ -1278,7 +1549,9 @@ close_file(io_write_proxy_t *fd, void **fd_buf)
 			return false;
 		}
 
-		if (fsync(fno) < 0) {
+		// errno = EINVAL happens when "/dev/null" is the output file, which
+		// doesn't support synchronization
+		if (fsync(fno) < 0 && errno != EINVAL) {
 			err_code("Error while flushing kernel buffers");
 			return false;
 		}
@@ -1289,8 +1562,6 @@ close_file(io_write_proxy_t *fd, void **fd_buf)
 		}
 	}
 
-	cf_free(*fd_buf);
-	*fd_buf = NULL;
 	return true;
 }
 
@@ -1301,22 +1572,19 @@ close_file(io_write_proxy_t *fd, void **fd_buf)
  *   - Allocates an I/O buffer for it.
  *   - Writes the version header and meta data (e.g., the namespace) to the backup file.
  *
- * @param bytes       The number of bytes written to the new backup file (version header, meta
- *                    data).
  * @param file_path   The path of the backup file to be created.
  * @param ns          The namespace that is being backed up.
  * @param disk_space  An estimate of the required disk space for the backup file.
  * @param fd          The file descriptor of the created backup file.
- * @param fd_buf      The I/O buffer allocated for the file descriptor.
  * @param c_opt       The compression mode to be used on the file.
  * @param e_opt       The encryption mode to be used on the file.
  *
  * @result            `true`, if successful.
  */
 static bool
-open_file(uint64_t *bytes, const char *file_path, const char *ns,
-		uint64_t disk_space, io_write_proxy_t *fd, void **fd_buf,
-		compression_opt c_opt, encryption_opt e_opt, encryption_key_t* pkey)
+open_file(const char *file_path, const char *ns, uint64_t disk_space,
+		io_write_proxy_t *fd, compression_opt c_opt,
+		encryption_opt e_opt, encryption_key_t* pkey)
 {
 	FILE* _f;
 
@@ -1324,13 +1592,24 @@ open_file(uint64_t *bytes, const char *file_path, const char *ns,
 		ver("Opening backup file %s", file_path);
 	}
 
-	if (strcmp(file_path, "-") == 0) {
+	if (file_path == NULL) {
+		if (verbose) {
+			ver("Backup up to \"/dev/null\" for estimate");
+		}
+
+		if ((_f = fopen("/dev/null", "w")) == NULL) {
+			err_code("Unable to open \"/dev/null\"");
+			return false;
+		}
+	}
+	else if (strcmp(file_path, "-") == 0) {
 		if (verbose) {
 			ver("Backup file is stdout");
 		}
 
 		_f = stdout;
-	} else {
+	}
+	else {
 		if (verbose) {
 			ver("Creating backup file");
 		}
@@ -1365,18 +1644,20 @@ open_file(uint64_t *bytes, const char *file_path, const char *ns,
 	io_proxy_init_compression(fd, c_opt);
 	io_proxy_init_encryption(fd, pkey, e_opt);
 
-	*fd_buf = safe_malloc(IO_BUF_SIZE);
-	setbuffer(fd->fd, *fd_buf, IO_BUF_SIZE);
+	// if in --estimate mode, always buffer even without compression/encryption
+	if (file_path == NULL) {
+		io_proxy_always_buffer(fd);
+	}
 
-	if (fprintf_bytes(bytes, fd, "Version " VERSION_3_1 "\n") < 0) {
+	if (io_proxy_printf(fd, "Version " VERSION_3_1 "\n") < 0) {
 		err_code("Error while writing header to backup file %s", file_path);
-		close_file(fd, fd_buf);
+		close_file(fd);
 		return false;
 	}
 
-	if (fprintf_bytes(bytes, fd, META_PREFIX META_NAMESPACE " %s\n", escape(ns)) < 0) {
+	if (io_proxy_printf(fd, META_PREFIX META_NAMESPACE " %s\n", escape(ns)) < 0) {
 		err_code("Error while writing meta data to backup file %s", file_path);
-		close_file(fd, fd_buf);
+		close_file(fd);
 		return false;
 	}
 
@@ -1386,20 +1667,55 @@ open_file(uint64_t *bytes, const char *file_path, const char *ns,
 /*
  * Wrapper around close_file(). Used when backing up to a directory.
  *
- * @param pnc  The per-node context of the backup thread that's closing the backup file.
+ * @param bjc  The backup job context of the backup thread that's closing the backup file.
  *
  * @result     `true`, if successful.
  */
 static bool
-close_dir_file(per_node_context *pnc)
+close_dir_file(backup_job_context_t *bjc)
 {
-	if (!close_file(pnc->fd, &pnc->fd_buf)) {
+	// flush the file before calculating the size
+	if (io_proxy_flush(bjc->fd) == EOF) {
+		err_code("Error while flushing backup file");
+		return false;
+	}
+	int64_t file_size = io_write_proxy_bytes_written(bjc->fd);
+
+	if ((uint64_t) file_size < bjc->conf->file_limit) {
+		// add the fd to the queue
+		queued_backup_fd_t q = {
+			.fd = bjc->fd,
+			.rec_count_file = bjc->rec_count_file,
+			.byte_count_file = bjc->byte_count_file
+		};
+		if (cf_queue_push(bjc->file_queue, &q) == CF_QUEUE_OK) {
+			if (verbose) {
+				ver("File size is %" PRId64 ", pushing to the queue", file_size);
+			}
+			return true;
+		}
+
+		// if pushing to the queue failed, fall through to commit the file
+		if (verbose) {
+			ver("Could not commit file to queue, closing instead");
+		}
+	}
+
+	pthread_mutex_lock(&committed_count_mutex);
+	cf_atomic64_add(&bjc->conf->rec_count_total_committed, (int64_t) bjc->rec_count_file);
+	cf_atomic64_add(&bjc->conf->byte_count_total_committed, file_size);
+	pthread_mutex_unlock(&committed_count_mutex);
+
+	if (!close_file(bjc->fd)) {
 		return false;
 	}
 
 	if (verbose) {
-		ver("File size is %" PRIu64, pnc->byte_count_file);
+		ver("File size is %" PRId64, file_size);
 	}
+
+	cf_free(bjc->fd);
+	bjc->fd = NULL;
 
 	return true;
 }
@@ -1412,55 +1728,81 @@ close_dir_file(per_node_context *pnc)
  *        record size seen so far.
  *   - Invokes open_file().
  *
- * @param pnc  The per-node context of the backup thread that's creating the backup file.
+ * @param bjc  The backup job context of the backup thread that's creating the backup file.
  *
  * @result     `true`, if successful.
  */
 static bool
-open_dir_file(per_node_context *pnc)
+open_dir_file(backup_job_context_t *bjc)
 {
 	char file_path[PATH_MAX];
 
-	if ((size_t)snprintf(file_path, sizeof file_path, "%s/%s_%05d.asb", pnc->conf->directory, 
-			pnc->conf->prefix == NULL ? pnc->conf->scan->ns : pnc->conf->prefix, pnc->file_count) >= sizeof file_path) {
-		err("Backup file path too long");
-		return false;
-	}
+	queued_backup_fd_t queued_fd;
+	if (cf_queue_pop(bjc->file_queue, &queued_fd, CF_QUEUE_NOWAIT) == CF_QUEUE_OK) {
 
-	uint64_t rec_count_estimate = pnc->conf->rec_count_estimate;
-	uint64_t rec_count_total = cf_atomic64_get(pnc->conf->rec_count_total);
-	uint64_t byte_count_total = cf_atomic64_get(pnc->conf->byte_count_total);
-	uint64_t rec_remain = rec_count_total > rec_count_estimate ? 0 :
+		if (verbose) {
+			ver("File found in queue");
+		}
+
+		bjc->fd = queued_fd.fd;
+		bjc->rec_count_file = queued_fd.rec_count_file;
+		bjc->byte_count_file = queued_fd.byte_count_file;
+	}
+	else {
+		int64_t file_count = cf_atomic64_add(&bjc->conf->file_count, 1) - 1;
+
+		if ((size_t) snprintf(file_path, sizeof file_path, "%s/%s_%05" PRId64 ".asb",
+					bjc->conf->directory,
+					bjc->conf->prefix == NULL ? bjc->conf->scan->ns : bjc->conf->prefix,
+					file_count)
+				>= sizeof(file_path)) {
+			err("Backup file path too long");
+			return false;
+		}
+
+		uint64_t rec_count_estimate = bjc->conf->rec_count_estimate;
+		uint64_t rec_count_total = cf_atomic64_get(bjc->conf->rec_count_total);
+
+		pthread_mutex_lock(&committed_count_mutex);
+		uint64_t rec_count_total_committed =
+			cf_atomic64_get(bjc->conf->rec_count_total_committed);
+		uint64_t byte_count_total_committed =
+			cf_atomic64_get(bjc->conf->byte_count_total_committed);
+		pthread_mutex_unlock(&committed_count_mutex);
+
+		uint64_t rec_remain = rec_count_total > rec_count_estimate ? 0 :
 			rec_count_estimate - rec_count_total;
-	uint64_t rec_size = rec_count_total == 0 ? 0 : byte_count_total / rec_count_total;
+		uint64_t rec_size = rec_count_total_committed == 0 ? 0 :
+			byte_count_total_committed / rec_count_total_committed;
 
-	if (verbose) {
-		ver("%" PRIu64 " remaining record(s), %" PRIu64 " B/rec average size", rec_remain,
-				rec_size);
+		if (verbose) {
+			ver("%" PRIu64 " remaining record(s), %" PRIu64 " B/rec average size", rec_remain,
+					rec_size);
+		}
+
+		bjc->fd = (io_write_proxy_t*) cf_malloc(sizeof(io_write_proxy_t));
+
+		if (!open_file(file_path, bjc->conf->scan->ns, rec_remain * rec_size,
+					bjc->fd, bjc->conf->compress_mode, bjc->conf->encrypt_mode,
+					bjc->conf->pkey)) {
+			return false;
+		}
+
+		bjc->rec_count_file = 0;
+		bjc->byte_count_file = 0;
+		if (update_file_pos(bjc) < 0) {
+			return false;
+		}
 	}
 
-	uint64_t bytes = 0;
-
-	if (!open_file(&bytes, file_path, pnc->conf->scan->ns, rec_remain * rec_size,
-			pnc->fd, &pnc->fd_buf, pnc->conf->compress_mode, pnc->conf->encrypt_mode,
-			pnc->conf->pkey)) {
-		return false;
-	}
-
-	pnc->rec_count_file = 0;
-	++pnc->file_count;
-
-	pnc->byte_count_file = bytes;
-	pnc->byte_count_node += bytes;
-	cf_atomic64_add(&pnc->conf->byte_count_total, (int64_t)bytes);
 	return true;
 }
 
 /*
- * Callback function for the cluster node scan. Passed to `aerospike_scan_node()`.
+ * Callback function for the cluster node scan. Passed to `aerospike_scan_partitions()`.
  *
  * @param val   The record to be processed. `NULL` indicates scan completion.
- * @param cont  The user-specified context passed to `aerospike_scan_node()`.
+ * @param cont  The user-specified context passed to `aerospike_scan_partitions()`.
  *
  * @result      `false` to abort the scan, `true` to keep going.
  */
@@ -1496,46 +1838,56 @@ scan_callback(const as_val *val, void *cont)
 		return false;
 	}
 
-	per_node_context *pnc = cont;
+	backup_job_context_t *bjc = cont;
 
 	// backing up to a directory: switch backup files when reaching the file size limit
-	if (pnc->conf->directory != NULL && pnc->byte_count_file >= pnc->conf->file_limit) {
+	if (bjc->conf->directory != NULL && bjc->byte_count_file >= bjc->conf->file_limit) {
 		if (verbose) {
-			ver("Crossed %" PRIu64 " bytes, switching backup file", pnc->conf->file_limit);
+			ver("Crossed %" PRIu64 " bytes, switching backup file", bjc->conf->file_limit);
 		}
 
-		if (!close_dir_file(pnc)) {
+		if (!close_dir_file(bjc)) {
 			err("Error while closing old backup file");
 			return false;
 		}
 
-		if (!open_dir_file(pnc)) {
+		if (!open_dir_file(bjc)) {
 			err("Error while opening new backup file");
 			return false;
 		}
 	}
 
 	// backing up to a single backup file: allow one thread at a time to write
-	if (pnc->conf->output_file != NULL || pnc->conf->estimate) {
-		safe_lock();
+	if (bjc->conf->output_file != NULL || bjc->conf->estimate) {
+		safe_lock(&file_write_mutex);
 	}
 
-	if (pnc->conf->estimate && *pnc->n_samples >= NUM_SAMPLES) {
-		inf("Backed up enough samples for estimate");
-		safe_unlock();
-		return false;
+	bool ok;
+	if (bjc->conf->estimate) {
+		if (*bjc->n_samples >= NUM_SAMPLES) {
+			inf("Backed up enough samples for estimate");
+			safe_unlock(&file_write_mutex);
+			return false;
+		}
+
+		int64_t prev_pos = io_write_proxy_absolute_pos(bjc->fd);
+		ok = bjc->conf->encoder->put_record(bjc->fd, bjc->conf->compact, rec);
+		int64_t post_pos = io_write_proxy_absolute_pos(bjc->fd);
+
+		if (prev_pos < 0 || post_pos < 0) {
+			err("Error reading the file position from the io_proxy while running estimate");
+			ok = false;
+		}
+
+		bjc->samples[*bjc->n_samples] = (uint64_t) (post_pos - prev_pos);
+		++(*bjc->n_samples);
+	}
+	else {
+		ok = bjc->conf->encoder->put_record(bjc->fd, bjc->conf->compact, rec);
 	}
 
-	uint64_t bytes = 0;
-	bool ok = pnc->conf->encoder->put_record(&bytes, pnc->fd, pnc->conf->compact, rec);
-
-	if (pnc->conf->estimate) {
-		pnc->samples[*pnc->n_samples] = bytes;
-		++(*pnc->n_samples);
-	}
-
-	if (pnc->conf->output_file != NULL || pnc->conf->estimate) {
-		safe_unlock();
+	if (bjc->conf->output_file != NULL || bjc->conf->estimate) {
+		safe_unlock(&file_write_mutex);
 	}
 
 	if (!ok) {
@@ -1543,23 +1895,23 @@ scan_callback(const as_val *val, void *cont)
 		return false;
 	}
 
-	++pnc->rec_count_file;
-	++pnc->rec_count_node;
-	cf_atomic64_incr(&pnc->conf->rec_count_total);
+	++bjc->rec_count_file;
+	++bjc->rec_count_job;
+	cf_atomic64_incr(&bjc->conf->rec_count_total);
 
-	pnc->byte_count_file += bytes;
-	pnc->byte_count_node += bytes;
-	cf_atomic64_add(&pnc->conf->byte_count_total, (int64_t)bytes);
+	if (update_file_pos(bjc) < 0) {
+		return false;
+	}
 
-	if (pnc->conf->bandwidth > 0) {
-		safe_lock();
+	if (bjc->conf->bandwidth > 0) {
+		safe_lock(&bandwidth_mutex);
 
-		while (cf_atomic64_get(pnc->conf->byte_count_total) >= pnc->conf->byte_count_limit &&
+		while (cf_atomic64_get(bjc->conf->byte_count_total) >= bjc->conf->byte_count_limit &&
 				!has_stopped()) {
-			safe_wait(&bandwidth_cond);
+			safe_wait(&bandwidth_cond, &bandwidth_mutex);
 		}
 
-		safe_unlock();
+		safe_unlock(&bandwidth_mutex);
 	}
 
 	return true;
@@ -1572,12 +1924,12 @@ scan_callback(const as_val *val, void *cont)
  *   - Parses the information.
  *   - Invokes backup_encoder.put_secondary_index() to store it.
  *
- * @param pnc  The per-node context of the backup thread that's backing up the indexes.
+ * @param bjc  The backup job context of the backup thread that's backing up the indexes.
  *
  * @result     `true`, if successful.
  */
 static bool
-process_secondary_indexes(per_node_context *pnc)
+process_secondary_indexes(backup_job_context_t *bjc)
 {
 	if (verbose) {
 		ver("Processing secondary indexes");
@@ -1585,9 +1937,9 @@ process_secondary_indexes(per_node_context *pnc)
 
 	bool res = false;
 
-	size_t value_size = sizeof "sindex-list:ns=" - 1 + strlen(pnc->conf->scan->ns) + 1;
+	size_t value_size = sizeof "sindex-list:ns=" - 1 + strlen(bjc->conf->scan->ns) + 1;
 	char value[value_size];
-	snprintf(value, value_size, "sindex-list:ns=%s", pnc->conf->scan->ns);
+	snprintf(value, value_size, "sindex-list:ns=%s", bjc->conf->scan->ns);
 
 	as_policy_info policy;
 	as_policy_info_init(&policy);
@@ -1596,7 +1948,7 @@ process_secondary_indexes(per_node_context *pnc)
 	char *resp =  NULL;
 	as_error ae;
 
-	if (aerospike_info_any(pnc->conf->as, &ae, &policy, value, &resp) != AEROSPIKE_OK) {
+	if (aerospike_info_any(bjc->conf->as, &ae, &policy, value, &resp) != AEROSPIKE_OK) {
 		err("Error while retrieving secondary index info - code %d: %s at %s:%d", ae.code,
 				ae.message, ae.file, ae.line);
 		goto cleanup0;
@@ -1633,7 +1985,7 @@ process_secondary_indexes(per_node_context *pnc)
 	for (uint32_t i = 0; i < info_vec.size; ++i) {
 		char *index_str = as_vector_get_ptr(&info_vec, i);
 
-		if (!parse_index_info(pnc->conf->scan->ns, index_str, &index)) {
+		if (!parse_index_info(bjc->conf->scan->ns, index_str, &index)) {
 			err("Error while parsing secondary index info string %s", clone);
 			goto cleanup2;
 		}
@@ -1642,20 +1994,19 @@ process_secondary_indexes(per_node_context *pnc)
 			ver("Storing index %s", index.name);
 		}
 
-		uint32_t n_sets = pnc->conf->set_list.size;
+		uint32_t n_sets = bjc->conf->set_list.size;
 		if (n_sets == 0 || (index.set != NULL &&
-					str_vector_contains(&pnc->conf->set_list, index.set))) {
+					str_vector_contains(&bjc->conf->set_list, index.set))) {
 
 			// backing up to a single backup file: allow one thread at a time to write
-			if (pnc->conf->output_file != NULL) {
-				safe_lock();
+			if (bjc->conf->output_file != NULL || bjc->conf->estimate) {
+				safe_lock(&file_write_mutex);
 			}
 
-			uint64_t bytes = 0;
-			bool ok = pnc->conf->encoder->put_secondary_index(&bytes, pnc->fd, &index);
+			bool ok = bjc->conf->encoder->put_secondary_index(bjc->fd, &index);
 
-			if (pnc->conf->output_file != NULL) {
-				safe_unlock();
+			if (bjc->conf->output_file != NULL || bjc->conf->estimate) {
+				safe_unlock(&file_write_mutex);
 			}
 
 			if (!ok) {
@@ -1663,9 +2014,10 @@ process_secondary_indexes(per_node_context *pnc)
 				goto cleanup3;
 			}
 
-			pnc->byte_count_file += bytes;
-			pnc->byte_count_node += bytes;
-			cf_atomic64_add(&pnc->conf->byte_count_total, (int64_t)bytes);
+			if (update_file_pos(bjc) < 0) {
+				err("Error while storing secondary index in backup file");
+				goto cleanup3;
+			}
 		}
 		else {
 			++skipped;
@@ -1674,7 +2026,7 @@ process_secondary_indexes(per_node_context *pnc)
 		as_vector_destroy(&index.path_vec);
 	}
 
-	pnc->conf->index_count = info_vec.size;
+	bjc->conf->index_count = info_vec.size;
 	res = true;
 
 	if (skipped > 0) {
@@ -1703,12 +2055,12 @@ cleanup0:
  *   - Retrieves the UDF files from the cluster.
  *   - Invokes backup_encoder.put_udf_file() to store each of them.
  *
- * @param pnc  The per-node context of the backup thread that's backing up the UDF files.
+ * @param bjc  The backup job context of the backup thread that's backing up the UDF files.
  *
  * @result     `true`, if successful.
  */
 static bool
-process_udfs(per_node_context *pnc)
+process_udfs(backup_job_context_t *bjc)
 {
 	if (verbose) {
 		ver("Processing UDFs");
@@ -1724,7 +2076,7 @@ process_udfs(per_node_context *pnc)
 	policy.timeout = TIMEOUT;
 	as_error ae;
 
-	if (aerospike_udf_list(pnc->conf->as, &ae, &policy, &files) != AEROSPIKE_OK) {
+	if (aerospike_udf_list(bjc->conf->as, &ae, &policy, &files) != AEROSPIKE_OK) {
 		err("Error while listing UDFs - code %d: %s at %s:%d", ae.code, ae.message, ae.file,
 				ae.line);
 		goto cleanup1;
@@ -1744,7 +2096,7 @@ process_udfs(per_node_context *pnc)
 			ver("Fetching UDF file %u: %s", i + 1, files.entries[i].name);
 		}
 
-		if (aerospike_udf_get(pnc->conf->as, &ae, &policy, files.entries[i].name,
+		if (aerospike_udf_get(bjc->conf->as, &ae, &policy, files.entries[i].name,
 				files.entries[i].type, &file) != AEROSPIKE_OK) {
 			err("Error while fetching UDF file %s - code %d: %s at %s:%d", files.entries[i].name,
 					ae.code, ae.message, ae.file, ae.line);
@@ -1752,15 +2104,14 @@ process_udfs(per_node_context *pnc)
 		}
 
 		// backing up to a single backup file: allow one thread at a time to write
-		if (pnc->conf->output_file != NULL) {
-			safe_lock();
+		if (bjc->conf->output_file != NULL || bjc->conf->estimate) {
+			safe_lock(&file_write_mutex);
 		}
 
-		uint64_t bytes = 0;
-		bool ok = pnc->conf->encoder->put_udf_file(&bytes, pnc->fd, &file);
+		bool ok = bjc->conf->encoder->put_udf_file(bjc->fd, &file);
 
-		if (pnc->conf->output_file != NULL) {
-			safe_unlock();
+		if (bjc->conf->output_file != NULL || bjc->conf->estimate) {
+			safe_unlock(&file_write_mutex);
 		}
 
 		if (!ok) {
@@ -1768,15 +2119,16 @@ process_udfs(per_node_context *pnc)
 			goto cleanup2;
 		}
 
-		pnc->byte_count_file += bytes;
-		pnc->byte_count_node += bytes;
-		cf_atomic64_add(&pnc->conf->byte_count_total, (int64_t)bytes);
+		if (update_file_pos(bjc) < 0) {
+			err("Error while storing UDF file in backup file");
+			goto cleanup2;
+		}
 
 		as_udf_file_destroy(&file);
 		as_udf_file_init(&file);
 	}
 
-	pnc->conf->udf_count = files.size;
+	bjc->conf->udf_count = files.size;
 	res = true;
 
 cleanup2:
@@ -1791,7 +2143,7 @@ cleanup1:
  * Main backup worker thread function.
  *
  *   - Pops the backup_thread_args for a cluster node off the job queue.
- *   - Initializes a per_node_context for that cluster node.
+ *   - Initializes a backup_job_context_t for that cluster node.
  *   - If backing up to a single file: uses the provided shared file descriptor,
  *       backup_thread_args.shared_fd.
  *   - If backing up to a directory: creates a new backup file by invoking
@@ -1800,7 +2152,7 @@ cleanup1:
  *       information and UDF file by invoking process_secondary_indexes() and
  *       process_udfs().
  *   - Initiates a node or partition scan with scan_callback() as the callback
- *       and the initialized per_node_context as user-specified context.
+ *       and the initialized backup_job_context_t as user-specified context.
  *
  * @param cont  The job queue.
  *
@@ -1825,7 +2177,7 @@ backup_thread_func(void *cont)
 			break;
 		}
 
-		backup_thread_args args;
+		backup_thread_args_t args;
 		int32_t q_res = cf_queue_pop(job_queue, &args, CF_QUEUE_NOWAIT);
 
 		if (q_res == CF_QUEUE_EMPTY) {
@@ -1842,49 +2194,58 @@ backup_thread_func(void *cont)
 			break;
 		}
 
-		per_node_context pnc;
-		pnc.conf = args.conf;
-		pnc.shared_fd = args.shared_fd;
-		pnc.fd = NULL;
-		pnc.fd_buf = NULL;
-		pnc.rec_count_file = pnc.byte_count_file = 0;
-		pnc.file_count = 0;
-		pnc.rec_count_node = pnc.byte_count_node = 0;
-		pnc.samples = args.samples;
-		pnc.n_samples = args.n_samples;
+		backup_job_context_t bjc;
+		bjc.conf = args.conf;
+		if (args.conf->output_file != NULL) {
+			bjc.shared_fd = args.shared_fd;
+		}
+		else {
+			bjc.file_queue = args.file_queue;
+		}
+		bjc.fd = NULL;
+		bjc.rec_count_file = 0;
+		bjc.byte_count_file = 0;
+		bjc.rec_count_job = 0;
+		bjc.byte_count_job = 0;
+		bjc.samples = args.samples;
+		bjc.n_samples = args.n_samples;
 
 		if (args.filter.digest.init) {
-			uint32_t id = as_partition_getid(args.filter.digest.value, pnc.conf->as->cluster->n_partitions);
+			uint32_t id = as_partition_getid(args.filter.digest.value, bjc.conf->as->cluster->n_partitions);
 			uint32_t len = cf_b64_encoded_len(sizeof(args.filter.digest.value));
 			char* str = cf_malloc(len + 1);
 	
 			cf_b64_encode(args.filter.digest.value, sizeof(args.filter.digest.value), str);
 			str[len] = 0;
-			sprintf(pnc.desc, "partition %u after %s", id, str);
+			sprintf(bjc.desc, "partition %u after %s", id, str);
 			cf_free(str);
 		}
 		else if (args.filter.count > 0) {
-			sprintf(pnc.desc, "partition range %u:%u", args.filter.begin, args.filter.count);
+			if (args.filter.count == 1) {
+				sprintf(bjc.desc, "partition %u", args.filter.begin);
+			}
+			else {
+				sprintf(bjc.desc, "%u partitions from %u to %u", args.filter.count, args.filter.begin, args.filter.begin + args.filter.count - 1);
+			}
 		}
 		else {
-			sprintf(pnc.desc, "whole namespace");
+			sprintf(bjc.desc, "whole namespace");
 		}
 
-		inf("Starting backup for %s", pnc.desc);
+		inf("Starting backup for %s", bjc.desc);
 
 		// backing up to a single backup file: use the provided shared file descriptor for
 		// the current job
-		if (pnc.conf->output_file != NULL) {
+		if (bjc.conf->output_file != NULL || bjc.conf->estimate) {
 			if (verbose) {
 				ver("Using shared file descriptor");
 			}
 
-			pnc.fd = pnc.shared_fd;
+			bjc.fd = bjc.shared_fd;
 		}
 		// backing up to a directory: create the first backup file for the current job
-		else if (pnc.conf->directory != NULL) {
-			pnc.fd = (io_write_proxy_t*) cf_malloc(sizeof(io_write_proxy_t));
-			if (!open_dir_file(&pnc)) {
+		else if (bjc.conf->directory != NULL) {
+			if (!open_dir_file(&bjc)) {
 				err("Error while opening first backup file");
 				break;
 			}
@@ -1896,30 +2257,33 @@ backup_thread_func(void *cont)
 				ver("Picked up first job, doing one shot work");
 			}
 
-			if (fprintf_bytes(&args.bytes, pnc.fd, META_PREFIX META_FIRST_FILE "\n") < 0) {
+			if (io_proxy_printf(bjc.fd, META_PREFIX META_FIRST_FILE "\n") < 0) {
 				err_code("Error while writing meta data to backup file");
 				stop();
 				goto close_file;
 			}
 
-			pnc.byte_count_file = pnc.byte_count_node += args.bytes;
-			cf_atomic64_add(&pnc.conf->byte_count_total, (int64_t)args.bytes);
+			if (update_file_pos(&bjc) < 0) {
+				err("Error while writing meta prefix header");
+				stop();
+				goto close_file;
+			}
 
-			if (pnc.conf->no_indexes) {
+			if (bjc.conf->no_indexes) {
 				if (verbose) {
 					ver("Skipping index backup");
 				}
-			} else if (!process_secondary_indexes(&pnc)) {
+			} else if (!process_secondary_indexes(&bjc)) {
 				err("Error while processing secondary indexes");
 				stop();
 				goto close_file;
 			}
 
-			if (pnc.conf->no_udfs) {
+			if (bjc.conf->no_udfs) {
 				if (verbose) {
 					ver("Skipping UDF backup");
 				}
-			} else if (!process_udfs(&pnc)) {
+			} else if (!process_udfs(&bjc)) {
 				err("Error while processing UDFs");
 				stop();
 				goto close_file;
@@ -1942,26 +2306,26 @@ backup_thread_func(void *cont)
 		as_error ae;
 		as_status status;
 
-		if (pnc.conf->no_records) {
+		if (bjc.conf->no_records) {
 			if (verbose) {
 				ver("Skipping record backup");
 			}
 			status = AEROSPIKE_OK;
 		}
 		else if (args.filter.digest.init || args.filter.count > 0) {
-			status = aerospike_scan_partitions(pnc.conf->as, &ae, pnc.conf->policy, pnc.conf->scan,
-				&args.filter, scan_callback, &pnc);
+			status = aerospike_scan_partitions(bjc.conf->as, &ae, bjc.conf->policy, bjc.conf->scan,
+				&args.filter, scan_callback, &bjc);
 		}
 		else {
-			status = aerospike_scan_foreach(pnc.conf->as, &ae, pnc.conf->policy, pnc.conf->scan,
-				scan_callback, &pnc);
+			status = aerospike_scan_foreach(bjc.conf->as, &ae, bjc.conf->policy, bjc.conf->scan,
+				scan_callback, &bjc);
 		}
 
 		if (status != AEROSPIKE_OK) {
 			if (ae.code == AEROSPIKE_OK) {
-				inf("Abort scan for %s", pnc.desc);
+				inf("Abort scan for %s", bjc.desc);
 			} else {
-				err("Error while running scan for %s - code %d: %s at %s:%d", pnc.desc,
+				err("Error while running scan for %s - code %d: %s at %s:%d", bjc.desc,
 						ae.code, ae.message, ae.file, ae.line);
 			}
 
@@ -1970,29 +2334,27 @@ backup_thread_func(void *cont)
 		}
 
 		inf("Completed backup for %s, records: %" PRIu64 ", size: %" PRIu64 " "
-				"(~%" PRIu64 " B/rec)", pnc.desc, pnc.rec_count_node,
-				pnc.byte_count_node,
-				pnc.rec_count_node == 0 ? 0 : pnc.byte_count_node / pnc.rec_count_node);
+				"(~%" PRIu64 " B/rec)", bjc.desc, bjc.rec_count_job,
+				bjc.byte_count_job,
+				bjc.rec_count_job == 0 ? 0 : bjc.byte_count_job / bjc.rec_count_job);
 
-	close_file:
+close_file:
 		// backing up to a single backup file: do nothing
-		if (pnc.conf->output_file != NULL) {
+		if (bjc.conf->output_file != NULL) {
 			if (verbose) {
 				ver("Not closing shared file descriptor");
 			}
 
-			pnc.fd = NULL;
+			bjc.fd = NULL;
 		}
 		// backing up to a directory: close the last backup file for the current job
-		else if (pnc.conf->directory != NULL) {
-			if (!close_dir_file(&pnc)) {
+		else if (bjc.conf->directory != NULL) {
+			if (!close_dir_file(&bjc)) {
 				err("Error while closing backup file");
-				cf_free(pnc.fd);
-				pnc.fd = NULL;
+				cf_free(bjc.fd);
+				bjc.fd = NULL;
 				break;
 			}
-			cf_free(pnc.fd);
-			pnc.fd = NULL;
 		}
 	}
 
@@ -2033,7 +2395,7 @@ counter_thread_func(void *cont)
 	}
 
 	counter_thread_args *args = (counter_thread_args *)cont;
-	backup_config *conf = args->conf;
+	backup_config_t *conf = args->conf;
 	uint32_t iter = 0;
 	cf_clock prev_ms = cf_getms();
 	uint64_t prev_bytes = cf_atomic64_get(conf->byte_count_total);
@@ -2059,13 +2421,14 @@ counter_thread_func(void *cont)
 			char eta_buff[ETA_BUF_SIZE];
 			format_eta(eta, eta_buff, sizeof eta_buff);
 
-			prev_bytes = now_bytes;
 			prev_recs = now_recs;
+			prev_bytes = now_bytes;
 
 			// rec_count_estimate may be a little off, make sure that we only print up to 99%
 			if (percent < 100) {
 				if (iter++ % 10 == 0) {
-					inf("%d%% complete (~%" PRIu64 " KiB/s, ~%" PRIu64 " rec/s, ~%" PRIu64 " B/rec)",
+					inf("%d%% complete (~%" PRIu64 " KiB/s, ~%" PRIu64 " rec/s, "
+							"~%" PRIu64 " B/rec)",
 							percent, ms == 0 ? 0 : bytes * 1000 / 1024 / ms,
 							ms == 0 ? 0 : recs * 1000 / ms, recs == 0 ? 0 : bytes / recs);
 
@@ -2088,18 +2451,19 @@ counter_thread_func(void *cont)
 			}
 		}
 
-		safe_lock();
+		safe_lock(&bandwidth_mutex);
 
 		if (conf->bandwidth > 0) {
 			if (ms > 0) {
-				conf->byte_count_limit += conf->bandwidth * 1000 / ms;
+				cf_atomic64_set(&conf->byte_count_limit,
+						conf->byte_count_limit + conf->bandwidth * 1000 / ms);
 			}
 
 			safe_signal(&bandwidth_cond);
 		}
 
 		bool tmp_stop = has_stopped();
-		safe_unlock();
+		safe_unlock(&bandwidth_mutex);
 
 		if (tmp_stop) {
 			break;
@@ -2113,9 +2477,10 @@ counter_thread_func(void *cont)
 			conf->udf_count, bytes, records == 0 ? 0 : bytes / records);
 
 	if (args->mach_fd != NULL && (fprintf(args->mach_fd,
-			"SUMMARY:%" PRIu64 ":%u:%u:%" PRIu64 ":%" PRIu64 "\n", records, conf->index_count,
-			conf->udf_count, bytes, records == 0 ? 0 : bytes / records) < 0 ||
-			fflush(args->mach_fd) == EOF)) {
+					"SUMMARY:%" PRIu64 ":%u:%u:%" PRIu64 ":%" PRIu64 "\n",
+					records, conf->index_count, conf->udf_count, bytes,
+					records == 0 ? 0 : bytes / records) < 0 ||
+				fflush(args->mach_fd) == EOF)) {
 		err_code("Error while writing machine-readable summary");
 	}
 
@@ -2251,6 +2616,56 @@ clean_directory(const char *dir_path, bool clear)
 }
 
 /*
+ * Initialize partition range filters to capacity.
+ * Initialize range filters (rare) to maximum 10 capacity;
+ */
+static void
+init_partition_filters(as_vector *partition_ranges, as_vector *digests,
+		uint32_t capacity)
+{
+	as_vector_init(partition_ranges, sizeof(as_partition_filter), capacity);
+
+	if (capacity > 10) {
+		capacity = 10;
+	}
+	as_vector_init(digests, sizeof(as_digest), capacity);
+}
+
+/*
+ * Sort partition ranges and detect overlap.
+ */
+static bool
+sort_partition_ranges(as_vector *partition_ranges)
+{
+	// Use insertion sort because ranges will likely already be in sorted order.
+	as_partition_filter* list = partition_ranges->list;
+	int size = (int)partition_ranges->size;
+	int i, j;
+	as_partition_filter key;
+
+	for (i = 1; i < size; i++) {
+		key = list[i];
+		j = i - 1;
+
+		while (j >= 0 && list[j].begin > key.begin) {
+			list[j + 1] = list[j];
+			j = j - 1;
+		}
+		list[j + 1] = key;
+	}
+
+	// Check for overlap.
+	for (i = 1; i < size; i++) {
+		as_partition_filter* prev = &list[i - 1];
+
+		if (prev->begin + prev->count > list[i].begin) { 
+			return false;  // overlap 
+		}
+	}
+	return true; // no overlap
+}
+
+/*
  * Parse partition range string in format.
  *
  *  range: <begin partition>[-<partition count>]
@@ -2301,11 +2716,11 @@ parse_partition_range(char *str, as_partition_filter *range)
 static bool
 parse_digest(const char *str, as_digest *digest)
 {
-	uint32_t len = (uint32_t)strlen(str);
-	uint8_t* bytes = (uint8_t*)alloca(cf_b64_decoded_buf_size(len));
+	uint32_t len = (uint32_t) strlen(str);
+	uint8_t* bytes = (uint8_t*) alloca(cf_b64_decoded_buf_size(len));
 	uint32_t size;
 	
-	if (! cf_b64_validate_and_decode(str, len, bytes, &size)) {
+	if (!cf_b64_validate_and_decode(str, len, bytes, &size)) {
 		return false;
 	}
 
@@ -2319,22 +2734,249 @@ parse_digest(const char *str, as_digest *digest)
 }
 
 /*
+ * Parse partition list string filters.
+ *
+ *	Format: <filter1>[,<filter2>][,...]
+ *  filter: <begin partition>[-<partition count>]|<digest>
+ *  begin partition: 0-4095
+ *  partition count: 1-4096 Default: 1
+ *  digest: base64 encoded string.
+ *         This digest only includes records within the digest's partition,
+ *         while the --after-digest argument includes both the digest's
+ *         partition and every partition after the digest's partition.
+ *
+ * Example: 0-1000,1000-1000,2222,EjRWeJq83vEjRRI0VniavN7xI0U=
+ */
+static bool
+parse_partition_list(char *partition_list, as_vector *partition_ranges, as_vector *digests)
+{
+	bool res = false;
+	char *clone = safe_strdup(partition_list);
+
+	as_vector filters;
+	as_vector_inita(&filters, sizeof(char*), 100);
+
+	if (partition_list[0] == 0) {
+		err("Empty partition list");
+		goto cleanup;
+	}
+
+	split_string(clone, ',', true, &filters);
+	init_partition_filters(partition_ranges, digests, filters.size);
+
+	as_partition_filter range;
+	as_digest digest;
+
+	for (uint32_t i = 0; i < filters.size; i++) {
+		char *str = as_vector_get_ptr(&filters, i);
+
+		if (parse_partition_range(str, &range)) {
+			as_vector_append(partition_ranges, &range);
+		}
+		else if (parse_digest(str, &digest)) {
+			as_vector_append(digests, &digest);			
+		}
+		else {
+			err("Invalid partition filter '%s'", str);
+			err("format: <filter1>[,<filter2>][,...]");
+			err("filter: <begin partition>[-<partition count>]|<digest>");
+			err("begin partition: 0-4095");
+			err("partition count: 1-4096 Default: 1");
+			err("digest: base64 encoded string");
+			goto cleanup;
+		}
+	}
+
+	res = sort_partition_ranges(partition_ranges);
+
+	if (!res) {
+		err("Range overlap in partition list '%s'", partition_list);
+	}
+
+cleanup:
+	as_vector_destroy(&filters);
+	cf_free(clone);
+	return res;
+}
+
+/*
  * Parse digest string filter in base64 format.
  * Append results to digest and partition ranges.
  *
  * Example: EjRWeJq83vEjRRI0VniavN7xI0U=
  */
 static bool
-parse_after_digest(char *str, as_partition_filter* filter)
+parse_after_digest(char *str, as_vector* partition_ranges, as_vector* digests)
 {
 	as_digest digest;
 
-	if (! parse_digest(str, &digest)) {
+	if (!parse_digest(str, &digest)) {
 		return false;
 	}
+	init_partition_filters(partition_ranges, digests, 1);
 
-	as_partition_filter_set_after(filter, &digest);
+	// Append digest.
+	as_vector_append(digests, &digest);
+
+	// Append all partitions after digest's partition.
+	uint32_t id = as_partition_getid(digest.value, MAX_PARTITIONS);
+
+	if (++id < MAX_PARTITIONS) {
+		as_partition_filter r;
+		as_partition_filter_set_range(&r, id, (MAX_PARTITIONS - id));
+		as_vector_append(partition_ranges, &r);
+	}
+
 	return true;
+}
+
+
+/*
+ * Parses a `host:port[,host:port[,...]]` string of (IP address, port) or
+ * `host:tls_name:port[,host:tls_name:port[,...]]` string of
+ * (IP address, tls_name, port) pairs into an array of node_spec,
+ * tls_name being optional.
+ *
+ *  node_list:    The string to be parsed.
+ *  node_specs:   The created array of node_spec.
+ *  n_node_specs: The number of elements in the created array.
+ *
+ * result: true iff successful
+ */
+static bool
+parse_node_list(char *node_list, node_spec **node_specs, uint32_t *n_node_specs)
+{
+	bool res = false;
+	char *clone = safe_strdup(node_list);
+
+	// also allow ";" (remain backwards compatible)
+	for (size_t i = 0; node_list[i] != 0; ++i) {
+		if (node_list[i] == ';') {
+			node_list[i] = ',';
+		}
+	}
+
+	as_vector node_vec;
+	as_vector_inita(&node_vec, sizeof (void *), 25);
+
+	if (node_list[0] == 0) {
+		err("Empty node list");
+		goto cleanup1;
+	}
+
+	split_string(node_list, ',', true, &node_vec);
+
+	*n_node_specs = node_vec.size;
+	*node_specs = safe_malloc(sizeof (node_spec) * node_vec.size);
+	for (uint32_t i = 0; i < *n_node_specs; i++) {
+		(*node_specs)[i].tls_name_str = NULL;
+	}
+
+	for (uint32_t i = 0; i < node_vec.size; ++i) {
+		char *node_str = as_vector_get_ptr(&node_vec, i);
+		sa_family_t family;
+		char *colon;
+
+		if (node_str[0] == '[') {
+			family = AF_INET6;
+			char *closing = strchr(node_str, ']');
+
+			if (closing == NULL) {
+				err("Invalid node list %s (missing \"]\"", clone);
+				goto cleanup1;
+			}
+
+			if (closing[1] != ':') {
+				err("Invalid node list %s (missing \":\")", clone);
+				goto cleanup1;
+			}
+
+			colon = closing + 1;
+		} else {
+			family = AF_INET;
+			colon = strchr(node_str, ':');
+
+			if (colon == NULL) {
+				err("Invalid node list %s (missing \":\")", clone);
+				goto cleanup1;
+			}
+		}
+
+		size_t length = (size_t)(colon - node_str);
+
+		if (family == AF_INET6) {
+			++node_str;
+			length -= 2;
+		}
+
+		if (length == 0 || length > IP_ADDR_SIZE - 1) {
+			err("Invalid node list %s (invalid IP address)", clone);
+			goto cleanup2;
+		}
+
+		char ip_addr[IP_ADDR_SIZE];
+		memcpy(ip_addr, node_str, length);
+		ip_addr[length] = 0;
+
+		union {
+			struct in_addr v4;
+			struct in6_addr v6;
+		} ver;
+
+		if (inet_pton(family, ip_addr, &ver) <= 0) {
+			err("Invalid node list %s (invalid IP address %s)", clone, ip_addr);
+			goto cleanup2;
+		}
+
+		uint64_t tmp;
+
+		if (family == AF_INET6) {
+			length = length + 1;
+		}
+
+		char *new_colon;
+		new_colon = strchr(node_str + length + 1, ':');
+
+		if (new_colon != NULL) {
+			node_str = node_str + length + 1;
+			length = (size_t)(new_colon - node_str);
+			char tls_name[length + 1];
+			memcpy(tls_name, node_str, length);
+			tls_name[length] = '\0';
+
+			(*node_specs)[i].tls_name_str = safe_malloc(sizeof(char) * (length + 1));
+			memcpy((*node_specs)[i].tls_name_str, tls_name, length + 1);
+
+			colon = new_colon;
+		}
+
+		if (!better_atoi(colon + 1, &tmp) || tmp < 1 || tmp > 65535) {
+			err("Invalid node list %s (invalid port value %s)", clone, colon + 1);
+			goto cleanup2;
+		}
+
+		memcpy((*node_specs)[i].addr_string, ip_addr, IP_ADDR_SIZE);
+		(*node_specs)[i].family = family;
+		memcpy(&(*node_specs)[i].ver, &ver, sizeof ver);
+		(*node_specs)[i].port = htons((in_port_t)tmp);
+	}
+
+	res = true;
+	goto cleanup1;
+
+cleanup2:
+	for (uint32_t i = 0; i < *n_node_specs; i++) {
+		cf_free((*node_specs)[i].tls_name_str);
+		(*node_specs)[i].tls_name_str = NULL;
+	}
+	cf_free(*node_specs);
+	*node_specs = NULL;
+	*n_node_specs = 0;
+
+cleanup1:
+	as_vector_destroy(&node_vec);
+	cf_free(clone);
+	return res;
 }
 
 /*
@@ -2382,6 +3024,44 @@ parse_sets(as_vector* set_list, as_scan* scan, as_policy_scan* policy)
 		as_vector_destroy(&entries);
 	}
 
+	return true;
+}
+
+/*
+ * Calculates the partitions on the list of nodes given (by name), and appends
+ * corresponding partition filters to partition_ranges
+ */
+bool
+calc_node_list_partitions(as_cluster *clust, const as_namespace ns,
+		char (*node_names)[][AS_NODE_NAME_SIZE], uint32_t n_node_names,
+		as_vector* partition_ranges)
+{
+	as_partition_filter* filter;
+
+	bool last_part_included = false;
+	as_partition_tables* tables = &clust->partition_tables;
+	as_partition_table* table = as_partition_tables_get(tables, ns);
+
+	for (uint32_t i = 0; i < table->size; i++) {
+		as_partition* part = &table->partitions[i];
+
+		for (uint32_t j = 0; j < n_node_names; j++) {
+			if (strncmp(part->master->name, (*node_names)[j], AS_NODE_NAME_SIZE) == 0) {
+				if (last_part_included) {
+					filter->count++;
+				}
+				else {
+					filter = as_vector_reserve(partition_ranges);
+					as_partition_filter_set_id(filter, i);
+					last_part_included = true;
+				}
+				goto next_partition;
+			}
+		}
+
+		last_part_included = false;
+next_partition:;
+	}
 	return true;
 }
 
@@ -2689,9 +3369,11 @@ get_object_count(aerospike *as, const char *namespace, as_vector* set_list,
  * @param samples             The array of record size samples.
  * @param n_samples           The number of elements in the sample array.
  * @param rec_count_estimate  The total number of records.
+ * @param fd                  The io_proxy that was written to
  */
 static void
-show_estimate(FILE *mach_fd, uint64_t *samples, uint32_t n_samples, uint64_t rec_count_estimate)
+show_estimate(FILE *mach_fd, uint64_t *samples, uint32_t n_samples,
+		uint64_t rec_count_estimate, io_write_proxy_t* fd)
 {
 	uint64_t upper = 0;
 	if (n_samples > 0) {
@@ -2711,10 +3393,20 @@ show_estimate(FILE *mach_fd, uint64_t *samples, uint32_t n_samples, uint64_t rec
 		}
 
 		stand_dev = sqrt(stand_dev / n_samples);
-		upper = (uint64_t)ceil(exp_value + 4.7 * stand_dev / sqrt(n_samples));
+		upper = (uint64_t) ceil(exp_value + 4.7 * stand_dev / sqrt(n_samples));
 	}
 
-	inf("Estimated overall record size is %" PRIu64 " byte(s)", upper);
+	if (io_proxy_do_compress(fd)) {
+		int64_t n_bytes = io_write_proxy_absolute_pos(fd);
+		int64_t compressed_bytes = io_write_proxy_bytes_written(fd);
+
+		double compression_ratio = (double) compressed_bytes / (double) n_bytes;
+		inf("Estimated overall record size before compression is %" PRIu64 " byte(s)", upper);
+		inf("Approximate compression ratio is %g%%", 100 * compression_ratio);
+	}
+	else {
+		inf("Estimated overall record size is %" PRIu64 " byte(s)", upper);
+	}
 
 	if (mach_fd != NULL && (fprintf(mach_fd, "ESTIMATE:%" PRIu64 ":%" PRIu64 "\n",
 			rec_count_estimate, upper) < 0 || fflush(mach_fd) == EOF)) {
@@ -2791,7 +3483,7 @@ print_version(void)
 	fprintf(stdout, "Aerospike Backup Utility\n");
 	fprintf(stdout, "Version %s\n", TOOL_VERSION);
 	fprintf(stdout, "C Client Version %s\n", aerospike_client_version);
-	fprintf(stdout, "Copyright 2015-2020 Aerospike. All rights reserved.\n");
+	fprintf(stdout, "Copyright 2015-2021 Aerospike. All rights reserved.\n");
 }
 
 /*
@@ -2845,6 +3537,7 @@ usage(const char *name)
 	fprintf(stderr, " --tls-enable         Enable TLS on connections. By default TLS is disabled.\n");
 	// Deprecated
 	//fprintf(stderr, " --tls-encrypt-only   Disable TLS certificate verification.\n");
+	fprintf(stderr, " --tls-name           The default tls-name to use to authenticate each TLS socket connection.\n");
 	fprintf(stderr, " --tls-cafile=TLS_CAFILE\n");
 	fprintf(stderr, "                      Path to a trusted CA certificate file.\n");
 	fprintf(stderr, " --tls-capath=TLS_CAPATH.\n");
@@ -2899,6 +3592,7 @@ usage(const char *name)
 	fprintf(stderr, "                      The namespace to be backed up. Required.\n");
 	fprintf(stderr, "  -s, --set <set>[,<set2>[,...]]\n");
 	fprintf(stderr, "                      The set(s) to be backed up. Default: all sets.\n");
+	fprintf(stderr, "                      If multiple sets are being backed up, filter-exp cannot be used\n");
 	fprintf(stderr, "  -d, --directory <directory>\n");
 	fprintf(stderr, "                      The directory that holds the backup files. Required, \n");
 	fprintf(stderr, "                      unless -o or -e is used.\n");
@@ -2937,11 +3631,24 @@ usage(const char *name)
 	fprintf(stderr, "  -B, --bin-list <bin 1>[,<bin 2>[,...]]\n");
 	fprintf(stderr, "                      Only include the given bins in the backup.\n");
 	fprintf(stderr, "                      Default: include all bins.\n");
-	fprintf(stderr, "  -w, --parallel <# nodes>\n");
-	fprintf(stderr, "                      Maximal number of nodes backed up in parallel. Default: 10.\n");
-	fprintf(stderr, "  -X, --partition-filter <list>\n");
-	fprintf(stderr, "                      Partition filter to back up. Partition filters can be an individual partition or a range.\n");
-	fprintf(stderr, "                      This argument is mutually exclusive to after-digest.\n");
+	fprintf(stderr, "  -l, --node-list <IP addr 1>:<port 1>[,<IP addr 2>:<port 2>[,...]]\n");
+	fprintf(stderr, "                      <IP addr 1>:<TLS_NAME 1>:<port 1>[,<IP addr 2>:<TLS_NAME 2>:<port 2>[,...]]\n");
+	fprintf(stderr, "                      Backup the given cluster nodes only.\n");
+	fprintf(stderr, "                      This argument is mutually exclusive to partition-list/digest arguments.\n");
+	fprintf(stderr, "                      Default: backup all nodes in the cluster\n");
+	fprintf(stderr, "  -w, --parallel <n>\n");
+	fprintf(stderr, "                      Maximum number of scan calls to run in parallel. Default: 1\n");
+	fprintf(stderr, "                      If only one partition range is given, or the entire namespace is being backed up, the range\n");
+	fprintf(stderr, "                      of partitions will be evenly divided by this number to be processed in parallel. Otherwise, each\n");
+	fprintf(stderr, "                      filter cannot be parallelized individually, so you may only achieve as much parallelism as there are\n");
+	fprintf(stderr, "                      partition filters.\n");
+	fprintf(stderr, "  -X, --partition-list <filter[,<filter>[...]]>\n");
+	fprintf(stderr, "                      List of partitions to back up. Partition filters can be an individual\n");
+	fprintf(stderr, "                      partition or a range.\n");
+	fprintf(stderr, "                      This argument is mutually exclusive to after-digest and max-records.\n");
+	fprintf(stderr, "                      Note: each partition filter is an individual task which cannot be parallelized, so you can only\n");
+	fprintf(stderr, "                      achieve as much parallelism as there are partition filters. You may increase parallelism by dividing up\n");
+	fprintf(stderr, "                      partition ranges manually.\n");
 	fprintf(stderr, "                      Filter: <begin partition>[-<partition count>]|<digest>\n");
 	fprintf(stderr, "                      begin partition: 0-4095\n");
 	fprintf(stderr, "                      partition count: 1-4096 Default: 1\n");
@@ -2952,11 +3659,17 @@ usage(const char *name)
 	fprintf(stderr, "                      Backup records after record digest in record's partition plus all succeeding\n");
 	fprintf(stderr, "                      partitions. Used to resume backup with last record received from previous\n");
 	fprintf(stderr, "                      incomplete backup.\n");
-	fprintf(stderr, "                      This argument is mutually exclusive to partition-filter.\n");
+	fprintf(stderr, "                      This argument is mutually exclusive to partition-list and max-records.\n");
 	fprintf(stderr, "                      Format: base64 encoded string\n");
 	fprintf(stderr, "                      Example: EjRWeJq83vEjRRI0VniavN7xI0U=\n");
+	fprintf(stderr, "  -f, --filter-exp <b64 encoded expression>\n");
+	fprintf(stderr, "                      Use the encoded filter expression in each scan call,\n");
+	fprintf(stderr, "                      which can be used to do a partial backup.\n");
+	fprintf(stderr, "                      The expression to be used can be base64 encoded through any client.\n");
+	fprintf(stderr, "                      This argument is mutually exclusive with multi-set backup\n");
 	fprintf(stderr, "  -M, --max-records <number of records>\n");
 	fprintf(stderr, "                      The number of records approximately to back up. Default: all records\n");
+	fprintf(stderr, "                      This argument is mutually exclusive to partition-list and after-digest\n");
 	fprintf(stderr, "  -m, --machine <path>\n");
 	fprintf(stderr, "                      Output machine-readable status updates to the given path, \n");
 	fprintf(stderr,"                       typically a FIFO.\n");

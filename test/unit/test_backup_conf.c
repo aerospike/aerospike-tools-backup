@@ -79,7 +79,7 @@ tmp_file_teardown(void)
 	}
 
 static void
-assert_bup_config_eq(backup_config *c1, backup_config *c2)
+assert_bup_config_eq(backup_config_t *c1, backup_config_t *c2)
 {
 	CMP_STR_FIELD(c1->host, c2->host);
 	CMP_INT_FIELD(c1->port, c2->port);
@@ -161,8 +161,8 @@ assert_bup_config_eq(backup_config *c1, backup_config *c2)
 START_TEST(test_init_empty)
 {
 	tmp_file_init("", "", "");
-	backup_config c1;
-	backup_config c2;
+	backup_config_t c1;
+	backup_config_t c2;
 	backup_config_default(&c1);
 	backup_config_default(&c2);
 	as_policy_scan p1;
@@ -184,8 +184,8 @@ END_TEST
 START_TEST(test_name) \
 { \
 	tmp_file_init(str_name "=true\n", "", ""); \
-	backup_config c1; \
-	backup_config c2; \
+	backup_config_t c1; \
+	backup_config_t c2; \
 	backup_config_default(&c1); \
 	backup_config_default(&c2); \
 	as_policy_scan p1; \
@@ -211,8 +211,8 @@ END_TEST
 START_TEST(test_name) \
 { \
 	tmp_file_init(str_name "=314159\n", "", ""); \
-	backup_config c1; \
-	backup_config c2; \
+	backup_config_t c1; \
+	backup_config_t c2; \
 	backup_config_default(&c1); \
 	backup_config_default(&c2); \
 	as_policy_scan p1; \
@@ -237,8 +237,8 @@ END_TEST
 START_TEST(test_name) \
 { \
 	tmp_file_init(str_name "=\"" str_val "\"\n", "", ""); \
-	backup_config c1; \
-	backup_config c2; \
+	backup_config_t c1; \
+	backup_config_t c2; \
 	backup_config_default(&c1); \
 	backup_config_default(&c2); \
 	as_policy_scan p1; \
@@ -287,8 +287,8 @@ DEFINE_STR_TEST(test_init_tls_cert_blacklist, "tls-cert-blacklist", tls.cert_bla
 START_TEST(test_init_set_list)
 {
 	tmp_file_init("", "set=\"set-1,set-2,set-3\"", "");
-	backup_config c1;
-	backup_config c2;
+	backup_config_t c1;
+	backup_config_t c2;
 	backup_config_default(&c1);
 	backup_config_default(&c2);
 	as_policy_scan p1;
@@ -313,8 +313,8 @@ END_TEST
 START_TEST(test_init_bin_list)
 {
 	tmp_file_init("", "bin-list=\"bin-1,bin-2,bin-3\"", "");
-	backup_config c1;
-	backup_config c2;
+	backup_config_t c1;
+	backup_config_t c2;
 	backup_config_default(&c1);
 	backup_config_default(&c2);
 	as_policy_scan p1;
@@ -337,8 +337,8 @@ END_TEST
 START_TEST(test_init_mod_after)
 {
 	tmp_file_init("", "modified-after=\"2000-01-01_00:00:00\"", "");
-	backup_config c1;
-	backup_config c2;
+	backup_config_t c1;
+	backup_config_t c2;
 	backup_config_default(&c1);
 	backup_config_default(&c2);
 	as_policy_scan p1;
@@ -372,8 +372,8 @@ END_TEST
 START_TEST(test_init_mod_before)
 {
 	tmp_file_init("", "modified-before=\"2000-01-01_00:00:00\"", "");
-	backup_config c1;
-	backup_config c2;
+	backup_config_t c1;
+	backup_config_t c2;
 	backup_config_default(&c1);
 	backup_config_default(&c2);
 	as_policy_scan p1;
@@ -408,8 +408,8 @@ END_TEST
 START_TEST(test_init_compress_mode)
 {
 	tmp_file_init("", "compress=\"zstd\"\n", "");
-	backup_config c1;
-	backup_config c2;
+	backup_config_t c1;
+	backup_config_t c2;
 	backup_config_default(&c1);
 	backup_config_default(&c2);
 	as_policy_scan p1;
@@ -432,8 +432,8 @@ END_TEST
 START_TEST(test_init_encryption_mode)
 {
 	tmp_file_init("", "encrypt=\"aes128\"\n", "");
-	backup_config c1;
-	backup_config c2;
+	backup_config_t c1;
+	backup_config_t c2;
 	backup_config_default(&c1);
 	backup_config_default(&c2);
 	as_policy_scan p1;
@@ -609,8 +609,8 @@ START_TEST(test_init_encrypt_key_file)
 	};
 
 	tmp_file_init("", "encryption-key-file=\"test/test_key.pem\"\n", "");
-	backup_config c1;
-	backup_config c2;
+	backup_config_t c1;
+	backup_config_t c2;
 	backup_config_default(&c1);
 	backup_config_default(&c2);
 	as_policy_scan p1;
@@ -642,8 +642,8 @@ START_TEST(test_init_encryption_key_env)
 	setenv("TEST_ENCRYPT_KEY_ENV_VAR", "MUFZJlNYl5Orze8BI0VniQ==", true);
 	tmp_file_init("", "encryption-key-env=\"TEST_ENCRYPT_KEY_ENV_VAR\"\n", "");
 
-	backup_config c1;
-	backup_config c2;
+	backup_config_t c1;
+	backup_config_t c2;
 	backup_config_default(&c1);
 	backup_config_default(&c2);
 	as_policy_scan p1;
@@ -670,8 +670,8 @@ END_TEST
 START_TEST(test_name) \
 { \
 	tmp_file_init("", str_name "=true\n", ""); \
-	backup_config c1; \
-	backup_config c2; \
+	backup_config_t c1; \
+	backup_config_t c2; \
 	backup_config_default(&c1); \
 	backup_config_default(&c2); \
 	as_policy_scan p1; \
@@ -697,8 +697,8 @@ END_TEST
 START_TEST(test_name) \
 { \
 	tmp_file_init("", str_name "=314159\n", ""); \
-	backup_config c1; \
-	backup_config c2; \
+	backup_config_t c1; \
+	backup_config_t c2; \
 	backup_config_default(&c1); \
 	backup_config_default(&c2); \
 	as_policy_scan p1; \
@@ -723,8 +723,8 @@ END_TEST
 START_TEST(test_name) \
 { \
 	tmp_file_init("", str_name "=\"" str_val "\"\n", ""); \
-	backup_config c1; \
-	backup_config c2; \
+	backup_config_t c1; \
+	backup_config_t c2; \
 	backup_config_default(&c1); \
 	backup_config_default(&c2); \
 	as_policy_scan p1; \
@@ -751,7 +751,7 @@ DEFINE_BOOL_TEST(test_init_compact, "compact", compact);
 DEFINE_BOOL_TEST(test_init_ttl_zero, "no-ttl-only", ttl_zero);
 DEFINE_STR_TEST(test_init_machine, "machine", machine, "test.asb");
 DEFINE_BOOL_TEST(test_init_estimate, "estimate", estimate);
-DEFINE_INT_TEST_MULT(test_init_bandwidth, "bandwidth", bandwidth, 1024 * 1024);
+DEFINE_INT_TEST_MULT(test_init_bandwidth, "nice", bandwidth, 1024 * 1024);
 DEFINE_BOOL_TEST(test_init_no_records, "no-records", no_records);
 DEFINE_BOOL_TEST(test_init_no_indexes, "no-indexes", no_indexes);
 DEFINE_BOOL_TEST(test_init_no_udfs, "no-udfs", no_udfs);

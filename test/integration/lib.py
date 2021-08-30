@@ -4,6 +4,7 @@
 Utility functions for automated tests.
 """
 
+import atexit
 import sys
 import os
 import os.path
@@ -24,9 +25,14 @@ PORT = 3000
 NAMESPACE = "test"
 SET = "test"
 CLIENT_ATTEMPTS = 20
+
+# the number of server nodes to use
+N_NODES = 2
+
 WORK_DIRECTORY = "work"
-STATE_DIRECTORIES = ["state-1", "state-2"]
-UDF_DIRECTORIES = ["udf-1", "udf-2"]
+STATE_DIRECTORIES = ["state-%d" % i for i in range(1, N_NODES+1)]
+UDF_DIRECTORIES = ["udf-%d" % i for i in range(1, N_NODES+1)]
+
 FAKE_TIME_FILE = "clock_gettime.txt"
 SHOW_ASD_OUTPUT = False
 
@@ -37,7 +43,7 @@ else:
 DOCKER_CLIENT = docker.from_env()
 
 NO_TTL = [0, -1, 4294967295] # these all mean "no TTL" in the test setup
-GLOBALS = {"file_count": 0, "dir_mode": False}
+GLOBALS = { "file_count": 0, "dir_mode": False, "running": False }
 
 random.seed(0)
 
@@ -304,95 +310,74 @@ def start(keep_work_dir=False):
 	"""
 	Starts an asd process with the local aerospike.conf and connects the client to it.
 	"""
-	print("Starting asd")
 
-	if not keep_work_dir:
-		init_work_dir()
+	if not GLOBALS["running"]:
+		print("Starting asd")
+		GLOBALS["running"] = True
 
-	init_state_dirs()
-	interceptor = init_interceptor()
+		if not keep_work_dir:
+			init_work_dir()
 
-	"""
-	search_path = [os.sep + os.path.join("usr", "bin")]
+		init_state_dirs()
+		interceptor = init_interceptor()
 
-	if "ASREPO" in os.environ:
-		repo = absolute_path(os.environ["ASREPO"])
-		uname = os.uname()
-		search_path = [os.path.join(repo, "target", uname[0] + "-" + uname[4], "bin")] + search_path
+		temp_file = absolute_path("aerospike.conf")
+		# TODO
+		#os.environ["LD_PRELOAD"] = interceptor
+		mount_dir = absolute_path(WORK_DIRECTORY)
 
-	print("asd search path is", search_path)
+		first_base = 3000
+		first_ip = None
+		for index in range(1, N_NODES+1):
+			base = first_base + 10 * (index - 1)
+			conf_file = create_conf_file(temp_file, base,
+					None if index == 1 else (first_ip, first_base),
+					index)
+			cmd = '/usr/bin/asd --foreground --config-file %s --instance %s' % ('/opt/aerospike/work/' + get_file(conf_file, base=mount_dir), str(index - 1))
+			print('running in docker: %s' % cmd)
+			container = DOCKER_CLIENT.containers.run("aerospike/aerospike-server",
+					command=cmd,
+					ports={
+						str(base) + '/tcp': str(base),
+						str(base + 1) + '/tcp': str(base + 1),
+						str(base + 2) + '/tcp': str(base + 2),
+						str(base + 3) + '/tcp': str(base + 3)
+					},
+					volumes={ mount_dir: { 'bind': '/opt/aerospike/work', 'mode': 'rw' } },
+					tty=True, detach=True, name='aerospike-%d' % (index))
+			GLOBALS["asd-" + str(index)] = container
+			if index == 1:
+				container.reload()
+				first_ip = container.attrs["NetworkSettings"]["Networks"]["bridge"]["IPAddress"]
 
-	for path in search_path:
-		asd_path = os.path.join(path, "asd")
+		#del os.environ["LD_PRELOAD"]
 
-		if os.path.exists(asd_path):
-			break
-	else:
-		raise Exception("No asd executable found")
+		print("Connecting client")
+		config = {"hosts": [("127.0.0.1", PORT)]}
 
-	if not SHOW_ASD_OUTPUT:
-		dev_null = open(os.devnull, "w")
-		redirect = {"stdout": dev_null, "stderr": subprocess.STDOUT}
-	else:
-		redirect = {}
-	"""
+		for attempt in range(CLIENT_ATTEMPTS):
+			try:
+				GLOBALS["client"] = aerospike.client(config).connect()
+				break
+			except Exception:
+				if attempt < CLIENT_ATTEMPTS - 1:
+					safe_sleep(.2)
+				else:
+					raise
 
-	temp_file = absolute_path("aerospike.conf")
-	# TODO
-	#os.environ["LD_PRELOAD"] = interceptor
-	mount_dir = absolute_path(WORK_DIRECTORY)
+		# initialize the list of indices, which will contain a list of the names of
+		# all indices created
+		GLOBALS["indexes"] = []
+		GLOBALS["sets"] = []
 
-	first_base = 3000
-	first_ip = None
-	for index in range(1, 3):
-		base = first_base + 1000 * (index - 1)
-		conf_file = create_conf_file(temp_file, base,
-				None if index == 1 else (first_ip, first_base),
-				index)
-		cmd = '/usr/bin/asd --foreground --config-file %s --instance %s' % ('/opt/aerospike/work/' + get_file(conf_file, base=mount_dir), str(index - 1))
-		print('running in docker: %s' % cmd)
-		container = DOCKER_CLIENT.containers.run("aerospike/aerospike-server",
-				command=cmd,
-				ports={
-					str(base) + '/tcp': str(base),
-					str(base + 1) + '/tcp': str(base + 1),
-					str(base + 2) + '/tcp': str(base + 2),
-					str(base + 3) + '/tcp': str(base + 3)
-				},
-				volumes={ mount_dir: { 'bind': '/opt/aerospike/work', 'mode': 'rw' } },
-				tty=True, detach=True, name='aerospike-%d' % (index))
-		GLOBALS["asd-" + str(index)] = container
-		if index == 1:
-			container.reload()
-			first_ip = container.attrs["NetworkSettings"]["Networks"]["bridge"]["IPAddress"]
-
-	#del os.environ["LD_PRELOAD"]
-
-	print("Connecting client")
-	config = {"hosts": [("127.0.0.1", PORT)]}
-
-	for attempt in range(CLIENT_ATTEMPTS):
-		try:
-			GLOBALS["client"] = aerospike.client(config).connect()
-			break
-		except Exception:
-			if attempt < CLIENT_ATTEMPTS - 1:
-				safe_sleep(.2)
-			else:
-				raise
-
-	# initialize the list of indices, which will contain a list of the names of
-	# all indices created
-	GLOBALS["indexes"] = []
-	GLOBALS["sets"] = []
-
-	print("Client connected")
+		print("Client connected")
 
 def stop(keep_work_dir=False):
 	"""
 	Disconnects the client and stops the running asd process.
 	"""
 	print("Disconnecting client")
+	GLOBALS["running"] = False
 
 	if "client" not in GLOBALS:
 		print("No connected client")
@@ -417,35 +402,40 @@ def stop(keep_work_dir=False):
 	if not keep_work_dir:
 		remove_work_dir()
 
-def reset():
+def reset(keep_metadata=False):
 	"""
 	Reset: disconnects the client, stops asd, restarts asd, reconnects the client.
 	"""
 	print("resetting the database")
-	
+
 	# truncate the set
 	for set_name in GLOBALS["sets"]:
 		if set_name is not None:
 			set_name = set_name.strip()
+		print("truncating", set_name)
 		GLOBALS["client"].truncate(NAMESPACE, None if not set_name else set_name, 0)
-	GLOBALS["sets"] = []
+	if not keep_metadata:
+		GLOBALS["sets"] = []
 
 	# delete all udfs
 	udfs = []
 	for udf in GLOBALS["client"].udf_list():
 		udfs.append(udf)
 	for udf in udfs:
+		print("removing udf", udf["name"])
 		GLOBALS["client"].udf_remove(udf["name"])
 
 	# delete all indexes
 	for index in GLOBALS["indexes"]:
 		try:
+			print("removing index", index)
 			GLOBALS["client"].index_remove(NAMESPACE, index)
 		except aerospike.exception.IndexNotFound:
 			# the index may not actually be there if we are only backing up certain
 			# sets, but this is ok, so fail silently
 			pass
-	GLOBALS["indexes"] = []
+	if not keep_metadata:
+		GLOBALS["indexes"] = []
 
 def validate_client():
 	"""
@@ -596,6 +586,7 @@ def get_udf_file(file_name):
 	Retrieves the UDF file with the given name from the cluster.
 	"""
 	validate_client()
+	print("getting UDF", file_name)
 	return GLOBALS["client"].udf_get(file_name, aerospike.UDF_TYPE_LUA)
 
 def validate_index_check(set_name, path, value):
@@ -667,9 +658,17 @@ def create_integer_index(set_name, path, index_name):
 	"""
 	Creates an integer index.
 	"""
+	print("create integer index", index_name)
 	validate_index_creation(set_name, path, index_name)
-	assert GLOBALS["client"].index_integer_create(NAMESPACE, set_name, path, index_name) == 0, \
-			"Unexpected error while creating index"
+	ret = -1
+	for _ in range(CLIENT_ATTEMPTS):
+		try:
+			ret = GLOBALS["client"].index_integer_create(NAMESPACE, set_name, path, index_name)
+			break
+		except aerospike.exception.IndexFoundError:
+			# found the index in the database, meaning it wasn't fully deleted, pause and try again
+			safe_sleep(0.5)
+	assert ret == 0, "Unexpected error while creating index"
 	GLOBALS["indexes"].append(index_name)
 
 def create_integer_list_index(set_name, path, index_name):
@@ -677,8 +676,15 @@ def create_integer_list_index(set_name, path, index_name):
 	Creates an integer list index.
 	"""
 	validate_index_creation(set_name, path, index_name)
-	assert GLOBALS["client"].index_list_create(NAMESPACE, set_name, path, aerospike.INDEX_NUMERIC, \
-			index_name) == 0, "Unexpected error while creating index"
+	ret = -1
+	for _ in range(CLIENT_ATTEMPTS):
+		try:
+			ret = GLOBALS["client"].index_list_create(NAMESPACE, set_name, path, aerospike.INDEX_NUMERIC, index_name)
+			break
+		except aerospike.exception.IndexFoundError:
+			# found the index in the database, meaning it wasn't fully deleted, pause and try again
+			safe_sleep(0.5)
+	assert ret == 0, "Unexpected error while creating index"
 	GLOBALS["indexes"].append(index_name)
 
 def create_integer_map_key_index(set_name, path, index_name):
@@ -686,8 +692,16 @@ def create_integer_map_key_index(set_name, path, index_name):
 	Creates an integer map key index.
 	"""
 	validate_index_creation(set_name, path, index_name)
-	assert GLOBALS["client"].index_map_keys_create(NAMESPACE, set_name, path, \
-			aerospike.INDEX_NUMERIC, index_name) == 0, "Unexpected error while creating index"
+	ret = -1
+	for _ in range(CLIENT_ATTEMPTS):
+		try:
+			ret = GLOBALS["client"].index_map_keys_create(NAMESPACE, set_name, path, \
+					aerospike.INDEX_NUMERIC, index_name)
+			break
+		except aerospike.exception.IndexFoundError:
+			# found the index in the database, meaning it wasn't fully deleted, pause and try again
+			safe_sleep(0.5)
+	assert ret == 0, "Unexpected error while creating index"
 	GLOBALS["indexes"].append(index_name)
 
 def create_integer_map_value_index(set_name, path, index_name):
@@ -695,17 +709,33 @@ def create_integer_map_value_index(set_name, path, index_name):
 	Creates an integer map value index.
 	"""
 	validate_index_creation(set_name, path, index_name)
-	assert GLOBALS["client"].index_map_values_create(NAMESPACE, set_name, path, \
-			aerospike.INDEX_NUMERIC, index_name) == 0, "Unexpected error while creating index"
+	ret = -1
+	for _ in range(CLIENT_ATTEMPTS):
+		try:
+			ret = GLOBALS["client"].index_map_values_create(NAMESPACE, set_name, path, \
+					aerospike.INDEX_NUMERIC, index_name)
+			break
+		except aerospike.exception.IndexFoundError:
+			# found the index in the database, meaning it wasn't fully deleted, pause and try again
+			safe_sleep(0.5)
+	assert ret == 0, "Unexpected error while creating index"
 	GLOBALS["indexes"].append(index_name)
 
 def create_string_index(set_name, path, index_name):
 	"""
 	Creates a string index.
 	"""
+	print("create string index", index_name)
 	validate_index_creation(set_name, path, index_name)
-	assert GLOBALS["client"].index_string_create(NAMESPACE, set_name, path, index_name) == 0, \
-			"Unexpected error while creating index"
+	ret = -1
+	for _ in range(CLIENT_ATTEMPTS):
+		try:
+			ret = GLOBALS["client"].index_string_create(NAMESPACE, set_name, path, index_name)
+			break
+		except aerospike.exception.IndexFoundError:
+			# found the index in the database, meaning it wasn't fully deleted, pause and try again
+			safe_sleep(0.5)
+	assert ret == 0, "Unexpected error while creating index"
 	GLOBALS["indexes"].append(index_name)
 
 def create_geo_index(set_name, path, index_name):
@@ -713,9 +743,16 @@ def create_geo_index(set_name, path, index_name):
 	Creates a geo index.
 	"""
 	validate_index_creation(set_name, path, index_name)
+	ret = -1
 	# XXX - geo index requires string bin names
-	assert GLOBALS["client"].index_geo2dsphere_create(NAMESPACE, set_name, str(path), \
-			index_name) == 0, "Unexpected error while creating index"
+	for _ in range(CLIENT_ATTEMPTS):
+		try:
+			ret = GLOBALS["client"].index_geo2dsphere_create(NAMESPACE, set_name, str(path), index_name)
+			break
+		except aerospike.exception.IndexFoundError:
+			# found the index in the database, meaning it wasn't fully deleted, pause and try again
+			safe_sleep(0.5)
+	assert ret == 0, "Unexpected error while creating index"
 	GLOBALS["indexes"].append(index_name)
 
 def create_string_list_index(set_name, path, index_name):
@@ -723,8 +760,16 @@ def create_string_list_index(set_name, path, index_name):
 	Creates a string list index.
 	"""
 	validate_index_creation(set_name, path, index_name)
-	assert GLOBALS["client"].index_list_create(NAMESPACE, set_name, path, aerospike.INDEX_STRING, \
-			index_name) == 0, "Unexpected error while creating index"
+	ret = -1
+	for _ in range(CLIENT_ATTEMPTS):
+		try:
+			ret = GLOBALS["client"].index_list_create(NAMESPACE, set_name, path, aerospike.INDEX_STRING, \
+					index_name)
+			break
+		except aerospike.exception.IndexFoundError:
+			# found the index in the database, meaning it wasn't fully deleted, pause and try again
+			safe_sleep(0.5)
+	assert ret == 0, "Unexpected error while creating index"
 	GLOBALS["indexes"].append(index_name)
 
 def create_string_map_key_index(set_name, path, index_name):
@@ -732,8 +777,16 @@ def create_string_map_key_index(set_name, path, index_name):
 	Creates a string map key index.
 	"""
 	validate_index_creation(set_name, path, index_name)
-	assert GLOBALS["client"].index_map_keys_create(NAMESPACE, set_name, path, \
-			aerospike.INDEX_STRING, index_name) == 0, "Unexpected error while creating index"
+	ret = -1
+	for _ in range(CLIENT_ATTEMPTS):
+		try:
+			ret = GLOBALS["client"].index_map_keys_create(NAMESPACE, set_name, path, \
+					aerospike.INDEX_STRING, index_name)
+			break
+		except aerospike.exception.IndexFoundError:
+			# found the index in the database, meaning it wasn't fully deleted, pause and try again
+			safe_sleep(0.5)
+	assert ret == 0, "Unexpected error while creating index"
 	GLOBALS["indexes"].append(index_name)
 
 def create_string_map_value_index(set_name, path, index_name):
@@ -741,8 +794,16 @@ def create_string_map_value_index(set_name, path, index_name):
 	Creates a string map value index.
 	"""
 	validate_index_creation(set_name, path, index_name)
-	assert GLOBALS["client"].index_map_values_create(NAMESPACE, set_name, path, \
-			aerospike.INDEX_STRING, index_name) == 0, "Unexpected error while creating index"
+	ret = -1
+	for _ in range(CLIENT_ATTEMPTS):
+		try:
+			ret = GLOBALS["client"].index_map_values_create(NAMESPACE, set_name, path, \
+					aerospike.INDEX_STRING, index_name)
+			break
+		except aerospike.exception.IndexFoundError:
+			# found the index in the database, meaning it wasn't fully deleted, pause and try again
+			safe_sleep(0.5)
+	assert ret == 0, "Unexpected error while creating index"
 	GLOBALS["indexes"].append(index_name)
 
 def backup_to_file(path, *options):
@@ -778,7 +839,7 @@ def restore_from_directory(path, *options):
 			*options)
 
 def backup_and_restore(filler, preparer, checker, backup_opts=None, restore_opts=None, \
-		restore_delay=None, cleanup=None):
+		restore_delay=0.5):
 	"""
 	Do one backup-restore cycle.
 	"""
@@ -788,18 +849,20 @@ def backup_and_restore(filler, preparer, checker, backup_opts=None, restore_opts
 	if restore_opts is None:
 		restore_opts = []
 
-
 	start()
-	for comp_enc_mode in [
+
+	context = {}
+	# fill once, since we can just keep all data after running asrestore
+	filler(context)
+
+	for i, comp_enc_mode in enumerate([
 			[],
 			['--compress=zstd'],
 			['--encrypt=aes128', '--encryption-key-file=test/test_key.pem'],
 			['--compress=zstd', '--encrypt=aes128',
 				'--encryption-key-file=test/test_key.pem'],
-			]:
-		context = {}
+			]):
 		try:
-			filler(context)
 
 			if GLOBALS["dir_mode"]:
 				path = temporary_path("dir")
@@ -808,18 +871,12 @@ def backup_and_restore(filler, preparer, checker, backup_opts=None, restore_opts
 				path = temporary_path("asb")
 				backup_to_file(path, *(backup_opts + comp_enc_mode))
 
-			indexes = GLOBALS["indexes"]
-			reset()
+			# keep metadata (sets/indexes) so they can be erased after
+			# asrestore runs
+			reset(keep_metadata=True)
 
 			# give SMD time to get deleted
-			safe_sleep(0.5)
-
-			# restart the server/client
-			#stop(True)
-			#start(True)
-
-			if restore_delay is not None:
-				safe_sleep(restore_delay)
+			safe_sleep(restore_delay)
 
 			if preparer is not None:
 				preparer(context)
@@ -829,22 +886,14 @@ def backup_and_restore(filler, preparer, checker, backup_opts=None, restore_opts
 			else:
 				restore_from_file(path, *(restore_opts + comp_enc_mode))
 			# give SMD time to be restored
-			safe_sleep(0.5)
+			safe_sleep(.5)
 
 			checker(context)
 
-			# restore the indices restored by asrestore before resetting
-			GLOBALS["indexes"] = indexes
-			reset()
 		except Exception:
-			if cleanup is not None:
-				cleanup(context)
-			stop(True)
+			reset()
 			raise
-		else:
-			if cleanup is not None:
-				cleanup(context)
-	stop()
+	reset()
 
 def random_alphameric():
 	"""
@@ -990,3 +1039,23 @@ def index_variations(max_len):
 
 if __name__ == "__main__":
 	pass
+
+def stop_silent():
+	# silence stderr and stdout
+	stdout_tmp = sys.stdout
+	stderr_tmp = sys.stderr
+	null = open(os.devnull, 'w')
+	sys.stdout = null
+	sys.stderr = null
+	try:
+		stop()
+		sys.stdout = stdout_tmp
+		sys.stderr = stderr_tmp
+	except:
+		sys.stdout = stdout_tmp
+		sys.stderr = stderr_tmp
+		raise
+
+# shut down the aerospike cluster when the tests are over
+atexit.register(stop_silent)
+

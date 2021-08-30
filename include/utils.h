@@ -29,7 +29,6 @@
 
 #include <aerospike/as_vector.h>
 
-#define IO_BUF_SIZE (1024 * 1024 * 16)      ///< We do I/O in blocks of this size.
 #define STACK_BUF_SIZE (1024 * 16)          ///< The size limit for stack-allocated buffers.
 #define ETA_BUF_SIZE (4 + 3 + 3 + 3 + 1)    ///< The buffer size for pretty-printing an ETA.
 
@@ -135,9 +134,9 @@ extern char* str_vector_tostring(as_vector* v);
 extern void enable_client_log(void);
 extern void *safe_malloc(size_t size);
 extern char *safe_strdup(const char *string);
-extern void safe_lock(void);
-extern void safe_unlock(void);
-extern void safe_wait(pthread_cond_t *cond);
+extern void safe_lock(pthread_mutex_t* mutex);
+extern void safe_unlock(pthread_mutex_t* mutex);
+extern void safe_wait(pthread_cond_t *cond, pthread_mutex_t* mutex);
 extern void safe_signal(pthread_cond_t *cond);
 extern bool better_atoi(const char *string, uint64_t *val);
 extern bool parse_date_time(const char *string, int64_t *nanos);
@@ -211,13 +210,11 @@ boolstr(bool val)
 ///                 line.
 /// @param col_no   The column number. `col_no[0]` is the current column, `col_no[1]` is the next
 ///                 column.
-/// @param bytes    Incremented, if a character was successfully read.
 ///
 /// @result         The read character on success, otherwise `EOF`.
 ///
 static __attribute__((always_inline)) inline int32_t
-read_char(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
-		int64_t *bytes)
+read_char(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no)
 {
 	line_no[0] = line_no[1];
 	col_no[0] = col_no[1];
@@ -237,12 +234,10 @@ read_char(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
 	case '\n':
 		++line_no[1];
 		col_no[1] = 1;
-		++(*bytes);
 		return ch;
 
 	default:
 		++col_no[1];
-		++(*bytes);
 		return ch;
 	}
 }
@@ -267,16 +262,16 @@ read_char(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
 ///
 static inline int32_t
 read_char_dec(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
-		int64_t *bytes, b64_context *b64c)
+		b64_context *b64c)
 {
 	if (LIKELY(b64c->index < 2)) {
 		return b64c->buffer[b64c->index++];
 	}
 
-	int32_t ch1 = read_char(fd, line_no, col_no, bytes);
-	int32_t ch2 = read_char(fd, line_no, col_no, bytes);
-	int32_t ch3 = read_char(fd, line_no, col_no, bytes);
-	int32_t ch4 = read_char(fd, line_no, col_no, bytes);
+	int32_t ch1 = read_char(fd, line_no, col_no);
+	int32_t ch2 = read_char(fd, line_no, col_no);
+	int32_t ch3 = read_char(fd, line_no, col_no);
+	int32_t ch4 = read_char(fd, line_no, col_no);
 
 	if (UNLIKELY(ch1 == EOF || ch2 == EOF || ch3 == EOF || ch4 == EOF)) {
 		err("Unexpected end of file in base-64 data");
@@ -308,9 +303,8 @@ read_char_dec(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
 }
 
 static inline int
-peek_char(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no, int64_t *bytes)
+peek_char(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no)
 {
-	(void) bytes;
 	line_no[0] = line_no[1];
 	col_no[0] = col_no[1];
 
@@ -335,16 +329,15 @@ peek_char(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no, int64_t *byt
 /// @param fd       The file descriptor.
 /// @param line_no  The current line number.
 /// @param col_no   The current column number.
-/// @param bytes    Increased by the number of bytes read from the file descriptor.
 /// @param ch       The expected character.
 ///
 /// @result         `true`, if successful.
 ///
 static inline bool
 expect_char(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
-		int64_t *bytes, int32_t ch)
+		int32_t ch)
 {
-	int32_t x = read_char(fd, line_no, col_no, bytes);
+	int32_t x = read_char(fd, line_no, col_no);
 
 	if (UNLIKELY(x == EOF)) {
 		return false;
@@ -365,7 +358,6 @@ expect_char(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
 /// @param fd       The file descriptor.
 /// @param line_no  The current line number.
 /// @param col_no   The current column number.
-/// @param bytes    Increased by the number of bytes read from the file descriptor.
 /// @param buffer   The output buffer for the read bytes.
 /// @param size     The number of bytes to be read.
 ///
@@ -373,10 +365,10 @@ expect_char(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
 ///
 static inline bool
 read_block(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
-		int64_t *bytes, void *buffer, size_t size)
+		void *buffer, size_t size)
 {
 	for (size_t i = 0; i < size; ++i) {
-		int32_t ch = read_char(fd, line_no, col_no, bytes);
+		int32_t ch = read_char(fd, line_no, col_no);
 
 		if (UNLIKELY(ch == EOF)) {
 			return false;
@@ -394,7 +386,6 @@ read_block(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
 /// @param fd       The file descriptor.
 /// @param line_no  The current line number.
 /// @param col_no   The current column number.
-/// @param bytes    Increased by the number of bytes read from the file descriptor.
 /// @param buffer   The output buffer for the decoded bytes.
 /// @param size     The number of characters to be read. Note that this is not the size of the
 ///                 output buffer. This is the number of base-64 characters. The output buffer,
@@ -405,10 +396,10 @@ read_block(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
 ///
 static inline bool
 read_block_dec(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
-		int64_t *bytes, void *buffer, size_t size, b64_context *b64c)
+		void *buffer, size_t size, b64_context *b64c)
 {
 	for (size_t i = 0; i < size; ++i) {
-		int32_t ch = read_char_dec(fd, line_no, col_no, bytes, b64c);
+		int32_t ch = read_char_dec(fd, line_no, col_no, b64c);
 
 		if (UNLIKELY(ch == EOF)) {
 			return false;
@@ -420,50 +411,3 @@ read_block_dec(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
 	return true;
 }
 
-///
-/// A wrapper around `fprintf()` that counts the bytes that were written.
-///
-/// @param bytes   Increased by the number of bytes written.
-/// @param fd      The file descriptor to write to.
-/// @param format  The format string for `fprintf()`.
-///
-/// @result        The result returned by `fprintf()`.
-///
-static inline int32_t
-fprintf_bytes(uint64_t *bytes, io_write_proxy_t *fd, const char *format, ...)
-{
-	va_list args;
-	va_start(args, format);
-	int32_t res = fd != NULL ? io_proxy_vprintf(fd, format, args) : vsnprintf(NULL, 0, format, args);
-	va_end(args);
-
-	if (LIKELY(res != EOF)) {
-		*bytes += (uint64_t)res;
-	}
-
-	return res;
-}
-
-///
-/// A wrapper around `fwrite()` that counts the bytes that were written.
-///
-/// @param bytes   Increased by the number of bytes written.
-/// @param data    The data to be written.
-/// @param len     The size of an individual data chunk to be written.
-/// @param num     The number of data chunks to be written.
-/// @param fd      The file descriptor to write to.
-///
-/// @result        The result returned by `fwrite()`.
-///
-static inline size_t
-fwrite_bytes(uint64_t *bytes, const void *data, size_t n_bytes, io_write_proxy_t *fd)
-{
-	ssize_t res = fd != NULL && n_bytes > 0 ?
-		io_proxy_write(fd, data, n_bytes) : (ssize_t) n_bytes;
-
-	if (LIKELY((size_t) res == n_bytes)) {
-		*bytes += n_bytes;
-	}
-
-	return (size_t) res;
-}

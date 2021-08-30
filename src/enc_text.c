@@ -58,7 +58,6 @@ text_bytes_type_to_label(as_bytes_type type)
 ///
 /// Writes a boolean to the backup file.
 ///
-/// @param bytes    Increased by the number of bytes written to the backup file.
 /// @param fd       The file descriptor of the backup file.
 /// @param prefix1  The first string prefix.
 /// @param prefix2  The second string prefix.
@@ -67,12 +66,12 @@ text_bytes_type_to_label(as_bytes_type type)
 /// @result         `true`, if successful.
 ///
 static bool
-text_output_boolean(uint64_t *bytes, io_write_proxy_t *fd, const char *prefix1,
+text_output_boolean(io_write_proxy_t *fd, const char *prefix1,
 		const char *prefix2, as_val *val)
 {
 	as_boolean *v = as_boolean_fromval(val);
 
-	if (fprintf_bytes(bytes, fd, "%s%s %c\n", prefix1, prefix2,
+	if (io_proxy_printf(fd, "%s%s %c\n", prefix1, prefix2,
 				v->value ? BOOLEAN_TRUE_CHAR : BOOLEAN_FALSE_CHAR) < 0) {
 		err_code("Error while writing boolean to backup file");
 		return false;
@@ -84,7 +83,6 @@ text_output_boolean(uint64_t *bytes, io_write_proxy_t *fd, const char *prefix1,
 ///
 /// Writes a signed 64-bit integer to the backup file.
 ///
-/// @param bytes    Increased by the number of bytes written to the backup file.
 /// @param fd       The file descriptor of the backup file.
 /// @param prefix1  The first string prefix.
 /// @param prefix2  The second string prefix.
@@ -93,13 +91,13 @@ text_output_boolean(uint64_t *bytes, io_write_proxy_t *fd, const char *prefix1,
 /// @result         `true`, if successful.
 ///
 static bool
-text_output_integer(uint64_t *bytes, io_write_proxy_t *fd, const char *prefix1,
+text_output_integer(io_write_proxy_t *fd, const char *prefix1,
 		const char *prefix2,
 		as_val *val)
 {
 	as_integer *v = as_integer_fromval(val);
 
-	if (fprintf_bytes(bytes, fd, "%s%s %" PRId64 "\n", prefix1, prefix2, v->value) < 0) {
+	if (io_proxy_printf(fd, "%s%s %" PRId64 "\n", prefix1, prefix2, v->value) < 0) {
 		err_code("Error while writing integer to backup file");
 		return false;
 	}
@@ -112,7 +110,6 @@ text_output_integer(uint64_t *bytes, io_write_proxy_t *fd, const char *prefix1,
 ///
 /// Using 17 significant digits makes sure that we read back the same value that we wrote.
 ///
-/// @param bytes    Increased by the number of bytes written to the backup file.
 /// @param fd       The file descriptor of the backup file.
 /// @param prefix1  The first string prefix.
 /// @param prefix2  The second string prefix.
@@ -121,13 +118,13 @@ text_output_integer(uint64_t *bytes, io_write_proxy_t *fd, const char *prefix1,
 /// @result         `true`, if successful.
 ///
 static bool
-text_output_double(uint64_t *bytes, io_write_proxy_t *fd, const char *prefix1,
+text_output_double(io_write_proxy_t *fd, const char *prefix1,
 		const char *prefix2,
 		as_val *val)
 {
 	as_double *v = as_double_fromval(val);
 
-	if (fprintf_bytes(bytes, fd, "%s%s %.17g\n", prefix1, prefix2, v->value) < 0) {
+	if (io_proxy_printf(fd, "%s%s %.17g\n", prefix1, prefix2, v->value) < 0) {
 		err_code("Error while writing double to backup file");
 		return false;
 	}
@@ -138,7 +135,6 @@ text_output_double(uint64_t *bytes, io_write_proxy_t *fd, const char *prefix1,
 ///
 /// Writes a BLOB to the backup file.
 ///
-/// @param bytes    Increased by the number of bytes written to the backup file.
 /// @param fd       The file descriptor of the backup file.
 /// @param prefix1  The first string prefix.
 /// @param prefix2  The second string prefix.
@@ -148,21 +144,21 @@ text_output_double(uint64_t *bytes, io_write_proxy_t *fd, const char *prefix1,
 /// @result         `true`, if successful.
 ///
 static bool
-text_output_data(uint64_t *bytes, io_write_proxy_t *fd, const char *prefix1,
+text_output_data(io_write_proxy_t *fd, const char *prefix1,
 		const char *prefix2,
 		void *buffer, size_t size)
 {
-	if (fprintf_bytes(bytes, fd, "%s%s %zu ", prefix1, prefix2, size) < 0) {
+	if (io_proxy_printf(fd, "%s%s %zu ", prefix1, prefix2, size) < 0) {
 		err_code("Error while writing data to backup file [1]");
 		return false;
 	}
 
-	if (fwrite_bytes(bytes, buffer, size, fd) != size) {
+	if (io_proxy_write(fd, buffer, size) != (int64_t) size) {
 		err_code("Error while writing data to backup file [2]");
 		return false;
 	}
 
-	if (fprintf_bytes(bytes, fd, "\n") < 0) {
+	if (io_proxy_printf(fd, "\n") < 0) {
 		err_code("Error while writing data to backup file [3]");
 		return false;
 	}
@@ -173,7 +169,6 @@ text_output_data(uint64_t *bytes, io_write_proxy_t *fd, const char *prefix1,
 ///
 /// Writes an encoded BLOB to the backup file.
 ///
-/// @param bytes    Increased by the number of bytes written to the backup file.
 /// @param fd       The file descriptor of the backup file.
 /// @param prefix1  The first string prefix.
 /// @param prefix2  The second string prefix.
@@ -183,7 +178,7 @@ text_output_data(uint64_t *bytes, io_write_proxy_t *fd, const char *prefix1,
 /// @result         `true`, if successful.
 ///
 static bool
-text_output_data_enc(uint64_t *bytes, io_write_proxy_t *fd, const char *prefix1,
+text_output_data_enc(io_write_proxy_t *fd, const char *prefix1,
 		const char *prefix2, void *buffer, uint32_t size)
 {
 	uint32_t enc_size = cf_b64_encoded_len(size);
@@ -196,7 +191,7 @@ text_output_data_enc(uint64_t *bytes, io_write_proxy_t *fd, const char *prefix1,
 	char *enc = buffer_init(enc_size);
 	cf_b64_encode(buffer, size, enc);
 
-	if (!text_output_data(bytes, fd, prefix1, prefix2, enc, enc_size)) {
+	if (!text_output_data(fd, prefix1, prefix2, enc, enc_size)) {
 		buffer_free(enc, enc_size);
 		return false;
 	}
@@ -208,7 +203,6 @@ text_output_data_enc(uint64_t *bytes, io_write_proxy_t *fd, const char *prefix1,
 ///
 /// Writes a string to the backup file.
 ///
-/// @param bytes    Increased by the number of bytes written to the backup file.
 /// @param fd       The file descriptor of the backup file.
 /// @param prefix1  The first string prefix.
 /// @param prefix2  The second string prefix.
@@ -217,17 +211,16 @@ text_output_data_enc(uint64_t *bytes, io_write_proxy_t *fd, const char *prefix1,
 /// @result         `true`, if successful.
 ///
 static bool
-text_output_string(uint64_t *bytes, io_write_proxy_t *fd, const char *prefix1,
+text_output_string(io_write_proxy_t *fd, const char *prefix1,
 		const char *prefix2, as_val *val)
 {
 	as_string *v = as_string_fromval(val);
-	return text_output_data(bytes, fd, prefix1, prefix2, v->value, v->len);
+	return text_output_data(fd, prefix1, prefix2, v->value, v->len);
 }
 
 ///
 /// Writes a geojson to the backup file.
 ///
-/// @param bytes    Increased by the number of bytes written to the backup file.
 /// @param fd       The file descriptor of the backup file.
 /// @param prefix1  The first string prefix.
 /// @param prefix2  The second string prefix.
@@ -236,17 +229,16 @@ text_output_string(uint64_t *bytes, io_write_proxy_t *fd, const char *prefix1,
 /// @result         `true`, if successful.
 ///
 static bool
-text_output_geojson(uint64_t *bytes, io_write_proxy_t *fd, const char *prefix1,
+text_output_geojson(io_write_proxy_t *fd, const char *prefix1,
 		const char *prefix2, as_val *val)
 {
 	as_geojson *v = as_geojson_fromval(val);
-	return text_output_data(bytes, fd, prefix1, prefix2, v->value, v->len);
+	return text_output_data(fd, prefix1, prefix2, v->value, v->len);
 }
 
 ///
 /// Writes a bytes value to the backup file.
 ///
-/// @param bytes    Increased by the number of bytes written to the backup file.
 /// @param fd       The file descriptor of the backup file.
 /// @param compact  Indicates compact mode.
 /// @param prefix1  The first string prefix.
@@ -256,19 +248,18 @@ text_output_geojson(uint64_t *bytes, io_write_proxy_t *fd, const char *prefix1,
 /// @result         `true`, if successful.
 ///
 static bool
-text_output_bytes(uint64_t *bytes, io_write_proxy_t *fd, bool compact,
+text_output_bytes(io_write_proxy_t *fd, bool compact,
 		const char *prefix1, const char *prefix2, as_val *val)
 {
 	as_bytes *v = as_bytes_fromval(val);
 	return compact ?
-			text_output_data(bytes, fd, prefix1, prefix2, v->value, v->size) :
-			text_output_data_enc(bytes, fd, prefix1, prefix2, v->value, v->size);
+			text_output_data(fd, prefix1, prefix2, v->value, v->size) :
+			text_output_data_enc(fd, prefix1, prefix2, v->value, v->size);
 }
 
 ///
 /// Writes a key to the backup file.
 ///
-/// @param bytes    Increased by the number of bytes written to the backup file.
 /// @param fd       The file descriptor of the backup file.
 /// @param compact  Indicates compact mode.
 /// @param key      The key to be written.
@@ -276,22 +267,22 @@ text_output_bytes(uint64_t *bytes, io_write_proxy_t *fd, bool compact,
 /// @result         `true`, if successful.
 ///
 static bool
-text_output_key(uint64_t *bytes, io_write_proxy_t *fd, bool compact, as_val *key)
+text_output_key(io_write_proxy_t *fd, bool compact, as_val *key)
 {
 	switch (key->type) {
 	case AS_INTEGER:
-		return text_output_integer(bytes, fd, "+ k I", "", key);
+		return text_output_integer(fd, "+ k I", "", key);
 
 	case AS_DOUBLE:
-		return text_output_double(bytes, fd, "+ k D", "", key);
+		return text_output_double(fd, "+ k D", "", key);
 
 	case AS_STRING:
-		return text_output_string(bytes, fd, "+ k S", "", key);
+		return text_output_string(fd, "+ k S", "", key);
 
 	case AS_BYTES:
 		return compact ?
-			text_output_bytes(bytes, fd, true, "+ k B!", "", key) :
-			text_output_bytes(bytes, fd, false, "+ k B", "", key);
+			text_output_bytes(fd, true, "+ k B!", "", key) :
+			text_output_bytes(fd, false, "+ k B", "", key);
 
 	default:
 		err("Invalid key type %d", (int32_t)key->type);
@@ -302,7 +293,6 @@ text_output_key(uint64_t *bytes, io_write_proxy_t *fd, bool compact, as_val *key
 ///
 /// Writes a bin to the backup file.
 ///
-/// @param bytes     Increased by the number of bytes written to the backup file.
 /// @param fd        The file descriptor of the backup file.
 /// @param compact   Indicates compact mode.
 /// @param bin_name  The name of the bin to be written.
@@ -311,11 +301,11 @@ text_output_key(uint64_t *bytes, io_write_proxy_t *fd, bool compact, as_val *key
 /// @result         `true`, if successful.
 ///
 static bool
-text_output_value(uint64_t *bytes, io_write_proxy_t *fd, bool compact,
+text_output_value(io_write_proxy_t *fd, bool compact,
 		const char *bin_name, as_val *val)
 {
 	if (val == NULL || val->type == AS_NIL) {
-		if (fprintf_bytes(bytes, fd, "- N %s\n", bin_name) < 0) {
+		if (io_proxy_printf(fd, "- N %s\n", bin_name) < 0) {
 			err_code("Error while writing NIL value to backup file");
 			return false;
 		}
@@ -325,19 +315,19 @@ text_output_value(uint64_t *bytes, io_write_proxy_t *fd, bool compact,
 
 	switch (val->type) {
 	case AS_BOOLEAN:
-		return text_output_boolean(bytes, fd, "- Z ", bin_name, val);
+		return text_output_boolean(fd, "- Z ", bin_name, val);
 
 	case AS_INTEGER:
-		return text_output_integer(bytes, fd, "- I ", bin_name, val);
+		return text_output_integer(fd, "- I ", bin_name, val);
 
 	case AS_DOUBLE:
-		return text_output_double(bytes, fd, "- D ", bin_name, val);
+		return text_output_double(fd, "- D ", bin_name, val);
 
 	case AS_STRING:
-		return text_output_string(bytes, fd, "- S ", bin_name, val);
+		return text_output_string(fd, "- S ", bin_name, val);
 
 	case AS_GEOJSON:
-		return text_output_geojson(bytes, fd, "- G ", bin_name, val);
+		return text_output_geojson(fd, "- G ", bin_name, val);
 
 	case AS_BYTES: {
 		int32_t type = text_bytes_type_to_label(as_bytes_fromval(val)->type);
@@ -349,12 +339,12 @@ text_output_value(uint64_t *bytes, io_write_proxy_t *fd, bool compact,
 		if (compact) {
 			char prefix[6] = "-  ! ";
 			prefix[2] = (char)type;
-			return text_output_bytes(bytes, fd, true, prefix, bin_name, val);
+			return text_output_bytes(fd, true, prefix, bin_name, val);
 		}
 
 		char prefix[5] = "-   ";
 		prefix[2] = (char)type;
-		return text_output_bytes(bytes, fd, false, prefix, bin_name, val);
+		return text_output_bytes(fd, false, prefix, bin_name, val);
 	}
 
 	case AS_LIST:
@@ -377,7 +367,7 @@ text_output_value(uint64_t *bytes, io_write_proxy_t *fd, bool compact,
 /// See backup_encoder.put_record for details.
 ///
 bool
-text_put_record(uint64_t *bytes, io_write_proxy_t *fd, bool compact,
+text_put_record(io_write_proxy_t *fd, bool compact,
 		const as_record *rec)
 {
 	uint32_t enc_size = cf_b64_encoded_len(sizeof (as_digest_value)) + 1;
@@ -389,22 +379,22 @@ text_put_record(uint64_t *bytes, io_write_proxy_t *fd, bool compact,
 	uint32_t expire = rec->ttl == (uint32_t)-1 ? 0 : (uint32_t)cf_secs_since_clepoch() + rec->ttl;
 
 	if (rec->key.valuep != NULL &&
-			!text_output_key(bytes, fd, compact, (as_val *)rec->key.valuep)) {
+			!text_output_key(fd, compact, (as_val *)rec->key.valuep)) {
 		err("Error while writing record key");
 		return false;
 	}
 
-	if (fprintf_bytes(bytes, fd, "+ n %s\n+ d %s\n", escape(rec->key.ns), enc) < 0) {
+	if (io_proxy_printf(fd, "+ n %s\n+ d %s\n", escape(rec->key.ns), enc) < 0) {
 		err_code("Error while writing record meta data to backup file [1]");
 		return false;
 	}
 
-	if (rec->key.set[0] != 0 && fprintf_bytes(bytes, fd, "+ s %s\n", escape(rec->key.set)) < 0) {
+	if (rec->key.set[0] != 0 && io_proxy_printf(fd, "+ s %s\n", escape(rec->key.set)) < 0) {
 		err_code("Error while writing record meta data to backup file [2]");
 		return false;
 	}
 
-	if (fprintf_bytes(bytes, fd, "+ g %d\n+ t %u\n+ b %d\n", rec->gen, expire,
+	if (io_proxy_printf(fd, "+ g %d\n+ t %u\n+ b %d\n", rec->gen, expire,
 			rec->bins.size) < 0) {
 		err_code("Error while writing record meta data to backup file [3]");
 		return false;
@@ -413,7 +403,7 @@ text_put_record(uint64_t *bytes, io_write_proxy_t *fd, bool compact,
 	for (int32_t i = 0; i < rec->bins.size; ++i) {
 		as_bin *bin = &rec->bins.entries[i];
 
-		if (!text_output_value(bytes, fd, compact, escape(bin->name), (as_val *)bin->valuep)) {
+		if (!text_output_value(fd, compact, escape(bin->name), (as_val *)bin->valuep)) {
 			err("Error while writing record bin %s", bin->name);
 			return false;
 		}
@@ -446,7 +436,7 @@ text_udf_type_to_label(as_udf_type type)
 /// See backup_encoder.put_udf_file for details.
 ///
 bool
-text_put_udf_file(uint64_t *bytes, io_write_proxy_t *fd, const as_udf_file *file)
+text_put_udf_file(io_write_proxy_t *fd, const as_udf_file *file)
 {
 	int32_t type = text_udf_type_to_label(file->type);
 
@@ -454,19 +444,19 @@ text_put_udf_file(uint64_t *bytes, io_write_proxy_t *fd, const as_udf_file *file
 		return false;
 	}
 
-	if (fprintf_bytes(bytes, fd, GLOBAL_PREFIX "u %c %s %u ", (char)type, escape(file->name),
+	if (io_proxy_printf(fd, GLOBAL_PREFIX "u %c %s %u ", (char)type, escape(file->name),
 			file->content.size) < 0) {
 		err_code("Error while writing UDF function to backup file [1]");
 		return false;
 	}
 
-	if (fwrite_bytes(bytes, file->content.bytes, file->content.size, fd) !=
+	if (io_proxy_write(fd, file->content.bytes, file->content.size) !=
 			file->content.size) {
 		err_code("Error while writing UDF function to backup file [2]");
 		return false;
 	}
 
-	if (fprintf_bytes(bytes, fd, "\n") < 0) {
+	if (io_proxy_printf(fd, "\n") < 0) {
 		err_code("Error while writing UDF function to backup file [3]");
 		return false;
 	}
@@ -506,10 +496,10 @@ text_path_type_to_label(path_type type)
 /// See backup_encoder.put_secondary_index for details.
 ///
 bool
-text_put_secondary_index(uint64_t *bytes, io_write_proxy_t *fd,
+text_put_secondary_index(io_write_proxy_t *fd,
 		const index_param *index)
 {
-	if (fprintf_bytes(bytes, fd, GLOBAL_PREFIX "i %s %s %s %c %u",
+	if (io_proxy_printf(fd, GLOBAL_PREFIX "i %s %s %s %c %u",
 			escape(index->ns), index->set != NULL ? escape(index->set) : "", escape(index->name),
 			text_index_type_to_label(index->type), index->path_vec.size) < 0) {
 		err_code("Error while writing secondary index to backup file [1]");
@@ -519,14 +509,14 @@ text_put_secondary_index(uint64_t *bytes, io_write_proxy_t *fd,
 	for (uint32_t i = 0; i < index->path_vec.size; ++i) {
 		path_param *path = as_vector_get((as_vector *)&index->path_vec, i);
 
-		if (fprintf_bytes(bytes, fd, " %s %c", escape(path->path),
+		if (io_proxy_printf(fd, " %s %c", escape(path->path),
 				text_path_type_to_label(path->type)) < 0) {
 			err_code("Error while writing secondary index to backup file [2]");
 			return false;
 		}
 	}
 
-	if (fprintf_bytes(bytes, fd, "\n") < 0) {
+	if (io_proxy_printf(fd, "\n") < 0) {
 		err_code("Error while writing secondary index to backup file [3]");
 		return false;
 	}

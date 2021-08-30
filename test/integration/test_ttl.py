@@ -41,9 +41,9 @@ def test_ttl():
 	Test TTL without a delay.
 	"""
 	lib.backup_and_restore(
-		lambda context: put_ttl(1, 100),
+		lambda context: put_ttl(1, 1000),
 		None,
-		lambda context: check_ttl(1, (90, 100))
+		lambda context: check_ttl(1, (900, 1000))
 	)
 
 def test_ttl_delay_10():
@@ -51,9 +51,9 @@ def test_ttl_delay_10():
 	Test TTL with a 10 second delay.
 	"""
 	lib.backup_and_restore(
-		lambda context: put_ttl(2, 100),
+		lambda context: put_ttl(2, 1000),
 		None,
-		lambda context: check_ttl(2, (80, 90)),
+		lambda context: check_ttl(2, (0, 990)),
 		restore_delay=10
 	)
 

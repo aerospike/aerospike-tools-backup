@@ -71,11 +71,11 @@ static bool config_int64(toml_table_t *curtab, const char *name, int64_t *ptr);
 static bool config_bool(toml_table_t *curtab, const char *name, void *ptr);
 static bool config_parse_file(const char *fname, toml_table_t **tab, char errbuf[]);
 
-static bool config_backup_cluster(toml_table_t *conftab, backup_config *c, const char *instance, char errbuf[]);
-static bool config_backup(toml_table_t *conftab, backup_config *c, const char *instance, char errbuf[]);
+static bool config_backup_cluster(toml_table_t *conftab, backup_config_t *c, const char *instance, char errbuf[]);
+static bool config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance, char errbuf[]);
 
-static bool config_restore_cluster(toml_table_t *conftab, restore_config *c, const char *instance, char errbuf[]);
-static bool config_restore(toml_table_t *conftab, restore_config *c, const char *instance, char errbuf[]);
+static bool config_restore_cluster(toml_table_t *conftab, restore_config_t *c, const char *instance, char errbuf[]);
+static bool config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance, char errbuf[]);
 
 static bool config_include(toml_table_t *conftab, void *c, const char *instance, int level, bool is_backup);
 static bool config_from_dir(void *c, const char *instance, char *dirname, int level, bool is_backup);
@@ -105,17 +105,17 @@ config_from_file(void *c, const char *instance, const char *fname,
 	}
 	else if (is_backup) {
 
-		if (! config_backup_cluster(conftab, (backup_config*) c, instance, errbuf)) {
+		if (! config_backup_cluster(conftab, (backup_config_t*) c, instance, errbuf)) {
 			status = false;
-		} else if (! config_backup(conftab, (backup_config*)c, instance, errbuf)) {
+		} else if (! config_backup(conftab, (backup_config_t*)c, instance, errbuf)) {
 			status = false;
 		} else if (! config_include(conftab, c, instance, level, is_backup)) {
 			status = false;
 		}
 	} else {
-		if (! config_restore_cluster(conftab, (restore_config*)c, instance, errbuf)) {
+		if (! config_restore_cluster(conftab, (restore_config_t*)c, instance, errbuf)) {
 			status = false;
-		} else if (! config_restore(conftab, (restore_config*)c, instance, errbuf)) {
+		} else if (! config_restore(conftab, (restore_config_t*)c, instance, errbuf)) {
 			status = false;
 		} else if (! config_include(conftab, c, instance, level, is_backup)) {
 			status = false;
@@ -242,7 +242,7 @@ config_bool(toml_table_t *curtab, const char *name, void *ptr)
 }
 
 static bool
-config_restore_cluster(toml_table_t *conftab, restore_config *c, const char *instance,
+config_restore_cluster(toml_table_t *conftab, restore_config_t *c, const char *instance,
 		char errbuf[])
 {
 	// Defaults to "cluster" section in case present.
@@ -287,6 +287,9 @@ config_restore_cluster(toml_table_t *conftab, restore_config *c, const char *ins
 
 		} else if (! strcasecmp("tls-enable", name)) {
 			status = config_bool(curtab, name, (void*)&c->tls.enable);
+
+		} else if (! strcasecmp("tls-name", name)) {
+			status = config_str(curtab, name, (void*)&c->tls_name);
 
 		} else if (! strcasecmp("tls-protocols", name)) {
 			status = config_str(curtab, name, (void*)&c->tls.protocols);
@@ -335,7 +338,7 @@ config_restore_cluster(toml_table_t *conftab, restore_config *c, const char *ins
 
 
 static bool
-config_backup_cluster(toml_table_t *conftab, backup_config *c, const char *instance,
+config_backup_cluster(toml_table_t *conftab, backup_config_t *c, const char *instance,
 		char errbuf[])
 {
 	// Defaults to "cluster" section in case present.
@@ -380,6 +383,9 @@ config_backup_cluster(toml_table_t *conftab, backup_config *c, const char *insta
 
 		} else if (! strcasecmp("tls-enable", name)) {
 			status = config_bool(curtab, name, (void*)&c->tls.enable);
+
+		} else if (! strcasecmp("tls-name", name)) {
+			status = config_str(curtab, name, (void*)&c->tls_name);
 
 		} else if (! strcasecmp("tls-protocols", name)) {
 			status = config_str(curtab, name, (void*)&c->tls.protocols);
@@ -547,7 +553,7 @@ config_parse_file(const char *fname, toml_table_t **tab, char errbuf[])
 
 
 static bool
-config_backup(toml_table_t *conftab, backup_config *c, const char *instance,
+config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 		char errbuf[])
 {
 	// Defaults to "asbackup" section in case present.
@@ -610,9 +616,6 @@ config_backup(toml_table_t *conftab, backup_config *c, const char *instance,
 		} else if (! strcasecmp("max-records", name)) {
 			status = config_int64(curtab, name, (int64_t*) &c->policy->max_records);
 
-		//} else if (! strcasecmp("record-num", name)) {
-		//	status = config_int64(curtab, name, (int64_t*) &c->rec_num_max);
-
 		} else if (! strcasecmp("output-file", name)) {
 			status = config_str(curtab, name, (void*)&c->output_file);
 
@@ -634,6 +637,15 @@ config_backup(toml_table_t *conftab, backup_config *c, const char *instance,
 
 		} else if (! strcasecmp("compact", name)) {
 			status = config_bool(curtab, name, (void*)&c->compact);
+
+		} else if (! strcasecmp("parallel", name)) {
+
+			status = config_int64(curtab, name, (void*)&i_val);
+			if (i_val > 0) {
+				c->parallel = (int32_t)i_val;
+			} else {
+				status = false;
+			}
 
 		} else if (! strcasecmp("compress", name)) {
 			char* compress_type;
@@ -686,11 +698,17 @@ config_backup(toml_table_t *conftab, backup_config *c, const char *instance,
 		} else if (! strcasecmp("bin-list", name)) {
 			status = config_str(curtab, name, (void*)&c->bin_list);
 
+		} else if (! strcasecmp("node-list", name)) {
+			status = config_str(curtab, name, (void*)&c->node_list);
+
 		} else if (! strcasecmp("partition-list", name)) {
 			status = config_str(curtab, name, (void*)&c->partition_list);
 
 		} else if (! strcasecmp("after-digest", name)) {
 			status = config_str(curtab, name, (void*)&c->after_digest);
+
+		} else if (! strcasecmp("filter-exp", name)) {
+			status = config_str(curtab, name, (void*)&c->filter_exp);
 
 		} else if (! strcasecmp("modified-after", name)) {
 			char* mod_after_time;
@@ -714,7 +732,10 @@ config_backup(toml_table_t *conftab, backup_config *c, const char *instance,
 		} else if (! strcasecmp("estimate", name)) {
 			status = config_bool(curtab, name, (void*)&c->estimate);
 
-		} else if (! strcasecmp("bandwidth", name)) {
+		} else if (! strcasecmp("verbose", name)) {
+			status = config_bool(curtab, name, (void*)&verbose);
+
+		} else if (! strcasecmp("nice", name)) {
 
 			status = config_int64(curtab, name, (void*)&i_val);
 			if (i_val > 0) {
@@ -748,7 +769,7 @@ config_backup(toml_table_t *conftab, backup_config *c, const char *instance,
 }
 
 static bool
-config_restore(toml_table_t *conftab, restore_config *c, const char *instance,
+config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance,
 		char errbuf[])
 {
 	// Defaults to "asrestore" section in case present.
@@ -839,17 +860,20 @@ config_restore(toml_table_t *conftab, restore_config *c, const char *instance,
 				}
 			}
 
-		} else if (! strcasecmp("threads", name)) {
+		} else if (! strcasecmp("parallel", name) || ! strcasecmp("threads", name)) {
 
 			status = config_int64(curtab, name, (void*)&i_val);
 			if (i_val >= 1 && i_val <= MAX_THREADS) {
-				c->threads = (uint32_t)i_val;
+				c->parallel = (uint32_t)i_val;
 			} else {
 				status = false;
 			}
 
 		} else if (! strcasecmp("machine", name)) {
 			status = config_str(curtab, name, (void*)&c->machine);
+
+		} else if (! strcasecmp("verbose", name)) {
+			status = config_bool(curtab, name, (void*)&verbose);
 
 		} else if (! strcasecmp("bin-list", name)) {
 			status = config_str(curtab, name, (void*)&c->bin_list);
@@ -884,7 +908,7 @@ config_restore(toml_table_t *conftab, restore_config *c, const char *instance,
 		} else if (! strcasecmp("tps", name)) {
 			status = config_int32(curtab, name, (void*)&c->tps);
 
-		} else if (! strcasecmp("nice-list", name)) {
+		} else if (! strcasecmp("nice", name)) {
 			status = config_str(curtab, name, (void*)&c->nice_list);
 
 		} else if (! strcasecmp("no-records", name)) {
