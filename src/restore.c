@@ -119,7 +119,7 @@ restore_main(int32_t argc, char **argv)
 
 		{ "tlsEnable", no_argument, NULL, TLS_OPT_ENABLE },
 		{ "tlsEncryptOnly", no_argument, NULL, TLS_OPT_ENCRYPT_ONLY },
-		{ "tlsName", no_argument, NULL, TLS_OPT_NAME },
+		{ "tlsName", required_argument, NULL, TLS_OPT_NAME },
 		{ "tlsCaFile", required_argument, NULL, TLS_OPT_CA_FILE },
 		{ "tlsCaPath", required_argument, NULL, TLS_OPT_CA_PATH },
 		{ "tlsProtocols", required_argument, NULL, TLS_OPT_PROTOCOLS },
@@ -132,7 +132,7 @@ restore_main(int32_t argc, char **argv)
 		{ "tlsCertFile", required_argument, NULL, TLS_OPT_CERT_FILE },
 
 		{ "tls-enable", no_argument, NULL, TLS_OPT_ENABLE },
-		{ "tls-name", no_argument, NULL, TLS_OPT_NAME },
+		{ "tls-name", required_argument, NULL, TLS_OPT_NAME },
 		{ "tls-cafile", required_argument, NULL, TLS_OPT_CA_FILE },
 		{ "tls-capath", required_argument, NULL, TLS_OPT_CA_PATH },
 		{ "tls-protocols", required_argument, NULL, TLS_OPT_PROTOCOLS },
