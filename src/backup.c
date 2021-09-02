@@ -102,10 +102,11 @@ static bool parse_after_digest(char *str, as_vector* partition_ranges,
 static bool parse_node_list(char *node_list, node_spec **node_specs,
 		uint32_t *n_node_specs);
 static bool parse_sets(as_vector* set_list, as_scan* scan, as_policy_scan* policy);
-bool calc_node_list_partitions(as_cluster *clust, const as_namespace ns,
+static bool calc_node_list_partitions(as_cluster *clust, const as_namespace ns,
 		char (*node_names)[][AS_NODE_NAME_SIZE], uint32_t n_node_names,
 		as_vector* partition_ranges);
 static bool init_scan_bins(char *bin_list, as_scan *scan);
+static void add_default_tls_host(as_config *as_conf, const char* tls_name);
 static bool check_for_ldt_callback(void *context_, const char *key, const char *value);
 static bool check_for_ldt(aerospike *as, const char *namespace,
 		char (*node_names)[][AS_NODE_NAME_SIZE], uint32_t n_node_names, bool *has_ldt);
@@ -858,13 +859,13 @@ backup_main(int32_t argc, char **argv)
 	as_conf.conn_timeout_ms = TIMEOUT;
 	as_conf.use_services_alternate = conf.use_services_alternate;
 
-	if (conf.tls_name != NULL) {
-		as_config_set_cluster_name(&as_conf, conf.tls_name);
-	}
-
-	if (! as_config_add_hosts(&as_conf, conf.host, (uint16_t)conf.port)) {
+	if (!as_config_add_hosts(&as_conf, conf.host, (uint16_t)conf.port)) {
 		err("Invalid conf.host(s) string %s", conf.host);
 		goto cleanup3;
+	}
+
+	if (conf.tls_name != NULL) {
+		add_default_tls_host(&as_conf, conf.tls_name);
 	}
 
 	if (conf.auth_mode && ! as_auth_mode_from_string(&as_conf.auth_mode, conf.auth_mode)) {
@@ -3031,7 +3032,7 @@ parse_sets(as_vector* set_list, as_scan* scan, as_policy_scan* policy)
  * Calculates the partitions on the list of nodes given (by name), and appends
  * corresponding partition filters to partition_ranges
  */
-bool
+static bool
 calc_node_list_partitions(as_cluster *clust, const as_namespace ns,
 		char (*node_names)[][AS_NODE_NAME_SIZE], uint32_t n_node_names,
 		as_vector* partition_ranges)
@@ -3103,6 +3104,27 @@ cleanup1:
 	as_vector_destroy(&bin_vec);
 	cf_free(clone);
 	return res;
+}
+
+/*
+ * Sets the tls name of all hosts which don't have a set tls name.
+ *
+ * @param as_conf   The as_conf with an already parsed list of hosts.
+ * @param tls_name  The tls name to set.
+ */
+static void
+add_default_tls_host(as_config *as_conf, const char* tls_name)
+{
+	as_host* host;
+	uint32_t num_hosts = as_conf->hosts->capacity;
+
+	for (uint32_t i = 0; i < num_hosts; i++) {
+		host = (as_host*) as_vector_get(as_conf->hosts, i);
+
+		if(host->tls_name == NULL) {
+			host->tls_name = strdup(tls_name);
+		}
+	}
 }
 
 /*

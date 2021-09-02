@@ -82,6 +82,7 @@ static bool restore_udfs(aerospike *as, as_vector *udf_vec, volatile uint32_t *c
 		bool wait, uint32_t timeout);
 static bool get_backup_files(const char *dir_path, as_vector *file_vec);
 static bool parse_list(const char *which, size_t size, char *list, as_vector *vec);
+static void add_default_tls_host(as_config *as_conf, const char* tls_name);
 static void sig_hand(int32_t sig);
 static void print_version(void);
 static void usage(const char *name);
@@ -564,13 +565,13 @@ restore_main(int32_t argc, char **argv)
 	as_conf.conn_timeout_ms = conf.timeout;
 	as_conf.use_services_alternate = conf.use_services_alternate;
 
-	if (conf.tls_name != NULL) {
-		as_config_set_cluster_name(&as_conf, conf.tls_name);
-	}
-
 	if (!as_config_add_hosts(&as_conf, conf.host, (uint16_t)conf.port)) {
 		err("Invalid host(s) string %s", conf.host);
 		goto cleanup2;
+	}
+
+	if (conf.tls_name != NULL) {
+		add_default_tls_host(&as_conf, conf.tls_name);
 	}
 
 	if (conf.auth_mode && ! as_auth_mode_from_string(&as_conf.auth_mode, conf.auth_mode)) {
@@ -2694,6 +2695,27 @@ cleanup1:
 
 cleanup0:
 	return res;
+}
+
+/*
+ * Sets the tls name of all hosts which don't have a set tls name.
+ *
+ * @param as_conf   The as_conf with an already parsed list of hosts.
+ * @param tls_name  The tls name to set.
+ */
+static void
+add_default_tls_host(as_config *as_conf, const char* tls_name)
+{
+	as_host* host;
+	uint32_t num_hosts = as_conf->hosts->capacity;
+
+	for (uint32_t i = 0; i < num_hosts; i++) {
+		host = (as_host*) as_vector_get(as_conf->hosts, i);
+
+		if(host->tls_name == NULL) {
+			host->tls_name = strdup(tls_name);
+		}
+	}
 }
 
 /*
