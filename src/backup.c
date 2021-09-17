@@ -1645,8 +1645,9 @@ open_file(const char *file_path, const char *ns, uint64_t disk_space,
 	io_proxy_init_compression(fd, c_opt);
 	io_proxy_init_encryption(fd, pkey, e_opt);
 
-	// if in --estimate mode, always buffer even without compression/encryption
-	if (file_path == NULL) {
+	// if in --estimate mode or backing up to stdout, always buffer even without
+	// compression/encryption
+	if (file_path == NULL || _f == stdout) {
 		io_proxy_always_buffer(fd);
 	}
 

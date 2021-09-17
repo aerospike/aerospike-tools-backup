@@ -1315,6 +1315,11 @@ open_file(const char *file_path, as_vector *ns_vec, io_read_proxy_t *fd,
 		ver("Validating backup file version");
 	}
 
+	// if restoring from stdin, always buffer even without compression/encryption
+	if (_f == stdin) {
+		io_proxy_always_buffer(fd);
+	}
+
 	bool res = false;
 	char version[13];
 	memset(version, 0, sizeof version);
