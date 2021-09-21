@@ -575,7 +575,8 @@ restore_main(int32_t argc, char **argv)
 	}
 
 	if (conf.auth_mode && ! as_auth_mode_from_string(&as_conf.auth_mode, conf.auth_mode)) {
-		err("Invalid authentication mode %s. Allowed values are INTERNAL / EXTERNAL / EXTERNAL_INSECURE\n",
+		err("Invalid authentication mode %s. Allowed values are INTERNAL / "
+				"EXTERNAL / EXTERNAL_INSECURE / PKI\n",
 				conf.auth_mode);
 		goto cleanup2;
 	}
@@ -2791,7 +2792,7 @@ usage(const char *name)
 	fprintf(stderr, "      	               password is given.\n");
 	fprintf(stdout, " --auth\n");
 	fprintf(stdout, "                      Set authentication mode when user/password is defined. Modes are\n");
-	fprintf(stdout, "                      (INTERNAL, EXTERNAL, EXTERNAL_INSECURE) and the default is INTERNAL.\n");
+	fprintf(stdout, "                      (INTERNAL, EXTERNAL, EXTERNAL_INSECURE, PKI) and the default is INTERNAL.\n");
 	fprintf(stdout, "                      This mode must be set EXTERNAL when using LDAP\n");
 	fprintf(stderr, " --tls-enable         Enable TLS on connections. By default TLS is disabled.\n");
 	// Deprecated

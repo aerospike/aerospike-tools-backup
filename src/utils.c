@@ -1062,7 +1062,7 @@ parse_index_info(char *ns, char *index_str, index_param *index)
 				index->type = INDEX_TYPE_MAPKEYS;
 			} else if (strcmp(arg, "MAPVALUES") == 0) {
 				index->type = INDEX_TYPE_MAPVALUES;
-			} else if (strcmp(arg, "NONE") == 0) {
+			} else if (strcmp(arg, "NONE") == 0 || strcmp(arg, "DEFAULT") == 0) {
 				index->type = INDEX_TYPE_NONE;
 			} else {
 				err("Invalid index type %s", arg);
