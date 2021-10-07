@@ -173,6 +173,7 @@ backup_main(int32_t argc, char **argv)
 		{ "tls-crl-check", no_argument, NULL, TLS_OPT_CRL_CHECK },
 		{ "tls-crl-check-all", no_argument, NULL, TLS_OPT_CRL_CHECK_ALL },
 		{ "tls-cert-blacklist", required_argument, NULL, TLS_OPT_CERT_BLACK_LIST },
+		{ "tls-log-session-info", no_argument, NULL, TLS_OPT_LOG_SESSION_INFO },
 		{ "tls-keyfile", required_argument, NULL, TLS_OPT_KEY_FILE },
 		{ "tls-keyfile-password", optional_argument, NULL, TLS_OPT_KEY_FILE_PASSWORD },
 		{ "tls-certfile", required_argument, NULL, TLS_OPT_CERT_FILE },
@@ -3546,7 +3547,7 @@ usage(const char *name)
 	fprintf(stderr, "                        host1\n");
 	fprintf(stderr, "                        host1:3000,host2:3000\n");
 	fprintf(stderr, "                        192.168.1.10:cert1:3000,192.168.1.20:cert2:3000\n");
-	fprintf(stderr, " --services-alternate\n");
+	fprintf(stderr, " -S, --services-alternate\n");
 	fprintf(stderr, "                      Use to connect to alternate access address when the \n");
 	fprintf(stderr, "                      cluster's nodes publish IP addresses through access-address \n");
 	fprintf(stderr, "                      which are not accessible over WAN and alternate IP addresses \n");
@@ -3557,7 +3558,7 @@ usage(const char *name)
 	fprintf(stderr, "                      Password used to authenticate with cluster. Default: none\n");
 	fprintf(stderr, "                      User will be prompted on command line if -P specified and no\n");
 	fprintf(stderr, "      	               password is given.\n");
-	fprintf(stdout, " --auth\n");
+	fprintf(stdout, " -A, --auth\n");
 	fprintf(stdout, "                      Set authentication mode when user/password is defined. Modes are\n");
 	fprintf(stdout, "                      (INTERNAL, EXTERNAL, EXTERNAL_INSECURE, PKI) and the default is INTERNAL.\n");
 	fprintf(stdout, "                      This mode must be set EXTERNAL when using LDAP\n");
@@ -3612,6 +3613,8 @@ usage(const char *name)
 	fprintf(stderr, " --tls-crl-checkall   Enable CRL checking for entire certificate chain. An\n"
 					"                      error occurs if a valid CRL files cannot be found in\n"
 					"                      tls_capath.\n");
+	fprintf(stderr, " --tls-log-session-info\n");
+	fprintf(stderr, "                      Enable logging session information for each TLS connection.\n");
 
 
 	fprintf(stderr, "[asbackup]\n");
@@ -3661,7 +3664,7 @@ usage(const char *name)
 	fprintf(stderr, "  -l, --node-list <IP addr 1>:<port 1>[,<IP addr 2>:<port 2>[,...]]\n");
 	fprintf(stderr, "                      <IP addr 1>:<TLS_NAME 1>:<port 1>[,<IP addr 2>:<TLS_NAME 2>:<port 2>[,...]]\n");
 	fprintf(stderr, "                      Backup the given cluster nodes only.\n");
-	fprintf(stderr, "                      This argument is mutually exclusive to partition-list/digest arguments.\n");
+	fprintf(stderr, "                      This argument is mutually exclusive to partition-list/after-digest arguments.\n");
 	fprintf(stderr, "                      Default: backup all nodes in the cluster\n");
 	fprintf(stderr, "  -w, --parallel <n>\n");
 	fprintf(stderr, "                      Maximum number of scan calls to run in parallel. Default: 1\n");
@@ -3670,8 +3673,8 @@ usage(const char *name)
 	fprintf(stderr, "                      filter cannot be parallelized individually, so you may only achieve as much parallelism as there are\n");
 	fprintf(stderr, "                      partition filters.\n");
 	fprintf(stderr, "  -X, --partition-list <filter[,<filter>[...]]>\n");
-	fprintf(stderr, "                      List of partitions to back up. Partition filters can be an individual\n");
-	fprintf(stderr, "                      partition or a range.\n");
+	fprintf(stderr, "                      List of partitions to back up. Partition filters can be ranges, individual partitions, or \n");
+	fprintf(stderr, "                      records after a specific digest within a single partition.\n");
 	fprintf(stderr, "                      This argument is mutually exclusive to after-digest and max-records.\n");
 	fprintf(stderr, "                      Note: each partition filter is an individual task which cannot be parallelized, so you can only\n");
 	fprintf(stderr, "                      achieve as much parallelism as there are partition filters. You may increase parallelism by dividing up\n");

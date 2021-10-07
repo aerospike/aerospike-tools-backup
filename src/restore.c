@@ -141,6 +141,7 @@ restore_main(int32_t argc, char **argv)
 		{ "tls-crl-check", no_argument, NULL, TLS_OPT_CRL_CHECK },
 		{ "tls-crl-check-all", no_argument, NULL, TLS_OPT_CRL_CHECK_ALL },
 		{ "tls-cert-blackList", required_argument, NULL, TLS_OPT_CERT_BLACK_LIST },
+		{ "tls-log-session-info", no_argument, NULL, TLS_OPT_LOG_SESSION_INFO },
 		{ "tls-keyfile", required_argument, NULL, TLS_OPT_KEY_FILE },
 		{ "tls-keyfile-password", optional_argument, NULL, TLS_OPT_KEY_FILE_PASSWORD },
 		{ "tls-certfile", required_argument, NULL, TLS_OPT_CERT_FILE },
@@ -248,7 +249,7 @@ restore_main(int32_t argc, char **argv)
 		}
 	} else {
 		if (read_only_conf_file) {
-			fprintf(stderr, "--no-config-file and only-config-file are mutually exclusive option. Please enable only one.\n");
+			fprintf(stderr, "--no-config-file and --only-config-file are mutually exclusive option. Please enable only one.\n");
 			return false;
 		}
 	}
@@ -1175,7 +1176,7 @@ update_file_pos(per_thread_context_t* ptc)
 {
 	int64_t pos = io_read_proxy_estimate_pos(ptc->fd);
 	if (pos < 0) {
-		err("Failed to get the file position (%ld)", pos);
+		err("Failed to get the file position (%" PRId64 ")", pos);
 		return -1;
 	}
 	uint64_t diff = (uint64_t) pos - ptc->byte_count_file;
@@ -2779,7 +2780,7 @@ usage(const char *name)
 	fprintf(stderr, "                        host1\n");
 	fprintf(stderr, "                        host1:3000,host2:3000\n");
 	fprintf(stderr, "                        192.168.1.10:cert1:3000,192.168.1.20:cert2:3000\n");
-	fprintf(stderr, " --services-alternate\n");
+	fprintf(stderr, " -S, --services-alternate\n");
 	fprintf(stderr, "                      Use to connect to alternate access address when the \n");
 	fprintf(stderr, "                      cluster's nodes publish IP addresses through access-address \n");
 	fprintf(stderr, "                      which are not accessible over WAN and alternate IP addresses \n");
@@ -2790,7 +2791,7 @@ usage(const char *name)
 	fprintf(stderr, "                      Password used to authenticate with cluster. Default: none\n");
 	fprintf(stderr, "                      User will be prompted on command line if -P specified and no\n");
 	fprintf(stderr, "      	               password is given.\n");
-	fprintf(stdout, " --auth\n");
+	fprintf(stdout, " -A, --auth\n");
 	fprintf(stdout, "                      Set authentication mode when user/password is defined. Modes are\n");
 	fprintf(stdout, "                      (INTERNAL, EXTERNAL, EXTERNAL_INSECURE, PKI) and the default is INTERNAL.\n");
 	fprintf(stdout, "                      This mode must be set EXTERNAL when using LDAP\n");
@@ -2845,6 +2846,8 @@ usage(const char *name)
 	fprintf(stderr, " --tls-crl-checkall   Enable CRL checking for entire certificate chain. An\n"
                 	"                      error occurs if a valid CRL files cannot be found in\n"
                     "                      tls_capath.\n");
+	fprintf(stderr, " --tls-log-session-info\n");
+	fprintf(stderr, "                      Enable logging session information for each TLS connection.\n");
 
 
 	fprintf(stderr, "[asrestore]\n");
