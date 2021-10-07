@@ -941,6 +941,10 @@ backup_main(int32_t argc, char **argv)
 				&conf.partition_ranges)) {
 			goto cleanup5;
 		}
+
+		if (conf.parallel == 0) {
+			conf.parallel = DEFAULT_NODE_BACKUP_PARALLEL;
+		}
 	}
 
 	inf("Processing %u node(s)", n_node_names);
@@ -1003,7 +1007,7 @@ backup_main(int32_t argc, char **argv)
 	}
 
 	pthread_t backup_threads[MAX_PARALLEL];
-	uint32_t n_threads = (uint32_t) conf.parallel;
+	uint32_t n_threads = (uint32_t) (conf.parallel == 0 ? DEFAULT_PARALLEL : conf.parallel);
 	static uint64_t samples[NUM_SAMPLES];
 	static uint32_t n_samples = 0;
 	backup_thread_args_t backup_args;
@@ -1258,7 +1262,7 @@ backup_config_default(backup_config_t *conf)
 	conf->output_file = NULL;
 	conf->prefix = NULL;
 	conf->compact = false;
-	conf->parallel = DEFAULT_PARALLEL;
+	conf->parallel = 0;
 	conf->compress_mode = IO_PROXY_COMPRESS_NONE;
 	conf->encrypt_mode = IO_PROXY_ENCRYPT_NONE;
 	conf->pkey = NULL;

@@ -36,6 +36,7 @@
 
 // By default, do this many parallel scans simultaneously
 #define DEFAULT_PARALLEL 1
+#define DEFAULT_NODE_BACKUP_PARALLEL 16
 
 // The max number of parallel scan calls made at any one time
 #define MAX_PARALLEL 100
