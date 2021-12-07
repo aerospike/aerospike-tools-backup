@@ -39,7 +39,7 @@ tmp_file_init(const char* cluster_args, const char* backup_args,
 	// add 1 to include the null terminator
 	size_t n_bytes = (size_t) snprintf(NULL, 0, file_contents, cluster_args,
 			backup_args, asadm_args) + 1;
-	file_contents_buf = cf_malloc(n_bytes);
+	file_contents_buf = test_malloc(n_bytes);
 	snprintf(file_contents_buf, n_bytes, file_contents, cluster_args,
 			backup_args, asadm_args);
 	fwrite(file_contents_buf, 1, n_bytes, f);
@@ -496,7 +496,7 @@ START_TEST(test_init_encrypt_key_file)
 
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, false), 0);
 
-	c2.pkey = (encryption_key_t*) cf_malloc(sizeof(encryption_key_t));
+	c2.pkey = (encryption_key_t*) test_malloc(sizeof(encryption_key_t));
 	c2.pkey->data = data;
 	c2.pkey->len = 1190;
 
@@ -524,7 +524,7 @@ START_TEST(test_init_encryption_key_env)
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, false), 0);
 	unsetenv("TEST_ENCRYPT_KEY_ENV_VAR");
 
-	c2.pkey = (encryption_key_t*) cf_malloc(sizeof(encryption_key_t));
+	c2.pkey = (encryption_key_t*) test_malloc(sizeof(encryption_key_t));
 	c2.pkey->data = data;
 	c2.pkey->len = 16;
 

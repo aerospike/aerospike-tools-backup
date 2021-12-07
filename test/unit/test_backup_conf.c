@@ -39,7 +39,7 @@ tmp_file_init(const char* cluster_args, const char* backup_args,
 	// add 1 to include the null terminator
 	size_t n_bytes = (size_t) snprintf(NULL, 0, file_contents, cluster_args,
 			backup_args, asadm_args) + 1;
-	file_contents_buf = cf_malloc(n_bytes);
+	file_contents_buf = test_malloc(n_bytes);
 	snprintf(file_contents_buf, n_bytes, file_contents, cluster_args,
 			backup_args, asadm_args);
 	fwrite(file_contents_buf, 1, n_bytes, f);
@@ -88,11 +88,13 @@ assert_bup_config_eq(backup_config_t *c1, backup_config_t *c2)
 	CMP_STR_FIELD(c1->password, c2->password);
 	CMP_STR_FIELD(c1->auth_mode, c2->auth_mode);
 	CMP_INT_FIELD(c1->remove_files, c2->remove_files);
+	CMP_STR_FIELD(c1->ns, c2->ns);
 	CMP_STR_VEC_FIELD(&c1->set_list, &c2->set_list);
 	CMP_STR_FIELD(c1->bin_list, c2->bin_list);
 	CMP_INT_FIELD(c1->mod_after, c2->mod_after);
 	CMP_INT_FIELD(c1->mod_before, c2->mod_before);
 	CMP_INT_FIELD(c1->ttl_zero, c2->ttl_zero);
+	CMP_INT_FIELD(c1->no_bins, c2->no_bins);
 
 	CMP_INT_FIELD(c1->tls.enable, c2->tls.enable);
 	CMP_STR_FIELD(c1->tls.cafile, c2->tls.cafile);
@@ -107,20 +109,8 @@ assert_bup_config_eq(backup_config_t *c1, backup_config_t *c2)
 	CMP_INT_FIELD(c1->tls.log_session_info, c2->tls.log_session_info);
 	CMP_INT_FIELD(c1->tls.for_login_only, c2->tls.for_login_only);
 
-	ck_assert((c1->as == NULL) ^ (c2->as != NULL));
-
-	if (c1->policy != NULL || c2->policy != NULL) {
-		ck_assert(c1->policy != NULL && c2->policy != NULL);
-
-		CMP_INT_FIELD(c1->policy->base.socket_timeout, c2->policy->base.socket_timeout);
-		CMP_INT_FIELD(c1->policy->base.total_timeout, c2->policy->base.total_timeout);
-		CMP_INT_FIELD(c1->policy->base.max_retries, c2->policy->base.max_retries);
-		CMP_INT_FIELD(c1->policy->base.sleep_between_retries, c2->policy->base.sleep_between_retries);
-		CMP_INT_FIELD(c1->policy->base.compress, c2->policy->base.compress);
-		CMP_INT_FIELD((int64_t) c1->policy->max_records, (int64_t) c2->policy->max_records);
-		CMP_INT_FIELD(c1->policy->records_per_second, c2->policy->records_per_second);
-		CMP_INT_FIELD(c1->policy->durable_delete, c2->policy->durable_delete);
-	}
+	CMP_INT_FIELD((int64_t) c1->max_records, (int64_t) c2->max_records);
+	CMP_INT_FIELD(c1->records_per_second, c2->records_per_second);
 
 	CMP_STR_FIELD(c1->directory, c2->directory);
 	CMP_STR_FIELD(c1->output_file, c2->output_file);
@@ -128,7 +118,7 @@ assert_bup_config_eq(backup_config_t *c1, backup_config_t *c2)
 	CMP_INT_FIELD(c1->compact, c2->compact);
 	CMP_INT_FIELD(c1->compress_mode, c2->compress_mode);
 	CMP_INT_FIELD(c1->encrypt_mode, c2->encrypt_mode);
-	//CMP_INT_FIELD(c1->parallel, c2->parallel);
+	CMP_INT_FIELD(c1->parallel, c2->parallel);
 
 	if (c1->pkey != NULL || c2->pkey != NULL) {
 		ck_assert(c1->pkey != NULL && c2->pkey != NULL);
@@ -144,17 +134,9 @@ assert_bup_config_eq(backup_config_t *c1, backup_config_t *c2)
 	CMP_INT_FIELD(c1->no_indexes, c2->no_indexes);
 	CMP_INT_FIELD(c1->no_udfs, c2->no_udfs);
 	CMP_INT_FIELD((int64_t) c1->file_limit, (int64_t) c2->file_limit);
-	CMP_PTR_FIELD(c1->encoder, c2->encoder);
-	CMP_INT_FIELD((int64_t) c1->rec_count_estimate, (int64_t) c2->rec_count_estimate);
-	//CMP_INT_FIELD((int64_t) c1->rec_num_max, (int64_t) c2->rec_num_max);
-	CMP_INT_FIELD((int64_t) c1->rec_count_total, (int64_t) c2->rec_count_total);
-	CMP_INT_FIELD((int64_t) c1->byte_count_total, (int64_t) c2->byte_count_total);
-	CMP_INT_FIELD((int64_t) c1->byte_count_limit, (int64_t) c2->byte_count_limit);
-	CMP_INT_FIELD(c1->index_count, c2->index_count);
-	CMP_INT_FIELD(c1->udf_count, c2->udf_count);
 	CMP_STR_FIELD(c1->after_digest, c2->after_digest);
-	//CMP_STR_VEC_FIELD(&c1->partition_ranges, &c2->partition_ranges);
-	//CMP_STR_VEC_FIELD(&c1->digests, &c2->digests);
+	CMP_STR_FIELD(c1->partition_list, c2->partition_list);
+	CMP_STR_FIELD(c1->after_digest, c2->after_digest);
 }
 
 
@@ -165,12 +147,6 @@ START_TEST(test_init_empty)
 	backup_config_t c2;
 	backup_config_default(&c1);
 	backup_config_default(&c2);
-	as_policy_scan p1;
-	as_policy_scan p2;
-	as_policy_scan_init(&p1);
-	as_policy_scan_init(&p2);
-	c1.policy = &p1;
-	c2.policy = &p2;
 
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0);
 
@@ -188,12 +164,6 @@ START_TEST(test_name) \
 	backup_config_t c2; \
 	backup_config_default(&c1); \
 	backup_config_default(&c2); \
-	as_policy_scan p1; \
-	as_policy_scan p2; \
-	as_policy_scan_init(&p1); \
-	as_policy_scan_init(&p2); \
-	c1.policy = &p1; \
-	c2.policy = &p2; \
 	\
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0); \
 	c2.field_name = true; \
@@ -215,12 +185,6 @@ START_TEST(test_name) \
 	backup_config_t c2; \
 	backup_config_default(&c1); \
 	backup_config_default(&c2); \
-	as_policy_scan p1; \
-	as_policy_scan p2; \
-	as_policy_scan_init(&p1); \
-	as_policy_scan_init(&p2); \
-	c1.policy = &p1; \
-	c2.policy = &p2; \
 	\
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0); \
 	c2.field_name = 314159lu * (mult); \
@@ -241,12 +205,6 @@ START_TEST(test_name) \
 	backup_config_t c2; \
 	backup_config_default(&c1); \
 	backup_config_default(&c2); \
-	as_policy_scan p1; \
-	as_policy_scan p2; \
-	as_policy_scan_init(&p1); \
-	as_policy_scan_init(&p2); \
-	c1.policy = &p1; \
-	c2.policy = &p2; \
 	\
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0); \
 	c2.field_name = str_val; \
@@ -284,6 +242,24 @@ DEFINE_STR_TEST(test_init_tls_cert_blacklist, "tls-cert-blacklist", tls.cert_bla
 #undef DEFINE_STR_TEST
 
 
+START_TEST(test_init_set_list_single)
+{
+	tmp_file_init("", "set=\"set-1\"", "");
+	backup_config_t c1;
+	backup_config_t c2;
+	backup_config_default(&c1);
+	backup_config_default(&c2);
+
+	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0);
+
+	as_vector_append(&c2.set_list, "set-1");
+
+	assert_bup_config_eq(&c1, &c2);
+
+	backup_config_destroy(&c1);
+}
+END_TEST
+
 START_TEST(test_init_set_list)
 {
 	tmp_file_init("", "set=\"set-1,set-2,set-3\"", "");
@@ -291,12 +267,6 @@ START_TEST(test_init_set_list)
 	backup_config_t c2;
 	backup_config_default(&c1);
 	backup_config_default(&c2);
-	as_policy_scan p1;
-	as_policy_scan p2;
-	as_policy_scan_init(&p1);
-	as_policy_scan_init(&p2);
-	c1.policy = &p1;
-	c2.policy = &p2;
 
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0);
 
@@ -317,12 +287,6 @@ START_TEST(test_init_bin_list)
 	backup_config_t c2;
 	backup_config_default(&c1);
 	backup_config_default(&c2);
-	as_policy_scan p1;
-	as_policy_scan p2;
-	as_policy_scan_init(&p1);
-	as_policy_scan_init(&p2);
-	c1.policy = &p1;
-	c2.policy = &p2;
 
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0);
 
@@ -341,12 +305,6 @@ START_TEST(test_init_mod_after)
 	backup_config_t c2;
 	backup_config_default(&c1);
 	backup_config_default(&c2);
-	as_policy_scan p1;
-	as_policy_scan p2;
-	as_policy_scan_init(&p1);
-	as_policy_scan_init(&p2);
-	c1.policy = &p1;
-	c2.policy = &p2;
 
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0);
 
@@ -376,12 +334,6 @@ START_TEST(test_init_mod_before)
 	backup_config_t c2;
 	backup_config_default(&c1);
 	backup_config_default(&c2);
-	as_policy_scan p1;
-	as_policy_scan p2;
-	as_policy_scan_init(&p1);
-	as_policy_scan_init(&p2);
-	c1.policy = &p1;
-	c2.policy = &p2;
 
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0);
 
@@ -412,12 +364,6 @@ START_TEST(test_init_compress_mode)
 	backup_config_t c2;
 	backup_config_default(&c1);
 	backup_config_default(&c2);
-	as_policy_scan p1;
-	as_policy_scan p2;
-	as_policy_scan_init(&p1);
-	as_policy_scan_init(&p2);
-	c1.policy = &p1;
-	c2.policy = &p2;
 
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0);
 
@@ -436,12 +382,6 @@ START_TEST(test_init_encryption_mode)
 	backup_config_t c2;
 	backup_config_default(&c1);
 	backup_config_default(&c2);
-	as_policy_scan p1;
-	as_policy_scan p2;
-	as_policy_scan_init(&p1);
-	as_policy_scan_init(&p2);
-	c1.policy = &p1;
-	c2.policy = &p2;
 
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0);
 
@@ -613,16 +553,10 @@ START_TEST(test_init_encrypt_key_file)
 	backup_config_t c2;
 	backup_config_default(&c1);
 	backup_config_default(&c2);
-	as_policy_scan p1;
-	as_policy_scan p2;
-	as_policy_scan_init(&p1);
-	as_policy_scan_init(&p2);
-	c1.policy = &p1;
-	c2.policy = &p2;
 
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0);
 
-	c2.pkey = (encryption_key_t*) cf_malloc(sizeof(encryption_key_t));
+	c2.pkey = (encryption_key_t*) test_malloc(sizeof(encryption_key_t));
 	c2.pkey->data = data;
 	c2.pkey->len = 1190;
 
@@ -646,17 +580,11 @@ START_TEST(test_init_encryption_key_env)
 	backup_config_t c2;
 	backup_config_default(&c1);
 	backup_config_default(&c2);
-	as_policy_scan p1;
-	as_policy_scan p2;
-	as_policy_scan_init(&p1);
-	as_policy_scan_init(&p2);
-	c1.policy = &p1;
-	c2.policy = &p2;
 
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0);
 	unsetenv("TEST_ENCRYPT_KEY_ENV_VAR");
 
-	c2.pkey = (encryption_key_t*) cf_malloc(sizeof(encryption_key_t));
+	c2.pkey = (encryption_key_t*) test_malloc(sizeof(encryption_key_t));
 	c2.pkey->data = data;
 	c2.pkey->len = 16;
 
@@ -674,12 +602,6 @@ START_TEST(test_name) \
 	backup_config_t c2; \
 	backup_config_default(&c1); \
 	backup_config_default(&c2); \
-	as_policy_scan p1; \
-	as_policy_scan p2; \
-	as_policy_scan_init(&p1); \
-	as_policy_scan_init(&p2); \
-	c1.policy = &p1; \
-	c2.policy = &p2; \
 	\
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0); \
 	c2.field_name = true; \
@@ -701,12 +623,6 @@ START_TEST(test_name) \
 	backup_config_t c2; \
 	backup_config_default(&c1); \
 	backup_config_default(&c2); \
-	as_policy_scan p1; \
-	as_policy_scan p2; \
-	as_policy_scan_init(&p1); \
-	as_policy_scan_init(&p2); \
-	c1.policy = &p1; \
-	c2.policy = &p2; \
 	\
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0); \
 	c2.field_name = 314159lu * (mult); \
@@ -727,12 +643,6 @@ START_TEST(test_name) \
 	backup_config_t c2; \
 	backup_config_default(&c1); \
 	backup_config_default(&c2); \
-	as_policy_scan p1; \
-	as_policy_scan p2; \
-	as_policy_scan_init(&p1); \
-	as_policy_scan_init(&p2); \
-	c1.policy = &p1; \
-	c2.policy = &p2; \
 	\
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0); \
 	c2.field_name = str_val; \
@@ -742,12 +652,35 @@ START_TEST(test_name) \
 } \
 END_TEST
 
+#define DEFINE_FLAT_STR_TEST(test_name, str_name, field_name, str_val) \
+START_TEST(test_name) \
+{ \
+	static const char val[] = str_val; \
+	tmp_file_init("", str_name "=\"" str_val "\"\n", ""); \
+	backup_config_t c1; \
+	backup_config_t c2; \
+	backup_config_default(&c1); \
+	backup_config_default(&c2); \
+	\
+	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0); \
+	strcpy(c2.field_name, val); \
+	assert_bup_config_eq(&c1, &c2); \
+	\
+	backup_config_destroy(&c1); \
+} \
+END_TEST
+
+DEFINE_FLAT_STR_TEST(test_init_ns, "namespace", ns, "test");
+DEFINE_STR_TEST(test_init_continue, "continue", state_file, "test.asb.state");
+DEFINE_STR_TEST(test_init_state_file_dst, "state-file-dst", state_file_dst, "test2.asb.state");
+
 DEFINE_BOOL_TEST(test_init_remove_files, "remove-files", remove_files);
 DEFINE_STR_TEST(test_init_directory, "directory", directory, "/home/test_guy/this_dir");
 DEFINE_STR_TEST(test_init_output_file, "output-file", output_file, "test.asb");
 DEFINE_STR_TEST(test_init_prefix, "output-file-prefix", prefix, "special_backup");
 DEFINE_BOOL_TEST(test_init_compact, "compact", compact);
 
+DEFINE_BOOL_TEST(test_init_no_bins, "no-bins", no_bins);
 DEFINE_BOOL_TEST(test_init_ttl_zero, "no-ttl-only", ttl_zero);
 DEFINE_STR_TEST(test_init_machine, "machine", machine, "test.asb");
 DEFINE_BOOL_TEST(test_init_estimate, "estimate", estimate);
@@ -756,8 +689,8 @@ DEFINE_BOOL_TEST(test_init_no_records, "no-records", no_records);
 DEFINE_BOOL_TEST(test_init_no_indexes, "no-indexes", no_indexes);
 DEFINE_BOOL_TEST(test_init_no_udfs, "no-udfs", no_udfs);
 DEFINE_INT_TEST_MULT(test_init_file_limit, "file-limit", file_limit, 1024 * 1024);
-DEFINE_INT_TEST(test_init_max_recs, "max-records", policy->max_records);
-//DEFINE_INT_TEST(test_init_rec_num_max, "record-num", rec_num_max);
+DEFINE_INT_TEST(test_init_max_recs, "max-records", max_records);
+DEFINE_INT_TEST(test_init_records_per_second, "records-per-second", records_per_second);
 
 
 Suite* backup_conf_suite()
@@ -776,6 +709,7 @@ Suite* backup_conf_suite()
 	tcase_add_test(tc_init, test_init_user);
 	tcase_add_test(tc_init, test_init_passwd);
 	tcase_add_test(tc_init, test_init_auth_mode);
+	tcase_add_test(tc_init, test_init_set_list_single);
 	tcase_add_test(tc_init, test_init_set_list);
 	tcase_add_test(tc_init, test_init_bin_list);
 	tcase_add_test(tc_init, test_init_mod_after);
@@ -794,11 +728,16 @@ Suite* backup_conf_suite()
 	tcase_add_test(tc_init, test_init_tls_certfile);
 	tcase_add_test(tc_init, test_init_tls_cert_blacklist);
 
+	tcase_add_test(tc_init, test_init_ns);
+	tcase_add_test(tc_init, test_init_continue);
+	tcase_add_test(tc_init, test_init_state_file_dst);
+
 	tcase_add_test(tc_init, test_init_remove_files);
 	tcase_add_test(tc_init, test_init_directory);
 	tcase_add_test(tc_init, test_init_output_file);
 	tcase_add_test(tc_init, test_init_prefix);
 	tcase_add_test(tc_init, test_init_compact);
+	tcase_add_test(tc_init, test_init_no_bins);
 	tcase_add_test(tc_init, test_init_compress_mode);
 	tcase_add_test(tc_init, test_init_encryption_mode);
 	tcase_add_test(tc_init, test_init_encrypt_key_file);
@@ -813,7 +752,7 @@ Suite* backup_conf_suite()
 	tcase_add_test(tc_init, test_init_no_udfs);
 	tcase_add_test(tc_init, test_init_file_limit);
 	tcase_add_test(tc_init, test_init_max_recs);
-	//tcase_add_test(tc_init, test_init_rec_num_max);
+	tcase_add_test(tc_init, test_init_records_per_second);
 	suite_add_tcase(s, tc_init);
 
 	return s;

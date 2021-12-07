@@ -19,5 +19,7 @@ else
 	. "${1}"/bin/activate
 fi
 
+#py.test --dir-mode test/integration/test_resume.py #-s
+#py.test --file-mode test/integration/test_resume.py #-s
 py.test --dir-mode test/integration
 py.test --file-mode test/integration

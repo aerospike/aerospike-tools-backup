@@ -200,7 +200,6 @@ $(DIR_OBJ)/%.o: $(DIR_SRC)/%.c | $(DIR_OBJ)
 	$(CC) $(CFLAGS) -MMD -o $@ -c $(INCLUDES) $<
 
 $(BACKUP): $(BACKUP_OBJ) | $(DIR_BIN)
-	echo $(HELPER_SRCS)
 	$(CC) $(LDFLAGS) -o $(BACKUP) $(BACKUP_OBJ) $(LIBRARIES)
 
 $(RESTORE): $(RESTORE_OBJ) | $(DIR_BIN)

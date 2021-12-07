@@ -24,8 +24,30 @@
 
 #pragma once
 
+#include <dirent.h>
+#include <getopt.h>
+#include <signal.h>
+#include <fcntl.h>
+#include <sys/statvfs.h>
+#include <sys/stat.h>
+
+#pragma GCC diagnostic ignored "-Wconversion"
+#pragma GCC diagnostic ignored "-Wsign-conversion"
+
+#include <citrusleaf/cf_atomic.h>
+#include <citrusleaf/cf_queue.h>
+#include <aerospike/aerospike_info.h>
+#include <aerospike/aerospike_key.h>
+#include <aerospike/as_partition_filter.h>
+#include <aerospike/as_record.h>
+#include <aerospike/as_scan.h>
+
+#pragma GCC diagnostic warning "-Wconversion"
+#pragma GCC diagnostic warning "-Wsign-conversion"
+
+#include <encode.h>
 #include <io_proxy.h>
-#include <shared.h>
+#include <utils.h>
 
 // The default number of restore threads.
 #define DEFAULT_THREADS 20
@@ -38,66 +60,6 @@
 
 // The interval for logging per-thread timing stats.
 #define STAT_INTERVAL 10
-
-/*
- * Encapsulates a UDF file.
- */
-typedef struct {
-	// The language of the UDF file.
-	as_udf_type type;
-	// The name of the UDF file.
-	char *name;
-	// The size of the UDF file.
-	uint32_t size;
-	// The content of the UDF file.
-	void *data;
-} udf_param;
-
-/*
- * The result codes for the backup file format decoder.
- */
-typedef enum {
-	// A record was read and is returned.
-	DECODER_RECORD,
-	// Secondary index information was read and is returned.
-	DECODER_INDEX,
-	// A UDF file was read and is returned.
-	DECODER_UDF,
-	// The end of the backup file was encountered.
-	DECODER_EOF,
-		// An error occurred.
-	DECODER_ERROR
-} decoder_status;
-
-/*
- * The interface exposed by the backup file format decoder.
- */
-typedef struct backup_decoder {
-	/*
-	 * Reads, parses, and returns the next entity from a backup file descriptor.
-	 *
-	 * @param fd        The file descriptor.
-	 * @param legacy    Indicates a version 3.0 backup file.
-	 * @param ns_vec    The (optional) source and (also optional) target namespace to be restored.
-	 * @param bin_vec   The bins to be restored, as a vector of strings.
-	 * @param line_no   The current line number.
-	 * @param rec       The returned record. Only valid, if the result is
-	 *                  [DECODER_RECORD](@ref decoder_status::DECODER_RECORD).
-	 * @param extra_ttl Extra-ttl to be added to expirable records.
-	 * @param expired   Indicates that an expired record was read. Only valid, if the result is
-	 *                  [DECODER_RECORD](@ref decoder_status::DECODER_RECORD).
-	 * @param index     The returned secondary index information. Only valid, if the result is
-	 *                  [DECODER_INDEX](@ref decoder_status::DECODER_INDEX).
-	 * @param udf       The returned UDF file. Only valid, if the result is
-	 *                  [DECODER_UDF](@ref decoder_status::DECODER_UDF).
-	 *
-	 * @result          See @ref decoder_status.
-	 */
-	decoder_status (*parse)(io_read_proxy_t *fd, bool legacy, as_vector *ns_vec,
-			as_vector *bin_vec, uint32_t *line_no, as_record *rec,
-			int32_t extra_ttl, bool *expired, index_param *index,
-			udf_param *udf);
-} backup_decoder_t;
 
 /*
  * The global restore configuration and stats shared by all restore threads and the counter thread.
@@ -118,6 +80,12 @@ typedef struct restore_config {
 	bool wait;
 	// timeout for Aerospike commands.
 	uint32_t timeout;
+
+	// C client socket timeout/retry policies.
+	uint32_t socket_timeout;
+	uint32_t total_timeout;
+	uint32_t max_retries;
+	uint32_t retry_delay;
 
 	as_config_tls tls;
 	char* tls_name;

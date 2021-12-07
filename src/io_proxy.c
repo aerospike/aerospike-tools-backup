@@ -74,11 +74,12 @@ static __attribute__((pure)) uint64_t _calc_output_buffer_len(
 		const io_proxy_t* io);
 static __attribute__((pure)) uint64_t _calc_input_buffer_len(
 		const io_proxy_t* io);
-static void _gen_iv(uint8_t iv[16]);
-static void _ctr128_add_to(uint8_t dst[16], uint8_t src[16], uint64_t val);
-static int _init_fn(io_write_proxy_t* io, bool write);
-static int _init_write_fn(io_write_proxy_t* io);
-static int _init_read_fn(io_write_proxy_t* io);
+static void _gen_iv(uint8_t iv[AES_BLOCK_SIZE]);
+static void _ctr128_add_to(uint8_t dst[AES_BLOCK_SIZE],
+		const uint8_t src[AES_BLOCK_SIZE], uint64_t val);
+static void _ctr128_sub_from(uint8_t dst[AES_BLOCK_SIZE],
+		const uint8_t src[AES_BLOCK_SIZE], uint64_t val);
+static int _init_fn(io_write_proxy_t* io);
 static int _commit_write(io_write_proxy_t* io, ZSTD_EndDirective z_ed);
 static int _buffer_read_block(io_write_proxy_t* io);
 
@@ -103,7 +104,7 @@ io_proxy_read_private_key_file(const char* pkey_file_path,
 
 	pkey_file = fopen(pkey_file_path, "r");
 	if (pkey_file == NULL) {
-		fprintf(stderr, "Could not open private key file \"%s\"\n",
+		err("Could not open private key file \"%s\"",
 				pkey_file_path);
 		return -1;
 	}
@@ -112,8 +113,7 @@ io_proxy_read_private_key_file(const char* pkey_file_path,
 	pkey = PEM_read_PrivateKey(pkey_file, NULL, NULL, NULL);
 	fclose(pkey_file);
 	if (pkey == NULL) {
-		fprintf(stderr, "Unable to parse private key, make sure the key is in "
-				"PEM format\n");
+		err("Unable to parse private key, make sure the key is in PEM format");
 		return -1;
 	}
 
@@ -123,8 +123,7 @@ io_proxy_read_private_key_file(const char* pkey_file_path,
 
 	EVP_PKEY_free(pkey);
 	if (((int64_t) pkey_buf->len) <= 0) {
-		printf("OpenSSL error: %s\n",
-				ERR_error_string(ERR_get_error(), NULL));
+		err("OpenSSL error: %s", ERR_error_string(ERR_get_error(), NULL));
 		return -1;
 	}
 	return 0;
@@ -151,6 +150,66 @@ io_read_proxy_init(io_write_proxy_t* io, FILE* file)
 	return _proxy_init(io, file, IO_READ_PROXY);
 }
 
+int
+io_proxy_initialize(io_write_proxy_t* io)
+{
+	return _init_fn((io_write_proxy_t*) io);
+}
+
+int
+io_proxy_serialize(const io_proxy_t* io, FILE* file)
+{
+	io_proxy_serial_t data = {
+		.byte_cnt = htobe64(io->byte_cnt),
+		.raw_byte_cnt = htobe64(io->raw_byte_cnt),
+		.num = htobe32(io->num),
+		.flags = io->flags
+	};
+
+	if (io_proxy_do_encrypt(io)) {
+		// serialize IV - 1 (i.e. ecount_buf decrypted)
+		_ctr128_sub_from(data.iv, io->iv, 1);
+	}
+	else {
+		memset(data.iv, 0, AES_BLOCK_SIZE);
+	}
+
+	if (fwrite(&data, 1, sizeof(io_proxy_serial_t), file) != sizeof(io_proxy_serial_t)) {
+		err("Writing serialized io_proxy to file failed");
+		return -1;
+	}
+
+	return 0;
+}
+
+int
+io_proxy_deserialize(io_proxy_t* io, FILE* fd, FILE* src)
+{
+	io_proxy_serial_t data;
+
+	if (fread(&data, 1, sizeof(io_proxy_serial_t), src) != sizeof(io_proxy_serial_t)) {
+		err("Reading serialized io_proxy from file failed");
+		return -1;
+	}
+
+	io->fd = fd;
+	io->byte_cnt = be64toh(data.byte_cnt);
+	io->raw_byte_cnt = be64toh(data.raw_byte_cnt);
+	io->num = be32toh(data.num);
+	io->flags = (uint8_t) (((uint32_t) IO_PROXY_DESERIALIZE) |
+			(data.flags & IO_PROXY_TYPE_MASK));
+	io->deserialized_flags = data.flags & IO_PROXY_INIT_FLAGS;
+	io->initialized = 0;
+
+	if (data.flags & IO_PROXY_ENCRYPT_MASK) {
+		// copy the IV into the iv field of the io_proxy to be encrypted/incremented
+		// at initialization
+		memcpy(io->iv, data.iv, AES_BLOCK_SIZE);
+	}
+
+	return 0;
+}
+
 void
 io_proxy_always_buffer(io_proxy_t* io)
 {
@@ -175,13 +234,13 @@ io_proxy_init_encryption(io_proxy_t* io, const encryption_key_t* pkey,
 	ctx = EVP_MD_CTX_create();
 	if (EVP_DigestInit_ex(ctx, EVP_sha256(), NULL) == 0) {
 		EVP_MD_CTX_destroy(ctx);
-		fprintf(stderr, "EVP_DigestInit_ex() failed\n");
+		err("EVP_DigestInit_ex() failed");
 		return -1;
 	}
 
 	if (EVP_DigestUpdate(ctx, pkey->data, pkey->len) == 0) {
 		EVP_MD_CTX_destroy(ctx);
-		fprintf(stderr, "EVP_DigestUpdate() failed\n");
+		err("EVP_DigestUpdate() failed");
 		return -1;
 	}
 
@@ -192,7 +251,7 @@ io_proxy_init_encryption(io_proxy_t* io, const encryption_key_t* pkey,
 	if (EVP_DigestFinal_ex(ctx, pkey_digest, &d_len) == 0 ||
 			d_len > digest_len) {
 		EVP_MD_CTX_destroy(ctx);
-		fprintf(stderr, "EVP_DigestFinal_ex() failed\n");
+		err("EVP_DigestFinal_ex() failed");
 		return -1;
 	}
 	EVP_MD_CTX_destroy(ctx);
@@ -200,15 +259,16 @@ io_proxy_init_encryption(io_proxy_t* io, const encryption_key_t* pkey,
 	int res = AES_set_encrypt_key(pkey_digest, (int) (pkey_digest_len * 8),
 			&io->pkey_digest);
 	if (res < 0) {
-		fprintf(stderr, "Failed to initialize encryption key\n");
+		err("Failed to initialize encryption key");
 		return -1;
 	}
 
+	// we will need to use decryption when reading
 	if (_is_read_proxy(io)) {
 		res = AES_set_decrypt_key(pkey_digest, (int) (pkey_digest_len * 8),
 				&io->decrypt_pkey_digest);
 		if (res < 0) {
-			fprintf(stderr, "Failed to initialize decryption key\n");
+			err("Failed to initialize decryption key");
 			return -1;
 		}
 	}
@@ -287,7 +347,8 @@ io_proxy_free(io_proxy_t* io)
 			_consumer_buffer_free(&io->encrypt_buffer);
 		}
 	}
-	if ((io_proxy_do_compress(io) || io_proxy_do_encrypt(io)) && io->initialized) {
+	if ((io_proxy_do_compress(io) || io_proxy_do_encrypt(io) ||
+				(io->flags & IO_PROXY_ALWAYS_BUFFER)) && io->initialized) {
 		_consumer_buffer_free(&io->buffer);
 	}
 }
@@ -336,10 +397,11 @@ parse_encryption_type(const char* enc_str, encryption_opt* opt)
 int64_t
 io_write_proxy_bytes_written(const io_write_proxy_t* io)
 {
-	if (UNLIKELY(!io->initialized)) {
-		return 0;
+	if (_init_fn((io_write_proxy_t*) io) != 0) {
+		return -1;
 	}
-	else if (io->buffer.src == NULL) {
+
+	if (io->buffer.src == NULL) {
 		int64_t res = ftell(io->fd);
 		return res;
 	}
@@ -351,10 +413,11 @@ io_write_proxy_bytes_written(const io_write_proxy_t* io)
 int64_t
 io_write_proxy_absolute_pos(const io_write_proxy_t* io)
 {
-	if (UNLIKELY(!io->initialized)) {
-		return 0;
+	if (_init_fn((io_write_proxy_t*) io) != 0) {
+		return -1;
 	}
-	else if (io->buffer.src == NULL) {
+
+	if (io->buffer.src == NULL) {
 		int64_t res = ftell(io->fd);
 		return res;
 	}
@@ -366,10 +429,11 @@ io_write_proxy_absolute_pos(const io_write_proxy_t* io)
 int64_t
 io_read_proxy_estimate_pos(const io_read_proxy_t* io)
 {
-	if (UNLIKELY(!io->initialized)) {
-		return 0;
+	if (_init_fn((io_write_proxy_t*) io) != 0) {
+		return -1;
 	}
-	else if (io->buffer.src == NULL) {
+
+	if (io->buffer.src == NULL) {
 		return ftell(io->fd);
 	}
 	else {
@@ -413,12 +477,12 @@ io_proxy_write(io_write_proxy_t* io, const void* buf, size_t n_bytes)
 {
 	uint64_t init_n_bytes = n_bytes;
 
-	if (_init_write_fn(io) != 0) {
+	if (_init_fn(io) != 0) {
 		return -1;
 	}
 
 	if (UNLIKELY(!_is_write_proxy(io))) {
-		fprintf(stderr, "Can only write from a write proxy\n");
+		err("Can only write from a write proxy");
 		return -1;
 	}
 
@@ -442,12 +506,12 @@ io_proxy_write(io_write_proxy_t* io, const void* buf, size_t n_bytes)
 int32_t
 io_proxy_putc(io_write_proxy_t* io, char c)
 {
-	if (_init_write_fn(io) != 0) {
+	if (_init_fn(io) != 0) {
 		return -1;
 	}
 
 	if (UNLIKELY(!_is_write_proxy(io))) {
-		fprintf(stderr, "Can only write from a write proxy\n");
+		err("Can only write from a write proxy");
 		return -1;
 	}
 
@@ -498,12 +562,12 @@ io_proxy_read(io_read_proxy_t* io, void* buf, size_t n_bytes)
 {
 	uint64_t init_n_bytes = n_bytes;
 
-	if (_init_read_fn(io) != 0) {
+	if (_init_fn(io) != 0) {
 		return -1;
 	}
 
 	if (UNLIKELY(!_is_read_proxy(io))) {
-		fprintf(stderr, "Can only read from a read proxy\n");
+		err("Can only read from a read proxy");
 		return -1;
 	}
 
@@ -532,12 +596,12 @@ io_proxy_getc(io_read_proxy_t* io)
 {
 	int32_t res;
 
-	if (_init_read_fn(io) != 0) {
+	if (_init_fn(io) != 0) {
 		return -1;
 	}
 
 	if (UNLIKELY(!_is_read_proxy(io))) {
-		fprintf(stderr, "Can only read from a read proxy\n");
+		err("Can only read from a read proxy");
 		return -1;
 	}
 
@@ -566,12 +630,12 @@ io_proxy_getc_unlocked(io_read_proxy_t* io)
 {
 	int32_t res;
 
-	if (_init_read_fn(io) != 0) {
+	if (_init_fn(io) != 0) {
 		return -1;
 	}
 
 	if (UNLIKELY(!_is_read_proxy(io))) {
-		fprintf(stderr, "Can only read from a read proxy\n");
+		err("Can only read from a read proxy");
 		return -1;
 	}
 
@@ -624,12 +688,12 @@ io_proxy_peekc_unlocked(io_read_proxy_t* io)
 {
 	int32_t c;
 
-	if (_init_read_fn(io) != 0) {
+	if (_init_fn(io) != 0) {
 		return -1;
 	}
 
 	if (UNLIKELY(!_is_read_proxy(io))) {
-		fprintf(stderr, "Can only read from a read proxy\n");
+		err("Can only read from a read proxy");
 		return -1;
 	}
 
@@ -655,8 +719,12 @@ io_proxy_peekc_unlocked(io_read_proxy_t* io)
 int
 io_proxy_flush(io_write_proxy_t* io)
 {
+	if (_init_fn(io) != 0) {
+		return -1;
+	}
+
 	if (UNLIKELY(!_is_write_proxy(io))) {
-		fprintf(stderr, "Cannot flush a read proxy\n");
+		err("Cannot flush a read proxy");
 		return -1;
 	}
 	int ret = _commit_write(io, ZSTD_e_end);
@@ -821,7 +889,7 @@ _consumer_buffer_fread(consumer_buffer_t* cb, FILE* file)
 {
 	size_t n_bytes = fread(cb->src + cb->pos, 1, cb->size - cb->pos, file);
 	if (ferror(file)) {
-		fprintf(stderr, "Failed reading data from file\n");
+		err("Failed reading data from file");
 		return -1;
 	}
 
@@ -841,7 +909,7 @@ _consumer_buffer_fwrite(consumer_buffer_t* cb, FILE* file)
 	size_t n_bytes = fwrite(cb->src + cb->data_pos, 1, cb->pos - cb->data_pos,
 			file);
 	if (ferror(file)) {
-		fprintf(stderr, "Failed writing data to file\n");
+		err("Failed writing data to file");
 		return -1;
 	}
 
@@ -869,7 +937,7 @@ _consumer_buffer_compress(io_proxy_t* io, consumer_buffer_t* dst,
 	uint64_t rem_bytes = ZSTD_compressStream2(io->cctx, dst_out, &src_in, z_ed);
 
 	if (ZSTD_isError(rem_bytes)) {
-		fprintf(stderr, "Failed to compress data: %s\n",
+		err("Failed to compress data: %s",
 				ZSTD_getErrorName(rem_bytes));
 		return -1;
 	}
@@ -900,7 +968,7 @@ _consumer_buffer_decompress(io_proxy_t* io, consumer_buffer_t* dst,
 	uint64_t rem_bytes = ZSTD_decompressStream(io->dctx, dst_out, &src_in);
 
 	if (ZSTD_isError(rem_bytes)) {
-		fprintf(stderr, "Failed to decompress data: %s\n",
+		err("Failed to decompress data: %s",
 				ZSTD_getErrorName(rem_bytes));
 		return -1;
 	}
@@ -1036,7 +1104,7 @@ _calc_input_buffer_len(const io_proxy_t* io)
  * architecture
  */
 static void
-_gen_iv(uint8_t iv[16])
+_gen_iv(uint8_t iv[AES_BLOCK_SIZE])
 {
 	// most significant 32 bytes are current time (modulo ~136 years)
 	uint32_t v3 = (uint32_t) time(NULL);
@@ -1064,28 +1132,48 @@ _gen_iv(uint8_t iv[16])
  * src and dst may overlap
  */
 static void
-_ctr128_add_to(uint8_t dst[16], uint8_t src[16], uint64_t val)
+_ctr128_add_to(uint8_t dst[AES_BLOCK_SIZE], const uint8_t src[AES_BLOCK_SIZE],
+		uint64_t val)
 {
-#ifdef __APPLE__
-	uint64_t v1 = OSSwapHostToBigInt64(*(uint64_t*) &src[0]);
-	uint64_t v2 = OSSwapHostToBigInt64(*(uint64_t*) &src[8]);
-#else
-	uint64_t v1 = htobe64(*(uint64_t*) &src[0]);
-	uint64_t v2 = htobe64(*(uint64_t*) &src[8]);
-#endif /* __APPLE__ */
+	uint64_t v1 = htobe64(*(const uint64_t*) &src[0]);
+	uint64_t v2 = htobe64(*(const uint64_t*) &src[8]);
 	__asm__("addq %[val], %[v2]\n\t"
 			"adcq $0, %[v1]"
 			: [v1] "+r" (v1),
 			  [v2] "+&r" (v2)
 			: [val] "r" (val)
 			: "cc");
-#ifdef __APPLE__
-	v1 = OSSwapBigToHostInt64(v1);
-	v2 = OSSwapBigToHostInt64(v2);
-#else
 	v1 = be64toh(v1);
 	v2 = be64toh(v2);
-#endif /* __APPLE__ */
+	__asm__("movq %[v1], (%[dst])\n\t"
+			"movq %[v2], 0x8(%[dst])"
+			:
+			: [v1] "r" (v1),
+			  [v2] "r" (v2),
+			  [dst] "r" (dst)
+			: "memory");
+}
+
+/*
+ * subtracts the value "val" from the 128-bit integer stored at counter in
+ * big-endian format
+ *
+ * src and dst may overlap
+ */
+static void
+_ctr128_sub_from(uint8_t dst[AES_BLOCK_SIZE], const uint8_t src[AES_BLOCK_SIZE],
+		uint64_t val)
+{
+	uint64_t v1 = htobe64(*(const uint64_t*) &src[0]);
+	uint64_t v2 = htobe64(*(const uint64_t*) &src[8]);
+	__asm__("subq %[val], %[v2]\n\t"
+			"sbbq $0, %[v1]"
+			: [v1] "+r" (v1),
+			  [v2] "+&r" (v2)
+			: [val] "r" (val)
+			: "cc");
+	v1 = be64toh(v1);
+	v2 = be64toh(v2);
 	__asm__("movq %[v1], (%[dst])\n\t"
 			"movq %[v2], 0x8(%[dst])"
 			:
@@ -1096,11 +1184,27 @@ _ctr128_add_to(uint8_t dst[16], uint8_t src[16], uint64_t val)
 }
 
 static int
-_init_fn(io_write_proxy_t* io, bool write)
+_init_fn(io_write_proxy_t* io)
 {
 	uint32_t buf_len;
+	bool write = _is_write_proxy(io);
 
 	if (UNLIKELY(!io->initialized)) {
+
+		if (io->flags & IO_PROXY_DESERIALIZE) {
+			// if deserializing the io_proxy, make sure the flags match what
+			// they are expected to be
+			if ((io->flags & IO_PROXY_INIT_FLAGS) !=
+					(io->deserialized_flags & IO_PROXY_INIT_FLAGS)) {
+				err("io_proxy flags (%02x) do not match the serialized "
+						"flags (%02x), make sure the io_proxy is initialized in "
+						"the same matter as it was when serialized.",
+						io->flags & IO_PROXY_INIT_FLAGS,
+						io->deserialized_flags & IO_PROXY_INIT_FLAGS);
+				return -1;
+			}
+		}
+
 		buf_len = (uint32_t) (write ? _calc_output_buffer_len(io) :
 				_calc_input_buffer_len(io));
 
@@ -1118,53 +1222,72 @@ _init_fn(io_write_proxy_t* io, bool write)
 		else {
 			memset(&io->comp_buffer, 0, sizeof(io->comp_buffer));
 		}
+
 		if (io_proxy_do_encrypt(io)) {
 			// encrypt_buffer and decrypt_buffer alias each other
 			_consumer_buffer_init(&io->encrypt_buffer, buf_len);
 
-			if (write) {
-				// generate an IV, encrypt it, and store it at the beginning of
-				// the file
-				_gen_iv(io->iv);
-				uint8_t e_iv[AES_BLOCK_SIZE];
-				void* e_iv_ptr = (void*) e_iv;
-				uint64_t n_bytes = AES_BLOCK_SIZE;
+			if (io->flags & IO_PROXY_DESERIALIZE) {
+				// encrypt the IV into ecount_buf
+				AES_encrypt(io->iv, io->ecount_buf, &io->pkey_digest);
 
-				AES_encrypt(io->iv, e_iv, &io->pkey_digest);
-
-				// write the encrypted IV directly to the encrypt buffer, otherwise we
-				// will end up trying to compress/encrypt the key again
-				_consumer_buffer_write(&io->encrypt_buffer, (const void**) &e_iv_ptr, &n_bytes);
-				if (n_bytes != 0) {
-					fprintf(stderr, "Unable to write encrypted IV to buffer\n");
-					return -1;
-				}
+				// fall through to increment the IV, since we serialized IV - 1
 			}
 			else {
-				// decrypt the IV, which is at the very beginning of the file
-				consumer_buffer_t iv_buf;
-				_consumer_buffer_init(&iv_buf, AES_BLOCK_SIZE);
-				// read it directly from the file to bypass
-				// decryption/decompression steps
-				int status = _consumer_buffer_fread(&iv_buf, io->fd);
-				if (status < 0) {
-					return status;
-				}
-				// the entire IV must have been at the beginning of the file,
-				// so we should have been able to successfully read all 32 bytes
-				// of it
-				if (iv_buf.pos != iv_buf.size) {
-					fprintf(stderr, "Error when reading IV from file: only "
-							"%" PRIu64 " bytes were found, but expected %d\n",
-							iv_buf.pos, AES_BLOCK_SIZE);
-					return -1;
-				}
-				AES_decrypt(iv_buf.src, io->iv, &io->decrypt_pkey_digest);
-				_consumer_buffer_free(&iv_buf);
+				if (write) {
+					// generate an IV, encrypt it, and store it at the beginning of
+					// the file
+					_gen_iv(io->iv);
+					void* ecount_buf_ptr = (void*) io->ecount_buf;
+					uint64_t n_bytes = AES_BLOCK_SIZE;
 
-				// increment byte_cnt by the number of bytes just read from the file
-				io->byte_cnt += AES_BLOCK_SIZE;
+					AES_encrypt(io->iv, io->ecount_buf, &io->pkey_digest);
+
+					// write the encrypted IV directly to the encrypt buffer,
+					// otherwise we will end up trying to compress/encrypt the
+					// key again
+					_consumer_buffer_write(&io->encrypt_buffer,
+							(const void**) &ecount_buf_ptr, &n_bytes);
+					if (n_bytes != 0) {
+						err("Unable to write encrypted IV to buffer");
+						return -1;
+					}
+
+					// increment byte_cnt and raw_byte_cnt (by the same amount
+					// since the encrypted IV can't be compressed) by the number
+					// of bytes just read from the file
+					io->raw_byte_cnt += AES_BLOCK_SIZE;
+				}
+				else {
+					// decrypt the IV, which is at the very beginning of the file
+					consumer_buffer_t iv_buf;
+					_consumer_buffer_init(&iv_buf, AES_BLOCK_SIZE);
+
+					// read it directly from the file to bypass
+					// decryption/decompression steps
+					int status = _consumer_buffer_fread(&iv_buf, io->fd);
+					if (status < 0) {
+						_consumer_buffer_free(&iv_buf);
+						return status;
+					}
+					// the entire IV must have been at the beginning of the file,
+					// so we should have been able to successfully read all 32 bytes
+					// of it
+					if (iv_buf.pos != iv_buf.size) {
+						err("Error when reading IV from file: only %" PRIu64 " "
+								"bytes were found, but expected %d",
+								iv_buf.pos, AES_BLOCK_SIZE);
+						_consumer_buffer_free(&iv_buf);
+						return -1;
+					}
+					AES_decrypt(iv_buf.src, io->iv, &io->decrypt_pkey_digest);
+					_consumer_buffer_free(&iv_buf);
+
+					// increment byte_cnt by the number of bytes just read from the file
+					io->byte_cnt += AES_BLOCK_SIZE;
+				}
 			}
+
 			// increment the IV for the first block of encrypted data
 			_ctr128_add_to(io->iv, io->iv, 1);
 		}
@@ -1175,18 +1298,6 @@ _init_fn(io_write_proxy_t* io, bool write)
 		io->initialized = 1;
 	}
 	return 0;
-}
-
-static int
-_init_write_fn(io_write_proxy_t* io)
-{
-	return _init_fn(io, true);
-}
-
-static int
-_init_read_fn(io_write_proxy_t* io)
-{
-	return _init_fn(io, false);
 }
 
 /*
@@ -1283,7 +1394,7 @@ _buffer_read_block(io_write_proxy_t* io)
 	consumer_buffer_t* in_buffer = &io->buffer;
 
 	bool decompress = io_proxy_do_compress(io);
-	bool decrypt  = io_proxy_do_encrypt(io);
+	bool decrypt = io_proxy_do_encrypt(io);
 
 	// since we have consumed all bytes from io->buffer, but since its pos has
 	// been reset, the only way to count the amount of data that was in

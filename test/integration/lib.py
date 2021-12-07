@@ -15,6 +15,7 @@ import random
 import string
 import math
 import signal
+import asyncio
 
 import docker
 
@@ -65,6 +66,10 @@ def safe_sleep(secs):
 	while start < end:
 		time.sleep(end - start)
 		start = time.time()
+
+def sync_wait(future):
+	loop = asyncio.get_event_loop()
+	return loop.run_until_complete(future)
 
 def enable_dir_mode():
 	"""
@@ -205,7 +210,7 @@ def temporary_path(extension):
 	GLOBALS["file_count"] += 1
 	return absolute_path(os.path.join(WORK_DIRECTORY, file_name))
 
-def run(command, *options):
+def run(command, *options, do_async=False):
 	"""
 	Runs the given command with the given options.
 	"""
@@ -217,21 +222,28 @@ def run(command, *options):
 		command = ["./val.sh"] + command
 
 	print("Executing", command, "in", directory)
-	subprocess.check_call(command, cwd=directory)
+	if do_async:
+		# preexec_fn is used to place the subprocess in a different process group
+		return sync_wait(asyncio.create_subprocess_exec(*command, cwd=directory,
+			preexec_fn=os.setpgrp, stdout=asyncio.subprocess.PIPE,
+			stderr=asyncio.subprocess.PIPE))
+	else:
+		subprocess.check_call(command, cwd=directory)
+		return 0
 
-def backup(*options):
+def backup(*options, do_async=False):
 	"""
 	Runs asbackup with the given options.
 	"""
 	print("Running asbackup")
-	run("asbackup", *options)
+	return run("asbackup", *options, do_async=do_async)
 
-def restore(*options):
+def restore(*options, do_async=False):
 	"""
 	Runs asrestore with the given options.
 	"""
 	print("Running asrestore")
-	run("asrestore", *options)
+	return run("asrestore", *options, do_async=do_async)
 
 def set_fake_time(seconds):
 	"""
@@ -371,6 +383,7 @@ def start(keep_work_dir=False):
 		GLOBALS["sets"] = []
 
 		print("Client connected")
+		safe_sleep(1)
 
 def stop(keep_work_dir=False):
 	"""
@@ -589,81 +602,81 @@ def get_udf_file(file_name):
 	print("getting UDF", file_name)
 	return GLOBALS["client"].udf_get(file_name, aerospike.UDF_TYPE_LUA)
 
-def validate_index_check(set_name, path, value):
+def validate_index_check(set_name, bin_name, value):
 	"""
 	Validates the string parameters for the index query functions.
 	"""
 	force_unicode(set_name, "Please use Unicode set names")
-	force_unicode(path, "Please use Unicode index paths")
+	force_unicode(bin_name, "Please use Unicode index bin_names")
 	force_unicode(value, "Please use Unicode query values")
 
-def check_simple_index(set_name, path, value):
+def check_simple_index(set_name, bin_name, value):
 	"""
 	Tests the presence of a simple secondary index by making an "equals" query.
 	"""
-	validate_index_check(set_name, path, value)
+	validate_index_check(set_name, bin_name, value)
 	query = GLOBALS["client"].query(NAMESPACE, set_name)
-	query.where(aerospike.predicates.equals(path, value))
+	query.where(aerospike.predicates.equals(bin_name, value))
 	query.results()
 
-def check_geo_index(set_name, path, value):
+def check_geo_index(set_name, bin_name, value):
 	"""
 	Tests the presence of a geo index by making a region query.
 	"""
-	validate_index_check(set_name, path, value)
+	validate_index_check(set_name, bin_name, value)
 	query = GLOBALS["client"].query(NAMESPACE, set_name)
 	# XXX - geo index requires string bin names
-	query.where(aerospike.predicates.geo_within_radius(str(path), value[0], value[1], 10.0))
+	query.where(aerospike.predicates.geo_within_radius(str(bin_name), value[0], value[1], 10.0))
 	query.results()
 
-def check_complex_index(set_name, path, index_type, value):
+def check_complex_index(set_name, bin_name, index_type, value):
 	"""
 	Tests the presence of a complex secondary index by making a "contains" query.
 	"""
-	validate_index_check(set_name, path, value)
+	validate_index_check(set_name, bin_name, value)
 	query = GLOBALS["client"].query(NAMESPACE, set_name)
-	query.where(aerospike.predicates.contains(path, index_type, value))
+	query.where(aerospike.predicates.contains(bin_name, index_type, value))
 	query.results()
 
-def check_list_index(set_name, path, value):
+def check_list_index(set_name, bin_name, value):
 	"""
 	Test presence of a complex list secondary index by making a
 	"contains" query.
 	"""
-	check_complex_index(set_name, path, aerospike.INDEX_TYPE_LIST, value)
+	check_complex_index(set_name, bin_name, aerospike.INDEX_TYPE_LIST, value)
 
-def check_map_key_index(set_name, path, value):
+def check_map_key_index(set_name, bin_name, value):
 	"""
 	Test presence of a complex map key secondary index by making a
 	"contains" query.
 	"""
-	check_complex_index(set_name, path, aerospike.INDEX_TYPE_MAPKEYS, value)
+	check_complex_index(set_name, bin_name, aerospike.INDEX_TYPE_MAPKEYS, value)
 
-def check_map_value_index(set_name, path, value):
+def check_map_value_index(set_name, bin_name, value):
 	"""
 	Test presence of a complex map value secondary index by making a
 	"contains" query.
 	"""
-	check_complex_index(set_name, path, aerospike.INDEX_TYPE_MAPVALUES, value)
+	check_complex_index(set_name, bin_name, aerospike.INDEX_TYPE_MAPVALUES, value)
 
-def validate_index_creation(set_name, path, index_name):
+def validate_index_creation(set_name, bin_name, index_name):
 	"""
 	Validates the string parameters for the index creation functions.
 	"""
 	force_unicode(set_name, "Please use Unicode set names")
-	force_unicode(path, "Please use Unicode index paths")
+	force_unicode(bin_name, "Please use Unicode index bin_names")
 	force_unicode(index_name, "Please use Unicode index names")
 
-def create_integer_index(set_name, path, index_name):
+def create_integer_index(set_name, bin_name, index_name):
 	"""
 	Creates an integer index.
 	"""
 	print("create integer index", index_name)
-	validate_index_creation(set_name, path, index_name)
+	validate_index_creation(set_name, bin_name, index_name)
 	ret = -1
 	for _ in range(CLIENT_ATTEMPTS):
 		try:
-			ret = GLOBALS["client"].index_integer_create(NAMESPACE, set_name, path, index_name)
+			ret = GLOBALS["client"].index_integer_create(NAMESPACE, set_name, bin_name, index_name)
 			break
 		except aerospike.exception.IndexFoundError:
 			# found the index in the database, meaning it wasn't fully deleted, pause and try again
@@ -671,15 +684,15 @@ def create_integer_index(set_name, path, index_name):
 	assert ret == 0, "Unexpected error while creating index"
 	GLOBALS["indexes"].append(index_name)
 
-def create_integer_list_index(set_name, path, index_name):
+def create_integer_list_index(set_name, bin_name, index_name):
 	"""
 	Creates an integer list index.
 	"""
-	validate_index_creation(set_name, path, index_name)
+	validate_index_creation(set_name, bin_name, index_name)
 	ret = -1
 	for _ in range(CLIENT_ATTEMPTS):
 		try:
-			ret = GLOBALS["client"].index_list_create(NAMESPACE, set_name, path, aerospike.INDEX_NUMERIC, index_name)
+			ret = GLOBALS["client"].index_list_create(NAMESPACE, set_name, bin_name, aerospike.INDEX_NUMERIC, index_name)
 			break
 		except aerospike.exception.IndexFoundError:
 			# found the index in the database, meaning it wasn't fully deleted, pause and try again
@@ -687,15 +700,15 @@ def create_integer_list_index(set_name, path, index_name):
 	assert ret == 0, "Unexpected error while creating index"
 	GLOBALS["indexes"].append(index_name)
 
-def create_integer_map_key_index(set_name, path, index_name):
+def create_integer_map_key_index(set_name, bin_name, index_name):
 	"""
 	Creates an integer map key index.
 	"""
-	validate_index_creation(set_name, path, index_name)
+	validate_index_creation(set_name, bin_name, index_name)
 	ret = -1
 	for _ in range(CLIENT_ATTEMPTS):
 		try:
-			ret = GLOBALS["client"].index_map_keys_create(NAMESPACE, set_name, path, \
+			ret = GLOBALS["client"].index_map_keys_create(NAMESPACE, set_name, bin_name, \
 					aerospike.INDEX_NUMERIC, index_name)
 			break
 		except aerospike.exception.IndexFoundError:
@@ -704,15 +717,15 @@ def create_integer_map_key_index(set_name, path, index_name):
 	assert ret == 0, "Unexpected error while creating index"
 	GLOBALS["indexes"].append(index_name)
 
-def create_integer_map_value_index(set_name, path, index_name):
+def create_integer_map_value_index(set_name, bin_name, index_name):
 	"""
 	Creates an integer map value index.
 	"""
-	validate_index_creation(set_name, path, index_name)
+	validate_index_creation(set_name, bin_name, index_name)
 	ret = -1
 	for _ in range(CLIENT_ATTEMPTS):
 		try:
-			ret = GLOBALS["client"].index_map_values_create(NAMESPACE, set_name, path, \
+			ret = GLOBALS["client"].index_map_values_create(NAMESPACE, set_name, bin_name, \
 					aerospike.INDEX_NUMERIC, index_name)
 			break
 		except aerospike.exception.IndexFoundError:
@@ -721,16 +734,16 @@ def create_integer_map_value_index(set_name, path, index_name):
 	assert ret == 0, "Unexpected error while creating index"
 	GLOBALS["indexes"].append(index_name)
 
-def create_string_index(set_name, path, index_name):
+def create_string_index(set_name, bin_name, index_name):
 	"""
 	Creates a string index.
 	"""
 	print("create string index", index_name)
-	validate_index_creation(set_name, path, index_name)
+	validate_index_creation(set_name, bin_name, index_name)
 	ret = -1
 	for _ in range(CLIENT_ATTEMPTS):
 		try:
-			ret = GLOBALS["client"].index_string_create(NAMESPACE, set_name, path, index_name)
+			ret = GLOBALS["client"].index_string_create(NAMESPACE, set_name, bin_name, index_name)
 			break
 		except aerospike.exception.IndexFoundError:
 			# found the index in the database, meaning it wasn't fully deleted, pause and try again
@@ -738,16 +751,16 @@ def create_string_index(set_name, path, index_name):
 	assert ret == 0, "Unexpected error while creating index"
 	GLOBALS["indexes"].append(index_name)
 
-def create_geo_index(set_name, path, index_name):
+def create_geo_index(set_name, bin_name, index_name):
 	"""
 	Creates a geo index.
 	"""
-	validate_index_creation(set_name, path, index_name)
+	validate_index_creation(set_name, bin_name, index_name)
 	ret = -1
 	# XXX - geo index requires string bin names
 	for _ in range(CLIENT_ATTEMPTS):
 		try:
-			ret = GLOBALS["client"].index_geo2dsphere_create(NAMESPACE, set_name, str(path), index_name)
+			ret = GLOBALS["client"].index_geo2dsphere_create(NAMESPACE, set_name, str(bin_name), index_name)
 			break
 		except aerospike.exception.IndexFoundError:
 			# found the index in the database, meaning it wasn't fully deleted, pause and try again
@@ -755,15 +768,15 @@ def create_geo_index(set_name, path, index_name):
 	assert ret == 0, "Unexpected error while creating index"
 	GLOBALS["indexes"].append(index_name)
 
-def create_string_list_index(set_name, path, index_name):
+def create_string_list_index(set_name, bin_name, index_name):
 	"""
 	Creates a string list index.
 	"""
-	validate_index_creation(set_name, path, index_name)
+	validate_index_creation(set_name, bin_name, index_name)
 	ret = -1
 	for _ in range(CLIENT_ATTEMPTS):
 		try:
-			ret = GLOBALS["client"].index_list_create(NAMESPACE, set_name, path, aerospike.INDEX_STRING, \
+			ret = GLOBALS["client"].index_list_create(NAMESPACE, set_name, bin_name, aerospike.INDEX_STRING, \
 					index_name)
 			break
 		except aerospike.exception.IndexFoundError:
@@ -772,15 +785,15 @@ def create_string_list_index(set_name, path, index_name):
 	assert ret == 0, "Unexpected error while creating index"
 	GLOBALS["indexes"].append(index_name)
 
-def create_string_map_key_index(set_name, path, index_name):
+def create_string_map_key_index(set_name, bin_name, index_name):
 	"""
 	Creates a string map key index.
 	"""
-	validate_index_creation(set_name, path, index_name)
+	validate_index_creation(set_name, bin_name, index_name)
 	ret = -1
 	for _ in range(CLIENT_ATTEMPTS):
 		try:
-			ret = GLOBALS["client"].index_map_keys_create(NAMESPACE, set_name, path, \
+			ret = GLOBALS["client"].index_map_keys_create(NAMESPACE, set_name, bin_name, \
 					aerospike.INDEX_STRING, index_name)
 			break
 		except aerospike.exception.IndexFoundError:
@@ -789,15 +802,15 @@ def create_string_map_key_index(set_name, path, index_name):
 	assert ret == 0, "Unexpected error while creating index"
 	GLOBALS["indexes"].append(index_name)
 
-def create_string_map_value_index(set_name, path, index_name):
+def create_string_map_value_index(set_name, bin_name, index_name):
 	"""
 	Creates a string map value index.
 	"""
-	validate_index_creation(set_name, path, index_name)
+	validate_index_creation(set_name, bin_name, index_name)
 	ret = -1
 	for _ in range(CLIENT_ATTEMPTS):
 		try:
-			ret = GLOBALS["client"].index_map_values_create(NAMESPACE, set_name, path, \
+			ret = GLOBALS["client"].index_map_values_create(NAMESPACE, set_name, bin_name, \
 					aerospike.INDEX_STRING, index_name)
 			break
 		except aerospike.exception.IndexFoundError:
@@ -806,40 +819,83 @@ def create_string_map_value_index(set_name, path, index_name):
 	assert ret == 0, "Unexpected error while creating index"
 	GLOBALS["indexes"].append(index_name)
 
-def backup_to_file(path, *options):
+def backup_to_file(path, *options, do_async=False):
 	"""
 	Backup to the given file using the default options plus the given options.
 	"""
-	backup("--output-file", path, \
-			"--remove-files", \
+	return backup("--output-file", path, \
 			"--namespace", NAMESPACE, \
-			*options)
+			*options,
+			do_async=do_async)
 
-def restore_from_file(path, *options):
+def restore_from_file(path, *options, do_async=False):
 	"""
 	Restore from the given file using the default options plus the given options.
 	"""
-	restore("--input", path, \
-			*options)
+	return restore("--input", path, \
+			*options,
+			do_async=do_async)
 
-def backup_to_directory(path, *options):
+def backup_to_directory(path, *options, do_async=False):
 	"""
 	Backup to the given directory using the default options plus the given options.
 	"""
-	backup("--directory", path, \
-			"--remove-files", \
+	return backup("--directory", path, \
 			"--namespace", NAMESPACE, \
-			*options)
+			*options,
+			do_async=do_async)
 
-def restore_from_directory(path, *options):
+def restore_from_directory(path, *options, do_async=False):
 	"""
 	Restore from the given file using the default options plus the given options.
 	"""
-	restore("--directory", path, \
-			*options)
+	return restore("--directory", path, \
+			*options,
+			do_async=do_async)
+
+def backup_async(filler, context={}, path=None, backup_opts=None):
+	if backup_opts is None:
+		backup_opts = []
+
+	start()
+
+	filler(context)
+
+	try:
+
+		if GLOBALS["dir_mode"]:
+			if path is None:
+				path = temporary_path("dir")
+			return backup_to_directory(path, *backup_opts, do_async=True), path
+		else:
+			if path is None:
+				path = temporary_path("asb")
+			return backup_to_file(path, *backup_opts, do_async=True), path
+
+	except Exception:
+		reset()
+		raise
+
+def restore_async(path, restore_opts=None):
+	try:
+		# keep metadata (sets/indexes) so they can be erased after
+		# asrestore runs
+		reset(keep_metadata=True)
+
+		if restore_opts is None:
+			restore_opts = []
+
+		if GLOBALS["dir_mode"]:
+			return restore_from_directory(path, *restore_opts, do_async=True)
+		else:
+			return restore_from_file(path, *restore_opts, do_async=True)
+
+	except Exception:
+		reset()
+		raise
 
 def backup_and_restore(filler, preparer, checker, backup_opts=None, restore_opts=None, \
-		restore_delay=0.5):
+		restore_delay=0.5, do_compress_and_encrypt=True):
 	"""
 	Do one backup-restore cycle.
 	"""
@@ -862,6 +918,10 @@ def backup_and_restore(filler, preparer, checker, backup_opts=None, restore_opts
 			['--compress=zstd', '--encrypt=aes128',
 				'--encryption-key-file=test/test_key.pem'],
 			]):
+
+		if not do_compress_and_encrypt and i > 0:
+			break
+
 		try:
 
 			if GLOBALS["dir_mode"]:

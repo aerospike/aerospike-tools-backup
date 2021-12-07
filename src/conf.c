@@ -590,7 +590,7 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 		if (! strcasecmp("namespace", name)) {
 			status = config_str(curtab, name, (void*)&s);
 			if (status) {
-				as_strncpy(c->scan->ns, s, AS_NAMESPACE_MAX_SIZE);
+				as_strncpy(c->ns, s, AS_NAMESPACE_MAX_SIZE);
 				free(s);
 			}
 
@@ -600,6 +600,12 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 				status = parse_set_list(&c->set_list, s);
 				free(s);
 			}
+
+		} else if (! strcasecmp("continue", name)) {
+			status = config_str(curtab, name, (void*)&c->state_file);
+
+		} else if (! strcasecmp("state-file-dst", name)) {
+			status = config_str(curtab, name, (void*)&c->state_file_dst);
 
 		} else if (! strcasecmp("remove-files", name)) {
 			status = config_bool(curtab, name, (void*)&c->remove_files);
@@ -614,7 +620,7 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 			status = config_bool(curtab, name, &c->ttl_zero);
 
 		} else if (! strcasecmp("max-records", name)) {
-			status = config_int64(curtab, name, (int64_t*) &c->policy->max_records);
+			status = config_int64(curtab, name, (int64_t*) &c->max_records);
 
 		} else if (! strcasecmp("output-file", name)) {
 			status = config_str(curtab, name, (void*)&c->output_file);
@@ -629,11 +635,10 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 			}
 
 		} else if (! strcasecmp("records-per-second", name)) {
-
-			status = config_int32(curtab, name, (void*)&c->policy->records_per_second);
+			status = config_int32(curtab, name, (int32_t*)&c->records_per_second);
 
 		} else if (! strcasecmp("no-bins", name)) {
-			status = config_bool(curtab, name, (void*)&c->scan->no_bins);
+			status = config_bool(curtab, name, (void*)&c->no_bins);
 
 		} else if (! strcasecmp("compact", name)) {
 			status = config_bool(curtab, name, (void*)&c->compact);
@@ -752,6 +757,38 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 
 		} else if (! strcasecmp("no-udfs", name)) {
 			status = config_bool(curtab, name, (void*)&c->no_udfs);
+
+		} else if (! strcasecmp("socket-timeout", name)) {
+			status = config_int32(curtab, name, (int32_t*)&i_val);
+			if (i_val >= 0) {
+				c->socket_timeout = (uint32_t)i_val;
+			} else {
+				status = false;
+			}
+
+		} else if (! strcasecmp("total-timeout", name)) {
+			status = config_int32(curtab, name, (int32_t*)&i_val);
+			if (i_val >= 0) {
+				c->total_timeout = (uint32_t)i_val;
+			} else {
+				status = false;
+			}
+
+		} else if (! strcasecmp("max-retries", name)) {
+			status = config_int32(curtab, name, (int32_t*)&i_val);
+			if (i_val >= 0) {
+				c->max_retries = (uint32_t)i_val;
+			} else {
+				status = false;
+			}
+
+		} else if (! strcasecmp("retry-delay", name)) {
+			status = config_int32(curtab, name, (int32_t*)&i_val);
+			if (i_val >= 0) {
+				c->retry_delay = (uint32_t)i_val;
+			} else {
+				status = false;
+			}
 
 		} else {
 			fprintf(stderr, "Unknown parameter `%s` in `%s` section\n", name,
@@ -930,6 +967,38 @@ config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance,
 			status = config_int64(curtab, name, (void*)&i_val);
 			if (i_val >= 0) {
 				c->timeout = (uint32_t)i_val;
+			} else {
+				status = false;
+			}
+
+		} else if (! strcasecmp("socket-timeout", name)) {
+			status = config_int32(curtab, name, (int32_t*)&i_val);
+			if (i_val >= 0) {
+				c->socket_timeout = (uint32_t)i_val;
+			} else {
+				status = false;
+			}
+
+		} else if (! strcasecmp("total-timeout", name)) {
+			status = config_int32(curtab, name, (int32_t*)&i_val);
+			if (i_val >= 0) {
+				c->total_timeout = (uint32_t)i_val;
+			} else {
+				status = false;
+			}
+
+		} else if (! strcasecmp("max-retries", name)) {
+			status = config_int32(curtab, name, (int32_t*)&i_val);
+			if (i_val >= 0) {
+				c->max_retries = (uint32_t)i_val;
+			} else {
+				status = false;
+			}
+
+		} else if (! strcasecmp("retry-delay", name)) {
+			status = config_int32(curtab, name, (int32_t*)&i_val);
+			if (i_val >= 0) {
+				c->retry_delay = (uint32_t)i_val;
 			} else {
 				status = false;
 			}

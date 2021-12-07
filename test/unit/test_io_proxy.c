@@ -1,5 +1,6 @@
 
 #include <check.h>
+#include <fcntl.h>
 #include <stdlib.h>
 #include <unistd.h>
 
@@ -29,25 +30,32 @@ const encryption_key_t aes_key = {
 };
 
 
+static int stderr_tmp;
+static int dev_null_fd;
+
 static void 
 silence_stderr_setup(void) 
 {
-	// redirect stderr to /dev/null
-	freopen("/dev/null", "w", stderr);
+	stderr_tmp = dup(STDERR_FILENO);
+	dev_null_fd = open("/dev/null", O_WRONLY);
+	dup2(dev_null_fd, STDERR_FILENO);
 }
 
 static void
 silence_stderr_teardown(void)
 {
+	dup2(stderr_tmp, STDERR_FILENO);
+	close(stderr_tmp);
+	close(dev_null_fd);
 }
 
 /*
  * all different ways an IO proxy can be configured
  */
 #define INIT_MATRIX_SIZE (2 * 5)
-#define INIT_MATRIX(io, rw_init, file, idx) \
+
+#define INIT_MATRIX_OPTS(io, idx) \
 	do { \
-		ck_assert_int_eq(rw_init(&io, file), 0); \
 		if (idx % 2 == 1) { \
 			ck_assert_int_eq(io_proxy_init_compression(&io, \
 						IO_PROXY_COMPRESS_ZSTD), 0); \
@@ -68,95 +76,111 @@ silence_stderr_teardown(void)
 			ck_assert_int_eq(io_proxy_init_encryption_file(&io, key_path, \
 						IO_PROXY_ENCRYPT_AES256), 0); \
 		} \
+	} while (0)
+
+#define INIT_MATRIX(io, rw_init, file, idx) \
+	do { \
+		ck_assert_int_eq(rw_init(&io, file), 0); \
+		INIT_MATRIX_OPTS(io, idx); \
 	} while(0)
 
 
 #define WRITE_TEST_MATRIX(fn_name, fn_body) \
 	START_TEST(fn_name) { \
+		uint32_t init_idx = 0; \
 		FILE* tmp = tmpfile(); \
 		io_write_proxy_t wio; \
-		INIT_MATRIX(wio, io_write_proxy_init, tmp, 0); \
+		INIT_MATRIX(wio, io_write_proxy_init, tmp, init_idx); \
 		fn_body \
 		io_proxy_free(&wio); \
 		fclose(tmp); \
 	} \
 	END_TEST \
 	START_TEST(fn_name ## _zstd) { \
+		uint32_t init_idx = 1; \
 		FILE* tmp = tmpfile(); \
 		io_write_proxy_t wio; \
-		INIT_MATRIX(wio, io_write_proxy_init, tmp, 1); \
+		INIT_MATRIX(wio, io_write_proxy_init, tmp, init_idx); \
 		fn_body \
 		io_proxy_free(&wio); \
 		fclose(tmp); \
 	} \
 	END_TEST \
 	START_TEST(fn_name ## _aes128) { \
+		uint32_t init_idx = 2; \
 		FILE* tmp = tmpfile(); \
 		io_write_proxy_t wio; \
-		INIT_MATRIX(wio, io_write_proxy_init, tmp, 2); \
+		INIT_MATRIX(wio, io_write_proxy_init, tmp, init_idx); \
 		fn_body \
 		io_proxy_free(&wio); \
 		fclose(tmp); \
 	} \
 	END_TEST \
 	START_TEST(fn_name ## _aes128 ## _zstd) { \
+		uint32_t init_idx = 3; \
 		FILE* tmp = tmpfile(); \
 		io_write_proxy_t wio; \
-		INIT_MATRIX(wio, io_write_proxy_init, tmp, 3); \
+		INIT_MATRIX(wio, io_write_proxy_init, tmp, init_idx); \
 		fn_body \
 		io_proxy_free(&wio); \
 		fclose(tmp); \
 	} \
 	END_TEST \
 	START_TEST(fn_name ## _aes256) { \
+		uint32_t init_idx = 4; \
 		FILE* tmp = tmpfile(); \
 		io_write_proxy_t wio; \
-		INIT_MATRIX(wio, io_write_proxy_init, tmp, 4); \
+		INIT_MATRIX(wio, io_write_proxy_init, tmp, init_idx); \
 		fn_body \
 		io_proxy_free(&wio); \
 		fclose(tmp); \
 	} \
 	END_TEST \
 	START_TEST(fn_name ## _aes256 ## _zstd) { \
+		uint32_t init_idx = 5; \
 		FILE* tmp = tmpfile(); \
 		io_write_proxy_t wio; \
-		INIT_MATRIX(wio, io_write_proxy_init, tmp, 5); \
+		INIT_MATRIX(wio, io_write_proxy_init, tmp, init_idx); \
 		fn_body \
 		io_proxy_free(&wio); \
 		fclose(tmp); \
 	} \
 	END_TEST \
 	START_TEST(fn_name ## _aes128_file) { \
+		uint32_t init_idx = 6; \
 		FILE* tmp = tmpfile(); \
 		io_write_proxy_t wio; \
-		INIT_MATRIX(wio, io_write_proxy_init, tmp, 6); \
+		INIT_MATRIX(wio, io_write_proxy_init, tmp, init_idx); \
 		fn_body \
 		io_proxy_free(&wio); \
 		fclose(tmp); \
 	} \
 	END_TEST \
 	START_TEST(fn_name ## _aes128_file ## _zstd) { \
+		uint32_t init_idx = 7; \
 		FILE* tmp = tmpfile(); \
 		io_write_proxy_t wio; \
-		INIT_MATRIX(wio, io_write_proxy_init, tmp, 7); \
+		INIT_MATRIX(wio, io_write_proxy_init, tmp, init_idx); \
 		fn_body \
 		io_proxy_free(&wio); \
 		fclose(tmp); \
 	} \
 	END_TEST \
 	START_TEST(fn_name ## _aes256_file) { \
+		uint32_t init_idx = 8; \
 		FILE* tmp = tmpfile(); \
 		io_write_proxy_t wio; \
-		INIT_MATRIX(wio, io_write_proxy_init, tmp, 8); \
+		INIT_MATRIX(wio, io_write_proxy_init, tmp, init_idx); \
 		fn_body \
 		io_proxy_free(&wio); \
 		fclose(tmp); \
 	} \
 	END_TEST \
 	START_TEST(fn_name ## _aes256_file ## _zstd) { \
+		uint32_t init_idx = 9; \
 		FILE* tmp = tmpfile(); \
 		io_write_proxy_t wio; \
-		INIT_MATRIX(wio, io_write_proxy_init, tmp, 9); \
+		INIT_MATRIX(wio, io_write_proxy_init, tmp, init_idx); \
 		fn_body \
 		io_proxy_free(&wio); \
 		fclose(tmp); \
@@ -165,140 +189,150 @@ silence_stderr_teardown(void)
 
 #define TEST_MATRIX(fn_name, write_fn_body, read_fn_body) \
 	START_TEST(fn_name) { \
+		uint32_t init_idx = 0; \
 		FILE* tmp = tmpfile(); \
 		io_write_proxy_t wio; \
 		io_read_proxy_t rio; \
-		INIT_MATRIX(wio, io_write_proxy_init, tmp, 0); \
+		INIT_MATRIX(wio, io_write_proxy_init, tmp, init_idx); \
 		write_fn_body \
 		io_proxy_free(&wio); \
 		fseek(tmp, 0, SEEK_SET); \
-		INIT_MATRIX(rio, io_read_proxy_init, tmp, 0); \
+		INIT_MATRIX(rio, io_read_proxy_init, tmp, init_idx); \
 		read_fn_body \
 		io_proxy_free(&rio); \
 		fclose(tmp); \
 	} \
 	END_TEST \
 	START_TEST(fn_name ## _zstd) { \
+		uint32_t init_idx = 1; \
 		FILE* tmp = tmpfile(); \
 		io_write_proxy_t wio; \
 		io_read_proxy_t rio; \
-		INIT_MATRIX(wio, io_write_proxy_init, tmp, 1); \
+		INIT_MATRIX(wio, io_write_proxy_init, tmp, init_idx); \
 		write_fn_body \
 		io_proxy_free(&wio); \
 		fseek(tmp, 0, SEEK_SET); \
-		INIT_MATRIX(rio, io_read_proxy_init, tmp, 1); \
+		INIT_MATRIX(rio, io_read_proxy_init, tmp, init_idx); \
 		read_fn_body \
 		io_proxy_free(&rio); \
 		fclose(tmp); \
 	} \
 	END_TEST \
 	START_TEST(fn_name ## _aes128) { \
+		uint32_t init_idx = 2; \
 		FILE* tmp = tmpfile(); \
 		io_write_proxy_t wio; \
 		io_read_proxy_t rio; \
-		INIT_MATRIX(wio, io_write_proxy_init, tmp, 2); \
+		INIT_MATRIX(wio, io_write_proxy_init, tmp, init_idx); \
 		write_fn_body \
 		io_proxy_free(&wio); \
 		fseek(tmp, 0, SEEK_SET); \
-		INIT_MATRIX(rio, io_read_proxy_init, tmp, 2); \
+		INIT_MATRIX(rio, io_read_proxy_init, tmp, init_idx); \
 		read_fn_body \
 		io_proxy_free(&rio); \
 		fclose(tmp); \
 	} \
 	END_TEST \
 	START_TEST(fn_name ## _aes128 ## _zstd) { \
+		uint32_t init_idx = 3; \
 		FILE* tmp = tmpfile(); \
 		io_write_proxy_t wio; \
 		io_read_proxy_t rio; \
-		INIT_MATRIX(wio, io_write_proxy_init, tmp, 3); \
+		INIT_MATRIX(wio, io_write_proxy_init, tmp, init_idx); \
 		write_fn_body \
 		io_proxy_free(&wio); \
 		fseek(tmp, 0, SEEK_SET); \
-		INIT_MATRIX(rio, io_read_proxy_init, tmp, 3); \
+		INIT_MATRIX(rio, io_read_proxy_init, tmp, init_idx); \
 		read_fn_body \
 		io_proxy_free(&rio); \
 		fclose(tmp); \
 	} \
 	END_TEST \
 	START_TEST(fn_name ## _aes256) { \
+		uint32_t init_idx = 4; \
 		FILE* tmp = tmpfile(); \
 		io_write_proxy_t wio; \
 		io_read_proxy_t rio; \
-		INIT_MATRIX(wio, io_write_proxy_init, tmp, 4); \
+		INIT_MATRIX(wio, io_write_proxy_init, tmp, init_idx); \
 		write_fn_body \
 		io_proxy_free(&wio); \
 		fseek(tmp, 0, SEEK_SET); \
-		INIT_MATRIX(rio, io_read_proxy_init, tmp, 4); \
+		INIT_MATRIX(rio, io_read_proxy_init, tmp, init_idx); \
 		read_fn_body \
 		io_proxy_free(&rio); \
 		fclose(tmp); \
 	} \
 	END_TEST \
 	START_TEST(fn_name ## _aes256 ## _zstd) { \
+		uint32_t init_idx = 5; \
 		FILE* tmp = tmpfile(); \
 		io_write_proxy_t wio; \
 		io_read_proxy_t rio; \
-		INIT_MATRIX(wio, io_write_proxy_init, tmp, 5); \
+		INIT_MATRIX(wio, io_write_proxy_init, tmp, init_idx); \
 		write_fn_body \
 		io_proxy_free(&wio); \
 		fseek(tmp, 0, SEEK_SET); \
-		INIT_MATRIX(rio, io_read_proxy_init, tmp, 5); \
+		INIT_MATRIX(rio, io_read_proxy_init, tmp, init_idx); \
 		read_fn_body \
 		io_proxy_free(&rio); \
 		fclose(tmp); \
 	} \
 	END_TEST \
 	START_TEST(fn_name ## _aes128_file) { \
+		uint32_t init_idx = 6; \
 		FILE* tmp = tmpfile(); \
 		io_write_proxy_t wio; \
 		io_read_proxy_t rio; \
-		INIT_MATRIX(wio, io_write_proxy_init, tmp, 6); \
+		INIT_MATRIX(wio, io_write_proxy_init, tmp, init_idx); \
 		write_fn_body \
 		io_proxy_free(&wio); \
 		fseek(tmp, 0, SEEK_SET); \
-		INIT_MATRIX(rio, io_read_proxy_init, tmp, 6); \
+		INIT_MATRIX(rio, io_read_proxy_init, tmp, init_idx); \
 		read_fn_body \
 		io_proxy_free(&rio); \
 		fclose(tmp); \
 	} \
 	END_TEST \
 	START_TEST(fn_name ## _aes128_file ## _zstd) { \
+		uint32_t init_idx = 7; \
 		FILE* tmp = tmpfile(); \
 		io_write_proxy_t wio; \
 		io_read_proxy_t rio; \
-		INIT_MATRIX(wio, io_write_proxy_init, tmp, 7); \
+		INIT_MATRIX(wio, io_write_proxy_init, tmp, init_idx); \
 		write_fn_body \
 		io_proxy_free(&wio); \
 		fseek(tmp, 0, SEEK_SET); \
-		INIT_MATRIX(rio, io_read_proxy_init, tmp, 7); \
+		INIT_MATRIX(rio, io_read_proxy_init, tmp, init_idx); \
 		read_fn_body \
 		io_proxy_free(&rio); \
 		fclose(tmp); \
 	} \
 	END_TEST \
 	START_TEST(fn_name ## _aes256_file) { \
+		uint32_t init_idx = 8; \
 		FILE* tmp = tmpfile(); \
 		io_write_proxy_t wio; \
 		io_read_proxy_t rio; \
-		INIT_MATRIX(wio, io_write_proxy_init, tmp, 8); \
+		INIT_MATRIX(wio, io_write_proxy_init, tmp, init_idx); \
 		write_fn_body \
 		io_proxy_free(&wio); \
 		fseek(tmp, 0, SEEK_SET); \
-		INIT_MATRIX(rio, io_read_proxy_init, tmp, 8); \
+		INIT_MATRIX(rio, io_read_proxy_init, tmp, init_idx); \
 		read_fn_body \
 		io_proxy_free(&rio); \
 		fclose(tmp); \
 	} \
 	END_TEST \
 	START_TEST(fn_name ## _aes256_file ## _zstd) { \
+		uint32_t init_idx = 9; \
 		FILE* tmp = tmpfile(); \
 		io_write_proxy_t wio; \
 		io_read_proxy_t rio; \
-		INIT_MATRIX(wio, io_write_proxy_init, tmp, 9); \
+		INIT_MATRIX(wio, io_write_proxy_init, tmp, init_idx); \
 		write_fn_body \
 		io_proxy_free(&wio); \
 		fseek(tmp, 0, SEEK_SET); \
-		INIT_MATRIX(rio, io_read_proxy_init, tmp, 9); \
+		INIT_MATRIX(rio, io_read_proxy_init, tmp, init_idx); \
 		read_fn_body \
 		io_proxy_free(&rio); \
 		fclose(tmp); \
@@ -534,7 +568,7 @@ START_TEST(test_enc_encryption_key_init)
 {
 	encryption_key_t key;
 	uint64_t len = 32;
-	uint8_t* buffer = (uint8_t*) cf_malloc(len);
+	uint8_t* buffer = (uint8_t*) test_malloc(len);
 
 	encryption_key_init(&key, buffer, len);
 
@@ -648,7 +682,7 @@ START_TEST(test_enc_wrong_key_aes256)
 
 #define SIZE 1048576
 WRITE_TEST_MATRIX(test_large_write,
-		char* buf = (char*) cf_malloc(SIZE);
+		char* buf = (char*) test_malloc(SIZE);
 		for (uint64_t i = 0; i < SIZE; i++)
 			buf[i] = (char) (' ' + (char) ((31 * i) % ((uint64_t) ('~' - ' '))));
 		DEFINE_WRITE_TO(io_proxy_write, wio, tmp, SIZE, buf, SIZE);
@@ -656,13 +690,13 @@ WRITE_TEST_MATRIX(test_large_write,
 		);
 
 TEST_MATRIX(test_large_read,
-		char* buf = (char*) cf_malloc(SIZE);
+		char* buf = (char*) test_malloc(SIZE);
 		for (uint64_t i = 0; i < SIZE - 1; i++)
 			buf[i] = (char) (' ' + (char) ((31 * i) % ((uint64_t) ('~' - ' '))));
 		buf[SIZE - 1] = '\0';
 		DEFINE_WRITE_TO(io_proxy_write, wio, tmp, SIZE, buf, SIZE);
 		,
-		char* buf2 = (char*) cf_malloc(SIZE + 10);
+		char* buf2 = (char*) test_malloc(SIZE + 10);
 		DEFINE_READ_FROM(io_proxy_read, rio, tmp, SIZE, 0, buf2, SIZE + 10);
 		ck_assert_str_eq(buf, buf2);
 		cf_free(buf2);
@@ -670,7 +704,7 @@ TEST_MATRIX(test_large_read,
 		);
 
 WRITE_TEST_MATRIX(test_large_write_putc,
-		char* buf = (char*) cf_malloc(SIZE);
+		char* buf = (char*) test_malloc(SIZE);
 		for (uint64_t i = 0; i < SIZE; i++)
 			buf[i] = (char) (' ' + (char) ((31 * i) % ((uint64_t) ('~' - ' '))));
 		for (uint64_t i = 0; i < SIZE; i++)
@@ -679,7 +713,7 @@ WRITE_TEST_MATRIX(test_large_write_putc,
 		);
 
 TEST_MATRIX(test_large_read_getc,
-		char* buf = (char*) cf_malloc(SIZE);
+		char* buf = (char*) test_malloc(SIZE);
 		for (uint64_t i = 0; i < SIZE; i++)
 			buf[i] = (char) (' ' + (char) ((31 * i) % ((uint64_t) ('~' - ' '))));
 		buf[SIZE - 1] = '\0';
@@ -687,7 +721,7 @@ TEST_MATRIX(test_large_read_getc,
 			ck_assert_int_eq(io_proxy_putc(&wio, buf[i]), buf[i]);
 		ck_assert_int_eq(io_proxy_flush(&wio), 0);
 		,
-		char* buf2 = (char*) cf_malloc(SIZE + 10);
+		char* buf2 = (char*) test_malloc(SIZE + 10);
 		for (uint64_t i = 0; i < SIZE; i++)
 			ck_assert_int_eq(io_proxy_getc_unlocked(&rio), buf[i]);
 		ck_assert_int_eq(io_proxy_getc_unlocked(&rio), EOF);
@@ -811,8 +845,8 @@ START_TEST(test_read_compressed_data_monotonicity)
 	as_random random;
 	as_random_init(&random);
 
-	char* buf = (char*) cf_malloc(n_chars * sizeof(char));
-	char* buf2 = (char*) cf_malloc(n_chars * sizeof(char));
+	char* buf = (char*) test_malloc(n_chars * sizeof(char));
+	char* buf2 = (char*) test_malloc(n_chars * sizeof(char));
 	for (uint64_t i = 0; i < n_chars; i++) {
 		uint32_t offset = as_random_next_uint32(&random) % 26;
 		buf[i] = 'a' + (char) offset;
@@ -855,6 +889,129 @@ START_TEST(test_read_compressed_data_monotonicity)
 }
 
 
+static void
+cmp_serialized_io_proxy(const io_proxy_t* deserialized_io, const io_proxy_t* io)
+{
+	ck_assert_int_eq((int64_t) deserialized_io->byte_cnt, (int64_t) io->byte_cnt);
+	ck_assert_int_eq((int64_t) deserialized_io->raw_byte_cnt, (int64_t) io->raw_byte_cnt);
+	ck_assert_int_eq(deserialized_io->num, io->num);
+	ck_assert_int_eq(deserialized_io->deserialized_flags, io->flags & IO_PROXY_INIT_FLAGS);
+
+	if (io_proxy_do_encrypt(io)) {
+		ck_assert_mem_eq(deserialized_io->ecount_buf, io->ecount_buf, AES_BLOCK_SIZE);
+		ck_assert_mem_eq(deserialized_io->iv, io->iv, AES_BLOCK_SIZE);
+	}
+}
+
+static void
+serialize_and_deserialize(io_proxy_t* io, FILE* fd, FILE* bup, uint32_t init_idx)
+{
+	ck_assert_int_eq(io_proxy_flush(io), 0);
+	ck_assert_int_eq(io_proxy_serialize(io, bup), 0);
+
+	fseek(bup, -(int64_t) sizeof(io_proxy_serial_t), SEEK_CUR);
+
+	io_write_proxy_t* io2 = test_malloc(sizeof(io_write_proxy_t));
+	ck_assert_int_eq(io_proxy_deserialize(io2, fd, bup), 0);
+	INIT_MATRIX_OPTS(*io2, init_idx);
+	io_proxy_initialize(io2);
+	cmp_serialized_io_proxy(io2, io);
+
+	// transfer ownership of io2's contents to io, freeing what io had before
+	io_proxy_free(io);
+	memcpy(io, io2, sizeof(io_write_proxy_t));
+	cf_free(io2);
+}
+
+WRITE_TEST_MATRIX(test_serialize_empty, {
+	FILE* bup = tmpfile();
+	ck_assert_int_eq(io_proxy_serialize(&wio, bup), 0);
+	// ensure this wrote at least something to the file
+	ck_assert_int_gt(ftell(bup), 0);
+	fclose(bup);
+})
+
+WRITE_TEST_MATRIX(test_deserialize_empty, {
+	FILE* bup = tmpfile();
+	serialize_and_deserialize(&wio, NULL, bup, init_idx);
+	fclose(bup);
+})
+
+WRITE_TEST_MATRIX(test_serialize_with_data, {
+	static const char text[] = "some test text";
+	ck_assert_int_eq(io_proxy_write(&wio, text, sizeof(text) - 1), sizeof(text) - 1);
+
+	FILE* bup = tmpfile();
+	serialize_and_deserialize(&wio, NULL, bup, init_idx);
+	fclose(bup);
+})
+
+TEST_MATRIX(test_write_twice, {
+	static const char text[] = "some test text";
+	static const char text2[] = ", and some more text";
+
+	ck_assert_int_eq(io_proxy_write(&wio, text, sizeof(text) - 1), sizeof(text) - 1);
+
+	FILE* bup = tmpfile();
+	serialize_and_deserialize(&wio, tmp, bup, init_idx);
+	fclose(bup);
+
+	ck_assert_int_eq(io_proxy_write(&wio, text2, sizeof(text2) - 1), sizeof(text2) - 1);
+	io_proxy_flush(&wio);
+},
+{
+	static const char combined[] = "some test text, and some more text";
+	char buf[sizeof(combined) + 10];
+	ck_assert_int_eq(io_proxy_read(&rio, buf, sizeof(buf)), sizeof(combined) - 1);
+	buf[sizeof(combined) - 1] = '\0';
+	ck_assert_str_eq(buf, combined);
+})
+
+const uint64_t write_many_n_chars = 1000000;
+static char* write_many_buf;
+
+TEST_MATRIX(test_write_many, {
+	as_random r;
+	as_random_init(&r);
+
+	write_many_buf = (char*) test_malloc(write_many_n_chars * sizeof(char));
+
+	for (uint64_t i = 0; i < write_many_n_chars; i++) {
+		write_many_buf[i] = 'a' + (char) (as_random_next_uint32(&r) % ('z' - 'a' + 1));
+	}
+
+	uint64_t pos = 0;
+	while (pos < write_many_n_chars) {
+		uint64_t to = pos + as_random_next_uint32(&r) % 16384 + 1;
+		to = MIN(to, write_many_n_chars);
+
+		ck_assert_int_eq(io_proxy_write(&wio, write_many_buf + pos, to - pos),
+				(int64_t) (to - pos));
+
+		// only serialize/deserialize half the time
+		if ((as_random_next_uint32(&r) & 1) == 0) {
+			FILE* bup = tmpfile();
+			serialize_and_deserialize(&wio, tmp, bup, init_idx);
+			fclose(bup);
+		}
+
+		pos = to;
+	}
+
+	io_proxy_flush(&wio);
+},
+{
+	char* buf = (char*) test_malloc(write_many_n_chars * sizeof(char));
+
+	ck_assert_int_eq(io_proxy_read(&rio, buf, write_many_n_chars * sizeof(char)),
+			(int64_t) (write_many_n_chars * sizeof(char)));
+	ck_assert_mem_eq(buf, write_many_buf, write_many_n_chars);
+
+	cf_free(write_many_buf);
+	write_many_buf = NULL;
+})
+
+
 Suite* io_proxy_suite()
 {
 	Suite* s;
@@ -864,6 +1021,7 @@ Suite* io_proxy_suite()
 	TCase* tc_enc;
 	TCase* tc_large;
 	TCase* tc_pos;
+	TCase* tc_serialize;
 
 	s = suite_create("IO Proxy");
 
@@ -929,6 +1087,14 @@ Suite* io_proxy_suite()
 	tcase_add_test(tc_pos, test_buffered_read_file_pos);
 	tcase_add_test(tc_pos, test_read_compressed_data_monotonicity);
 	suite_add_tcase(s, tc_pos);
+
+	tc_serialize = tcase_create("Serialize");
+	RUN_TEST_MATRIX(test_serialize_empty, tc_serialize);
+	RUN_TEST_MATRIX(test_deserialize_empty, tc_serialize);
+	RUN_TEST_MATRIX(test_serialize_with_data, tc_serialize);
+	RUN_TEST_MATRIX(test_write_twice, tc_serialize);
+	RUN_TEST_MATRIX(test_write_many, tc_serialize);
+	suite_add_tcase(s, tc_serialize);
 
 	return s;
 }

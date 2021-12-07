@@ -18,13 +18,13 @@
 #include <enc_text.h>
 #include <utils.h>
 
-///
-/// Maps a BLOB type to its one-character label.
-///
-/// @param type  The BLOB type.
-///
-/// @result      The one-character label, -1 if the given BLOB type is invalid.
-///
+/*
+ * Maps a BLOB type to its one-character label.
+ *
+ * @param type  The BLOB type.
+ *
+ * @result      The one-character label, -1 if the given BLOB type is invalid.
+ */
 static int32_t
 text_bytes_type_to_label(as_bytes_type type)
 {
@@ -55,16 +55,16 @@ text_bytes_type_to_label(as_bytes_type type)
 	return -1;
 }
 
-///
-/// Writes a boolean to the backup file.
-///
-/// @param fd       The file descriptor of the backup file.
-/// @param prefix1  The first string prefix.
-/// @param prefix2  The second string prefix.
-/// @param val      The integer value to be written.
-///
-/// @result         `true`, if successful.
-///
+/*
+ * Writes a boolean to the backup file.
+ *
+ * @param fd       The file descriptor of the backup file.
+ * @param prefix1  The first string prefix.
+ * @param prefix2  The second string prefix.
+ * @param val      The integer value to be written.
+ *
+ * @result         `true`, if successful.
+ */
 static bool
 text_output_boolean(io_write_proxy_t *fd, const char *prefix1,
 		const char *prefix2, as_val *val)
@@ -80,16 +80,16 @@ text_output_boolean(io_write_proxy_t *fd, const char *prefix1,
 	return true;
 }
 
-///
-/// Writes a signed 64-bit integer to the backup file.
-///
-/// @param fd       The file descriptor of the backup file.
-/// @param prefix1  The first string prefix.
-/// @param prefix2  The second string prefix.
-/// @param val      The integer value to be written.
-///
-/// @result         `true`, if successful.
-///
+/*
+ * Writes a signed 64-bit integer to the backup file.
+ *
+ * @param fd       The file descriptor of the backup file.
+ * @param prefix1  The first string prefix.
+ * @param prefix2  The second string prefix.
+ * @param val      The integer value to be written.
+ *
+ * @result         `true`, if successful.
+ */
 static bool
 text_output_integer(io_write_proxy_t *fd, const char *prefix1,
 		const char *prefix2,
@@ -105,18 +105,18 @@ text_output_integer(io_write_proxy_t *fd, const char *prefix1,
 	return true;
 }
 
-///
-/// Writes a double-precision floating-point value to the backup file.
-///
-/// Using 17 significant digits makes sure that we read back the same value that we wrote.
-///
-/// @param fd       The file descriptor of the backup file.
-/// @param prefix1  The first string prefix.
-/// @param prefix2  The second string prefix.
-/// @param val      The floating point value to be written.
-///
-/// @result         `true`, if successful.
-///
+/*
+ * Writes a double-precision floating-point value to the backup file.
+ *
+ * Using 17 significant digits makes sure that we read back the same value that we wrote.
+ *
+ * @param fd       The file descriptor of the backup file.
+ * @param prefix1  The first string prefix.
+ * @param prefix2  The second string prefix.
+ * @param val      The floating point value to be written.
+ *
+ * @result         `true`, if successful.
+ */
 static bool
 text_output_double(io_write_proxy_t *fd, const char *prefix1,
 		const char *prefix2,
@@ -132,17 +132,17 @@ text_output_double(io_write_proxy_t *fd, const char *prefix1,
 	return true;
 }
 
-///
-/// Writes a BLOB to the backup file.
-///
-/// @param fd       The file descriptor of the backup file.
-/// @param prefix1  The first string prefix.
-/// @param prefix2  The second string prefix.
-/// @param buffer   The data of the BLOB to be written.
-/// @param size     The size of the BLOB to be written.
-///
-/// @result         `true`, if successful.
-///
+/*
+ * Writes a BLOB to the backup file.
+ *
+ * @param fd       The file descriptor of the backup file.
+ * @param prefix1  The first string prefix.
+ * @param prefix2  The second string prefix.
+ * @param buffer   The data of the BLOB to be written.
+ * @param size     The size of the BLOB to be written.
+ *
+ * @result         `true`, if successful.
+ */
 static bool
 text_output_data(io_write_proxy_t *fd, const char *prefix1,
 		const char *prefix2,
@@ -166,17 +166,17 @@ text_output_data(io_write_proxy_t *fd, const char *prefix1,
 	return true;
 }
 
-///
-/// Writes an encoded BLOB to the backup file.
-///
-/// @param fd       The file descriptor of the backup file.
-/// @param prefix1  The first string prefix.
-/// @param prefix2  The second string prefix.
-/// @param buffer   The data of the BLOB to be written.
-/// @param size     The size of the BLOB to be written.
-///
-/// @result         `true`, if successful.
-///
+/*
+ * Writes an encoded BLOB to the backup file.
+ *
+ * @param fd       The file descriptor of the backup file.
+ * @param prefix1  The first string prefix.
+ * @param prefix2  The second string prefix.
+ * @param buffer   The data of the BLOB to be written.
+ * @param size     The size of the BLOB to be written.
+ *
+ * @result         `true`, if successful.
+ */
 static bool
 text_output_data_enc(io_write_proxy_t *fd, const char *prefix1,
 		const char *prefix2, void *buffer, uint32_t size)
@@ -200,16 +200,16 @@ text_output_data_enc(io_write_proxy_t *fd, const char *prefix1,
 	return true;
 }
 
-///
-/// Writes a string to the backup file.
-///
-/// @param fd       The file descriptor of the backup file.
-/// @param prefix1  The first string prefix.
-/// @param prefix2  The second string prefix.
-/// @param val      The string to be written.
-///
-/// @result         `true`, if successful.
-///
+/*
+ * Writes a string to the backup file.
+ *
+ * @param fd       The file descriptor of the backup file.
+ * @param prefix1  The first string prefix.
+ * @param prefix2  The second string prefix.
+ * @param val      The string to be written.
+ *
+ * @result         `true`, if successful.
+ */
 static bool
 text_output_string(io_write_proxy_t *fd, const char *prefix1,
 		const char *prefix2, as_val *val)
@@ -218,16 +218,16 @@ text_output_string(io_write_proxy_t *fd, const char *prefix1,
 	return text_output_data(fd, prefix1, prefix2, v->value, v->len);
 }
 
-///
-/// Writes a geojson to the backup file.
-///
-/// @param fd       The file descriptor of the backup file.
-/// @param prefix1  The first string prefix.
-/// @param prefix2  The second string prefix.
-/// @param val      The geojson to be written.
-///
-/// @result         `true`, if successful.
-///
+/*
+ * Writes a geojson to the backup file.
+ *
+ * @param fd       The file descriptor of the backup file.
+ * @param prefix1  The first string prefix.
+ * @param prefix2  The second string prefix.
+ * @param val      The geojson to be written.
+ *
+ * @result         `true`, if successful.
+ */
 static bool
 text_output_geojson(io_write_proxy_t *fd, const char *prefix1,
 		const char *prefix2, as_val *val)
@@ -236,17 +236,17 @@ text_output_geojson(io_write_proxy_t *fd, const char *prefix1,
 	return text_output_data(fd, prefix1, prefix2, v->value, v->len);
 }
 
-///
-/// Writes a bytes value to the backup file.
-///
-/// @param fd       The file descriptor of the backup file.
-/// @param compact  Indicates compact mode.
-/// @param prefix1  The first string prefix.
-/// @param prefix2  The second string prefix.
-/// @param val      The bytes value to be written.
-///
-/// @result         `true`, if successful.
-///
+/*
+ * Writes a bytes value to the backup file.
+ *
+ * @param fd       The file descriptor of the backup file.
+ * @param compact  Indicates compact mode.
+ * @param prefix1  The first string prefix.
+ * @param prefix2  The second string prefix.
+ * @param val      The bytes value to be written.
+ *
+ * @result         `true`, if successful.
+ */
 static bool
 text_output_bytes(io_write_proxy_t *fd, bool compact,
 		const char *prefix1, const char *prefix2, as_val *val)
@@ -257,15 +257,15 @@ text_output_bytes(io_write_proxy_t *fd, bool compact,
 			text_output_data_enc(fd, prefix1, prefix2, v->value, v->size);
 }
 
-///
-/// Writes a key to the backup file.
-///
-/// @param fd       The file descriptor of the backup file.
-/// @param compact  Indicates compact mode.
-/// @param key      The key to be written.
-///
-/// @result         `true`, if successful.
-///
+/*
+ * Writes a key to the backup file.
+ *
+ * @param fd       The file descriptor of the backup file.
+ * @param compact  Indicates compact mode.
+ * @param key      The key to be written.
+ *
+ * @result         `true`, if successful.
+ */
 static bool
 text_output_key(io_write_proxy_t *fd, bool compact, as_val *key)
 {
@@ -290,16 +290,16 @@ text_output_key(io_write_proxy_t *fd, bool compact, as_val *key)
 	}
 }
 
-///
-/// Writes a bin to the backup file.
-///
-/// @param fd        The file descriptor of the backup file.
-/// @param compact   Indicates compact mode.
-/// @param bin_name  The name of the bin to be written.
-/// @param val       The bin value to be written.
-///
-/// @result         `true`, if successful.
-///
+/*
+ * Writes a bin to the backup file.
+ *
+ * @param fd        The file descriptor of the backup file.
+ * @param compact   Indicates compact mode.
+ * @param bin_name  The name of the bin to be written.
+ * @param val       The bin value to be written.
+ *
+ * @result         `true`, if successful.
+ */
 static bool
 text_output_value(io_write_proxy_t *fd, bool compact,
 		const char *bin_name, as_val *val)
@@ -361,11 +361,11 @@ text_output_value(io_write_proxy_t *fd, bool compact,
 	}
 }
 
-///
-/// Part of the interface exposed by the text backup file format encoder.
-///
-/// See backup_encoder.put_record for details.
-///
+/*
+ * Part of the interface exposed by the text backup file format encoder.
+ *
+ * See backup_encoder.put_record for details.
+ */
 bool
 text_put_record(io_write_proxy_t *fd, bool compact,
 		const as_record *rec)
@@ -412,13 +412,13 @@ text_put_record(io_write_proxy_t *fd, bool compact,
 	return true;
 }
 
-///
-/// Maps a UDF type to its one-character label.
-///
-/// @param type  The UDF type.
-///
-/// @result      The one-character label, -1 if the given UDF type is invalid.
-///
+/*
+ * Maps a UDF type to its one-character label.
+ *
+ * @param type  The UDF type.
+ *
+ * @result      The one-character label, -1 if the given UDF type is invalid.
+ */
 static int32_t
 text_udf_type_to_label(as_udf_type type)
 {
@@ -430,11 +430,11 @@ text_udf_type_to_label(as_udf_type type)
 	return -1;
 }
 
-///
-/// Part of the interface exposed by the text backup file format encoder.
-///
-/// See backup_encoder.put_udf_file for details.
-///
+/*
+ * Part of the interface exposed by the text backup file format encoder.
+ *
+ * See backup_encoder.put_udf_file for details.
+ */
 bool
 text_put_udf_file(io_write_proxy_t *fd, const as_udf_file *file)
 {
@@ -464,37 +464,37 @@ text_put_udf_file(io_write_proxy_t *fd, const as_udf_file *file)
 	return true;
 }
 
-///
-/// Maps a secondary index type to its one-character label.
-///
-/// @param type  The secondary index type.
-///
-/// @result      The one-character label.
-///
+/*
+ * Maps a secondary index type to its one-character label.
+ *
+ * @param type  The secondary index type.
+ *
+ * @result      The one-character label.
+ */
 static int32_t
 text_index_type_to_label(index_type type)
 {
 	return "INLKV"[(int32_t)type];
 }
 
-///
-/// Maps a path data type to its one-character label.
-///
-/// @param type  The path data type.
-///
-/// @result      The one-character label.
-///
+/*
+ * Maps a path data type to its one-character label.
+ *
+ * @param type  The path data type.
+ *
+ * @result      The one-character label.
+ */
 static int32_t
 text_path_type_to_label(path_type type)
 {
 	return "ISNG"[(int32_t)type];
 }
 
-///
-/// Part of the interface exposed by the text backup file format encoder.
-///
-/// See backup_encoder.put_secondary_index for details.
-///
+/*
+ * Part of the interface exposed by the text backup file format encoder.
+ *
+ * See backup_encoder.put_secondary_index for details.
+ */
 bool
 text_put_secondary_index(io_write_proxy_t *fd,
 		const index_param *index)
@@ -523,3 +523,4 @@ text_put_secondary_index(io_write_proxy_t *fd,
 
 	return true;
 }
+

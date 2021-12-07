@@ -24,390 +24,372 @@
 
 #pragma once
 
-#include <io_proxy.h>
-#include <shared.h>
+//==========================================================
+// Includes.
+//
 
+#include <ctype.h>
+#include <stdio.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#if defined __APPLE__
+#include <sys/syscall.h>
+#else
+#include <syscall.h>
+#endif
+
+#pragma GCC diagnostic ignored "-Wconversion"
+#pragma GCC diagnostic ignored "-Wsign-conversion"
+
+#include <citrusleaf/cf_b64.h>
+#include <aerospike/aerospike.h>
+#include <aerospike/aerospike_info.h>
+#include <aerospike/as_cluster.h>
+#include <aerospike/as_exp.h>
+#include <aerospike/as_node.h>
 #include <aerospike/as_vector.h>
 
-#define STACK_BUF_SIZE (1024 * 16)          ///< The size limit for stack-allocated buffers.
-#define ETA_BUF_SIZE (4 + 3 + 3 + 3 + 1)    ///< The buffer size for pretty-printing an ETA.
+#pragma GCC diagnostic warning "-Wconversion"
+#pragma GCC diagnostic warning "-Wsign-conversion"
 
-#define MAX_THREADS 4096                    ///< The maximal supported number of threads.
+#include <encode.h>
+#include <io_proxy.h>
 
-///
-/// Allocates a buffer. Buffers smaller than @ref STACK_BUF_SIZE are allocated on the stack.
-///
+
+//==========================================================
+// Typedefs & constants.
+//
+
+// The maximal length of an individual syntactic token in the backup file.
+#define MAX_TOKEN_SIZE 1000
+
+// The default host to connect to.
+#define DEFAULT_HOST "127.0.0.1"
+// The default port to connect to.
+#define DEFAULT_PORT 3000
+
+// The timeout for all operations (in ms).
+#define TIMEOUT 10000
+
+// The character to encode true boolean values.
+#define BOOLEAN_TRUE_CHAR  'T'
+// The character to encode false boolean values.
+#define BOOLEAN_FALSE_CHAR 'F'
+
+// The size limit for stack-allocated buffers.
+#define STACK_BUF_SIZE (1024 * 16)
+// The buffer size for pretty-printing an ETA.
+#define ETA_BUF_SIZE (4 + 3 + 3 + 3 + 1)
+
+// The maximal supported number of threads.
+#define MAX_THREADS 4096
+
+/*
+ * Allocates a buffer. Buffers smaller than @ref STACK_BUF_SIZE are allocated on the stack.
+ */
 #define buffer_init(_sz) (_sz <= STACK_BUF_SIZE ? alloca(_sz) : safe_malloc(_sz))
 
-///
-/// Frees an allocated buffer. Buffers smaller than @ref STACK_BUF_SIZE are ignored, as they
-/// are freed automatically.
-///
+/*
+ * Frees an allocated buffer. Buffers smaller than @ref STACK_BUF_SIZE are ignored, as they
+ * are freed automatically.
+ */
 #define buffer_free(_buf, _sz) do {     \
 	if (_sz > STACK_BUF_SIZE) {         \
 		cf_free(_buf);                  \
 	}                                   \
 } while (false);
 
-///
-/// '\'-escapes a string. Measures the size of the result, allocates a buffer, then escapes.
-///
+/*
+ * '\'-escapes a string. Measures the size of the result, allocates a buffer, then escapes.
+ */
 #define escape(_str) escape_space(_str, alloca(escape_space(_str, NULL).len)).str
 
-#define IP_ADDR_SIZE 111 ///< The maximal size of an IPv4 or IPv6 address string +
-						///  maximum size of a X509 common name (including the
-                        ///  terminating NUL).
+// The maximal size of an IPv4 or IPv6 address string + maximum size of a X509
+// common name (including the terminating NUL).
+#define IP_ADDR_SIZE 111
 
-///
-/// The callback invoked by the get_info() function to parse info key-value pairs.
-///
-/// @param context  The opaque user-specified context.
-/// @param key      The key of the current key-value pair.
-/// @param value    The corresponding value.
-///
-/// @result         `true`, if successful.
-///
+/*
+ * The callback invoked by the get_info() function to parse info key-value pairs.
+ *
+ * @param context  The opaque user-specified context.
+ * @param key      The key of the current key-value pair.
+ * @param value    The corresponding value.
+ *
+ * @result         `true`, if successful.
+ */
 typedef bool (*info_callback)(void *context, const char *key, const char *value);
 
-///
-/// The callback context passed to get_info() when parsing the namespace object count and
-/// replication factor.
-///
+/*
+ * The callback context passed to get_info() when parsing the namespace object count and
+ * replication factor.
+ */
 typedef struct {
-	uint64_t count;     ///< The object count.
-	uint32_t factor;    ///< The replication factor.
+	// The object count.
+	uint64_t count;
+	// The replication factor.
+	uint32_t factor;
 } ns_count_context;
 
-///
-/// The callback context passed to get_info() when parsing the set object count.
-///
+/*
+ * The callback context passed to get_info() when parsing the set object count.
+ */
 typedef struct {
-	const char *ns;     ///< The namespace in which we are interested.
-	const char *set;    ///< The set in which we are interested.
-	uint64_t count;     ///< The object count;
+	// The namespace in which we are interested.
+	const char *ns;
+	// The set in which we are interested.
+	const char *set;
+	// The object count;
+	uint64_t count;
 } set_count_context;
 
-///
-/// Encapsulates the IP address and port of a cluster node.
-///
+/*
+ * Encapsulates the IP address and port of a cluster node.
+ */
 typedef struct {
-	char addr_string[IP_ADDR_SIZE];   ///< The IP address as a string.
-	sa_family_t family;               ///< The address family of the IP address.
-	union {                           ///< The IPv4 / IPv6 address in network byte order.
+	// The IP address as a string.
+	char addr_string[IP_ADDR_SIZE];
+	// The address family of the IP address.
+	sa_family_t family;
+	// The IPv4 / IPv6 address in network byte order.
+	union {
 		struct in_addr v4;
 		struct in6_addr v6;
 	} ver;
-	in_port_t port;                   ///< The port in network byte order.
-	char *tls_name_str;		  ///< TLS_NAME for server node.
+	// The port in network byte order.
+	in_port_t port;
+	// TLS_NAME for server node.
+	char *tls_name_str;
 } node_spec;
 
-///
-/// Encapsulates an (output buffer, length) pair for escape_space() and unescape_space().
-///
+/*
+ * Encapsulates an (output buffer, length) pair for escape_space() and unescape_space().
+ */
 typedef struct {
-	char *str;  ///< The output buffer.
-	size_t len; ///< The length.
+	// The output buffer.
+	char *str;
+	// The length.
+	size_t len;
 } esc_res;
 
-///
-/// Context for the streaming base-64 decoder.
-///
+/*
+ * Identifies the TLS client command line options.
+ */
+typedef enum {
+	// The `--tls-enable` option.
+	TLS_OPT_ENABLE = 1000,
+	// The `--tls-encrypt-only` option.
+	TLS_OPT_ENCRYPT_ONLY,
+	// The `--tls-name` option.
+	TLS_OPT_NAME,
+	// The `--tls-cafile` option.
+	TLS_OPT_CA_FILE,
+	// The `--tls-capath` option.
+	TLS_OPT_CA_PATH,
+	// The `--tls-protocols` option.
+	TLS_OPT_PROTOCOLS,
+	// The `--tls-cipher-suite` option.
+	TLS_OPT_CIPHER_SUITE,
+	// The `--tls-crl-check` option.
+	TLS_OPT_CRL_CHECK,
+	// The `--tls-crl-checkall` option.
+	TLS_OPT_CRL_CHECK_ALL,
+	// The `--tls-cert-blacklist` option.
+	TLS_OPT_CERT_BLACK_LIST,
+	// The `--tlsLogSessionInfo` option.
+	TLS_OPT_LOG_SESSION_INFO,
+	// The `--tls-keyfile` option.
+	TLS_OPT_KEY_FILE,
+	// The `--tls-keyfile-password` option.
+	TLS_OPT_KEY_FILE_PASSWORD,
+	// The `--tls-certfile` option.
+	TLS_OPT_CERT_FILE
+} tls_opt;
+
+/*
+ * Identifies the config file command line options.
+ */
+typedef enum {
+	CONFIG_FILE_OPT_FILE = 2000,
+	CONFIG_FILE_OPT_INSTANCE,
+	CONFIG_FILE_OPT_NO_CONFIG_FILE,
+	CONFIG_FILE_OPT_ONLY_CONFIG_FILE,
+} cfgfile_opt;
+
+/*
+ * Identifies the config and command line options.
+ */
+typedef enum {
+	COMMAND_OPT_NO_TTL_ONLY = 3000,
+	COMMAND_OPT_SOCKET_TIMEOUT,
+	COMMAND_OPT_TOTAL_TIMEOUT,
+	COMMAND_OPT_MAX_RETRIES,
+	COMMAND_OPT_RETRY_DELAY
+} cmd_opt;
+
+/*
+ * The arguments passed to the counter thread in asbackup and asrestore.
+ */
 typedef struct {
-	size_t size;        ///< The size of the decoded data.
-	int32_t index;      ///< The index of the next buffered byte to be read.
-	uint8_t buffer[2];  ///< Space for two buffered bytes.
+	// The global configuration.
+	void *conf;
+	// The global status.
+	void *status;
+	// The cluster nodes to be backed up.
+	char (*node_names)[][AS_NODE_NAME_SIZE];
+	// The number of cluster nodes to be backed up.
+	uint32_t n_node_names;
+	// The file descriptor for the machine-readable
+	FILE *mach_fd;
+} counter_thread_args;
+
+/*
+ * Context for the streaming base-64 decoder.
+ */
+typedef struct {
+	// The size of the decoded data.
+	size_t size;
+	// The index of the next buffered byte to be read.
+	int32_t index;
+	// Space for two buffered bytes.
+	uint8_t buffer[2];
 } b64_context;
 
 extern bool verbose;
 extern const uint8_t b64map[256];
 
-extern void ver(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
-extern void inf(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
-extern void err(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
-extern void err_code(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
-extern int64_t decode_b64(uint8_t** dst_ptr, const char* src);
-extern void hex_dump_ver(const void *data, uint32_t len);
-extern void hex_dump_inf(const void *data, uint32_t len);
-extern void hex_dump_err(const void *data, uint32_t len);
-extern bool str_vector_contains(as_vector* v, const char* str);
-extern char* str_vector_tostring(as_vector* v);
-extern void enable_client_log(void);
-extern void *safe_malloc(size_t size);
-extern char *safe_strdup(const char *string);
-extern void safe_lock(pthread_mutex_t* mutex);
-extern void safe_unlock(pthread_mutex_t* mutex);
-extern void safe_wait(pthread_cond_t *cond, pthread_mutex_t* mutex);
-extern void safe_signal(pthread_cond_t *cond);
-extern bool better_atoi(const char *string, uint64_t *val);
-extern bool parse_date_time(const char *string, int64_t *nanos);
-extern bool format_date_time(int64_t nanos, char *buffer, size_t size);
-extern esc_res escape_space(const char *source, char *dest);
-extern esc_res unescape_space(const char *source, char *dest);
-extern char *trim_string(char *str);
-extern void split_string(char *str, char split, bool trim, as_vector *vec);
-extern void format_eta(int32_t seconds, char *buffer, size_t size);
-extern char *print_char(int32_t ch);
-extern void get_node_names(as_cluster *clust, node_spec *node_specs, uint32_t n_node_specs,
-		char (**node_names)[][AS_NODE_NAME_SIZE], uint32_t *n_node_names);
-extern bool get_info(aerospike *as, const char *value, const char *node_name, void *context,
-		info_callback callback, bool kv_split);
-extern bool get_migrations(aerospike *as, char (*node_names)[][AS_NODE_NAME_SIZE],
-		uint32_t n_node_names, uint64_t *mig_count);
-extern bool parse_index_info(char *ns, char *index_str, index_param *index);
-extern bool parse_set_list(as_vector* dst, const char* set_list);
-extern encryption_key_t* parse_encryption_key_env(const char* env_var_name);
-#ifdef __APPLE__
-extern char* strchrnul(const char* s, int c_in);
-#endif /* __APPLE__ */
 
-#define LIKELY(x) __builtin_expect(!!(x), 1)    ///< Marks an expression that is likely true.
-#define UNLIKELY(x) __builtin_expect(!!(x), 0)  ///< Marks an expression that is unlikely true.
+//==========================================================
+// Inlines and macros.
+//
+
+// Marks an expression that is likely true.
+#define LIKELY(x) __builtin_expect(!!(x), 1)
+// Marks an expression that is unlikely true.
+#define UNLIKELY(x) __builtin_expect(!!(x), 0)
 
 #define MIN(a, b) ((b) > (a) ? (a) : (b))
 #define MAX(a, b) ((a) < (b) ? (b) : (a))
 
-/*
- * returns true if the given timespec is in the future
- */
-static __attribute__((always_inline)) inline bool
-timespec_has_not_happened(struct timespec* ts)
-{
 #ifdef __APPLE__
-	// MacOS uses gettimeofday instead of the monotonic clock for timed waits on
-	// mutexes
-	struct timespec now;
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-	TIMEVAL_TO_TIMESPEC(&tv, &now);
-#else
-	struct timespec now;
-	clock_gettime(CLOCK_MONOTONIC, &now);
+
+#define htobe32 OSSwapHostToBigInt32
+#define be32toh OSSwapBigToHostInt32
+
+#define htobe64 OSSwapHostToBigInt64
+#define be64toh OSSwapBigToHostInt64
+
 #endif /* __APPLE__ */
 
-	return now.tv_sec < ts->tv_sec ||
-		(now.tv_sec == ts->tv_sec && now.tv_nsec < ts->tv_nsec);
-}
+
+//==========================================================
+// Public API.
+//
+
+void ver(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
+void inf(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
+void err(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
+void err_code(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
+const char* boolstr(bool val);
+void hex_dump_ver(const void *data, uint32_t len);
+void hex_dump_inf(const void *data, uint32_t len);
+void hex_dump_err(const void *data, uint32_t len);
+bool str_vector_contains(const as_vector* v, const char* str);
+char* str_vector_tostring(as_vector* v);
+void enable_client_log(void);
+void *safe_malloc(size_t size);
+char *safe_strdup(const char *string);
+void safe_lock(pthread_mutex_t* mutex);
+void safe_unlock(pthread_mutex_t* mutex);
+void safe_wait(pthread_cond_t *cond, pthread_mutex_t* mutex);
+void safe_signal(pthread_cond_t *cond);
+bool better_atoi(const char *string, uint64_t *val);
+bool parse_date_time(const char *string, int64_t *nanos);
+bool format_date_time(int64_t nanos, char *buffer, size_t size);
+bool timespec_has_not_happened(struct timespec* ts);
+esc_res escape_space(const char *source, char *dest);
+esc_res unescape_space(const char *source, char *dest);
+char *trim_string(char *str);
+void split_string(char *str, char split, bool trim, as_vector *vec);
+void format_eta(int32_t seconds, char *buffer, size_t size);
+char *print_char(int32_t ch);
+bool write_int64(uint64_t val, FILE* fd);
+bool write_int32(uint32_t val, FILE* fd);
+bool read_int64(uint64_t* val, FILE* fd);
+bool read_int32(uint32_t* val, FILE* fd);
+int32_t read_char(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no);
+int32_t read_char_dec(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
+		b64_context *b64c);
+int peek_char(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no);
+bool expect_char(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
+		int32_t ch);
+bool read_block(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
+		void *buffer, size_t size);
+bool read_block_dec(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
+		void *buffer, size_t size, b64_context *b64c);
+void get_node_names(as_cluster *clust, node_spec *node_specs, uint32_t n_node_specs,
+		char (**node_names)[][AS_NODE_NAME_SIZE], uint32_t *n_node_names);
+bool get_info(aerospike *as, const char *value, const char *node_name, void *context,
+		info_callback callback, bool kv_split);
+bool get_migrations(aerospike *as, char (*node_names)[][AS_NODE_NAME_SIZE],
+		uint32_t n_node_names, uint64_t *mig_count);
+bool parse_index_info(char *ns, char *index_str, index_param *index);
+bool parse_set_list(as_vector* dst, const char* set_list);
+encryption_key_t* parse_encryption_key_env(const char* env_var_name);
+
+#ifdef __APPLE__
+char* strchrnul(const char* s, int c_in);
+#endif /* __APPLE__ */
 
 /*
- * returns a string representation of the boolean value
+ * exp_component_t's are used to programatically join multiple expressions with
+ * a join_op. Initialize each exp_component with its corresponding expression,
+ * and join them all with join_op by calling exp_component_join_and_compile on
+ * a list of pointers to the expressions to be joined.
  */
-static __attribute__((always_inline)) inline const char*
-boolstr(bool val)
-{
-	static const char* str_vals[] = {
-		"false",
-		"true"
-	};
-	return str_vals[val != 0];
+typedef struct exp_component {
+	as_exp_entry* expr;
+	uint64_t size;
+} exp_component_t;
+
+/*
+ * Initializes an exp_component to empty, which will be ignored if passed to
+ * exp_component_join_and_compile.
+ */
+#define exp_component_init_nil(exp_comp) \
+{ \
+	(exp_comp)->expr = NULL; \
+	(exp_comp)->size = 0; \
 }
 
-///
-/// Reads a character from a file descriptor. Updates the current line and column number as well as
-/// the total number of read bytes.
-///
-/// @param fd       The file descriptor to read from.
-/// @param line_no  The line number. `line_no[0]` is the current line, `line_no[1]` is the next
-///                 line.
-/// @param col_no   The column number. `col_no[0]` is the current column, `col_no[1]` is the next
-///                 column.
-///
-/// @result         The read character on success, otherwise `EOF`.
-///
-static __attribute__((always_inline)) inline int32_t
-read_char(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no)
-{
-	line_no[0] = line_no[1];
-	col_no[0] = col_no[1];
-
-	int32_t ch = io_proxy_getc_unlocked(fd);
-
-	switch (ch) {
-	case EOF:
-		if (io_proxy_error(fd) != 0) {
-			err("Error while reading backup block (line %u, col %u)", line_no[0], col_no[0]);
-			return EOF;
-		}
-
-		err("Unexpected end of file in backup block (line %u, col %u)", line_no[0], col_no[0]);
-		return EOF;
-
-	case '\n':
-		++line_no[1];
-		col_no[1] = 1;
-		return ch;
-
-	default:
-		++col_no[1];
-		return ch;
-	}
+#define exp_component_init(exp_comp, ...) \
+{ \
+	(exp_comp)->size = sizeof((as_exp_entry[]) { __VA_ARGS__ }); \
+	(exp_comp)->expr = (as_exp_entry*) cf_malloc((exp_comp)->size); \
+	memcpy((exp_comp)->expr, (as_exp_entry[]) { __VA_ARGS__ }, (exp_comp)->size); \
 }
 
-///
-/// Reads from a file descriptor, decodes base-64 data, and returns the next decoded byte. Updates
-/// the current line and column number as well as the total number of read bytes.
-///
-/// The function reads 4 bytes at a time, decodes them into 3 bytes, buffers 2 of those 3 bytes,
-/// and returns the 1 remaining byte. Subsequent calls will read the 2 buffered bytes. After that,
-/// everything starts over.
-///
-/// @param fd       The file descriptor to read from.
-/// @param line_no  The line number. `line_no[0]` is the current line, `line_no[1]` is the next
-///                 line.
-/// @param col_no   The column number. `col_no[0]` is the current column, `col_no[1]` is the next
-///                 column.
-/// @param bytes    Incremented, if a character was successfully read.
-/// @param b64c     The base-64 context used, for example, to store buffered bytes.
-///
-/// @result         The decoded byte on success, otherwise `EOF`.
-///
-static inline int32_t
-read_char_dec(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
-		b64_context *b64c)
-{
-	if (LIKELY(b64c->index < 2)) {
-		return b64c->buffer[b64c->index++];
-	}
-
-	int32_t ch1 = read_char(fd, line_no, col_no);
-	int32_t ch2 = read_char(fd, line_no, col_no);
-	int32_t ch3 = read_char(fd, line_no, col_no);
-	int32_t ch4 = read_char(fd, line_no, col_no);
-
-	if (UNLIKELY(ch1 == EOF || ch2 == EOF || ch3 == EOF || ch4 == EOF)) {
-		err("Unexpected end of file in base-64 data");
-		return EOF;
-	}
-
-	if (UNLIKELY(ch4 == '=')) {
-		b64c->size += ch3 == '=' ? 1 : 2;
-	} else {
-		b64c->size += 3;
-	}
-
-	int32_t dig1 = b64map[ch1];
-	int32_t dig2 = b64map[ch2];
-	int32_t dig3 = b64map[ch3];
-	int32_t dig4 = b64map[ch4];
-
-	if (UNLIKELY(dig1 == 0xff || dig2 == 0xff || dig3 == 0xff || dig4 == 0xff)) {
-		err("Invalid base-64 character (%s, %s, %s, or %s at or before line %u, col %u)",
-				print_char(ch1), print_char(ch2), print_char(ch3), print_char(ch4),
-				line_no[0], col_no[0]);
-		return EOF;
-	}
-
-	b64c->buffer[0] = (uint8_t)((dig2 << 4) | (dig3 >> 2));
-	b64c->buffer[1] = (uint8_t)((dig3 << 6) | dig4);
-	b64c->index = 0;
-	return (dig1 << 2) | (dig2 >> 4);
+#define exp_component_set(exp_comp, expr_ptr, expr_size) \
+{ \
+	(exp_comp)->expr = (as_exp_entry*) cf_malloc((expr_size)); \
+	memcpy((exp_comp)->expr, (expr_ptr), (expr_size)); \
+	(exp_comp)->size = (expr_size); \
 }
 
-static inline int
-peek_char(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no)
-{
-	line_no[0] = line_no[1];
-	col_no[0] = col_no[1];
+#define exp_component_free(exp_comp) \
+	cf_free((exp_comp)->expr)
 
-	int32_t ch = io_proxy_peekc_unlocked(fd);
+/*
+ * Error code returnd by exp_component_join_and_compile on failure.
+ */
+#define EXP_ERR ((as_exp*) -1)
 
-	switch (ch) {
-	case EOF:
-		if (io_proxy_error(fd) != 0) {
-			err("Error while reading backup block (line %u, col %u)", line_no[0], col_no[0]);
-			return EOF;
-		}
-
-		err("Unexpected end of file in backup block (line %u, col %u)", line_no[0], col_no[0]);
-		return EOF;
-	}
-	return ch;
-}
-
-///
-/// Expects the given character to be the next character read from the given file descriptor.
-///
-/// @param fd       The file descriptor.
-/// @param line_no  The current line number.
-/// @param col_no   The current column number.
-/// @param ch       The expected character.
-///
-/// @result         `true`, if successful.
-///
-static inline bool
-expect_char(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
-		int32_t ch)
-{
-	int32_t x = read_char(fd, line_no, col_no);
-
-	if (UNLIKELY(x == EOF)) {
-		return false;
-	}
-
-	if (UNLIKELY(x != ch)) {
-		err("Unexpected character %s in backup block (line %u, col %u), expected %s", print_char(x),
-				line_no[0], col_no[0], print_char(ch));
-		return false;
-	}
-
-	return true;
-}
-
-///
-/// Reads the given number of bytes from the given file descriptor.
-///
-/// @param fd       The file descriptor.
-/// @param line_no  The current line number.
-/// @param col_no   The current column number.
-/// @param buffer   The output buffer for the read bytes.
-/// @param size     The number of bytes to be read.
-///
-/// @result         `true`, if successful.
-///
-static inline bool
-read_block(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
-		void *buffer, size_t size)
-{
-	for (size_t i = 0; i < size; ++i) {
-		int32_t ch = read_char(fd, line_no, col_no);
-
-		if (UNLIKELY(ch == EOF)) {
-			return false;
-		}
-
-		((char *)buffer)[i] = (char)ch;
-	}
-
-	return true;
-}
-
-///
-/// Reads the given number of characters from the given file descriptor and base-64 decodes them.
-///
-/// @param fd       The file descriptor.
-/// @param line_no  The current line number.
-/// @param col_no   The current column number.
-/// @param buffer   The output buffer for the decoded bytes.
-/// @param size     The number of characters to be read. Note that this is not the size of the
-///                 output buffer. This is the number of base-64 characters. The output buffer,
-///                 however, receives the decoded bytes and thus is smaller.
-/// @param b64c     The base-64 context to be used for decoding.
-///
-/// @result         `true`, if successful.
-///
-static inline bool
-read_block_dec(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
-		void *buffer, size_t size, b64_context *b64c)
-{
-	for (size_t i = 0; i < size; ++i) {
-		int32_t ch = read_char_dec(fd, line_no, col_no, b64c);
-
-		if (UNLIKELY(ch == EOF)) {
-			return false;
-		}
-
-		((char *)buffer)[i] = (char)ch;
-	}
-
-	return true;
-}
+/*
+ * Joins a list of n_ops exp_component_t*'s with the given as_exp_ops operation,
+ * returning the resulting compiled expression.
+ *
+ * Returns (as_exp*) -1 on error, since NULL is a valid return value for lists of
+ * no expressions.
+ */
+as_exp* exp_component_join_and_compile(as_exp_ops join_op, uint32_t n_ops,
+		exp_component_t** components);
 

@@ -24,8 +24,42 @@
 
 #pragma once
 
+//==========================================================
+// Includes.
+//
+
+#include <dirent.h>
+#include <getopt.h>
+#include <libgen.h>
+#include <math.h>
+#include <signal.h>
+#include <fcntl.h>
+#include <sys/statvfs.h>
+#include <sys/stat.h>
+
+#pragma GCC diagnostic ignored "-Wconversion"
+#pragma GCC diagnostic ignored "-Wsign-conversion"
+
+#include <citrusleaf/cf_atomic.h>
+#include <citrusleaf/cf_b64.h>
+#include <citrusleaf/cf_queue.h>
+#include <aerospike/aerospike_info.h>
+#include <aerospike/as_partition_filter.h>
+#include <aerospike/as_scan.h>
+
+#pragma GCC diagnostic warning "-Wconversion"
+#pragma GCC diagnostic warning "-Wsign-conversion"
+
 #include <io_proxy.h>
-#include <shared.h>
+#include <encode.h>
+#include <utils.h>
+
+
+//==========================================================
+// Typedefs & constants.
+//
+
+#define MAX_PARTITIONS 4096
 
 // Number of samples to take for the record size estimate.
 #define NUM_SAMPLES 10000
@@ -45,41 +79,6 @@
 #define MAX_UDF_FILES 1000
 
 /*
- * The interface exposed by the backup file format encoder.
- */
-typedef struct backup_encoder {
-	/*
-	 * Writes a record to the backup file.
-	 * @param fd       The file descriptor of the backup file.
-	 * @param compact  If true, don't use base-64 encoding on BLOB bin values.
-	 * @param rec      The record to be written.
-	 *
-	 * @result         `true`, if successful.
-	 */
-	bool (*put_record)(io_write_proxy_t *fd, bool compact, const as_record *rec);
-
-	/*
-	 * Writes a UDF file to the backup file.
-	 *
-	 * @param fd     The file descriptor of the backup file.
-	 * @param file   The UDF file to be written.
-	 *
-	 * @result       `true`, if successful.
-	 */
-	bool (*put_udf_file)(io_write_proxy_t *fd, const as_udf_file *file);
-
-	/*
-	 * Writes the specification of a secondary index to the backup file.
-	 *
-	 * @param fd     The file descriptor of the backup file.
-	 * @param index  The index specification to be written.
-	 *
-	 * @result       `true`, if successful.
-	 */
-	bool (*put_secondary_index)(io_write_proxy_t *fd, const index_param *index);
-} backup_encoder_t;
-
-/*
  * The global backup configuration and stats shared by all backup threads and the counter thread.
  */
 typedef struct backup_config {
@@ -90,6 +89,15 @@ typedef struct backup_config {
 	char *user;
 	char *password;
 
+	as_namespace ns;
+	bool no_bins;
+
+	// If resuming a backup, the state file being resumed from.
+	char* state_file;
+	// The path to the directory/file in which to place the backup state if one
+	// needs to be made.
+	char* state_file_dst;
+
 	as_vector set_list;
 	char* bin_list;
 	char* node_list;
@@ -97,15 +105,15 @@ typedef struct backup_config {
 	int64_t mod_before;
 	bool  ttl_zero;
 
-	as_config_tls tls;
-	char* tls_name;
+	// C client socket timeout/retry policies.
+	uint32_t socket_timeout;
+	uint32_t total_timeout;
+	uint32_t max_retries;
+	uint32_t retry_delay;
 
-	// The Aerospike client to be used for the node scans.
-	aerospike *as;
-	// The scan policy to be used for the node scans.
-	as_policy_scan *policy;
-	// The scan configuration to be used for the node scans.
-	as_scan *scan;
+	char* tls_name;
+	as_config_tls tls;
+
 	// When true, delete any files in the directory being backed up if in
 	// directory mode, or delete the file being backed up to if it already
 	// exists
@@ -132,6 +140,10 @@ typedef struct backup_config {
 	bool estimate;
 	// The B/s cap for throttling.
 	uint64_t bandwidth;
+	// The number of records to back up.
+	uint64_t max_records;
+	// Records-per-second bandwidth limiting.
+	uint32_t records_per_second;
 	// Excludes records from the backup.
 	bool no_records;
 	// Excludes secondary indexes from the backup.
@@ -140,33 +152,6 @@ typedef struct backup_config {
 	bool no_udfs;
 	// Start a new backup file when the current backup file crosses this size.
 	uint64_t file_limit;
-	// The file format encoder to be used for writing data to a backup file.
-	backup_encoder_t *encoder;
-	// The number of objects to be backed up. This can change during the backup,
-	// so it's just treated as an estimate.
-	uint64_t rec_count_estimate;
-	// The total number of records backed up so far.
-	cf_atomic64 rec_count_total;
-	// The total number of bytes written to the backup file(s) so far.
-	cf_atomic64 byte_count_total;
-	// When backing up to a directory, counts the number of backup files
-	// created
-	uint64_t file_count;
-
-	// The total number of records backed up in files that have already been
-	// written and closed.
-	cf_atomic64 rec_count_total_committed;
-	// The total number of bytes backed up in files that have already been
-	// written and closed.
-	cf_atomic64 byte_count_total_committed;
-	// The current limit for byte_count_total for throttling. This is
-	// periodically increased by the counter thread to raise the limit according
-	// to the bandwidth limit.
-	volatile uint64_t byte_count_limit;
-	// The number of secondary indexes backed up.
-	volatile uint32_t index_count;
-	// The number of UDF files backed up.
-	volatile uint32_t udf_count;
 	// Authentication mode
 	char *auth_mode;
 
@@ -177,22 +162,68 @@ typedef struct backup_config {
 
 	// custom b64-encoded filter expression to use in the scan calls
 	char *filter_exp;
-
-	// List of partition range filters (partition_range)
-	as_vector partition_ranges;
-	// List of digest filters (as_digest)
-	as_vector digests;
 } backup_config_t;
+
+typedef struct backup_status {
+	node_spec* node_specs;
+	uint32_t n_node_specs;
+
+	// The Aerospike client to be used for the node scans.
+	aerospike *as;
+	// The scan policy to be used for the node scans.
+	as_policy_scan *policy;
+	// The set to be backed up, if backing up a single set, otherwise "".
+	as_set set;
+	// If doing multi-set backup, the expression to use to select for the
+	// desired sets.
+	exp_component_t set_list_expr;
+
+	// The file format encoder to be used for writing data to a backup file.
+	backup_encoder_t encoder;
+	// The number of objects to be backed up. This can change during the backup,
+	// so it's just treated as an estimate.
+	uint64_t rec_count_estimate;
+	// The total number of records backed up so far.
+	uint64_t rec_count_total;
+	// The total number of bytes written to the backup file(s) so far.
+	uint64_t byte_count_total;
+	// When backing up to a directory, counts the number of backup files
+	// created
+	uint64_t file_count;
+
+	// The total number of records backed up in files that have already been
+	// written and closed.
+	uint64_t rec_count_total_committed;
+	// The total number of bytes backed up in files that have already been
+	// written and closed.
+	uint64_t byte_count_total_committed;
+	// The current limit for byte_count_total for throttling. This is
+	// periodically increased by the counter thread to raise the limit according
+	// to the bandwidth limit.
+	uint64_t byte_count_limit;
+	// The number of secondary indexes backed up.
+	volatile uint32_t index_count;
+	// The number of UDF files backed up.
+	volatile uint32_t udf_count;
+
+	// List of partition filters (as_partition_filter)
+	as_vector partition_filters;
+} backup_status_t;
 
 /*
  * The per partition filter information pushed to the job queue and picked up
  * by the backup threads.
  */
 typedef struct backup_thread_args {
-	// The global backup configuration and stats.
-	backup_config_t *conf;
+	// The global backup configuration.
+	const backup_config_t *conf;
+	// The global backup stats.
+	backup_status_t *status;
 	// Partition ranges/digest to be backed up. 
 	as_partition_filter filter;
+
+	// A queue of all completed backup jobs
+	cf_queue* complete_queue;
 
 	union {
 		// When backing up to a single file, the file descriptor of that file.
@@ -219,9 +250,14 @@ typedef struct backup_thread_args {
 typedef struct backup_job_context {
 	// Task description. 
 	char desc[128];
-	// The global backup configuration and stats. Copied from
-	// backup_thread_args.conf.
-	backup_config_t *conf;
+	// The global backup configuration.
+	const backup_config_t *conf;
+	// The global backup stats. Copied from backup_thread_args.status.
+	backup_status_t *status;
+	// The scan configuration to be used.
+	as_scan scan;
+	// Set if the backup job terminated a scan early for any reason.
+	bool interrupted;
 
 	union {
 		// When backing up to a single file, the file descriptor of that file.
@@ -235,6 +271,8 @@ typedef struct backup_job_context {
 
 	// The file descriptor of the current backup file for the current job.
 	io_write_proxy_t* fd;
+	// The name of the file opened in fd.
+	char* file_name;
 
 	// When backing up to a directory, counts the number of records in the
 	// current backup file for the current job.
@@ -263,12 +301,22 @@ typedef struct backup_job_context {
  */
 typedef struct queued_backup_fd {
 	io_write_proxy_t* fd;
+	char* file_name;
 	uint64_t rec_count_file;
 	uint64_t byte_count_file;
 } queued_backup_fd_t;
 
 
+//==========================================================
+// Public API.
+//
+
 extern int32_t backup_main(int32_t argc, char **argv);
 extern void backup_config_default(backup_config_t*);
 extern void backup_config_destroy(backup_config_t*);
+
+extern bool backup_status_init(backup_status_t*, const backup_config_t*);
+extern void backup_status_destroy(backup_status_t*);
+extern void backup_status_set_n_threads(backup_status_t*,
+		const backup_config_t* conf, uint32_t n_tasks, uint32_t n_threads);
 

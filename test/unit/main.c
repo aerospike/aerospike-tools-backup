@@ -28,6 +28,7 @@ main(void)
 
 	s = backup_conf_suite();
 	sr = srunner_create(s);
+	srunner_add_suite(sr, backup_state_suite());
     srunner_add_suite(sr, restore_conf_suite());
     srunner_add_suite(sr, io_proxy_suite());
 

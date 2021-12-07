@@ -172,6 +172,10 @@ restore_main(int32_t argc, char **argv)
 		{ "wait", no_argument, NULL, 'w' },
 		{ "services-alternate", no_argument, NULL, 'S' },
 		{ "timeout", required_argument, 0, 'T' },
+		{ "socket-timeout", required_argument, NULL, COMMAND_OPT_SOCKET_TIMEOUT },
+		{ "total-timeout", required_argument, NULL, COMMAND_OPT_TOTAL_TIMEOUT },
+		{ "max-retries", required_argument, NULL, COMMAND_OPT_MAX_RETRIES },
+		{ "retry-delay", required_argument, NULL, COMMAND_OPT_RETRY_DELAY },
 		{ NULL, 0, NULL, 0 }
 	};
 
@@ -504,6 +508,38 @@ restore_main(int32_t argc, char **argv)
 			}
 
 			conf.timeout = (uint32_t)tmp;
+			break;
+
+		case COMMAND_OPT_SOCKET_TIMEOUT:
+			if (!better_atoi(optarg, &tmp) || tmp > UINT_MAX) {
+				err("Invalid socket timeout value %s", optarg);
+				goto cleanup1;
+			}
+			conf.socket_timeout = (uint32_t) tmp;
+			break;
+
+		case COMMAND_OPT_TOTAL_TIMEOUT:
+			if (!better_atoi(optarg, &tmp) || tmp > UINT_MAX) {
+				err("Invalid total timeout value %s", optarg);
+				goto cleanup1;
+			}
+			conf.total_timeout = (uint32_t) tmp;
+			break;
+
+		case COMMAND_OPT_MAX_RETRIES:
+			if (!better_atoi(optarg, &tmp) || tmp > UINT_MAX) {
+				err("Invalid max retries value %s", optarg);
+				goto cleanup1;
+			}
+			conf.max_retries = (uint32_t) tmp;
+			break;
+
+		case COMMAND_OPT_RETRY_DELAY:
+			if (!better_atoi(optarg, &tmp) || tmp > UINT_MAX) {
+				err("Invalid retry delay value %s", optarg);
+				goto cleanup1;
+			}
+			conf.retry_delay = (uint32_t) tmp;
 			break;
 
 		case CONFIG_FILE_OPT_FILE:
@@ -1015,6 +1051,11 @@ restore_config_default(restore_config_t *conf)
 	conf->bandwidth = 0;
 	conf->tps = 0;
 	conf->timeout = TIMEOUT;
+
+	conf->socket_timeout = 10 * 1000;
+	conf->total_timeout = 0;
+	conf->max_retries = 0;
+	conf->retry_delay = 0;
 
 	memset(&conf->tls, 0, sizeof(as_config_tls));
 	conf->tls_name = NULL;
@@ -1620,8 +1661,11 @@ restore_thread_func(void *cont)
 
 		as_policy_write policy;
 		as_policy_write_init(&policy);
-		policy.base.total_timeout = ptc.conf->timeout;
-		policy.base.max_retries = 0;
+		policy.base.socket_timeout = ptc.conf->socket_timeout;
+		policy.base.total_timeout = ptc.conf->total_timeout > 0 ?
+			ptc.conf->total_timeout : ptc.conf->timeout;
+		policy.base.max_retries = ptc.conf->max_retries;
+		policy.base.sleep_between_retries = ptc.conf->retry_delay;
 
 		bool flag_ignore_rec_error = false;
 
@@ -2918,8 +2962,24 @@ usage(const char *name)
 	fprintf(stderr, "  -w, --wait\n");
 	fprintf(stderr, "                      Wait for restored secondary indexes to finish building.\n");
 	fprintf(stderr, "                      Wait for restored UDFs to be distributed across the cluster.\n");
-	fprintf(stderr, " -T TIMEOUT, --timeout=TIMEOUT\n");
+	fprintf(stderr, "  -T TIMEOUT, --timeout=TIMEOUT\n");
 	fprintf(stderr, "                      Set the timeout (ms) for commands. Default: 10000\n");
+	fprintf(stderr, "      --socket-timeout <ms>\n");
+	fprintf(stderr, "                      Socket timeout for write transactions in milliseconds.\n");
+	fprintf(stderr, "                      Default is 10 seconds.\n");
+	fprintf(stderr, "                      If this value is 0, its set to total-timeout. If both are 0,\n");
+	fprintf(stderr, "                      there is no socket idle time limit.\n");
+	fprintf(stderr, "      --total-timeout <ms>\n");
+	fprintf(stderr, "                      Total socket timeout for write transactions in milliseconds.\n");
+	fprintf(stderr, "                      If this value is 0 and --timeout is set, then the --timeout\n");
+	fprintf(stderr, "                      value is used as the write transaction timeout.\n");
+	fprintf(stderr, "                      Default is 0, i.e. no timeout.\n");
+	fprintf(stderr, "      --max-retries <n>\n");
+	fprintf(stderr, "                      Maximum number of retries before aborting the current write transaction.\n");
+	fprintf(stderr, "                      The default is 0.\n");
+	fprintf(stderr, "      --retry-delay <ms>\n");
+	fprintf(stderr, "                      The amount of time to sleep between retries of write transactions.\n");
+	fprintf(stderr, "                      Default is 0.\n\n");
 
 	fprintf(stderr, "\n\n");
 	fprintf(stderr, "Default configuration files are read from the following files in the given order:\n");

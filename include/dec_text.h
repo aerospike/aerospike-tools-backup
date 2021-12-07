@@ -24,9 +24,10 @@
 
 #pragma once
 
+#include <encode.h>
 #include <io_proxy.h>
-#include <shared.h>
 #include <restore.h>
+#include <utils.h>
 
 decoder_status text_parse(io_read_proxy_t *fd, bool legacy, as_vector *ns_vec,
 		as_vector *bin_vec, uint32_t *orig_line_no, as_record *rec,

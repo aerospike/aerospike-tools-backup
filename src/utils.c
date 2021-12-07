@@ -15,20 +15,30 @@
  * the License.
  */
 
+//==========================================================
+// Includes.
+//
+
 #include <utils.h>
 
+
+//==========================================================
+// Typedefs & constants.
+//
+
 #if defined __APPLE__
-#define MUTEX_INIT PTHREAD_RECURSIVE_MUTEX_INITIALIZER      ///< Mutex initializer on OS X.
+// Mutex initializer on OS X.
+#define MUTEX_INIT PTHREAD_RECURSIVE_MUTEX_INITIALIZER
 #else
-#define MUTEX_INIT PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP   ///< Mutex initializer on Linux.
+// Mutex initializer on Linux.
+#define MUTEX_INIT PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP
 #endif
 
-bool verbose = false;                                       ///< Enables verbose logging.
+// Enables verbose logging.
+bool verbose = false;                                       
 
-///
-/// Lookup table for base-64 decoding. Invalid characters yield 0xff. '=' (0x3d) yields 0x00 to
-/// make it a legal character.
-///
+// Lookup table for base-64 decoding. Invalid characters yield 0xff. '=' (0x3d) yields 0x00 to
+// make it a legal character.
 const uint8_t b64map[256] = {
 	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
 	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
@@ -48,96 +58,25 @@ const uint8_t b64map[256] = {
 	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff
 };
 
-///
-/// Determine the current thread's ID.
-///
-static pid_t
-thread_id(void)
-{
-#if !defined __APPLE__
-	return (pid_t)syscall(SYS_gettid);
-#elif MAC_OS_X_VERSION_MAX_ALLOWED < MAC_OS_X_VERSION_10_12
-	return (pid_t)syscall(SYS_thread_selfid);
-#else
-	uint64_t tid;
-	pthread_threadid_np(NULL, &tid);
-	return (pid_t)tid;
-#endif
-}
 
-///
-/// Central log function. Writes a single log message.
-///
-/// @param tag     The severity tag.
-/// @param prefix  A prefix to be prepended to the log message.
-/// @param format  The format string for the log message.
-/// @param args    The arguments for the log message, according to the format string.
-/// @param error   Indicates that errno information is to be added to the log message.
-///
-static void
-log_line(const char *tag, const char *prefix, const char *format, va_list args, bool error)
-{
-	char buffer[10000];
-	time_t now;
-	struct tm now_tm;
+//==========================================================
+// Forward Declarations.
+//
 
-	if ((now = time(NULL)) == (time_t)-1) {
-		fprintf(stderr, "Error while getting current time, error %d, %s\n", errno, strerror(errno));
-		exit(EXIT_FAILURE);
-	}
+static pid_t thread_id(void);
+static void log_line(const char *tag, const char *prefix, const char *format,
+		va_list args, bool error);
 
-	if (gmtime_r(&now, &now_tm) == NULL) {
-		fprintf(stderr, "Error while calculating GMT, error %d, %s\n", errno, strerror(errno));
-		exit(EXIT_FAILURE);
-	}
 
-	size_t index = 0;
-	size_t length = strftime(buffer + index, sizeof buffer, "%Y-%m-%d %H:%M:%S %Z ", &now_tm);
+//==========================================================
+// Public API.
+//
 
-	if (length == 0) {
-		fprintf(stderr, "Error while converting time to string, error %d, %s\n", errno,
-				strerror(errno));
-		exit(EXIT_FAILURE);
-	}
-
-	index += length;
-	length = (size_t)snprintf(buffer + index, sizeof buffer - index, "[%s] [%5d] %s", tag,
-			(int32_t)(thread_id() % 100000), prefix);
-	index += length;
-
-	length = (size_t)vsnprintf(buffer + index, sizeof buffer - index, format, args);
-	index += length;
-
-	if (index >= sizeof buffer) {
-		fprintf(stderr, "Buffer overflow while creating log message\n");
-		exit(EXIT_FAILURE);
-	}
-
-	if (error) {
-		length = (size_t)snprintf(buffer + index, sizeof buffer - index, " (error %d: %s)", errno,
-				strerror(errno));
-		index += length;
-
-		if (index >= sizeof buffer) {
-			fprintf(stderr, "Buffer overflow while creating log message\n");
-			exit(EXIT_FAILURE);
-		}
-	}
-
-	if (index >= sizeof buffer) {
-		fprintf(stderr, "Buffer overflow while creating log message\n");
-		exit(EXIT_FAILURE);
-	}
-
-	buffer[index] = 0;
-	fprintf(stderr, "%s\n", buffer);
-}
-
-///
-/// Logs a debug message.
-///
-/// @param format  The format string for the debug message.
-///
+/*
+ * Logs a debug message.
+ *
+ * @param format  The format string for the debug message.
+ */
 void
 ver(const char *format, ...)
 {
@@ -147,11 +86,11 @@ ver(const char *format, ...)
 	va_end(args);
 }
 
-///
-/// Logs an informational message.
-///
-/// @param format  The format string for the informational message.
-///
+/*
+ * Logs an informational message.
+ *
+ * @param format  The format string for the informational message.
+ */
 void
 inf(const char *format, ...)
 {
@@ -161,11 +100,11 @@ inf(const char *format, ...)
 	va_end(args);
 }
 
-///
-/// Logs an error message.
-///
-/// @param format  The format string for the error message.
-///
+/*
+ * Logs an error message.
+ *
+ * @param format  The format string for the error message.
+ */
 void
 err(const char *format, ...)
 {
@@ -175,11 +114,11 @@ err(const char *format, ...)
 	va_end(args);
 }
 
-///
-/// Logs an error message and includes errno information.
-///
-/// @param format  The format string for the error message.
-///
+/*
+ * Logs an error message and includes errno information.
+ *
+ * @param format  The format string for the error message.
+ */
 void
 err_code(const char *format, ...)
 {
@@ -189,13 +128,27 @@ err_code(const char *format, ...)
 	va_end(args);
 }
 
-///
-/// Hex dump helper function. Feeds a hex dump of the given data to the given function line by line.
-///
-/// @param data    The data to be dumped.
-/// @param len     The length of the data to be dumped.
-/// @param output  The output function to be invoked for every line of the hex dump.
-///
+/*
+ * returns a string representation of the boolean value
+ */
+const char*
+boolstr(bool val)
+{
+	static const char* str_vals[] = {
+		"false",
+		"true"
+	};
+	return str_vals[val != 0];
+}
+
+/*
+ * Hex dump helper function. Feeds a hex dump of the given data to the given
+ * function line by line.
+ *
+ * @param data    The data to be dumped.
+ * @param len     The length of the data to be dumped.
+ * @param output  The output function to be invoked for every line of the hex dump.
+ */
 static void
 hex_dump(const void *data, uint32_t len, void (*output)(const char *format, ...))
 {
@@ -223,48 +176,50 @@ hex_dump(const void *data, uint32_t len, void (*output)(const char *format, ...)
 	}
 }
 
-///
-/// Logs a debug hex dump of the given data.
-///
-/// @param data  The data to be dumped.
-/// @param len   The length of the data to be dumped.
-///
+/*
+ * Logs a debug hex dump of the given data.
+ *
+ * @param data  The data to be dumped.
+ * @param len   The length of the data to be dumped.
+ */
 void
 hex_dump_ver(const void *data, uint32_t len)
 {
 	hex_dump(data, len, ver);
 }
 
-///
-/// Logs an informational hex dump of the given data.
-///
-/// @param data  The data to be dumped.
-/// @param len   The length of the data to be dumped.
-///
+/*
+ * Logs an informational hex dump of the given data.
+ *
+ * @param data  The data to be dumped.
+ * @param len   The length of the data to be dumped.
+ */
 void
 hex_dump_inf(const void *data, uint32_t len)
 {
 	hex_dump(data, len, inf);
 }
 
-///
-/// Logs an error hex dump of the given data.
-///
-/// @param data  The data to be dumped.
-/// @param len   The length of the data to be dumped.
-///
+/*
+ * Logs an error hex dump of the given data.
+ *
+ * @param data  The data to be dumped.
+ * @param len   The length of the data to be dumped.
+ */
 void
 hex_dump_err(const void *data, uint32_t len)
 {
 	hex_dump(data, len, err);
 }
 
-
+/*
+ * Searches a vector of c strings and returns true if a match to str is found.
+ */
 bool
-str_vector_contains(as_vector* v, const char* str)
+str_vector_contains(const as_vector* v, const char* str)
 {
 	for (uint32_t i = 0; i < v->size; i++) {
-		const char* el = (const char*) as_vector_get(v, i);
+		const char* el = (const char*) as_vector_get((as_vector*) v, i);
 		if (strcmp(el, str) == 0) {
 			return true;
 		}
@@ -272,6 +227,10 @@ str_vector_contains(as_vector* v, const char* str)
 	return false;
 }
 
+/*
+ * Returns a string representation of a vector of c strings stored in a static
+ * buffer (i.e. this function is not reentrant).
+ */
 char*
 str_vector_tostring(as_vector* v)
 {
@@ -287,18 +246,18 @@ str_vector_tostring(as_vector* v)
 	return buf;
 }
 
-///
-/// Log callback for the Aerospike client library. Receives log messages from the Aerospike client
-/// and outputs them to our own log.
-///
-/// @param level   The severity level of the log message.
-/// @param func    The client library function that issued the log message.
-/// @param file    The source code file that contains the function.
-/// @param line    The source code line that issued the log message.
-/// @param format  The format string of the log message.
-///
-/// @result        Always `true`.
-///
+/*
+ * Log callback for the Aerospike client library. Receives log messages from the
+ * Aerospike client and outputs them to our own log.
+ *
+ * @param level   The severity level of the log message.
+ * @param func    The client library function that issued the log message.
+ * @param file    The source code file that contains the function.
+ * @param line    The source code line that issued the log message.
+ * @param format  The format string of the log message.
+ *
+ * @result        Always `true`.
+ */
 static bool
 log_callback(as_log_level level, const char *func, const char *file, uint32_t line,
 		const char *format, ...)
@@ -336,9 +295,9 @@ log_callback(as_log_level level, const char *func, const char *file, uint32_t li
 	return true;
 }
 
-///
-/// Enables the Aerospike client log.
-///
+/*
+ * Enables the Aerospike client log.
+ */
 void
 enable_client_log(void)
 {
@@ -346,9 +305,9 @@ enable_client_log(void)
 	as_log_set_callback(log_callback);
 }
 
-///
-/// A wrapper around `cf_malloc()` that exits on errors.
-///
+/*
+ * A wrapper around `cf_malloc()` that exits on errors.
+ */
 void *
 safe_malloc(size_t size)
 {
@@ -362,9 +321,9 @@ safe_malloc(size_t size)
 	return mem;
 }
 
-///
-/// A wrapper around `cf_strdup()` that exits on errors.
-///
+/*
+ * A wrapper around `cf_strdup()` that exits on errors.
+ */
 char *
 safe_strdup(const char *string)
 {
@@ -378,9 +337,9 @@ safe_strdup(const char *string)
 	return res;
 }
 
-///
-/// A wrapper around `pthread_mutex_lock()` that uses @ref mutex and that exits on errors.
-///
+/*
+ * A wrapper around `pthread_mutex_lock()` that uses @ref mutex and that exits on errors.
+ */
 void
 safe_lock(pthread_mutex_t* mutex)
 {
@@ -390,9 +349,9 @@ safe_lock(pthread_mutex_t* mutex)
 	}
 }
 
-///
-/// A wrapper around `pthread_mutex_unlock()` that uses @ref mutex and that exits on errors.
-///
+/*
+ * A wrapper around `pthread_mutex_unlock()` that uses @ref mutex and that exits on errors.
+ */
 void
 safe_unlock(pthread_mutex_t* mutex)
 {
@@ -402,9 +361,9 @@ safe_unlock(pthread_mutex_t* mutex)
 	}
 }
 
-///
-/// A version of `pthread_cond_wait()` that uses @ref mutex and that exits on errors.
-///
+/*
+ * A version of `pthread_cond_wait()` that uses @ref mutex and that exits on errors.
+ */
 void
 safe_wait(pthread_cond_t* cond, pthread_mutex_t* mutex)
 {
@@ -414,9 +373,9 @@ safe_wait(pthread_cond_t* cond, pthread_mutex_t* mutex)
 	}
 }
 
-///
-/// A version of `pthread_cond_broadcast()` that exits on errors.
-///
+/*
+ * A version of `pthread_cond_broadcast()` that exits on errors.
+ */
 void
 safe_signal(pthread_cond_t *cond)
 {
@@ -426,14 +385,14 @@ safe_signal(pthread_cond_t *cond)
 	}
 }
 
-///
-/// Turns a string of digits into an unsigned 64-bit value.
-///
-/// @param string  The string of digits.
-/// @param val     The output integer.
-///
-/// @result        `true`, if successful.
-///
+/*
+ * Turns a string of digits into an unsigned 64-bit value.
+ *
+ * @param string  The string of digits.
+ * @param val     The output integer.
+ *
+ * @result        `true`, if successful.
+ */
 bool
 better_atoi(const char *string, uint64_t *val)
 {
@@ -446,15 +405,15 @@ better_atoi(const char *string, uint64_t *val)
 	return *end == 0;
 }
 
-///
-/// Parses a "YYYY-MM-DD_HH:MM:SS" date and time string (local time) into nanoseconds
-/// since the epoch (GMT).
-///
-/// @param string  The date and time string.
-/// @param nanos   The nanoseconds passed since the epoch.
-///
-/// @result        `true`, if successful.
-///
+/*
+ * Parses a "YYYY-MM-DD_HH:MM:SS" date and time string (local time) into nanoseconds
+ * since the epoch (GMT).
+ *
+ * @param string  The date and time string.
+ * @param nanos   The nanoseconds passed since the epoch.
+ *
+ * @result        `true`, if successful.
+ */
 bool
 parse_date_time(const char *string, int64_t *nanos)
 {
@@ -531,16 +490,16 @@ parse_date_time(const char *string, int64_t *nanos)
 	return true;
 }
 
-///
-/// Converts the given nanoseconds since the epoch (GMT) into a "YYYY-MM-DD_HH:MM:SS"
-/// date and time string (local time).
-///
-/// @param nanos   The nanoseconds to be converted.
-/// @param buffer  The output buffer to receive the converted result.
-/// @param size    The size of the output buffer.
-///
-/// @result        `true`, if successful.
-///
+/*
+ * Converts the given nanoseconds since the epoch (GMT) into a "YYYY-MM-DD_HH:MM:SS"
+ * date and time string (local time).
+ *
+ * @param nanos   The nanoseconds to be converted.
+ * @param buffer  The output buffer to receive the converted result.
+ * @param size    The size of the output buffer.
+ *
+ * @result        `true`, if successful.
+ */
 bool
 format_date_time(int64_t nanos, char *buffer, size_t size)
 {
@@ -560,15 +519,37 @@ format_date_time(int64_t nanos, char *buffer, size_t size)
 	return true;
 }
 
-///
-/// '\'-escapes spaces and line feeds in a string. Used by the @ref escape() macro.
-///
-/// @param source  The string to be escaped.
-/// @param dest    The output buffer for the escaped string. May be `NULL` to determine the
-///                length of the escaped string.
-///
-/// @result        An esc_res, i.e., an (output buffer, length) pair.
-///
+/*
+ * returns true if the given timespec is in the future
+ */
+bool
+timespec_has_not_happened(struct timespec* ts)
+{
+#ifdef __APPLE__
+	// MacOS uses gettimeofday instead of the monotonic clock for timed waits on
+	// mutexes
+	struct timespec now;
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	TIMEVAL_TO_TIMESPEC(&tv, &now);
+#else
+	struct timespec now;
+	clock_gettime(CLOCK_MONOTONIC, &now);
+#endif /* __APPLE__ */
+
+	return now.tv_sec < ts->tv_sec ||
+		(now.tv_sec == ts->tv_sec && now.tv_nsec < ts->tv_nsec);
+}
+
+/*
+ * '\'-escapes spaces and line feeds in a string. Used by the @ref escape() macro.
+ *
+ * @param source  The string to be escaped.
+ * @param dest    The output buffer for the escaped string. May be `NULL` to determine the
+ *                length of the escaped string.
+ *
+ * @result        An esc_res, i.e., an (output buffer, length) pair.
+ */
 esc_res
 escape_space(const char *source, char *dest)
 {
@@ -599,15 +580,15 @@ escape_space(const char *source, char *dest)
 	return (esc_res){ dest, ++k };
 }
 
-///
-/// '\'-unescapes a string.
-///
-/// @param source  The string to be unescaped.
-/// @param dest    The output buffer for the unescaped string. May be `NULL` to determine the
-///                length of the unescaped string.
-///
-/// @result        An esc_res, i.e., an (output buffer, length) pair.
-///
+/*
+ * '\'-unescapes a string.
+ *
+ * @param source  The string to be unescaped.
+ * @param dest    The output buffer for the unescaped string. May be `NULL` to determine the
+ *                length of the unescaped string.
+ *
+ * @result        An esc_res, i.e., an (output buffer, length) pair.
+ */
 esc_res
 unescape_space(const char *source, char *dest)
 {
@@ -638,13 +619,13 @@ unescape_space(const char *source, char *dest)
 	return (esc_res){ dest, ++k };
 }
 
-///
-/// Removes space characters at the beginning and end of a string.
-///
-/// @param str  The string to be trimmed.
-///
-/// @result     A pointer to the beginning of the trimmed string.
-///
+/*
+ * Removes space characters at the beginning and end of a string.
+ *
+ * @param str  The string to be trimmed.
+ *
+ * @result     A pointer to the beginning of the trimmed string.
+ */
 char *
 trim_string(char *str)
 {
@@ -664,15 +645,15 @@ trim_string(char *str)
 	return str;
 }
 
-///
-/// Splits a string at the given split character into a vector of strings. Optionally trims
-/// the resulting parts.
-///
-/// @param str    The string to be split.
-/// @param split  The character to split at.
-/// @param trim   Requests trimming of the resulting parts.
-/// @param vec    The result vector to be populated.
-///
+/*
+ * Splits a string at the given split character into a vector of strings. Optionally trims
+ * the resulting parts.
+ *
+ * @param str    The string to be split.
+ * @param split  The character to split at.
+ * @param trim   Requests trimming of the resulting parts.
+ * @param vec    The result vector to be populated.
+ */
 void
 split_string(char *str, char split, bool trim, as_vector *vec)
 {
@@ -693,13 +674,13 @@ split_string(char *str, char split, bool trim, as_vector *vec)
 	}
 }
 
-///
-/// Pretty-prints the given number of seconds.
-///
-/// @param seconds  The number of seconds to be pretty-printed.
-/// @param buffer   The output buffer to receive the formatted result.
-/// @param size     The size of the output buffer.
-///
+/*
+ * Pretty-prints the given number of seconds.
+ *
+ * @param seconds  The number of seconds to be pretty-printed.
+ * @param buffer   The output buffer to receive the formatted result.
+ * @param size     The size of the output buffer.
+ */
 void
 format_eta(int32_t seconds, char *buffer, size_t size)
 {
@@ -745,16 +726,16 @@ format_eta(int32_t seconds, char *buffer, size_t size)
 	}
 }
 
-///
-/// Formats a character as a string. Unprintable characters use "\x..." notation.
-///
-/// For thread safety, this function uses a fixed number of static buffers based on the maximal
-/// number of threads.
-///
-/// @param ch  The character to be formatted.
-///
-/// @result    The string representing the character.
-///
+/*
+ * Formats a character as a string. Unprintable characters use "\x..." notation.
+ *
+ * For thread safety, this function uses a fixed number of static buffers based on the maximal
+ * number of threads.
+ *
+ * @param ch  The character to be formatted.
+ *
+ * @result    The string representing the character.
+ */
 char *
 print_char(int32_t ch)
 {
@@ -787,18 +768,292 @@ print_char(int32_t ch)
 	return buff[i];
 }
 
-///
-/// Obtains the node IDs of the cluster from the Aerospike client library. Optionally only
-/// considers user-specified nodes.
-///
-/// The first pass just counts the nodes, the second pass actually gets their IDs.
-///
-/// @param clust         The Aerospike cluster.
-/// @param node_specs    The IP addresses and ports of the user-specified nodes.
-/// @param n_node_specs  The number of user-specified nodes. Zero means "give me all cluster nodes."
-/// @param node_names    The created array of node IDs.
-/// @param n_node_names  The number of elements in the created array.
-///
+/*
+ * writes an integer to a file in a consistent format (regardless of machine
+ * endian-ness)
+ */
+bool
+write_int64(uint64_t val, FILE* fd)
+{
+	uint64_t rval = htobe64(val);
+	return fwrite(&rval, sizeof(rval), 1, fd) == 1;
+}
+
+/*
+ * writes an integer to a file in a consistent format (regardless of machine
+ * endian-ness)
+ */
+bool
+write_int32(uint32_t val, FILE* fd)
+{
+	uint32_t rval = htobe32(val);
+	return fwrite(&rval, sizeof(rval), 1, fd) == 1;
+}
+
+/*
+ * reads an integer from a file written using write_int64
+ */
+bool
+read_int64(uint64_t* val, FILE* fd)
+{
+	uint64_t rval;
+
+	if (fread(&rval, sizeof(rval), 1, fd) != 1) {
+		return false;
+	}
+
+	*val = be64toh(rval);
+
+	return true;
+}
+
+/*
+ * reads an integer from a file written using write_int64
+ */
+bool
+read_int32(uint32_t* val, FILE* fd)
+{
+	uint32_t rval;
+
+	if (fread(&rval, sizeof(rval), 1, fd) != 1) {
+		return false;
+	}
+
+	*val = be32toh(rval);
+
+	return true;
+}
+
+/*
+ * Reads a character from a file descriptor. Updates the current line and column
+ * number as well as
+ * the total number of read bytes.
+ *
+ * @param fd       The file descriptor to read from.
+ * @param line_no  The line number. `line_no[0]` is the current line, `line_no[1]`
+ *                 is the next line.
+ * @param col_no   The column number. `col_no[0]` is the current column,
+ *                 `col_no[1]` is the next column.
+ *
+ * @result         The read character on success, otherwise `EOF`.
+ */
+int32_t
+read_char(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no)
+{
+	line_no[0] = line_no[1];
+	col_no[0] = col_no[1];
+
+	int32_t ch = io_proxy_getc_unlocked(fd);
+
+	switch (ch) {
+		case EOF:
+			if (io_proxy_error(fd) != 0) {
+				err("Error while reading backup block (line %u, col %u)",
+						line_no[0], col_no[0]);
+				return EOF;
+			}
+
+			err("Unexpected end of file in backup block (line %u, col %u)",
+					line_no[0], col_no[0]);
+			return EOF;
+
+		case '\n':
+			++line_no[1];
+			col_no[1] = 1;
+			return ch;
+
+		default:
+			++col_no[1];
+			return ch;
+	}
+}
+
+/*
+ * Reads from a file descriptor, decodes base-64 data, and returns the next
+ * decoded byte. Updates the current line and column number as well as the total
+ * number of read bytes.
+ *
+ * The function reads 4 bytes at a time, decodes them into 3 bytes, buffers 2 of
+ * those 3 bytes, and returns the 1 remaining byte. Subsequent calls will read
+ * the 2 buffered bytes. After that, everything starts over.
+ *
+ * @param fd       The file descriptor to read from.
+ * @param line_no  The line number. `line_no[0]` is the current line,
+ *                 `line_no[1]` is the next line.
+ * @param col_no   The column number. `col_no[0]` is the current column,
+ *                 `col_no[1]` is the next column.
+ * @param bytes    Incremented, if a character was successfully read.
+ * @param b64c     The base-64 context used, for example, to store buffered
+ *                 bytes.
+ *
+ * @result         The decoded byte on success, otherwise `EOF`.
+ */
+int32_t
+read_char_dec(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
+		b64_context *b64c)
+{
+	if (LIKELY(b64c->index < 2)) {
+		return b64c->buffer[b64c->index++];
+	}
+
+	int32_t ch1 = read_char(fd, line_no, col_no);
+	int32_t ch2 = read_char(fd, line_no, col_no);
+	int32_t ch3 = read_char(fd, line_no, col_no);
+	int32_t ch4 = read_char(fd, line_no, col_no);
+
+	if (UNLIKELY(ch1 == EOF || ch2 == EOF || ch3 == EOF || ch4 == EOF)) {
+		err("Unexpected end of file in base-64 data");
+		return EOF;
+	}
+
+	if (UNLIKELY(ch4 == '=')) {
+		b64c->size += ch3 == '=' ? 1 : 2;
+	} else {
+		b64c->size += 3;
+	}
+
+	int32_t dig1 = b64map[ch1];
+	int32_t dig2 = b64map[ch2];
+	int32_t dig3 = b64map[ch3];
+	int32_t dig4 = b64map[ch4];
+
+	if (UNLIKELY(dig1 == 0xff || dig2 == 0xff || dig3 == 0xff || dig4 == 0xff)) {
+		err("Invalid base-64 character (%s, %s, %s, or %s at or before line %u, col %u)",
+				print_char(ch1), print_char(ch2), print_char(ch3), print_char(ch4),
+				line_no[0], col_no[0]);
+		return EOF;
+	}
+
+	b64c->buffer[0] = (uint8_t)((dig2 << 4) | (dig3 >> 2));
+	b64c->buffer[1] = (uint8_t)((dig3 << 6) | dig4);
+	b64c->index = 0;
+	return (dig1 << 2) | (dig2 >> 4);
+}
+
+int
+peek_char(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no)
+{
+	line_no[0] = line_no[1];
+	col_no[0] = col_no[1];
+
+	int32_t ch = io_proxy_peekc_unlocked(fd);
+
+	switch (ch) {
+	case EOF:
+		if (io_proxy_error(fd) != 0) {
+			err("Error while reading backup block (line %u, col %u)", line_no[0], col_no[0]);
+			return EOF;
+		}
+
+		err("Unexpected end of file in backup block (line %u, col %u)", line_no[0], col_no[0]);
+		return EOF;
+	}
+	return ch;
+}
+
+/*
+ * Expects the given character to be the next character read from the given file descriptor.
+ *
+ * @param fd       The file descriptor.
+ * @param line_no  The current line number.
+ * @param col_no   The current column number.
+ * @param ch       The expected character.
+ *
+ * @result         `true`, if successful.
+ */
+bool
+expect_char(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
+		int32_t ch)
+{
+	int32_t x = read_char(fd, line_no, col_no);
+
+	if (UNLIKELY(x == EOF)) {
+		return false;
+	}
+
+	if (UNLIKELY(x != ch)) {
+		err("Unexpected character %s in backup block (line %u, col %u), expected %s", print_char(x),
+				line_no[0], col_no[0], print_char(ch));
+		return false;
+	}
+
+	return true;
+}
+
+/*
+ * Reads the given number of bytes from the given file descriptor.
+ *
+ * @param fd       The file descriptor.
+ * @param line_no  The current line number.
+ * @param col_no   The current column number.
+ * @param buffer   The output buffer for the read bytes.
+ * @param size     The number of bytes to be read.
+ *
+ * @result         `true`, if successful.
+ */
+bool
+read_block(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
+		void *buffer, size_t size)
+{
+	for (size_t i = 0; i < size; ++i) {
+		int32_t ch = read_char(fd, line_no, col_no);
+
+		if (UNLIKELY(ch == EOF)) {
+			return false;
+		}
+
+		((char *)buffer)[i] = (char)ch;
+	}
+
+	return true;
+}
+
+/*
+ * Reads the given number of characters from the given file descriptor and
+ * base-64 decodes them.
+ *
+ * @param fd       The file descriptor.
+ * @param line_no  The current line number.
+ * @param col_no   The current column number.
+ * @param buffer   The output buffer for the decoded bytes.
+ * @param size     The number of characters to be read. Note that this is not
+ *                 the size of the output buffer. This is the number of base-64
+ *                 characters. The output buffer, however, receives the decoded
+ *                 bytes and thus is smaller.
+ * @param b64c     The base-64 context to be used for decoding.
+ *
+ * @result         `true`, if successful.
+ */
+bool
+read_block_dec(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
+		void *buffer, size_t size, b64_context *b64c)
+{
+	for (size_t i = 0; i < size; ++i) {
+		int32_t ch = read_char_dec(fd, line_no, col_no, b64c);
+
+		if (UNLIKELY(ch == EOF)) {
+			return false;
+		}
+
+		((char *)buffer)[i] = (char)ch;
+	}
+
+	return true;
+}
+
+/*
+ * Obtains the node IDs of the cluster from the Aerospike client library.
+ * Optionally only considers user-specified nodes.
+ *
+ * The first pass just counts the nodes, the second pass actually gets their IDs.
+ *
+ * @param clust         The Aerospike cluster.
+ * @param node_specs    The IP addresses and ports of the user-specified nodes.
+ * @param n_node_specs  The number of user-specified nodes. Zero means "give me
+ *                      all cluster nodes."
+ * @param node_names    The created array of node IDs.
+ * @param n_node_names  The number of elements in the created array.
+ */
 void
 get_node_names(as_cluster *clust, node_spec *node_specs, uint32_t n_node_specs,
 		char (**node_names)[][AS_NODE_NAME_SIZE], uint32_t *n_node_names)
@@ -878,19 +1133,19 @@ get_node_names(as_cluster *clust, node_spec *node_specs, uint32_t n_node_specs,
 	as_nodes_release(nodes);
 }
 
-///
-/// Retrieves the given info value from the given node, parses it, and feeds the resulting
-/// info key-value pairs to the given callback function.
-///
-/// @param as         The Aerospike client instance.
-/// @param value      The info value to be retrieved.
-/// @param node_name  The name of the node to be queried.
-/// @param context    The opaque user-specified context for the callback.
-/// @param callback   The callback to be invoked for each key-value pair.
-/// @param kv_split   Indicates an info response of the form "<k1>=<v1>[;<k2>=<v2>[;...]]".
-///
-/// @result          `true`, if successful.
-///
+/*
+ * Retrieves the given info value from the given node, parses it, and feeds the resulting
+ * info key-value pairs to the given callback function.
+ *
+ * @param as         The Aerospike client instance.
+ * @param value      The info value to be retrieved.
+ * @param node_name  The name of the node to be queried.
+ * @param context    The opaque user-specified context for the callback.
+ * @param callback   The callback to be invoked for each key-value pair.
+ * @param kv_split   Indicates an info response of the form "<k1>=<v1>[;<k2>=<v2>[;...]]".
+ *
+ * @result          `true`, if successful.
+ */
 bool
 get_info(aerospike *as, const char *value, const char *node_name, void *context,
 		info_callback callback, bool kv_split)
@@ -985,16 +1240,16 @@ cleanup0:
 	return res;
 }
 
-///
-/// Parses the given secondary index information string obtained from a cluster.
-///
-/// @param ns         The namespace that contains the secondary index.
-/// @param index_str  The information string to be parsed.
-/// @param index      The secondary index specification to be populated. The caller is responsible
-///                   for deallocating `index->path_vec`.
-///
-/// @result           `true`, if successful.
-///
+/*
+ * Parses the given secondary index information string obtained from a cluster.
+ *
+ * @param ns         The namespace that contains the secondary index.
+ * @param index_str  The information string to be parsed.
+ * @param index      The secondary index specification to be populated. The caller is responsible
+ *                   for deallocating `index->path_vec`.
+ *
+ * @result           `true`, if successful.
+ */
 bool
 parse_index_info(char *ns, char *index_str, index_param *index)
 {
@@ -1108,6 +1363,10 @@ cleanup0:
 	return res;
 }
 
+/*
+ * Turns a string list of comma-delimited set names and turns them into a vector
+ * of c strings.
+ */
 bool
 parse_set_list(as_vector* dst, const char* set_list)
 {
@@ -1206,4 +1465,159 @@ strchrnul(const char* s, int c_in)
 }
 
 #endif /* __APPLE__ */
+
+
+//==========================================================
+// Local helpers.
+//
+
+/*
+ * Determine the current thread's ID.
+ */
+static pid_t
+thread_id(void)
+{
+#if !defined __APPLE__
+	return (pid_t)syscall(SYS_gettid);
+#elif MAC_OS_X_VERSION_MAX_ALLOWED < MAC_OS_X_VERSION_10_12
+	return (pid_t)syscall(SYS_thread_selfid);
+#else
+	uint64_t tid;
+	pthread_threadid_np(NULL, &tid);
+	return (pid_t)tid;
+#endif
+}
+
+/*
+ * Central log function. Writes a single log message.
+ *
+ * @param tag     The severity tag.
+ * @param prefix  A prefix to be prepended to the log message.
+ * @param format  The format string for the log message.
+ * @param args    The arguments for the log message, according to the format string.
+ * @param error   Indicates that errno information is to be added to the log message.
+ */
+static void
+log_line(const char *tag, const char *prefix, const char *format, va_list args, bool error)
+{
+	char buffer[10000];
+	time_t now;
+	struct tm now_tm;
+
+	if ((now = time(NULL)) == (time_t)-1) {
+		fprintf(stderr, "Error while getting current time, error %d, %s\n", errno, strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+
+	if (gmtime_r(&now, &now_tm) == NULL) {
+		fprintf(stderr, "Error while calculating GMT, error %d, %s\n", errno, strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+
+	size_t index = 0;
+	size_t length = strftime(buffer + index, sizeof buffer, "%Y-%m-%d %H:%M:%S %Z ", &now_tm);
+
+	if (length == 0) {
+		fprintf(stderr, "Error while converting time to string, error %d, %s\n", errno,
+				strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+
+	index += length;
+	length = (size_t)snprintf(buffer + index, sizeof buffer - index, "[%s] [%5d] %s", tag,
+			(int32_t)(thread_id() % 100000), prefix);
+	index += length;
+
+	length = (size_t)vsnprintf(buffer + index, sizeof buffer - index, format, args);
+	index += length;
+
+	if (index >= sizeof buffer) {
+		fprintf(stderr, "Buffer overflow while creating log message\n");
+		exit(EXIT_FAILURE);
+	}
+
+	if (error) {
+		length = (size_t)snprintf(buffer + index, sizeof buffer - index, " (error %d: %s)", errno,
+				strerror(errno));
+		index += length;
+
+		if (index >= sizeof buffer) {
+			fprintf(stderr, "Buffer overflow while creating log message\n");
+			exit(EXIT_FAILURE);
+		}
+	}
+
+	if (index >= sizeof buffer) {
+		fprintf(stderr, "Buffer overflow while creating log message\n");
+		exit(EXIT_FAILURE);
+	}
+
+	buffer[index] = 0;
+	fprintf(stderr, "%s\n", buffer);
+}
+
+as_exp*
+exp_component_join_and_compile(as_exp_ops join_op, uint32_t n_ops,
+		exp_component_t** components)
+{
+	uint32_t n_set_ops = 0;
+	uint64_t total_size_bytes = 0;
+
+	for (uint32_t i = 0; i < n_ops; i++) {
+		exp_component_t* exp_comp = components[i];
+		total_size_bytes += exp_comp->size;
+		
+		if (exp_comp->expr != NULL) {
+			n_set_ops++;
+		}
+	}
+
+	if (n_set_ops == 0) {
+		// If nothing to be joined, return an empty expression (i.e. don't
+		// filter).
+		return NULL;
+	}
+
+	if (n_set_ops > 1) {
+		// Only if there is more than one expression in the list, we join with
+		// join_op
+		total_size_bytes += 2 * sizeof(as_exp_entry);
+	}
+
+	as_exp_entry* table = (as_exp_entry*) cf_malloc(total_size_bytes);
+	if (table == NULL) {
+		err("Unable to malloc %" PRIu64 " bytes for as_exp_entry table",
+				total_size_bytes);
+		return EXP_ERR;
+	}
+
+	uint64_t table_offset = 0;
+
+	if (n_set_ops > 1) {
+		table[table_offset++] = (as_exp_entry) { .op = join_op };
+	}
+
+	for (uint32_t i = 0; i < n_ops; i++) {
+		exp_component_t* exp_comp = components[i];
+
+		if (exp_comp->expr != NULL) {
+			memcpy(&table[table_offset], exp_comp->expr, exp_comp->size);
+			table_offset += exp_comp->size / sizeof(as_exp_entry);
+		}
+	}
+
+	if (n_set_ops > 1) {
+		table[table_offset++] = (as_exp_entry) { .op = _AS_EXP_CODE_END_OF_VA_ARGS };
+	}
+
+	as_exp* compiled_exp = as_exp_compile(table,
+			(uint32_t) (total_size_bytes / sizeof(as_exp_entry)));
+	if (compiled_exp == NULL) {
+		err("Failed to compile joined expression");
+		compiled_exp = EXP_ERR;
+	}
+
+	cf_free(table);
+	return compiled_exp;
+}
 

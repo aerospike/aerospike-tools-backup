@@ -23,22 +23,23 @@
  */
 #pragma once
 
- 
+
 //==========================================================
 // Includes.
 //
 
-#include <shared.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
 
 #include <openssl/aes.h>
 
 #include <zstd.h>
 
- 
+
 //==========================================================
 // Typedefs & Constants.
 //
-
 
 /*
  * number of encrypt blocks to buffer (to make one large encrypt call rather
@@ -82,6 +83,19 @@
  * the size in bytes of the buffer used by io_proxy_printf
  */
 #define IO_PROXY_PRINTF_BUFFER_SIZE 1024
+
+/*
+ * Indicates that the io proxy was loaded from a file and should be
+ * deserialized. If encryption is enabled,
+ */
+#define IO_PROXY_DESERIALIZE 0x80
+
+/*
+ * Flags that must be set after an io proxy is deserialized from a file. The
+ * rest are set automatically
+ */
+#define IO_PROXY_INIT_FLAGS \
+	(IO_PROXY_COMPRESS_MASK | IO_PROXY_ENCRYPT_MASK | IO_PROXY_ALWAYS_BUFFER)
 
 
 /*
@@ -155,6 +169,10 @@ typedef struct io_proxy_s {
 
 	// where the option flags are stored
 	uint8_t flags;
+	// only used when deserializing an io_proxy from a file, compared against
+	// flags when being fully initialized to verify that they match exactly
+	// (otherwise initialization was done incorrectly)
+	uint8_t deserialized_flags;
 	// set to true when the read/write buffers have been initialized and the
 	// encryption IV has been stored/retrieved
 	uint8_t initialized;
@@ -186,11 +204,32 @@ typedef struct io_proxy_s {
 	};
 } io_proxy_t;
 
-
 typedef io_proxy_t io_write_proxy_t;
 typedef io_proxy_t io_read_proxy_t;
 
- 
+
+/*
+ * The struct used to serialize an io_proxy to a file, only containing data
+ * necessary to fully reconstruct the io_proxy.
+ */
+typedef struct io_proxy_serial_s {
+	uint64_t byte_cnt;
+
+	union {
+		uint64_t raw_byte_cnt;
+		uint64_t parsed_byte_cnt;
+	};
+
+	uint32_t num;
+	uint8_t flags;
+
+	/*
+	 * The current value of the IV.
+	 */
+	uint8_t iv[AES_BLOCK_SIZE];
+} io_proxy_serial_t;
+
+
 //==========================================================
 // Public API.
 //
@@ -211,13 +250,34 @@ void encryption_key_free(encryption_key_t*);
 
 
 /*
- * initiazes io read/write proxies wrapping the given file. These functions by
+ * initiazes io read/write proxies wrapping a file. These functions by
  * default set the proxies with encryption and compression disabled
  *
  * returns 0 on success and < 0 on failure
  */
 int io_write_proxy_init(io_write_proxy_t*, FILE* file);
 int io_read_proxy_init(io_read_proxy_t*, FILE* file);
+
+/*
+ * Fully initializes the io proxy (must be called after encryption/compression
+ * have been set up).
+ */
+int io_proxy_initialize(io_write_proxy_t*);
+
+/*
+ * Serializes an io_proxy into file, returning 0 on success and < 0 on failure.
+ */
+int io_proxy_serialize(const io_proxy_t*, FILE* dst);
+
+/*
+ * Deserializes an io_proxy from the file, fully initializing the io_proxy.
+ *
+ * fd is the file to be proxied, src is where the serialized io_proxy is read
+ * from.
+ *
+ * Returns 0 on success and < 0 on failure.
+ */
+int io_proxy_deserialize(io_proxy_t*, FILE* fd, FILE* src);
 
 /*
  * sets the IO_PROXY_ALWAYS_BUFFER flag
