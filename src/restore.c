@@ -175,6 +175,8 @@ restore_main(int32_t argc, char **argv)
 		{ "socket-timeout", required_argument, NULL, COMMAND_OPT_SOCKET_TIMEOUT },
 		{ "total-timeout", required_argument, NULL, COMMAND_OPT_TOTAL_TIMEOUT },
 		{ "max-retries", required_argument, NULL, COMMAND_OPT_MAX_RETRIES },
+		{ "sleep-between-retries", required_argument, NULL, COMMAND_OPT_RETRY_DELAY },
+		// support the `--retry-delay` option until a major version bump.
 		{ "retry-delay", required_argument, NULL, COMMAND_OPT_RETRY_DELAY },
 		{ NULL, 0, NULL, 0 }
 	};
@@ -2977,7 +2979,7 @@ usage(const char *name)
 	fprintf(stderr, "      --max-retries <n>\n");
 	fprintf(stderr, "                      Maximum number of retries before aborting the current write transaction.\n");
 	fprintf(stderr, "                      The default is 0.\n");
-	fprintf(stderr, "      --retry-delay <ms>\n");
+	fprintf(stderr, "      --sleep-between-retries <ms>\n");
 	fprintf(stderr, "                      The amount of time to sleep between retries of write transactions.\n");
 	fprintf(stderr, "                      Default is 0.\n\n");
 
