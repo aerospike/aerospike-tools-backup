@@ -1059,13 +1059,13 @@ backup_main(int32_t argc, char **argv)
 		}
 	}
 
-	if (backup_state != NULL) {
+	if (backup_state != NULL && backup_state != BACKUP_STATE_ABORTED) {
 		backup_state_free(backup_state);
 		cf_free(backup_state);
 		backup_state = NULL;
 	}
 
-	{
+	if (!conf.estimate) {
 		char* state_file_loc = gen_backup_state_file_path(&conf);
 
 		if (state_file_loc == NULL && !conf.estimate) {
@@ -1803,8 +1803,10 @@ stop(void)
 {
 	pthread_mutex_lock(&g_stop_lock);
 
-	// try initializing the backup file, which may have already been done
-	init_backup_state_file();
+	if (!g_conf->estimate) {
+		// try initializing the backup file, which may have already been done
+		init_backup_state_file();
+	}
 
 	// sets the stop variable
 	as_store_uint8((uint8_t*) &g_stop, 1);
@@ -1823,12 +1825,14 @@ stop_nolock(void)
 {
 	bool was_locked = (pthread_mutex_trylock(&g_stop_lock) == 0);
 
-	// this may induce a race condition on initializing the backup file if
-	// the stop lock mutex is not acquired (which we can't safely wait on in
-	// an interrupt context without risk of deadlock), though the worst that
-	// can happen is merely a memory leak of one of the backup state file
-	// objects
-	init_backup_state_file();
+	if (!g_conf->estimate) {
+		// this may induce a race condition on initializing the backup file if
+		// the stop lock mutex is not acquired (which we can't safely wait on in
+		// an interrupt context without risk of deadlock), though the worst that
+		// can happen is merely a memory leak of one of the backup state file
+		// objects
+		init_backup_state_file();
+	}
 
 	// sets the stop variable
 	as_store_uint8((uint8_t*) &g_stop, 1);
@@ -2421,11 +2425,15 @@ init_backup_state_file(void)
 	if (state == NULL) {
 		err("Unable to allocate %zu bytes for backup state struct",
 				sizeof(backup_state_t));
+		as_cas_uint64((uint64_t*) &g_backup_state, (uint64_t) NULL,
+				(uint64_t) BACKUP_STATE_ABORTED);
 		return false;
 	}
 
 	if (backup_state_init(state, backup_state_file) != 0) {
 		cf_free(state);
+		as_cas_uint64((uint64_t*) &g_backup_state, (uint64_t) NULL,
+				(uint64_t) BACKUP_STATE_ABORTED);
 		return false;
 	}
 
@@ -2651,7 +2659,6 @@ scan_callback(const as_val *val, void *cont)
 		if (*bjc->n_samples >= NUM_SAMPLES) {
 			inf("Backed up enough samples for estimate");
 			safe_unlock(&file_write_mutex);
-			bjc->interrupted = true;
 			return false;
 		}
 
@@ -3215,16 +3222,18 @@ close_file:
 		if (scan_ptr == NULL || scan_ptr->parts_all == NULL) {
 			// it's possible scan_ptr->parts_all == NULL and we haven't failed
 			// if no_records is set
-			if (has_stopped()) {
+			if (!bjc.conf->estimate && has_stopped()) {
 				save_job_state(&args);
 			}
 		}
-		else if (has_stopped()) {
+		else if (!bjc.conf->estimate && has_stopped()) {
 			save_scan_state(scan_ptr->parts_all);
 		}
 		else if (!complete_job(args.complete_queue, &args)) {
 			stop();
-			save_scan_state(scan_ptr->parts_all);
+			if (!bjc.conf->estimate) {
+				save_scan_state(scan_ptr->parts_all);
+			}
 		}
 
 		if (args.filter.parts_all != NULL) {
