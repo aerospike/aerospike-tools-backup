@@ -5,6 +5,7 @@ Tests the representation of bin names in backup files.
 """
 
 import lib
+from run_backup import backup_and_restore
 
 BIN_NAMES = lib.identifier_variations(14, False)
 
@@ -28,7 +29,7 @@ def test_bin_name():
 	"""
 	Test bin names.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		lambda context: put_bins(lib.SET, "key", BIN_NAMES, "foobar"),
 		None,
 		lambda context: check_bins(lib.SET, "key", BIN_NAMES, "foobar")

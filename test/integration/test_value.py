@@ -4,8 +4,10 @@
 Tests the representation of values in backup files.
 """
 
-import lib
 import aerospike
+
+import lib
+from run_backup import backup_and_restore
 
 STRING_VALUES = lib.identifier_variations(10, False)
 STRING_VALUES += lib.identifier_variations(100, False)
@@ -77,7 +79,7 @@ def test_string_value():
 	"""
 	Test string values.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		lambda context: put_values(lib.SET, "key", STRING_VALUES),
 		None,
 		lambda context: check_values(lib.SET, "key", STRING_VALUES)
@@ -87,7 +89,7 @@ def test_blob_value():
 	"""
 	Test BLOB values.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		lambda context: put_values(lib.SET, "key", BLOB_VALUES),
 		None,
 		lambda context: check_values(lib.SET, "key", BLOB_VALUES)
@@ -97,18 +99,18 @@ def test_blob_value_compact():
 	"""
 	Test BLOB values, pass --compact to backup.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		lambda context: put_values(lib.SET, "key", BLOB_VALUES),
 		None,
 		lambda context: check_values(lib.SET, "key", BLOB_VALUES),
-		["--compact"]
+		backup_opts=["--compact"]
 	)
 
 def test_boolean_value():
 	"""
 	Test boolean values.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		lambda context: put_values(lib.SET, "key", BOOLEAN_VALUES),
 		None,
 		lambda context: check_values(lib.SET, "key", BOOLEAN_VALUES)
@@ -118,7 +120,7 @@ def test_integer_value():
 	"""
 	Test integer values.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		lambda context: put_values(lib.SET, "key", INTEGER_VALUES),
 		None,
 		lambda context: check_values(lib.SET, "key", INTEGER_VALUES)
@@ -128,7 +130,7 @@ def test_double_value():
 	"""
 	Test double values.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		lambda context: put_values(lib.SET, "key", DOUBLE_VALUES),
 		None,
 		lambda context: check_values(lib.SET, "key", DOUBLE_VALUES)
@@ -138,7 +140,7 @@ def test_geo_value():
 	"""
 	Test geo values.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		lambda context: put_values(lib.SET, "key", GEO_VALUES),
 		None,
 		lambda context: check_values(lib.SET, "key", GEO_VALUES)
@@ -159,7 +161,7 @@ def test_map_value():
 
 		values.append(data)
 
-	lib.backup_and_restore(
+	backup_and_restore(
 		lambda context: put_values(lib.SET, "key", values),
 		None,
 		lambda context: check_values(lib.SET, "key", values)
@@ -170,7 +172,7 @@ def test_list_value():
 	Test list values. As they are BLOBs, we don't need that much variation
 	here.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		lambda context: put_values(lib.SET, "key", LIST_VALUES),
 		None,
 		lambda context: check_values(lib.SET, "key", LIST_VALUES)

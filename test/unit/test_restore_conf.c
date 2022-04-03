@@ -43,6 +43,7 @@ tmp_file_init(const char* cluster_args, const char* backup_args,
 	snprintf(file_contents_buf, n_bytes, file_contents, cluster_args,
 			backup_args, asadm_args);
 	fwrite(file_contents_buf, 1, n_bytes, f);
+	cf_free(file_contents_buf);
 	fclose(f);
 }
 
@@ -152,6 +153,7 @@ START_TEST(test_init_empty)
 
 	assert_restore_config_eq(&c1, &c2);
 
+	restore_config_destroy(&c2);
 	restore_config_destroy(&c1);
 }
 END_TEST
@@ -169,6 +171,7 @@ START_TEST(test_name) \
 	c2.field_name = true; \
 	assert_restore_config_eq(&c1, &c2); \
 	\
+	restore_config_destroy(&c2); \
 	restore_config_destroy(&c1); \
 } \
 END_TEST
@@ -190,6 +193,7 @@ START_TEST(test_name) \
 	c2.field_name = 314159lu * (mult); \
 	assert_restore_config_eq(&c1, &c2); \
 	\
+	restore_config_destroy(&c2); \
 	restore_config_destroy(&c1); \
 } \
 END_TEST
@@ -207,9 +211,11 @@ START_TEST(test_name) \
 	restore_config_default(&c2); \
 	\
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, false), 0); \
-	c2.field_name = str_val; \
+	cf_free(c2.field_name); \
+	c2.field_name = strdup(str_val); \
 	assert_restore_config_eq(&c1, &c2); \
 	\
+	restore_config_destroy(&c2); \
 	restore_config_destroy(&c1); \
 } \
 END_TEST
@@ -252,10 +258,11 @@ START_TEST(test_init_set_list)
 
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, false), 0);
 
-	c2.set_list = "set-1,set-2,set-3";
+	c2.set_list = strdup("set-1,set-2,set-3");
 
 	assert_restore_config_eq(&c1, &c2);
 
+	restore_config_destroy(&c2);
 	restore_config_destroy(&c1);
 }
 END_TEST
@@ -270,10 +277,11 @@ START_TEST(test_init_bin_list)
 
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, false), 0);
 
-	c2.bin_list = "bin-1,bin-2,bin-3";
+	c2.bin_list = strdup("bin-1,bin-2,bin-3");
 
 	assert_restore_config_eq(&c1, &c2);
 
+	restore_config_destroy(&c2);
 	restore_config_destroy(&c1);
 }
 END_TEST
@@ -288,10 +296,11 @@ START_TEST(test_init_ns_list)
 
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, false), 0);
 
-	c2.ns_list = "test";
+	c2.ns_list = strdup("test");
 
 	assert_restore_config_eq(&c1, &c2);
 
+	restore_config_destroy(&c2);
 	restore_config_destroy(&c1);
 }
 END_TEST
@@ -311,6 +320,7 @@ START_TEST(test_init_compress_mode)
 
 	assert_restore_config_eq(&c1, &c2);
 
+	restore_config_destroy(&c2);
 	restore_config_destroy(&c1);
 }
 END_TEST
@@ -329,6 +339,7 @@ START_TEST(test_init_encryption_mode)
 
 	assert_restore_config_eq(&c1, &c2);
 
+	restore_config_destroy(&c2);
 	restore_config_destroy(&c1);
 }
 END_TEST
@@ -497,11 +508,13 @@ START_TEST(test_init_encrypt_key_file)
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, false), 0);
 
 	c2.pkey = (encryption_key_t*) test_malloc(sizeof(encryption_key_t));
-	c2.pkey->data = data;
+	c2.pkey->data = cf_malloc(sizeof(data));
+	memcpy(c2.pkey->data, data, sizeof(data));
 	c2.pkey->len = 1190;
 
 	assert_restore_config_eq(&c1, &c2);
 
+	restore_config_destroy(&c2);
 	restore_config_destroy(&c1);
 }
 END_TEST
@@ -525,11 +538,13 @@ START_TEST(test_init_encryption_key_env)
 	unsetenv("TEST_ENCRYPT_KEY_ENV_VAR");
 
 	c2.pkey = (encryption_key_t*) test_malloc(sizeof(encryption_key_t));
-	c2.pkey->data = data;
+	c2.pkey->data = cf_malloc(sizeof(data));
+	memcpy(c2.pkey->data, data, sizeof(data));
 	c2.pkey->len = 16;
 
 	assert_restore_config_eq(&c1, &c2);
 
+	restore_config_destroy(&c2);
 	restore_config_destroy(&c1);
 }
 END_TEST
@@ -547,6 +562,7 @@ START_TEST(test_name) \
 	c2.field_name = true; \
 	assert_restore_config_eq(&c1, &c2); \
 	\
+	restore_config_destroy(&c2); \
 	restore_config_destroy(&c1); \
 } \
 END_TEST
@@ -568,6 +584,7 @@ START_TEST(test_name) \
 	c2.field_name = 314lu * (mult); \
 	assert_restore_config_eq(&c1, &c2); \
 	\
+	restore_config_destroy(&c2); \
 	restore_config_destroy(&c1); \
 } \
 END_TEST
@@ -585,9 +602,11 @@ START_TEST(test_name) \
 	restore_config_default(&c2); \
 	\
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, false), 0); \
-	c2.field_name = str_val; \
+	cf_free(c2.field_name); \
+	c2.field_name = strdup(str_val); \
 	assert_restore_config_eq(&c1, &c2); \
 	\
+	restore_config_destroy(&c2); \
 	restore_config_destroy(&c1); \
 } \
 END_TEST

@@ -5,6 +5,7 @@ Tests the representation of TTLs in backup files.
 """
 
 import lib
+from run_backup import backup_and_restore
 
 def put_ttl(key, ttl):
 	"""
@@ -30,7 +31,7 @@ def test_no_ttl():
 	"""
 	Test without a TTL.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		lambda context: put_ttl(0, None),
 		None,
 		lambda context: check_ttl(0, None)
@@ -40,7 +41,7 @@ def test_ttl():
 	"""
 	Test TTL without a delay.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		lambda context: put_ttl(1, 1000),
 		None,
 		lambda context: check_ttl(1, (900, 1000))
@@ -50,7 +51,7 @@ def test_ttl_delay_10():
 	"""
 	Test TTL with a 10 second delay.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		lambda context: put_ttl(2, 1000),
 		None,
 		lambda context: check_ttl(2, (0, 990)),
@@ -62,7 +63,7 @@ def test_ttl_expired():
 	Make sure that expired records are not restored. Works, because we prevent
 	asd from expiring records (low-water-pct set to 10).
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		lambda context: put_ttl(3, 5),
 		None,
 		lambda context: check_expired(3),

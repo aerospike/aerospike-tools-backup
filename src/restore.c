@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2021 Aerospike, Inc.
+ * Copyright 2015-2022 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -70,17 +70,16 @@ static void free_indexes(as_vector *index_vec);
 static bool check_set(char *set, as_vector *set_vec);
 static void * restore_thread_func(void *cont);
 static void * counter_thread_func(void *cont);
-static bool get_indexes_and_udfs(io_read_proxy_t* fd, as_vector *ns_vec, bool legacy,
-		restore_config_t *conf, uint32_t *line_no, as_vector *index_vec,
-		as_vector *udf_vec);
 static const char * print_set(const char *set);
 static bool compare_sets(const char *set1, const char *set2);
 static index_status check_index(aerospike *as, index_param *index, uint32_t timeout);
+static bool restore_index(aerospike *as, index_param *index,
+		as_vector *set_vec, restore_thread_args*, uint32_t timeout);
+static bool wait_index(index_param *index);
 static bool restore_indexes(aerospike *as, as_vector *index_vec, as_vector *set_vec,
-		volatile uint32_t *count, bool wait, uint32_t timeout);
-static bool restore_udfs(aerospike *as, as_vector *udf_vec, volatile uint32_t *count,
-		bool wait, uint32_t timeout);
-static bool get_backup_files(const char *dir_path, as_vector *file_vec);
+		restore_thread_args*, bool wait, uint32_t timeout);
+static bool restore_udf(aerospike *as, udf_param *udf, uint32_t timeout);
+static bool wait_udf(aerospike *as, udf_param *udf, uint32_t timeout);
 static bool parse_list(const char *which, size_t size, char *list, as_vector *vec);
 static void add_default_tls_host(as_config *as_conf, const char* tls_name);
 static void sig_hand(int32_t sig);
@@ -176,6 +175,11 @@ restore_main(int32_t argc, char **argv)
 		{ "total-timeout", required_argument, NULL, COMMAND_OPT_TOTAL_TIMEOUT },
 		{ "max-retries", required_argument, NULL, COMMAND_OPT_MAX_RETRIES },
 		{ "retry-delay", required_argument, NULL, COMMAND_OPT_RETRY_DELAY },
+
+		{ "s3-region", required_argument, NULL, COMMAND_OPT_S3_REGION },
+		{ "s3-profile", required_argument, NULL, COMMAND_OPT_S3_PROFILE },
+		{ "s3-endpoint-override", required_argument, NULL, COMMAND_OPT_S3_ENDPOINT_OVERRIDE },
+		{ "s3-max-async-downloads", required_argument, NULL, COMMAND_OPT_S3_MAX_ASYNC_DOWNLOADS },
 		{ NULL, 0, NULL, 0 }
 	};
 
@@ -266,7 +270,8 @@ restore_main(int32_t argc, char **argv)
 	while ((optcase = getopt_long(argc, argv, OPTIONS_SHORT, options, 0)) != -1) {
 		switch (optcase) {
 		case 'h':
-			conf.host = optarg;
+			cf_free(conf.host);
+			conf.host = safe_strdup(optarg);
 			break;
 
 		case 'p':
@@ -279,27 +284,28 @@ restore_main(int32_t argc, char **argv)
 			break;
 
 		case 'U':
-			conf.user = optarg;
+			conf.user = safe_strdup(optarg);
 			break;
 
 		case 'P':
+			cf_free(conf.password);
 			if (optarg) {
-				conf.password = optarg;
+				conf.password = safe_strdup(optarg);
 			} else {
 				if (optind < argc && NULL != argv[optind] && '-' != argv[optind][0] ) {
 					// space separated argument value
-					conf.password = argv[optind++];
+					conf.password = safe_strdup(argv[optind++]);
 				} else {
 					// No password specified should
 					// force it to default password
 					// to trigger prompt.
-					conf.password = DEFAULTPASSWORD;
+					conf.password = safe_strdup(DEFAULTPASSWORD);
 				}
 			}
 			break;
 
 		case 'A':
-			conf.auth_mode = optarg;
+			conf.auth_mode = safe_strdup(optarg);
 			break;
 
 		case 'n':
@@ -307,7 +313,7 @@ restore_main(int32_t argc, char **argv)
 			break;
 
 		case 'd':
-			conf.directory = optarg;
+			conf.directory = safe_strdup(optarg);
 			break;
 
 		case 'i':
@@ -364,10 +370,10 @@ restore_main(int32_t argc, char **argv)
 			break;
 
 		case 'v':
-			if (verbose) {
+			if (as_load_bool(&g_verbose)) {
 				enable_client_log();
 			} else {
-				verbose = true;
+				as_store_bool(&g_verbose, true);
 			}
 
 			break;
@@ -540,6 +546,25 @@ restore_main(int32_t argc, char **argv)
 				goto cleanup1;
 			}
 			conf.retry_delay = (uint32_t) tmp;
+
+		case COMMAND_OPT_S3_REGION:
+			conf.s3_region = strdup(optarg);
+			break;
+
+		case COMMAND_OPT_S3_PROFILE:
+			conf.s3_profile = strdup(optarg);
+			break;
+
+		case COMMAND_OPT_S3_ENDPOINT_OVERRIDE:
+			conf.s3_endpoint_override = strdup(optarg);
+			break;
+
+		case COMMAND_OPT_S3_MAX_ASYNC_DOWNLOADS:
+			if (!better_atoi(optarg, &tmp) || tmp == 0 || tmp > UINT_MAX) {
+				err("Invalid S3 max async downloads value %s", optarg);
+				goto cleanup1;
+			}
+			conf.s3_max_async_downloads = (uint32_t) tmp;
 			break;
 
 		case CONFIG_FILE_OPT_FILE:
@@ -580,6 +605,20 @@ restore_main(int32_t argc, char **argv)
 		goto cleanup1;
 	}
 
+	if (conf.s3_region != NULL) {
+		s3_set_region(conf.s3_region);
+	}
+
+	if (conf.s3_profile != NULL) {
+		s3_set_profile(conf.s3_profile);
+	}
+
+	if (conf.s3_endpoint_override != NULL) {
+		s3_set_endpoint(conf.s3_endpoint_override);
+	}
+
+	s3_set_max_async_downloads(conf.s3_max_async_downloads);
+
 	signal(SIGINT, sig_hand);
 	signal(SIGTERM, sig_hand);
 
@@ -587,7 +626,7 @@ restore_main(int32_t argc, char **argv)
 			conf.bin_list == NULL ? "[all]" : conf.bin_list,
 			conf.set_list == NULL ? "[all]" : conf.set_list,
 			conf.input_file != NULL ?
-					strcmp(conf.input_file, "-") == 0 ? "[stdin]" : conf.input_file :
+					file_proxy_is_std_path(conf.input_file) ? "[stdin]" : conf.input_file :
 					conf.directory);
 
 	FILE *mach_fd = NULL;
@@ -647,9 +686,7 @@ restore_main(int32_t argc, char **argv)
 	conf.as = &as;
 	as_error ae;
 
-	if (verbose) {
-		ver("Connecting to cluster");
-	}
+	ver("Connecting to cluster");
 
 	if (aerospike_connect(&as, &ae) != AEROSPIKE_OK) {
 		err("Error while connecting to %s:%d - code %d: %s at %s:%d", conf.host, conf.port, ae.code,
@@ -663,17 +700,20 @@ restore_main(int32_t argc, char **argv)
 
 	inf("Processing %u node(s)", n_node_names);
 	conf.estimated_bytes = 0;
-	cf_atomic64_set(&conf.total_bytes, 0);
-	cf_atomic64_set(&conf.total_records, 0);
-	cf_atomic64_set(&conf.expired_records, 0);
-	cf_atomic64_set(&conf.skipped_records, 0);
-	cf_atomic64_set(&conf.ignored_records, 0);
-	cf_atomic64_set(&conf.inserted_records, 0);
-	cf_atomic64_set(&conf.existed_records, 0);
-	cf_atomic64_set(&conf.fresher_records, 0);
-	cf_atomic64_set(&conf.backoff_count, 0);
-	conf.index_count = 0;
-	conf.udf_count = 0;
+	as_store_uint64(&conf.total_bytes, 0);
+	as_store_uint64(&conf.total_records, 0);
+	as_store_uint64(&conf.expired_records, 0);
+	as_store_uint64(&conf.skipped_records, 0);
+	as_store_uint64(&conf.ignored_records, 0);
+	as_store_uint64(&conf.inserted_records, 0);
+	as_store_uint64(&conf.existed_records, 0);
+	as_store_uint64(&conf.fresher_records, 0);
+	as_store_uint64(&conf.backoff_count, 0);
+	as_store_uint32(&conf.index_count, 0);
+	as_store_uint32(&conf.skipped_indexes, 0);
+	as_store_uint32(&conf.matched_indexes, 0);
+	as_store_uint32(&conf.mismatched_indexes, 0);
+	as_store_uint32(&conf.udf_count, 0);
 
 	pthread_t counter_thread;
 	counter_thread_args counter_args;
@@ -682,9 +722,7 @@ restore_main(int32_t argc, char **argv)
 	counter_args.n_node_names = n_node_names;
 	counter_args.mach_fd = mach_fd;
 
-	if (verbose) {
-		ver("Creating counter thread");
-	}
+	ver("Creating counter thread");
 
 	if (pthread_create(&counter_thread, NULL, counter_thread_func, &counter_args) != 0) {
 		err_code("Error while creating counter thread");
@@ -698,11 +736,17 @@ restore_main(int32_t argc, char **argv)
 	restore_args.shared_fd = NULL;
 	restore_args.line_no = NULL;
 	restore_args.legacy = false;
+
+	if (pthread_mutex_init(&restore_args.idx_udf_lock, NULL) != 0) {
+		err("Failed to initialize mutex lock");
+		goto cleanup5;
+	}
+
 	cf_queue *job_queue = cf_queue_create(sizeof (restore_thread_args), true);
 
 	if (job_queue == NULL) {
 		err_code("Error while allocating job queue");
-		goto cleanup5;
+		goto cleanup6;
 	}
 
 	uint32_t line_no;
@@ -718,23 +762,23 @@ restore_main(int32_t argc, char **argv)
 	if (conf.ns_list != NULL && !parse_list("namespace", AS_MAX_NAMESPACE_SIZE, conf.ns_list,
 			&ns_vec)) {
 		err("Error while parsing namespace list");
-		goto cleanup6;
+		goto cleanup7;
 	}
 
 	if (ns_vec.size > 2) {
 		err("Invalid namespace option");
-		goto cleanup6;
+		goto cleanup7;
 	}
 
 	if (conf.nice_list != NULL) {
 		if (!parse_list("nice", 10, conf.nice_list, &nice_vec)) {
 			err("Error while parsing nice list");
-			goto cleanup6;
+			goto cleanup7;
 		}
 
 		if (nice_vec.size != 2) {
 			err("Invalid nice option");
-			goto cleanup6;
+			goto cleanup7;
 		}
 
 		char *item0 = as_vector_get_ptr(&nice_vec, 0);
@@ -742,14 +786,14 @@ restore_main(int32_t argc, char **argv)
 
 		if (!better_atoi(item0, &tmp) || tmp < 1) {
 			err("Invalid bandwidth value %s", item0);
-			goto cleanup6;
+			goto cleanup7;
 		}
 
 		conf.bandwidth = tmp * 1024 * 1024;
 
 		if (!better_atoi(item1, &tmp) || tmp < 1 || tmp > 1000000000) {
 			err("Invalid TPS value %s", item1);
-			goto cleanup6;
+			goto cleanup7;
 		}
 
 		conf.tps = (uint32_t)tmp;
@@ -761,79 +805,48 @@ restore_main(int32_t argc, char **argv)
 	if (conf.bin_list != NULL && !parse_list("bin", AS_BIN_NAME_MAX_SIZE, conf.bin_list,
 			&bin_vec)) {
 		err("Error while parsing bin list");
-		goto cleanup6;
+		goto cleanup7;
 	}
 
 	if (conf.set_list != NULL && !parse_list("set", AS_SET_MAX_SIZE, conf.set_list, &set_vec)) {
 		err("Error while parsing set list");
-		goto cleanup6;
+		goto cleanup7;
 	}
 
 	restore_args.ns_vec = &ns_vec;
 	restore_args.bin_vec = &bin_vec;
 	restore_args.set_vec = &set_vec;
+	restore_args.index_vec = &index_vec;
+	restore_args.udf_vec = &udf_vec;
 
 	// restoring from a directory
 	if (conf.directory != NULL) {
 		if (!get_backup_files(conf.directory, &file_vec)) {
 			err("Error while getting backup files");
-			goto cleanup6;
+			goto cleanup7;
 		}
 
 		if (file_vec.size == 0) {
 			err("No backup files found");
-			goto cleanup6;
+			goto cleanup7;
 		}
 
-		if (!conf.no_indexes || !conf.no_udfs) {
-			if (verbose) {
-				ver("Triaging %u backup file(s)", file_vec.size);
-			}
+		if (!conf.no_records) {
+			ver("Triaging %u backup file(s)", file_vec.size);
 
 			for (uint32_t i = 0; i < file_vec.size; ++i) {
 				char *path = as_vector_get_ptr(&file_vec, i);
-				io_read_proxy_t fd;
-				bool first;
-				off_t size;
-				bool legacy;
-
-				if (!open_file(path, restore_args.ns_vec, &fd, &legacy,
-							&line_no, &first, &size, conf.compress_mode,
-							conf.encrypt_mode, conf.pkey)) {
-					err("Error while triaging backup file %s [1]", path);
+				off_t size = get_file_size(path);
+				if (size == -1) {
+					err("Failed to get the size of file %s", path);
 					goto cleanup7;
 				}
 
-				if (!conf.no_records) {
-					conf.estimated_bytes += size;
-				}
-
-				// backup file contains a META_FIRST_FILE tag, so it may contain secondary index
-				// information and UDF files
-				if (first) {
-					if (verbose) {
-						ver("Found first backup file: %s", path);
-					}
-
-					// read secondary index information and UDF files into index_vec and udf_vec
-					if (!get_indexes_and_udfs(&fd, restore_args.ns_vec, legacy, &conf, &line_no,
-							conf.no_indexes ? NULL : &index_vec, conf.no_udfs ? NULL : &udf_vec)) {
-						err("Error while reading index and UDF info from backup file %s", path);
-						close_file(&fd);
-						goto cleanup7;
-					}
-				}
-
-				if (!close_file(&fd)) {
-					err("Error while triaging backup file %s [2]", path);
-					goto cleanup8;
-				}
+				conf.estimated_bytes += size;
 			}
 		}
 
-		if (verbose) {
-			ver("Pushing %u exclusive job(s) to job queue", file_vec.size);
-		}
+		ver("Pushing %u exclusive job(s) to job queue", file_vec.size);
 
 		// push a job for each backup file
 		for (uint32_t i = 0; i < file_vec.size; ++i) {
@@ -861,20 +874,11 @@ restore_main(int32_t argc, char **argv)
 				conf.no_records ? NULL : &conf.estimated_bytes,
 				conf.compress_mode, conf.encrypt_mode, conf.pkey)) {
 			err("Error while opening shared backup file");
-			goto cleanup6;
-		}
-
-		if (verbose) {
-			ver("Pushing %u shared job(s) to job queue", conf.parallel);
-		}
-
-		// read secondary index information and UDF files into index_vec and udf_vec
-		if ((!conf.no_indexes || !conf.no_udfs) && !get_indexes_and_udfs(restore_args.shared_fd,
-				restore_args.ns_vec, restore_args.legacy, &conf, &line_no,
-				conf.no_indexes ? NULL : &index_vec, conf.no_udfs ? NULL : &udf_vec)) {
-			err("Error while reading index and UDF info from backup file %s", conf.input_file);
+			cf_free(restore_args.shared_fd);
 			goto cleanup7;
 		}
+
+		ver("Pushing %u shared job(s) to job queue", conf.parallel);
 
 		restore_args.line_no = &line_no;
 		restore_args.path = conf.input_file;
@@ -888,33 +892,17 @@ restore_main(int32_t argc, char **argv)
 		}
 	}
 
-	if (!conf.no_udfs && !restore_udfs(&as, &udf_vec, &conf.udf_count, conf.wait, conf.timeout)) {
-		err("Error while restoring UDFs to cluster");
-		goto cleanup8;
+	if (!conf.no_records) {
+		inf("Restoring records");
 	}
-
-	if (!conf.no_indexes && !conf.indexes_last &&
-			!restore_indexes(&as, &index_vec, &set_vec, &conf.index_count, conf.wait, conf.timeout)) {
-		err("Error while restoring secondary indexes to cluster");
-		goto cleanup8;
-	}
-
-	if (conf.no_records) {
-		res = EXIT_SUCCESS;
-		goto cleanup9;
-	}
-
-	inf("Restoring records");
 	uint32_t threads_ok = 0;
 
-	if (verbose) {
-		ver("Creating %u restore thread(s)", conf.parallel);
-	}
+	ver("Creating %u restore thread(s)", conf.parallel);
 
 	for (uint32_t i = 0; i < conf.parallel; ++i) {
 		if (pthread_create(&restore_threads[i], NULL, restore_thread_func, job_queue) != 0) {
 			err_code("Error while creating restore thread");
-			goto cleanup10;
+			goto cleanup9;
 		}
 
 		++threads_ok;
@@ -922,10 +910,8 @@ restore_main(int32_t argc, char **argv)
 
 	res = EXIT_SUCCESS;
 
-cleanup10:
-	if (verbose) {
-		ver("Waiting for %u restore thread(s)", threads_ok);
-	}
+cleanup9:
+	ver("Waiting for %u restore thread(s)", threads_ok);
 
 	void *thread_res;
 
@@ -937,26 +923,32 @@ cleanup10:
 		}
 
 		if (thread_res != (void *)EXIT_SUCCESS) {
-			if (verbose) {
-				ver("Restore thread failed");
-			}
+			ver("Restore thread failed");
 
 			res = EXIT_FAILURE;
 		}
 	}
 
-cleanup9:
-	if (res == EXIT_SUCCESS && !conf.no_indexes && conf.indexes_last &&
-			!restore_indexes(&as, &index_vec, &set_vec, &conf.index_count, conf.wait, conf.timeout)) {
+	if (res == EXIT_SUCCESS && !conf.no_indexes &&
+			!restore_indexes(&as, &index_vec, &set_vec, &restore_args, conf.wait, conf.timeout)) {
 		err("Error while restoring secondary indexes to cluster");
 		res = EXIT_FAILURE;
+	}
+
+	if (res == EXIT_SUCCESS && conf.wait) {
+		for (uint32_t i = 0; i < udf_vec.size; i++) {
+			udf_param* udf = as_vector_get(&udf_vec, i);
+			if (!wait_udf(&as, udf, conf.timeout)) {
+				err("Error while waiting for UDF upload");
+				res = EXIT_FAILURE;
+			}
+		}
 	}
 
 cleanup8:
 	free_indexes(&index_vec);
 	free_udfs(&udf_vec);
 
-cleanup7:
 	if (conf.directory != NULL) {
 		for (uint32_t i = 0; i < file_vec.size; ++i) {
 			cf_free(as_vector_get_ptr(&file_vec, i));
@@ -970,7 +962,7 @@ cleanup7:
 		cf_free(restore_args.shared_fd);
 	}
 
-cleanup6:
+cleanup7:
 	as_vector_destroy(&set_vec);
 	as_vector_destroy(&bin_vec);
 	as_vector_destroy(&nice_vec);
@@ -980,12 +972,13 @@ cleanup6:
 	as_vector_destroy(&file_vec);
 	cf_queue_destroy(job_queue);
 
+cleanup6:
+	pthread_mutex_destroy(&restore_args.idx_udf_lock);
+
 cleanup5:
 	stop();
 
-	if (verbose) {
-		ver("Waiting for counter thread");
-	}
+	ver("Waiting for counter thread");
 
 	if (pthread_join(counter_thread, NULL) != 0) {
 		err_code("Error while joining counter thread");
@@ -1010,9 +1003,9 @@ cleanup2:
 cleanup1:
 	restore_config_destroy(&conf);
 
-	if (verbose) {
-		ver("Exiting with status code %d", res);
-	}
+	file_proxy_cloud_shutdown();
+
+	ver("Exiting with status code %d", res);
 
 	return res;
 }
@@ -1020,12 +1013,17 @@ cleanup1:
 void
 restore_config_default(restore_config_t *conf)
 {
-	conf->host = DEFAULT_HOST;
+	conf->host = safe_strdup(DEFAULT_HOST);
 	conf->use_services_alternate = false;
 	conf->port = DEFAULT_PORT;
 	conf->user = NULL;
-	conf->password = DEFAULTPASSWORD;
+	conf->password = safe_strdup(DEFAULTPASSWORD);
 	conf->auth_mode = NULL;
+
+	conf->s3_region = NULL;
+	conf->s3_profile = NULL;
+	conf->s3_endpoint_override = NULL;
+	conf->s3_max_async_downloads = S3_DEFAULT_MAX_ASYNC_DOWNLOADS;
 
 	conf->parallel = DEFAULT_THREADS;
 	conf->nice_list = NULL;
@@ -1066,29 +1064,65 @@ restore_config_default(restore_config_t *conf)
 void
 restore_config_destroy(restore_config_t *conf)
 {
-	if (conf->pkey != NULL) {
-		encryption_key_free(conf->pkey);
-		cf_free(conf->pkey);
+	if (conf->host != NULL) {
+		cf_free(conf->host);
 	}
 
-	if (conf->set_list != NULL) {
-		cf_free(conf->set_list);
+	if (conf->user != NULL) {
+		cf_free(conf->user);
 	}
 
-	if (conf->bin_list != NULL) {
-		cf_free(conf->bin_list);
+	if (conf->password != NULL) {
+		cf_free(conf->password);
+	}
+
+	if (conf->auth_mode != NULL) {
+		cf_free(conf->auth_mode);
+	}
+
+	if (conf->s3_region != NULL) {
+		cf_free(conf->s3_region);
+	}
+
+	if (conf->s3_profile != NULL) {
+		cf_free(conf->s3_profile);
+	}
+
+	if (conf->s3_endpoint_override != NULL) {
+		cf_free(conf->s3_endpoint_override);
+	}
+
+	if (conf->nice_list != NULL) {
+		cf_free(conf->nice_list);
 	}
 
 	if (conf->ns_list != NULL) {
 		cf_free(conf->ns_list);
 	}
 
+	if (conf->directory != NULL) {
+		cf_free(conf->directory);
+	}
+
 	if (conf->input_file != NULL) {
 		cf_free(conf->input_file);
 	}
 
-	if (conf->nice_list != NULL) {
-		cf_free(conf->nice_list);
+	if (conf->machine != NULL) {
+		cf_free(conf->machine);
+	}
+
+	if (conf->bin_list != NULL) {
+		cf_free(conf->bin_list);
+	}
+
+	if (conf->set_list != NULL) {
+		cf_free(conf->set_list);
+	}
+
+	if (conf->pkey != NULL) {
+		encryption_key_free(conf->pkey);
+		cf_free(conf->pkey);
 	}
 
 	if (conf->tls_name != NULL) {
@@ -1158,6 +1192,8 @@ stop(void)
 	pthread_cond_broadcast(&g_stop_cond);
 
 	pthread_mutex_unlock(&g_stop_lock);
+
+	s3_disable_request_processing();
 }
 
 /*
@@ -1179,6 +1215,8 @@ stop_nolock(void)
 	if (was_locked) {
 		pthread_mutex_unlock(&g_stop_lock);
 	}
+
+	s3_disable_request_processing();
 }
 
 /*
@@ -1223,7 +1261,7 @@ update_file_pos(per_thread_context_t* ptc)
 	uint64_t diff = (uint64_t) pos - ptc->byte_count_file;
 
 	ptc->byte_count_file = (uint64_t) pos;
-	cf_atomic64_add(&ptc->conf->total_bytes, (int64_t) diff);
+	as_add_uint64(&ptc->conf->total_bytes, diff);
 
 	return 0;
 }
@@ -1239,36 +1277,18 @@ update_file_pos(per_thread_context_t* ptc)
 static bool
 close_file(io_read_proxy_t *fd)
 {
-	if (fd->fd == NULL) {
-		return true;
+	int ret = true;
+
+	ver("Closing backup file");
+
+	ver("Closing file descriptor");
+
+	if (io_proxy_close(fd) == EOF) {
+		err("Error while closing backup file");
+		ret = false;
 	}
 
-	if (verbose) {
-		ver("Closing backup file");
-	}
-
-	if (fd->fd == stdin) {
-		if (verbose) {
-			ver("Not closing stdin");
-		}
-
-		// not closing, but we still have to detach our I/O buffer, as we're going to free it
-		setlinebuf(stdin);
-	} else {
-		if (verbose) {
-			ver("Closing file descriptor");
-		}
-
-		FILE* _f = fd->fd;
-		io_proxy_free(fd);
-
-		if (fclose(_f) == EOF) {
-			err_code("Error while closing backup file");
-			return false;
-		}
-	}
-
-	return true;
+	return ret;
 }
 
 /*
@@ -1297,16 +1317,10 @@ open_file(const char *file_path, as_vector *ns_vec, io_read_proxy_t *fd,
 		off_t *size, compression_opt c_opt, encryption_opt e_opt,
 		encryption_key_t* pkey)
 {
-	FILE* _f;
+	ver("Opening backup file %s", file_path);
 
-	if (verbose) {
-		ver("Opening backup file %s", file_path);
-	}
-
-	if (strcmp(file_path, "-") == 0 || strncmp(file_path, "-:", 2) == 0) {
-		if (verbose) {
-			ver("Backup file is stdin");
-		}
+	if (file_proxy_is_std_path(file_path) || strncmp(file_path, "-:", 2) == 0) {
+		ver("Backup file is stdin");
 
 		if (size != NULL) {
 			if (strcmp(file_path, "-") == 0) {
@@ -1324,44 +1338,27 @@ open_file(const char *file_path, as_vector *ns_vec, io_read_proxy_t *fd,
 			}
 		}
 
-		_f = stdin;
+		if (io_read_proxy_init(fd, "-") != 0) {
+			return false;
+		}
 	}
 	else {
-		if (verbose) {
-			ver("Getting file descriptor");
+
+		if (io_read_proxy_init(fd, file_path) != 0) {
+			return false;
 		}
 
 		if (size != NULL) {
-			struct stat stat_buf;
-
-			if (stat(file_path, &stat_buf) < 0) {
-				err_code("Error while determining backup file size for %s", file_path);
-				return false;
-			}
-
-			*size = stat_buf.st_size;
-		}
-
-		if ((_f = fopen(file_path, "r")) == NULL) {
-			err_code("Error while opening backup file %s", file_path);
-			return false;
+			*size = file_proxy_get_size(&fd->file);
 		}
 
 		inf("Opened backup file %s", file_path);
 	}
 
-	io_read_proxy_init(fd, _f);
 	io_proxy_init_compression(fd, c_opt);
 	io_proxy_init_encryption(fd, pkey, e_opt);
 
-	if (verbose) {
-		ver("Validating backup file version");
-	}
-
-	// if restoring from stdin, always buffer even without compression/encryption
-	if (_f == stdin) {
-		io_proxy_always_buffer(fd);
-	}
+	ver("Validating backup file version");
 
 	bool res = false;
 	char version[13];
@@ -1491,9 +1488,7 @@ free_udf(udf_param *param)
 static void
 free_udfs(as_vector *udf_vec)
 {
-	if (verbose) {
-		ver("Freeing %u UDF file(s)", udf_vec->size);
-	}
+	ver("Freeing %u UDF file(s)", udf_vec->size);
 
 	for (uint32_t i = 0; i < udf_vec->size; ++i) {
 		udf_param *param = as_vector_get(udf_vec, i);
@@ -1529,9 +1524,7 @@ free_index(index_param *param)
 static void
 free_indexes(as_vector *index_vec)
 {
-	if (verbose) {
-		ver("Freeing %u index(es)", index_vec->size);
-	}
+	ver("Freeing %u index(es)", index_vec->size);
 
 	for (uint32_t i = 0; i < index_vec->size; ++i) {
 		index_param *param = as_vector_get(index_vec, i);
@@ -1587,18 +1580,14 @@ check_set(char *set, as_vector *set_vec)
 static void *
 restore_thread_func(void *cont)
 {
-	if (verbose) {
-		ver("Entering restore thread");
-	}
+	ver("Entering restore thread");
 
 	cf_queue *job_queue = cont;
 	void *res = (void *)EXIT_FAILURE;
 
 	while (true) {
 		if (has_stopped()) {
-			if (verbose) {
-				ver("Restore thread detected failure");
-			}
+			ver("Restore thread detected failure");
 
 			break;
 		}
@@ -1607,9 +1596,7 @@ restore_thread_func(void *cont)
 		int32_t q_res = cf_queue_pop(job_queue, &args, CF_QUEUE_NOWAIT);
 
 		if (q_res == CF_QUEUE_EMPTY) {
-			if (verbose) {
-				ver("Job queue is empty");
-			}
+			ver("Job queue is empty");
 
 			res = (void *)EXIT_SUCCESS;
 			break;
@@ -1638,9 +1625,7 @@ restore_thread_func(void *cont)
 
 		// restoring from a single backup file: use the provided shared file descriptor
 		if (ptc.conf->input_file != NULL) {
-			if (verbose) {
-				ver("Using shared file descriptor");
-			}
+			ver("Using shared file descriptor");
 
 			ptc.fd = ptc.shared_fd;
 		}
@@ -1672,16 +1657,12 @@ restore_thread_func(void *cont)
 		if (ptc.conf->replace) {
 			policy.exists = AS_POLICY_EXISTS_CREATE_OR_REPLACE;
 
-			if (verbose) {
-				ver("Existence policy is create or replace");
-			}
+			ver("Existence policy is create or replace");
 		} else if (ptc.conf->unique) {
 			policy.exists = AS_POLICY_EXISTS_CREATE;
 
-			if (verbose) {
-				ver("Existence policy is create");
-			}
-		} else if (verbose) {
+			ver("Existence policy is create");
+		} else {
 			ver("Existence policy is default");
 		}
 
@@ -1692,10 +1673,8 @@ restore_thread_func(void *cont)
 		if (!ptc.conf->no_generation) {
 			policy.gen = AS_POLICY_GEN_GT;
 
-			if (verbose) {
-				ver("Generation policy is greater-than");
-			}
-		} else if (verbose) {
+			ver("Generation policy is greater-than");
+		} else {
 			ver("Generation policy is default");
 		}
 
@@ -1724,11 +1703,11 @@ restore_thread_func(void *cont)
 				break;
 			}
 
-			cf_clock read_start = verbose ? cf_getus() : 0;
+			cf_clock read_start = as_load_bool(&g_verbose) ? cf_getus() : 0;
 			decoder_status res = ptc.conf->decoder->parse(ptc.fd, ptc.legacy,
 					ptc.ns_vec, ptc.bin_vec, ptc.line_no, &rec,
 					ptc.conf->extra_ttl, &expired, &index, &udf);
-			cf_clock read_time = verbose ? cf_getus() - read_start : 0;
+			cf_clock read_time = as_load_bool(&g_verbose) ? cf_getus() - read_start : 0;
 
 			// set the stop flag inside the critical section; see check above
 			if (res == DECODER_ERROR) {
@@ -1745,9 +1724,7 @@ restore_thread_func(void *cont)
 			}
 
 			if (res == DECODER_EOF) {
-				if (verbose) {
-					ver("End of backup file reached");
-				}
+				ver("End of backup file reached");
 
 				break;
 			}
@@ -1758,28 +1735,54 @@ restore_thread_func(void *cont)
 			}
 
 			if (res == DECODER_INDEX) {
-				if (verbose) {
+				if (args.conf->no_indexes) {
 					ver("Ignoring index block");
+					free_index(&index);
+					continue;
+				}
+				else if (!args.conf->indexes_last &&
+						!restore_index(args.conf->as, &index, ptc.set_vec,
+							&args, args.conf->timeout)) {
+					err("Error while restoring secondary index");
+					break;
 				}
 
-				free_index(&index);
+				pthread_mutex_lock(&args.idx_udf_lock);
+				as_vector_append(args.index_vec, &index);
+				pthread_mutex_unlock(&args.idx_udf_lock);
+
+				as_incr_uint32(&args.conf->index_count);
 				continue;
 			}
 
 			if (res == DECODER_UDF) {
-				if (verbose) {
+				if (args.conf->no_udfs) {
 					ver("Ignoring UDF file block");
+					free_udf(&udf);
+					continue;
+				}
+				else if (!restore_udf(args.conf->as, &udf, args.conf->timeout)) {
+					err("Error while restoring UDF");
+					break;
 				}
 
-				free_udf(&udf);
+				pthread_mutex_lock(&args.idx_udf_lock);
+				as_vector_append(args.udf_vec, &udf);
+				pthread_mutex_unlock(&args.idx_udf_lock);
+
+				as_incr_uint32(&args.conf->udf_count);
 				continue;
 			}
 
 			if (res == DECODER_RECORD) {
+				if (args.conf->no_records) {
+					break;
+				}
+
 				if (expired) {
-					cf_atomic64_incr(&ptc.conf->expired_records);
+					as_incr_uint64(&ptc.conf->expired_records);
 				} else if (rec.bins.size == 0 || !check_set(rec.key.set, ptc.set_vec)) {
-					cf_atomic64_incr(&ptc.conf->skipped_records);
+					as_incr_uint64(&ptc.conf->skipped_records);
 				} else {
 					useconds_t backoff = INITIAL_BACKOFF * 1000;
 					int32_t tries;
@@ -1788,10 +1791,10 @@ restore_thread_func(void *cont)
 						as_error ae;
 						policy.key = rec.key.valuep != NULL ? AS_POLICY_KEY_SEND :
 								AS_POLICY_KEY_DIGEST;
-						cf_clock store_start = verbose ? cf_getus() : 0;
+						cf_clock store_start = as_load_bool(&g_verbose) ? cf_getus() : 0;
 						as_status put = aerospike_key_put(ptc.conf->as, &ae, &policy, &rec.key,
 								&rec);
-						cf_clock now = verbose ? cf_getus() : 0;
+						cf_clock now = as_load_bool(&g_verbose) ? cf_getus() : 0;
 						cf_clock store_time = now - store_start;
 
 						bool do_retry = false;
@@ -1815,11 +1818,9 @@ restore_thread_func(void *cont)
 							case AEROSPIKE_ERR_RECORD_KEY_MISMATCH:
 							case AEROSPIKE_ERR_BIN_NAME:
 							case AEROSPIKE_ERR_ALWAYS_FORBIDDEN:
-								if (verbose) {
-									ver("Error while storing record - code %d: %s at %s:%d",
-											ae.code, ae.message, ae.file, ae.line);
-								}
-								cf_atomic64_incr(&ptc.conf->ignored_records);
+								ver("Error while storing record - code %d: %s at %s:%d",
+										ae.code, ae.message, ae.file, ae.line);
+								as_incr_uint64(&ptc.conf->ignored_records);
 
 								if (! flag_ignore_rec_error) {
 									stop();
@@ -1831,19 +1832,17 @@ restore_thread_func(void *cont)
 							// Conditional error based on input config. No
 							// retries.
 							case AEROSPIKE_ERR_RECORD_GENERATION:
-								cf_atomic64_incr(&ptc.conf->fresher_records);
+								as_incr_uint64(&ptc.conf->fresher_records);
 								break;
 
 							case AEROSPIKE_ERR_RECORD_EXISTS:
-								cf_atomic64_incr(&ptc.conf->existed_records);
+								as_incr_uint64(&ptc.conf->existed_records);
 								break;
 
 							case AEROSPIKE_OK:
-								if (verbose) {
-									print_stat(&ptc, &prev_log, &prev_records,
-											&now, &store_time, &read_time);
-								}
-								cf_atomic64_incr(&ptc.conf->inserted_records);
+								print_stat(&ptc, &prev_log, &prev_records,
+										&now, &store_time, &read_time);
+								as_incr_uint64(&ptc.conf->inserted_records);
 								break;
 
 							// All other cases attempt retry.
@@ -1859,11 +1858,9 @@ restore_thread_func(void *cont)
 
 								do_retry = true;
 
-								if (verbose) {
-									ver("Error while storing record - code %d: %s at %s:%d",
-											ae.code, ae.message, ae.file,
-											ae.line);
-								}
+								ver("Error while storing record - code %d: %s at %s:%d",
+										ae.code, ae.message, ae.file,
+										ae.line);
 
 								
 								// DEVICE_OVERLOAD error always retry with
@@ -1871,7 +1868,7 @@ restore_thread_func(void *cont)
 								if (put == AEROSPIKE_ERR_DEVICE_OVERLOAD) {
 									usleep(backoff);
 									backoff *= 2;
-									cf_atomic64_incr(&ptc.conf->backoff_count);
+									as_incr_uint64(&ptc.conf->backoff_count);
 								} else {
 									backoff = INITIAL_BACKOFF * 1000;
 									sleep_for(1);
@@ -1886,14 +1883,14 @@ restore_thread_func(void *cont)
 					}
 				}
 
-				cf_atomic64_incr(&ptc.conf->total_records);
+				as_incr_uint64(&ptc.conf->total_records);
 				as_record_destroy(&rec);
 
 				if (ptc.conf->bandwidth > 0 && ptc.conf->tps > 0) {
 					safe_lock(&limit_mutex);
 
-					while ((cf_atomic64_get(ptc.conf->total_bytes) >= ptc.conf->bytes_limit ||
-								cf_atomic64_get(ptc.conf->total_records) >= ptc.conf->records_limit) &&
+					while ((as_load_uint64(&ptc.conf->total_bytes) >= ptc.conf->bytes_limit ||
+								as_load_uint64(&ptc.conf->total_records) >= ptc.conf->records_limit) &&
 							!has_stopped()) {
 						safe_wait(&limit_cond, &limit_mutex);
 					}
@@ -1907,9 +1904,7 @@ restore_thread_func(void *cont)
 
 		// restoring from a single backup file: do nothing
 		if (ptc.conf->input_file != NULL) {
-			if (verbose) {
-				ver("Not closing shared file descriptor");
-			}
+			ver("Not closing shared file descriptor");
 
 			ptc.fd = NULL;
 		}
@@ -1925,16 +1920,12 @@ restore_thread_func(void *cont)
 	}
 
 	if (res != (void *)EXIT_SUCCESS) {
-		if (verbose) {
-			ver("Indicating failure to other threads");
-		}
+		ver("Indicating failure to other threads");
 
 		stop();
 	}
 
-	if (verbose) {
-		ver("Leaving restore thread");
-	}
+	ver("Leaving restore thread");
 
 	return res;
 }
@@ -1951,51 +1942,50 @@ restore_thread_func(void *cont)
 static void *
 counter_thread_func(void *cont)
 {
-	if (verbose) {
-		ver("Entering counter thread");
-	}
+	ver("Entering counter thread");
 
 	counter_thread_args *args = (counter_thread_args *)cont;
 	restore_config_t *conf = args->conf;
-	uint32_t iter = 0;
+
 	cf_clock prev_ms = cf_getms();
-	uint64_t prev_bytes = cf_atomic64_get(conf->total_bytes);
-	uint64_t prev_records = cf_atomic64_get(conf->total_records);
+
+	uint32_t iter = 0;
+	cf_clock print_prev_ms = prev_ms;
+	uint64_t prev_bytes = as_load_uint64(&conf->total_bytes);
+	uint64_t mach_prev_bytes = prev_bytes;
+	uint64_t prev_records = as_load_uint64(&conf->total_records);
 
 	while (true) {
 		sleep_for(1);
 		bool last_iter = has_stopped();
 
 		cf_clock now_ms = cf_getms();
-		uint64_t now_bytes = cf_atomic64_get(conf->total_bytes);
-		uint64_t now_records = cf_atomic64_get(conf->total_records);
+		uint32_t ms = (uint32_t)(now_ms - prev_ms);
+		prev_ms = now_ms;
+
+		uint64_t now_bytes = as_load_uint64(&conf->total_bytes);
+		uint64_t now_records = as_load_uint64(&conf->total_records);
+
+		uint64_t expired_records = as_load_uint64(&conf->expired_records);
+		uint64_t skipped_records = as_load_uint64(&conf->skipped_records);
+		uint64_t ignored_records = as_load_uint64(&conf->ignored_records);
+		uint64_t inserted_records = as_load_uint64(&conf->inserted_records);
+		uint64_t existed_records = as_load_uint64(&conf->existed_records);
+		uint64_t fresher_records = as_load_uint64(&conf->fresher_records);
+		uint64_t backoff_count = as_load_uint64(&conf->backoff_count);
+		uint32_t index_count = as_load_uint32(&conf->index_count);
+		uint32_t udf_count = as_load_uint32(&conf->udf_count);
 
 		int32_t percent = conf->estimated_bytes == 0 ? -1 :
 			(int32_t)(now_bytes * 100 / (uint64_t)conf->estimated_bytes);
-		uint32_t ms = (uint32_t)(now_ms - prev_ms);
-		uint64_t bytes = now_bytes - prev_bytes;
-		uint64_t records = now_records - prev_records;
-
-		int32_t eta = (bytes == 0 || conf->estimated_bytes == 0) ? -1 :
-				(int32_t)(((uint64_t)conf->estimated_bytes - now_bytes) * ms / bytes / 1000);
-		char eta_buff[ETA_BUF_SIZE];
-		format_eta(eta, eta_buff, sizeof eta_buff);
-
-		prev_ms = now_ms;
-		prev_bytes = now_bytes;
-		prev_records = now_records;
-
-		uint64_t expired_records = cf_atomic64_get(conf->expired_records);
-		uint64_t skipped_records = cf_atomic64_get(conf->skipped_records);
-		uint64_t ignored_records = cf_atomic64_get(conf->ignored_records);
-		uint64_t inserted_records = cf_atomic64_get(conf->inserted_records);
-		uint64_t existed_records = cf_atomic64_get(conf->existed_records);
-		uint64_t fresher_records = cf_atomic64_get(conf->fresher_records);
-		uint64_t backoff_count = cf_atomic64_get(conf->backoff_count);
-		uint32_t index_count = conf->index_count;
-		uint32_t udf_count = conf->udf_count;
 
 		if (last_iter || iter++ % 10 == 0) {
+			uint64_t bytes = now_bytes - prev_bytes;
+			uint64_t records = now_records - prev_records;
+
+			uint32_t ms = (uint32_t)(now_ms - print_prev_ms);
+			print_prev_ms = now_ms;
+
 			inf("%u UDF file(s), %u secondary index(es), %" PRIu64 " record(s) "
 					"(%" PRIu64 " KiB/s, %" PRIu64 " rec/s, %" PRIu64 " B/rec, backed off: "
 					"%" PRIu64 ")",
@@ -2010,9 +2000,17 @@ counter_thread_func(void *cont)
 					existed_records + fresher_records, existed_records,
 					fresher_records);
 
+			int32_t eta = (bytes == 0 || conf->estimated_bytes == 0) ? -1 :
+				(int32_t)(((uint64_t)conf->estimated_bytes - now_bytes) * ms / bytes / 1000);
+			char eta_buff[ETA_BUF_SIZE];
+			format_eta(eta, eta_buff, sizeof eta_buff);
+
 			if (percent >= 0 && eta >= 0) {
 				inf("%d%% complete, ~%s remaining", percent, eta_buff);
 			}
+
+			prev_bytes = now_bytes;
+			prev_records = now_records;
 		}
 
 		if (args->mach_fd != NULL) {
@@ -2021,10 +2019,19 @@ counter_thread_func(void *cont)
 				err_code("Error while writing machine-readable progress");
 			}
 
+			uint64_t bytes = now_bytes - mach_prev_bytes;
+
+			int32_t eta = (bytes == 0 || conf->estimated_bytes == 0) ? -1 :
+				(int32_t)(((uint64_t)conf->estimated_bytes - now_bytes) * ms / bytes / 1000);
+			char eta_buff[ETA_BUF_SIZE];
+			format_eta(eta, eta_buff, sizeof eta_buff);
+
 			if (eta >= 0 && (fprintf(args->mach_fd, "REMAINING:%s\n", eta_buff) < 0 ||
 					fflush(args->mach_fd) == EOF)) {
 				err_code("Error while writing machine-readable remaining time");
 			}
+
+			mach_prev_bytes = now_bytes;
 		}
 
 		safe_lock(&limit_mutex);
@@ -2055,96 +2062,9 @@ counter_thread_func(void *cont)
 		}
 	}
 
-	if (verbose) {
-		ver("Leaving counter thread");
-	}
+	ver("Leaving counter thread");
 
 	return (void *)EXIT_SUCCESS;
-}
-
-/*
- * Reads, parses, and returns the secondary index information and UDF files from the given
- * backup file descriptor.
- *
- * Assumes that the file pointer points to the beginning of the global section of the backup file.
- *
- * @param fd         The file descriptor to read from.
- * @param ns_vec     The (optional) source and (also optional) target namespace to be restored.
- * @param legacy     Indicates a version 3.0 backup file.
- * @param conf       The restore configuration.
- * @param line_no    The current line number.
- * @param index_vec  The secondary index information, as a vector of index_param.
- * @param udf_vec    The UDF files, as a vector of udf_param.
- *
- * @result           `true`, if successful.
- */
-static bool
-get_indexes_and_udfs(io_read_proxy_t* fd, as_vector *ns_vec, bool legacy, restore_config_t *conf,
-		uint32_t *line_no, as_vector *index_vec, as_vector *udf_vec)
-{
-	bool res = false;
-
-	if (verbose) {
-		ver("Parsing global index and UDF data (line %u)", *line_no);
-	}
-
-	while (true) {
-		int32_t ch = io_proxy_peekc_unlocked(fd);
-
-		if (ch == EOF) {
-			if (io_proxy_error(fd) != 0) {
-				err("Error while reading global data from backup file (line %u) [1]", *line_no);
-				goto cleanup1;
-			}
-
-			res = true;
-			goto cleanup0;
-		}
-
-		if (ch != GLOBAL_PREFIX[0]) {
-			res = true;
-			goto cleanup0;
-		}
-
-		index_param index;
-		udf_param udf;
-		decoder_status res = conf->decoder->parse(fd, legacy, ns_vec, NULL, line_no, NULL,
-				conf->extra_ttl, NULL, &index, &udf);
-
-		if (res == DECODER_ERROR || res == DECODER_EOF) {
-			err("Error while reading global data from backup file (line %u) [3]", *line_no);
-			goto cleanup1;
-		}
-
-		if (res == DECODER_INDEX) {
-			if (index_vec != NULL) {
-				as_vector_append(index_vec, &index);
-			} else {
-				free_index(&index);
-			}
-		} else if (res == DECODER_UDF) {
-			if (udf_vec != NULL) {
-				as_vector_append(udf_vec, &udf);
-			} else {
-				free_udf(&udf);
-			}
-		}
-	}
-
-	res = true;
-	goto cleanup0;
-
-cleanup1:
-	if (index_vec != NULL) {
-		free_indexes(index_vec);
-	}
-
-	if (udf_vec != NULL) {
-		free_udfs(udf_vec);
-	}
-
-cleanup0:
-	return res;
 }
 
 /*
@@ -2200,9 +2120,7 @@ compare_sets(const char *set1, const char *set2)
 static index_status
 check_index(aerospike *as, index_param *index, uint32_t timeout)
 {
-	if (verbose) {
-		ver("Checking index %s:%s:%s", index->ns, index->set, index->name);
-	}
+	ver("Checking index %s:%s:%s", index->ns, index->set, index->name);
 
 	index_status res = INDEX_STATUS_INVALID;
 
@@ -2237,9 +2155,7 @@ check_index(aerospike *as, index_param *index, uint32_t timeout)
 	}
 
 	if (info_str[0] == 0) {
-		if (verbose) {
-			ver("No secondary indexes");
-		}
+		ver("No secondary indexes");
 
 		res = INDEX_STATUS_ABSENT;
 		goto cleanup1;
@@ -2269,36 +2185,28 @@ check_index(aerospike *as, index_param *index, uint32_t timeout)
 	}
 
 	if (i == info_vec.size) {
-		if (verbose) {
-			ver("Index not found");
-		}
+		ver("Index not found");
 
 		res = INDEX_STATUS_ABSENT;
 		goto cleanup2;
 	}
 
 	if (!compare_sets(index->set, index2.set)) {
-		if (verbose) {
-			ver("Set mismatch, %s vs. %s", print_set(index->set), print_set(index2.set));
-		}
+		ver("Set mismatch, %s vs. %s", print_set(index->set), print_set(index2.set));
 
 		res = INDEX_STATUS_DIFFERENT;
 		goto cleanup3;
 	}
 
 	if (index->type != index2.type) {
-		if (verbose) {
-			ver("Type mismatch, %d vs. %d", (int32_t)index->type, (int32_t)index2.type);
-		}
+		ver("Type mismatch, %d vs. %d", (int32_t)index->type, (int32_t)index2.type);
 
 		res = INDEX_STATUS_DIFFERENT;
 		goto cleanup3;
 	}
 
 	if (index->path_vec.size != index2.path_vec.size) {
-		if (verbose) {
-			ver("Path count mismatch, %u vs. %u", index->path_vec.size, index2.path_vec.size);
-		}
+		ver("Path count mismatch, %u vs. %u", index->path_vec.size, index2.path_vec.size);
 
 		res = INDEX_STATUS_DIFFERENT;
 		goto cleanup3;
@@ -2309,18 +2217,14 @@ check_index(aerospike *as, index_param *index, uint32_t timeout)
 		path_param *path2 = as_vector_get((as_vector *)&index2.path_vec, i);
 
 		if (path1->type != path2->type) {
-			if (verbose) {
-				ver("Path type mismatch, %d vs. %d", (int32_t)path1->type, (int32_t)path2->type);
-			}
+			ver("Path type mismatch, %d vs. %d", (int32_t)path1->type, (int32_t)path2->type);
 
 			res = INDEX_STATUS_DIFFERENT;
 			goto cleanup3;
 		}
 
 		if (strcmp(path1->path, path2->path) != 0) {
-			if (verbose) {
-				ver("Path mismatch, %s vs. %s", path1->path, path2->path);
-			}
+			ver("Path mismatch, %s vs. %s", path1->path, path2->path);
 
 			res = INDEX_STATUS_DIFFERENT;
 			goto cleanup3;
@@ -2343,49 +2247,30 @@ cleanup0:
 	return res;
 }
 
-/*
- * Creates the given secondary indexes in the cluster.
- *
- * @param as         The Aerospike client.
- * @param index_vec  The secondary index information, as a vector of index_param.
- * @param set_vec    The sets to be restored.
- * @param count      The number of created secondary indexes.
- * @param wait       Makes the function wait until each secondary index is fully built.
- * @param timeout    The timeout for Aerospike command.
- *
- * @result           `true`, if successful.
- */
 static bool
-restore_indexes(aerospike *as, as_vector *index_vec, as_vector *set_vec, volatile uint32_t *count,
-		bool wait, uint32_t timeout)
+restore_index(aerospike *as, index_param *index, as_vector *set_vec,
+		restore_thread_args* args, uint32_t timeout)
 {
-	inf("Restoring %d secondary index(es)", index_vec->size);
-	int32_t skipped = 0;
-	int32_t matched = 0;
-	int32_t mismatched = 0;
+	path_param *path = as_vector_get(&index->path_vec, 0);
 
-	for (uint32_t i = 0; i < index_vec->size; ++i) {
-		index_param *index = as_vector_get(index_vec, i);
-		path_param *path = as_vector_get(&index->path_vec, 0);
+	if (!check_set(index->set, set_vec)) {
+		ver("Skipping index with unwanted set %s:%s:%s (%s)", index->ns, index->set,
+				index->name, path->path);
+		as_incr_uint32(&args->conf->skipped_indexes);
 
-		if (!check_set(index->set, set_vec)) {
-			if (verbose) {
-				ver("Skipping index with unwanted set %s:%s:%s (%s)", index->ns, index->set,
-						index->name, path->path);
-			}
+		index->task.as = as;
+		memcpy(index->task.ns, index->ns, sizeof(as_namespace));
+		memcpy(index->task.name, index->name, sizeof(index->task.name));
+		index->task.done = true;
+		return true;
+	}
 
-			++skipped;
-			continue;
-		}
+	ver("Restoring index %s:%s:%s (%s)", index->ns, index->set, index->name, path->path);
 
-		if (verbose) {
-			ver("Restoring index %s:%s:%s (%s)", index->ns, index->set, index->name, path->path);
-		}
+	as_index_type itype;
+	as_index_datatype dtype;
 
-		as_index_type itype;
-		as_index_datatype dtype;
-
-		switch (index->type) {
+	switch (index->type) {
 		default:
 		case INDEX_TYPE_INVALID:
 			err("Invalid index type");
@@ -2406,9 +2291,9 @@ restore_indexes(aerospike *as, as_vector *index_vec, as_vector *set_vec, volatil
 		case INDEX_TYPE_MAPVALUES:
 			itype = AS_INDEX_TYPE_MAPVALUES;
 			break;
-		}
+	}
 
-		switch (path->type) {
+	switch (path->type) {
 		default:
 		case PATH_TYPE_INVALID:
 			err("Invalid path type");
@@ -2425,39 +2310,38 @@ restore_indexes(aerospike *as, as_vector *index_vec, as_vector *set_vec, volatil
 		case PATH_TYPE_GEOJSON:
 			dtype = AS_INDEX_GEO2DSPHERE;
 			break;
+	}
+
+	as_policy_info policy;
+	as_policy_info_init(&policy);
+	policy.timeout = timeout;
+	as_error ae;
+
+	index_status orig_stat = check_index(as, index, timeout);
+	index_status stat = orig_stat;
+
+	if (stat == INDEX_STATUS_DIFFERENT) {
+		ver("Removing mismatched index %s:%s", index->ns, index->name);
+
+		if (aerospike_index_remove(as, &ae, &policy, index->ns, index->name) != AEROSPIKE_OK) {
+			err("Error while removing index %s:%s - code %d: %s at %s:%d", index->ns,
+					index->name, ae.code, ae.message, ae.file, ae.line);
+			return false;
 		}
 
-		as_policy_info policy;
-		as_policy_info_init(&policy);
-		policy.timeout = timeout;
-		as_error ae;
+		// aerospike_index_remove() is asynchronous. Check the index again, because AEROSPIKE_OK
+		// doesn't necessarily mean that the index is gone.
+		for (int32_t tries = 0; tries < MAX_TRIES; ++tries) {
+			sleep_for(1);
+			stat = check_index(as, index, timeout);
 
-		index_status stat = check_index(as, index, timeout);
-
-		if (stat == INDEX_STATUS_DIFFERENT) {
-			if (verbose) {
-				ver("Removing mismatched index %s:%s", index->ns, index->name);
-			}
-
-			if (aerospike_index_remove(as, &ae, &policy, index->ns, index->name) != AEROSPIKE_OK) {
-				err("Error while removing index %s:%s - code %d: %s at %s:%d", index->ns,
-						index->name, ae.code, ae.message, ae.file, ae.line);
-				return false;
-			}
-
-			// aerospike_index_remove() is asynchronous. Check the index again, because AEROSPIKE_OK
-			// doesn't necessarily mean that the index is gone.
-			for (int32_t tries = 0; tries < MAX_TRIES; ++tries) {
-				sleep_for(1);
-				stat = check_index(as, index, timeout);
-
-				if (stat != INDEX_STATUS_DIFFERENT) {
-					break;
-				}
+			if (stat != INDEX_STATUS_DIFFERENT) {
+				break;
 			}
 		}
+	}
 
-		switch (stat) {
+	switch (stat) {
 		default:
 			err("Unknown index status");
 			return false;
@@ -2471,49 +2355,89 @@ restore_indexes(aerospike *as, as_vector *index_vec, as_vector *set_vec, volatil
 			break;
 
 		case INDEX_STATUS_SAME:
-			if (verbose) {
-				ver("Skipping matched index %s:%s:%s (%s)", index->ns, index->set, index->name,
-						path->path);
+			ver("Skipping matched index %s:%s:%s (%s)", index->ns, index->set, index->name,
+					path->path);
+
+			if (orig_stat == INDEX_STATUS_DIFFERENT) {
+				as_incr_uint32(&args->conf->mismatched_indexes);
+			}
+			else {
+				as_incr_uint32(&args->conf->matched_indexes);
 			}
 
-			++matched;
-			continue;
+			index->task.as = as;
+			memcpy(index->task.ns, index->ns, sizeof(as_namespace));
+			memcpy(index->task.name, index->name, sizeof(index->task.name));
+			index->task.done = true;
+			return true;
 
 		case INDEX_STATUS_DIFFERENT:
 			err("Error while removing mismatched index %s:%s", index->ns, index->name);
-			++mismatched;
-			continue;
-		}
+			return false;
+	}
 
-		if (verbose) {
-			ver("Creating index %s:%s:%s (%s)", index->ns, index->set, index->name, path->path);
-		}
+	ver("Creating index %s:%s:%s (%s)", index->ns, index->set, index->name, path->path);
 
-		as_index_task task;
-
-		if (aerospike_index_create_complex(as, &ae, &task, &policy, index->ns,
+	if (aerospike_index_create_complex(as, &ae, &index->task, &policy, index->ns,
 				index->set[0] == 0 ? NULL : index->set, path->path, index->name, itype,
 				dtype) != AEROSPIKE_OK) {
-			err("Error while creating index %s:%s:%s (%s) - code %d: %s at %s:%d", index->ns,
-					index->set, index->name, path->path, ae.code, ae.message, ae.file, ae.line);
-			return false;
-		}
-
-		if (wait) {
-			if (verbose) {
-				ver("Waiting for index %s:%s:%s (%s)", index->ns, index->set, index->name,
-						path->path);
-			}
-
-			if (aerospike_index_create_wait(&ae, &task, 500) != AEROSPIKE_OK) {
-				err("Error while waiting for index %s:%s:%s (%s) - code %d: %s at %s:%d", index->ns,
-						index->set, index->name, path->path, ae.code, ae.message, ae.file, ae.line);
-				return false;
-			}
-		}
-
-		++(*count);
+		err("Error while creating index %s:%s:%s (%s) - code %d: %s at %s:%d", index->ns,
+				index->set, index->name, path->path, ae.code, ae.message, ae.file, ae.line);
+		return false;
 	}
+
+	return true;
+}
+
+static bool
+wait_index(index_param *index)
+{
+	as_error ae;
+	path_param *path = as_vector_get(&index->path_vec, 0);
+
+	ver("Waiting for index %s:%s:%s (%s)", index->ns, index->set, index->name,
+			path->path);
+
+	if (aerospike_index_create_wait(&ae, &index->task, 500) != AEROSPIKE_OK) {
+		err("Error while waiting for index %s:%s:%s (%s) - code %d: %s at %s:%d", index->ns,
+				index->set, index->name, path->path, ae.code, ae.message, ae.file, ae.line);
+		return false;
+	}
+
+	return true;
+}
+
+/*
+ * Creates the given secondary indexes in the cluster.
+ *
+ * @param as         The Aerospike client.
+ * @param index_vec  The secondary index information, as a vector of index_param.
+ * @param set_vec    The sets to be restored.
+ * @param args       The restore thread args struct.
+ * @param wait       Makes the function wait until each secondary index is fully built.
+ * @param timeout    The timeout for Aerospike command.
+ *
+ * @result           `true`, if successful.
+ */
+static bool
+restore_indexes(aerospike *as, as_vector *index_vec, as_vector *set_vec, restore_thread_args* args,
+		bool wait, uint32_t timeout)
+{
+	bool res = true;
+
+	if (args->conf->indexes_last) {
+		for (uint32_t i = 0; i < index_vec->size; ++i) {
+			index_param *index = as_vector_get(index_vec, i);
+
+			if (!restore_index(as, index, set_vec, args, timeout)) {
+				res = false;
+			}
+		}
+	}
+
+	uint32_t skipped = as_load_uint32(&args->conf->skipped_indexes);
+	uint32_t matched = as_load_uint32(&args->conf->matched_indexes);
+	uint32_t mismatched = as_load_uint32(&args->conf->mismatched_indexes);
 
 	if (skipped > 0) {
 		inf("Skipped %d index(es) with unwanted set(s)", skipped);
@@ -2527,183 +2451,60 @@ restore_indexes(aerospike *as, as_vector *index_vec, as_vector *set_vec, volatil
 		err("Skipped %d mismatched index(es)", mismatched);
 	}
 
-	return true;
-}
-
-/*
- * Creates the given UDF files in the cluster.
- *
- * @param as       The Aerospike client.
- * @param udf_vec  The UDF files, as a vector of udf_param.
- * @param count    The number of created UDF files.
- * @param wait     Makes the function wait until each UDF file is acknowledged by all cluster
- *                 nodes.
- * @param timeout  The timeout for Aerospike command.
- *
- * @result         `true`, if successful.
- */
-static bool
-restore_udfs(aerospike *as, as_vector *udf_vec, volatile uint32_t *count, bool wait, uint32_t timeout)
-{
-	inf("Restoring %d UDF file(s)", udf_vec->size);
-
-	uint32_t not_done = udf_vec->size;
-	bool done[udf_vec->size];
-
-	for (uint32_t i = 0; i < udf_vec->size; ++i) {
-		done[i] = false;
-	}
-
-	bool final = false;
-
-	while (not_done > 0) {
-		if (verbose) {
-			ver("%s try, %u UDF file(s) left", final ? "Final" : "Non-final", not_done);
-		}
-
-		uint32_t per_try = 0;
-
-		for (uint32_t i = 0; i < udf_vec->size; ++i) {
-			udf_param *udf = as_vector_get(udf_vec, i);
-
-			if (verbose) {
-				ver("%s UDF file %s (size %u)", done[i] ? "Skipping" : "Restoring", udf->name,
-						udf->size);
+	if (wait) {
+		for (uint32_t i = 0; i < index_vec->size; ++i) {
+			index_param *index = as_vector_get(index_vec, i);
+			if (!wait_index(index)) {
+				res = false;
 			}
-
-			if (done[i]) {
-				continue;
-			}
-
-			as_policy_info policy;
-			as_policy_info_init(&policy);
-			policy.timeout = timeout;
-			as_bytes content;
-			as_bytes_init_wrap(&content, udf->data, udf->size, false);
-			as_error ae;
-
-			if (aerospike_udf_put(as, &ae, &policy, udf->name, udf->type,
-					&content) != AEROSPIKE_OK) {
-				if (!final) {
-					if (verbose) {
-						ver("Error, retrying later");
-					}
-
-					continue;
-				}
-
-				err("Error while putting UDF file %s - code %d: %s at %s:%d", udf->name, ae.code,
-						ae.message, ae.file, ae.line);
-				*count = udf_vec->size - not_done;
-				return false;
-			}
-
-			as_bytes_destroy(&content);
-
-			if (wait) {
-				if (verbose) {
-					ver("Waiting for UDF file %s", udf->name);
-				}
-
-				if (aerospike_udf_put_wait(as, &ae, &policy, udf->name, 500) != AEROSPIKE_OK) {
-					if (!final) {
-						if (verbose) {
-							ver("Error, retrying later");
-						}
-
-						continue;
-					}
-
-					err("Error while waiting for UDF file %s - code %d: %s at %s:%d", udf->name,
-							ae.code, ae.message, ae.file, ae.line);
-					*count = udf_vec->size - not_done;
-					return false;
-				}
-			}
-
-			++per_try;
-			--not_done;
-			done[i] = true;
-		}
-
-		if (verbose) {
-			ver("Restored %u UDF file(s) in this try", per_try);
-		}
-
-		final = per_try == 0;
-	}
-
-	*count = udf_vec->size - not_done;
-	return true;
-}
-
-/*
- * Scans the given directory for backup files.
- *
- * @param dir_path  The path of the directory to be scanned.
- * @param file_vec  The paths of the found backup files, as a vector of strings.
- *
- * @result          `true`, if successful.
- */
-static bool
-get_backup_files(const char *dir_path, as_vector *file_vec)
-{
-	bool res = false;
-
-	if (verbose) {
-		ver("Listing backup files in %s", dir_path);
-	}
-
-	DIR *dir = opendir(dir_path);
-
-	if (dir == NULL) {
-		if (errno == ENOENT) {
-			err("Directory %s does not exist", dir_path);
-			goto cleanup0;
-		}
-
-		err_code("Error while opening directory %s", dir_path);
-		goto cleanup0;
-	}
-
-	struct dirent *entry;
-
-	while ((entry = readdir(dir)) != NULL) {
-		if (strcmp(entry->d_name + strlen(entry->d_name) - 4, ".asb") == 0) {
-			char file_path[PATH_MAX];
-			size_t length;
-
-			if ((length = (size_t)snprintf(file_path, sizeof file_path, "%s/%s", dir_path,
-					entry->d_name)) >= sizeof file_path) {
-				err("File path too long (%s, %s)", dir_path, entry->d_name);
-				goto cleanup2;
-			}
-
-			char *elem = safe_malloc(length + 1);
-			memcpy(elem, file_path, length + 1);
-			as_vector_append(file_vec, &elem);
 		}
 	}
 
-	inf("Found %u backup file(s) in %s", file_vec->size, dir_path);
-	res = true;
-	goto cleanup1;
-
-cleanup2:
-	for (uint32_t i = 0; i < file_vec->size; ++i) {
-		cf_free(as_vector_get_ptr(file_vec, i));
-	}
-
-	as_vector_clear(file_vec);
-
-cleanup1:
-	if (closedir(dir) < 0) {
-		err_code("Error while closing directory handle for %s", dir_path);
-		res = false;
-	}
-
-cleanup0:
 	return res;
+}
+
+static bool
+restore_udf(aerospike *as, udf_param *udf, uint32_t timeout)
+{
+	inf("Restoring UDF file %s (size %u)", udf->name, udf->size);
+
+	as_policy_info policy;
+	as_policy_info_init(&policy);
+	policy.timeout = timeout;
+	as_bytes content;
+	as_bytes_init_wrap(&content, udf->data, udf->size, false);
+	as_error ae;
+
+	if (aerospike_udf_put(as, &ae, &policy, udf->name, udf->type,
+				&content) != AEROSPIKE_OK) {
+		err("Error while putting UDF file %s - code %d: %s at %s:%d", udf->name, ae.code,
+				ae.message, ae.file, ae.line);
+		as_bytes_destroy(&content);
+		return false;
+	}
+
+	as_bytes_destroy(&content);
+
+	return true;
+}
+
+static bool
+wait_udf(aerospike *as, udf_param *udf, uint32_t timeout)
+{
+	as_error ae;
+	as_policy_info policy;
+	ver("Waiting for UDF file %s", udf->name);
+
+	as_policy_info_init(&policy);
+	policy.timeout = timeout;
+
+	if (aerospike_udf_put_wait(as, &ae, &policy, udf->name, 500) != AEROSPIKE_OK) {
+		err("Error while waiting for UDF file %s - code %d: %s at %s:%d", udf->name,
+				ae.code, ae.message, ae.file, ae.line);
+		return false;
+	}
+
+	return true;
 }
 
 /*
@@ -2849,47 +2650,47 @@ usage(const char *name)
 	fprintf(stderr, "                      Path to a directory of trusted CA certificates.\n");
 	fprintf(stderr, " --tls-protocols=TLS_PROTOCOLS\n");
 	fprintf(stderr, "                      Set the TLS protocol selection criteria. This format\n"
-                    "                      is the same as Apache's SSLProtocol documented at http\n"
-                    "                      s://httpd.apache.org/docs/current/mod/mod_ssl.html#ssl\n"
-                    "                      protocol . If not specified the asrestore will use '-all\n"
-                    "                      +TLSv1.2' if has support for TLSv1.2,otherwise it will\n"
-                    "                      be '-all +TLSv1'.\n");
+					"                      is the same as Apache's SSLProtocol documented at http\n"
+					"                      s://httpd.apache.org/docs/current/mod/mod_ssl.html#ssl\n"
+					"                      protocol . If not specified the asrestore will use '-all\n"
+					"                      +TLSv1.2' if has support for TLSv1.2,otherwise it will\n"
+					"                      be '-all +TLSv1'.\n");
 	fprintf(stderr, " --tls-cipher-suite=TLS_CIPHER_SUITE\n");
 	fprintf(stderr, "                     Set the TLS cipher selection criteria. The format is\n"
-                	"                     the same as Open_sSL's Cipher List Format documented\n"
-                	"                     at https://www.openssl.org/docs/man1.0.2/apps/ciphers.\n"
-                	"                     html\n");
+					"                     the same as Open_sSL's Cipher List Format documented\n"
+					"                     at https://www.openssl.org/docs/man1.0.2/apps/ciphers.\n"
+					"                     html\n");
 	fprintf(stderr, " --tls-keyfile=TLS_KEYFILE\n");
 	fprintf(stderr, "                      Path to the key for mutual authentication (if\n"
-                    "                      Aerospike Cluster is supporting it).\n");
+					"                      Aerospike Cluster is supporting it).\n");
 	fprintf(stderr, " --tls-keyfile-password=TLS_KEYFILE_PASSWORD\n");
 	fprintf(stderr, "                      Password to load protected tls-keyfile.\n"
-                    "                      It can be one of the following:\n"
-                    "                      1) Environment varaible: 'env:<VAR>'\n"
-                    "                      2) File: 'file:<PATH>'\n"
-                    "                      3) String: 'PASSWORD'\n"
-                    "                      Default: none\n"
-                    "                      User will be prompted on command line if --tls-keyfile-password\n"
-                    "                      specified and no password is given.\n");
+					"                      It can be one of the following:\n"
+					"                      1) Environment varaible: 'env:<VAR>'\n"
+					"                      2) File: 'file:<PATH>'\n"
+					"                      3) String: 'PASSWORD'\n"
+					"                      Default: none\n"
+					"                      User will be prompted on command line if --tls-keyfile-password\n"
+					"                      specified and no password is given.\n");
 	fprintf(stderr, " --tls-certfile=TLS_CERTFILE <path>\n");
 	fprintf(stderr, "                      Path to the chain file for mutual authentication (if\n"
-                    "                      Aerospike Cluster is supporting it).\n");
+					"                      Aerospike Cluster is supporting it).\n");
 	fprintf(stderr, " --tls-cert-blacklist <path>\n");
 	fprintf(stderr, "                      Path to a certificate blacklist file. The file should\n"
-                    "                      contain one line for each blacklisted certificate.\n"
-                    "                      Each line starts with the certificate serial number\n"
-                    "                      expressed in hex. Each entry may optionally specify\n"
-                    "                      the issuer name of the certificate (serial numbers are\n"
-                    "                      only required to be unique per issuer).Example:\n"
-                    "                      867EC87482B2\n"
-                    "                      /C=US/ST=CA/O=Acme/OU=Engineering/CN=TestChainCA\n");
+					"                      contain one line for each blacklisted certificate.\n"
+					"                      Each line starts with the certificate serial number\n"
+					"                      expressed in hex. Each entry may optionally specify\n"
+					"                      the issuer name of the certificate (serial numbers are\n"
+					"                      only required to be unique per issuer).Example:\n"
+					"                      867EC87482B2\n"
+					"                      /C=US/ST=CA/O=Acme/OU=Engineering/CN=TestChainCA\n");
 
 	fprintf(stderr, " --tls-crl-check      Enable CRL checking for leaf certificate. An error\n"
-                	"                      occurs if a valid CRL files cannot be found in\n"
-                    "                      tls_capath.\n");
+					"                      occurs if a valid CRL files cannot be found in\n"
+					"                      tls_capath.\n");
 	fprintf(stderr, " --tls-crl-checkall   Enable CRL checking for entire certificate chain. An\n"
-                	"                      error occurs if a valid CRL files cannot be found in\n"
-                    "                      tls_capath.\n");
+					"                      error occurs if a valid CRL files cannot be found in\n"
+					"                      tls_capath.\n");
 	fprintf(stderr, " --tls-log-session-info\n");
 	fprintf(stderr, "                      Enable logging session information for each TLS connection.\n");
 
@@ -2979,7 +2780,15 @@ usage(const char *name)
 	fprintf(stderr, "                      The default is 0.\n");
 	fprintf(stderr, "      --retry-delay <ms>\n");
 	fprintf(stderr, "                      The amount of time to sleep between retries of write transactions.\n");
-	fprintf(stderr, "                      Default is 0.\n\n");
+	fprintf(stderr, "                      Default is 0.\n");
+	fprintf(stderr, "      --s3-region <region>\n");
+	fprintf(stderr, "                      The S3 region that the bucket(s) exist in.\n");
+	fprintf(stderr, "      --s3-profile <profile_name>\n");
+	fprintf(stderr, "                      The S3 profile to use for credentials (the default is \"default\").\n");
+	fprintf(stderr, "      --s3-endpoint-override <url>\n");
+	fprintf(stderr, "                      An alternate url endpoint to send S3 API calls to.\n");
+	fprintf(stderr, "      --s3-max-async-downloads <n>\n");
+	fprintf(stderr, "                      The maximum number of simultaneous download requests from S3.\n\n");
 
 	fprintf(stderr, "\n\n");
 	fprintf(stderr, "Default configuration files are read from the following files in the given order:\n");

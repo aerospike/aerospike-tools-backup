@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2021 Aerospike, Inc.
+ * Copyright 2015-2022 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -116,9 +116,7 @@ text_parse(io_read_proxy_t *fd, bool legacy, as_vector *ns_vec,
 			goto out;
 		}
 
-		if (verbose) {
-			ver("Encountered end of file (line %u, col %u)", line_no[0], col_no[0]);
-		}
+		ver("Encountered end of file (line %u, col %u)", line_no[0], col_no[0]);
 
 		res = DECODER_EOF;
 		goto out;
@@ -1413,9 +1411,7 @@ text_parse_index(io_read_proxy_t *fd, as_vector *ns_vec, uint32_t *line_no,
 		goto cleanup0;
 	}
 
-	if (verbose) {
-		ver("Parsing index in line %u", line_no[0]);
-	}
+	ver("Parsing index in line %u", line_no[0]);
 
 	if (!expect_char(fd, line_no, col_no, ' ')) {
 		goto cleanup0;
@@ -1561,12 +1557,10 @@ text_parse_index(io_read_proxy_t *fd, as_vector *ns_vec, uint32_t *line_no,
 		as_vector_append(&index->path_vec, &path);
 	}
 
-	if (verbose) {
-		if (index->set[0] == 0) {
-			ver("Index: %s", index->name);
-		} else {
-			ver("Index: %s (on set %s)", index->name, index->set);
-		}
+	if (index->set[0] == 0) {
+		ver("Index: %s", index->name);
+	} else {
+		ver("Index: %s (on set %s)", index->name, index->set);
 	}
 
 	res = DECODER_INDEX;
@@ -1612,9 +1606,7 @@ text_parse_udf(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
 		goto cleanup0;
 	}
 
-	if (verbose) {
-		ver("Parsing UDF file in line %u", line_no[0]);
-	}
+	ver("Parsing UDF file in line %u", line_no[0]);
 
 	if (!expect_char(fd, line_no, col_no, ' ')) {
 		goto cleanup0;
@@ -1677,9 +1669,7 @@ text_parse_udf(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
 		goto cleanup1;
 	}
 
-	if (verbose) {
-		ver("UDF file: %s", udf->name);
-	}
+	ver("UDF file: %s", udf->name);
 
 	res = DECODER_UDF;
 	goto cleanup0;

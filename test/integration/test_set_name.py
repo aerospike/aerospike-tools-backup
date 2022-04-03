@@ -5,6 +5,7 @@ Tests the representation of set names in backup files.
 """
 
 import lib
+from run_backup import backup_and_restore
 
 SET_NAMES = [None]
 SET_NAMES += lib.identifier_variations(63, False)
@@ -31,7 +32,7 @@ def test_set_name():
 	"""
 	Test set names.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		lambda context: put_sets(SET_NAMES, "key", "value", "value"),
 		None,
 		lambda context: check_sets(SET_NAMES, "key", "value", "value")

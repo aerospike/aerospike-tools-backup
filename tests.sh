@@ -5,6 +5,11 @@ if [ -z "${1}" ]; then
 	exit 1
 fi
 
+if [ -z "${2}" ]; then
+	echo please specify a path to a test file/directory
+	exit 1
+fi
+
 if ! command -v virtualenv &> /dev/null
 then
 	sudo python3 -m pip install pipenv
@@ -19,7 +24,8 @@ else
 	. "${1}"/bin/activate
 fi
 
-#py.test --dir-mode test/integration/test_resume.py #-s
-#py.test --file-mode test/integration/test_resume.py #-s
-py.test --dir-mode test/integration
-py.test --file-mode test/integration
+set -e
+
+py.test --dir-mode ${2}
+py.test --file-mode ${2}
+

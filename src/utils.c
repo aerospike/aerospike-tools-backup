@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2021 Aerospike, Inc.
+ * Copyright 2015-2022 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -19,6 +19,9 @@
 // Includes.
 //
 
+#include <float.h>
+#include <math.h>
+
 #include <utils.h>
 
 
@@ -35,7 +38,9 @@
 #endif
 
 // Enables verbose logging.
-bool verbose = false;                                       
+bool g_verbose = false;
+// Disables all logging output except for errors.
+bool g_silent = false;
 
 // Lookup table for base-64 decoding. Invalid characters yield 0xff. '=' (0x3d) yields 0x00 to
 // make it a legal character.
@@ -78,12 +83,15 @@ static void log_line(const char *tag, const char *prefix, const char *format,
  * @param format  The format string for the debug message.
  */
 void
-ver(const char *format, ...)
+_ver_fn(const char *format, ...)
 {
 	va_list args;
-	va_start(args, format);
-	log_line("VER", "", format, args, false);
-	va_end(args);
+
+	if (!as_load_bool(&g_silent)) {
+		va_start(args, format);
+		log_line("VER", "", format, args, false);
+		va_end(args);
+	}
 }
 
 /*
@@ -95,9 +103,12 @@ void
 inf(const char *format, ...)
 {
 	va_list args;
-	va_start(args, format);
-	log_line("INF", "", format, args, false);
-	va_end(args);
+
+	if (!as_load_bool(&g_silent)) {
+		va_start(args, format);
+		log_line("INF", "", format, args, false);
+		va_end(args);
+	}
 }
 
 /*
@@ -109,6 +120,7 @@ void
 err(const char *format, ...)
 {
 	va_list args;
+
 	va_start(args, format);
 	log_line("ERR", "", format, args, false);
 	va_end(args);
@@ -123,6 +135,7 @@ void
 err_code(const char *format, ...)
 {
 	va_list args;
+
 	va_start(args, format);
 	log_line("ERR", "", format, args, true);
 	va_end(args);
@@ -185,7 +198,7 @@ hex_dump(const void *data, uint32_t len, void (*output)(const char *format, ...)
 void
 hex_dump_ver(const void *data, uint32_t len)
 {
-	hex_dump(data, len, ver);
+	hex_dump(data, len, _ver_fn);
 }
 
 /*
@@ -213,6 +226,24 @@ hex_dump_err(const void *data, uint32_t len)
 }
 
 /*
+ * Clones an as_vector of strings src into dst.
+ */
+bool
+str_vector_clone(as_vector* dst, const as_vector* src)
+{
+	as_vector_init(dst, src->item_size, src->size);
+
+	for (uint32_t i = 0; i < src->size; i++) {
+		as_vector_append(dst, safe_strdup((char*) as_vector_get((as_vector*) src, i)));
+		if (as_vector_get(dst, i) == NULL) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+/*
  * Searches a vector of c strings and returns true if a match to str is found.
  */
 bool
@@ -232,13 +263,13 @@ str_vector_contains(const as_vector* v, const char* str)
  * buffer (i.e. this function is not reentrant).
  */
 char*
-str_vector_tostring(as_vector* v)
+str_vector_tostring(const as_vector* v)
 {
 	static char buf[1024];
 	uint64_t pos = 0;
 	for (uint32_t i = 0; i < v->size; i++) {
 		pos += (uint64_t) snprintf(buf + pos, sizeof(buf) - pos, "%s",
-				(char*) as_vector_get(v, i));
+				(const char*) as_vector_get((as_vector*) v, i));
 		if (i < v->size - 1) {
 			pos += (uint64_t) snprintf(buf + pos, sizeof(buf) - pos, ",");
 		}
@@ -280,11 +311,19 @@ log_callback(as_log_level level, const char *func, const char *file, uint32_t li
 
 	case AS_LOG_LEVEL_INFO:
 		tag = "INF";
+
+		if (as_load_bool(&g_silent)) {
+			return true;
+		}
 		break;
 
 	case AS_LOG_LEVEL_DEBUG:
 	case AS_LOG_LEVEL_TRACE:
 		tag = "VER";
+
+		if (as_load_bool(&g_silent)) {
+			return true;
+		}
 		break;
 	}
 
@@ -322,11 +361,16 @@ safe_malloc(size_t size)
 }
 
 /*
- * A wrapper around `cf_strdup()` that exits on errors.
+ * A wrapper around `cf_strdup()` that exits on errors. Will not attempt to
+ * duplicate the string if it is NULL.
  */
 char *
 safe_strdup(const char *string)
 {
+	if (string == NULL) {
+		return NULL;
+	}
+
 	char *res = cf_strdup(string);
 
 	if (res == NULL) {
@@ -362,12 +406,28 @@ safe_unlock(pthread_mutex_t* mutex)
 }
 
 /*
- * A version of `pthread_cond_wait()` that uses @ref mutex and that exits on errors.
+ * Wait on a condition variable for at most one second.
  */
 void
 safe_wait(pthread_cond_t* cond, pthread_mutex_t* mutex)
 {
-	if (pthread_cond_wait(cond, mutex) != 0) {
+#ifdef __APPLE__
+	// MacOS uses gettimeofday instead of the monotonic clock for timed waits on
+	// condition variables
+	struct timespec t;
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	TIMEVAL_TO_TIMESPEC(&tv, &t);
+#else
+	struct timespec t;
+	clock_gettime(CLOCK_MONOTONIC, &t);
+#endif /* __APPLE__ */
+
+	// wait for one second
+	t.tv_sec += 1;
+
+	int res = pthread_cond_timedwait(cond, mutex, &t);
+	if (res != 0 && res != ETIMEDOUT) {
 		err_code("Error while waiting for condition");
 		exit(EXIT_FAILURE);
 	}
@@ -383,6 +443,92 @@ safe_signal(pthread_cond_t *cond)
 		err_code("Error while signaling condition");
 		exit(EXIT_FAILURE);
 	}
+}
+
+/*
+ * Performs the inverse erf of y, i.e. gives x such that erf(x) == y.
+ *
+ * From: https://github.com/antelopeusersgroup/antelope_contrib/blob/master/lib/location/libgenloc/erfinv.c
+ */
+double
+erfinv(double y)
+{
+#define CENTRAL_RANGE 0.7
+	/* coefficients in rational expansion */
+	const double a[4] = { 0.886226899, -1.645349621,  0.914624893, -0.140543331};
+	const double b[4] = {-2.118377725,  1.442710462, -0.329097515,  0.012229801};
+	const double c[4] = {-1.970840454, -1.624906493,  3.429567803,  1.641345311};
+	const double d[2] = { 3.543889200,  1.637067800};
+	double x;
+
+	if (fabs(y) > 1.0) {
+		return atof("NaN");
+	}
+	if (y == 1.0) {
+		return DBL_MAX;
+	}
+	if (y == -1.0) {
+		return DBL_MIN;
+	}
+
+	if (fabs(y) <= CENTRAL_RANGE) {
+		double z = y*y;
+		double num = ((a[3]*z + a[2])*z + a[1])*z + a[0];
+		double dem = (((b[3]*z + b[2])*z + b[1])*z + b[0])*z + 1.0;
+		x = y * num / dem;
+	}
+	else {
+		double z = sqrt(-log((1.0 - fabs(y)) / 2.0));
+		double num = ((c[3]*z + c[2])*z + c[1])*z + c[0];
+		double dem = (d[1]*z + d[0])*z + 1.0;
+		x = copysign(1.0, y) * num / dem;
+	}
+	/* Two steps of Newton-Raphson correction */
+	x = x - (erf(x) - y) / ((2.0 / sqrt(M_PI)) * exp(-x * x));
+	x = x - (erf(x) - y) / ((2.0 / sqrt(M_PI)) * exp(-x * x));
+
+	return x;
+}
+
+/*
+ * Given the target probability (confidence) and number of samples taken from
+ * an identical distribution, gives the z-score of the upper confidence interval
+ * of the sum of <n_records> samples from that distribution.
+ */
+double
+confidence_z(double p, uint64_t n_records)
+{
+	// an upper bound of 1 - (p ^ (1 / n_records))
+	double q = (1 - p) / (double) n_records;
+	// the z-score of the upper confidence interval
+	double z = sqrt(2) * -erfinv(q * 2 - 1);
+	return z;
+}
+
+/*
+ * Allocates a buffer large enough to hold the given formatted string and
+ * returns a pointer to the buffer with the format string written
+ */
+char*
+dyn_sprintf(const char* format, ...)
+{
+	va_list args;
+	va_start(args, format);
+	size_t len = (size_t) vsnprintf(NULL, 0, format, args);
+	va_end(args);
+
+	char* buf = (char*) cf_malloc((len + 1) * sizeof(char));
+	if (buf == NULL) {
+		err("Unable to allocate %zu bytes for snprintf buffer string",
+				len + 1);
+		return NULL;
+	}
+
+	va_start(args, format);
+	vsnprintf(buf, len + 1, format, args);
+	va_end(args);
+
+	return buf;
 }
 
 /*
@@ -417,9 +563,7 @@ better_atoi(const char *string, uint64_t *val)
 bool
 parse_date_time(const char *string, int64_t *nanos)
 {
-	if (verbose) {
-		ver("Parsing date and time string %s", string);
-	}
+	ver("Parsing date and time string %s", string);
 
 	time_t now = time(NULL);
 
@@ -773,10 +917,10 @@ print_char(int32_t ch)
  * endian-ness)
  */
 bool
-write_int64(uint64_t val, FILE* fd)
+write_int64(uint64_t val, file_proxy_t* fd)
 {
 	uint64_t rval = htobe64(val);
-	return fwrite(&rval, sizeof(rval), 1, fd) == 1;
+	return file_proxy_write(fd, &rval, sizeof(rval)) == sizeof(rval);
 }
 
 /*
@@ -784,21 +928,21 @@ write_int64(uint64_t val, FILE* fd)
  * endian-ness)
  */
 bool
-write_int32(uint32_t val, FILE* fd)
+write_int32(uint32_t val, file_proxy_t* fd)
 {
 	uint32_t rval = htobe32(val);
-	return fwrite(&rval, sizeof(rval), 1, fd) == 1;
+	return file_proxy_write(fd, &rval, sizeof(rval)) == sizeof(rval);
 }
 
 /*
  * reads an integer from a file written using write_int64
  */
 bool
-read_int64(uint64_t* val, FILE* fd)
+read_int64(uint64_t* val, file_proxy_t* fd)
 {
 	uint64_t rval;
 
-	if (fread(&rval, sizeof(rval), 1, fd) != 1) {
+	if (file_proxy_read(fd, &rval, sizeof(rval)) != sizeof(rval)) {
 		return false;
 	}
 
@@ -808,14 +952,14 @@ read_int64(uint64_t* val, FILE* fd)
 }
 
 /*
- * reads an integer from a file written using write_int64
+ * reads an integer from a file written using write_int32
  */
 bool
-read_int32(uint32_t* val, FILE* fd)
+read_int32(uint32_t* val, file_proxy_t* fd)
 {
 	uint32_t rval;
 
-	if (fread(&rval, sizeof(rval), 1, fd) != 1) {
+	if (file_proxy_read(fd, &rval, sizeof(rval)) != sizeof(rval)) {
 		return false;
 	}
 
@@ -1085,7 +1229,7 @@ get_node_names(as_cluster *clust, node_spec *node_specs, uint32_t n_node_specs,
 						keep = v4->sin_addr.s_addr == node_specs[m].ver.v4.s_addr &&
 								v4->sin_port == node_specs[m].port;
 
-						if (keep && pass == 2 && verbose) {
+						if (keep && pass == 2 && as_load_bool(&g_verbose)) {
 							ver("Found node for %s:%d", node_specs[m].addr_string,
 									ntohs(node_specs[m].port));
 						}
@@ -1104,7 +1248,7 @@ get_node_names(as_cluster *clust, node_spec *node_specs, uint32_t n_node_specs,
 						keep = memcmp(&v6->sin6_addr, &node_specs[m].ver.v6, 16) == 0 &&
 								v6->sin6_port == node_specs[m].port;
 
-						if (keep && pass == 2 && verbose) {
+						if (keep && pass == 2 && as_load_bool(&g_verbose)) {
 							ver("Found node for %s:%d", node_specs[m].addr_string,
 									ntohs(node_specs[m].port));
 						}
@@ -1114,9 +1258,7 @@ get_node_names(as_cluster *clust, node_spec *node_specs, uint32_t n_node_specs,
 
 			if (keep) {
 				if (pass == 2) {
-					if (verbose) {
-						ver("Adding node %s", node->name);
-					}
+					ver("Adding node %s", node->name);
 
 					memcpy((**node_names)[*n_node_names], node->name, AS_NODE_NAME_SIZE);
 				}
@@ -1152,9 +1294,7 @@ get_info(aerospike *as, const char *value, const char *node_name, void *context,
 {
 	bool res = false;
 
-	if (verbose) {
-		ver("Getting info value %s for node %s", value, node_name);
-	}
+	ver("Getting info value %s for node %s", value, node_name);
 
 	as_node *node = as_node_get_by_name(as->cluster, node_name);
 
@@ -1179,9 +1319,7 @@ get_info(aerospike *as, const char *value, const char *node_name, void *context,
 
 	as_node_release(node);
 
-	if (verbose) {
-		ver("Parsing info");
-	}
+	ver("Parsing info");
 
 	char *info = NULL;
 

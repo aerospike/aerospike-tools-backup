@@ -1,7 +1,7 @@
 /*
  * Aerospike Restore
  *
- * Copyright (c) 2008-2021 Aerospike, Inc. All rights reserved.
+ * Copyright (c) 2008-2022 Aerospike, Inc. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -34,7 +34,6 @@
 #pragma GCC diagnostic ignored "-Wconversion"
 #pragma GCC diagnostic ignored "-Wsign-conversion"
 
-#include <citrusleaf/cf_atomic.h>
 #include <citrusleaf/cf_queue.h>
 #include <aerospike/aerospike_info.h>
 #include <aerospike/aerospike_key.h>
@@ -87,6 +86,15 @@ typedef struct restore_config {
 	uint32_t max_retries;
 	uint32_t retry_delay;
 
+	// The region to use for S3.
+	char* s3_region;
+	// The profile to use for AWS credentials.
+	char* s3_profile;
+	// An alternative endpoint for S3 compatible storage to send all S3 requests to.
+	char* s3_endpoint_override;
+	// Max simultaneous download requests from S3 allowed at a time.
+	uint32_t s3_max_async_downloads;
+
 	as_config_tls tls;
 	char* tls_name;
 
@@ -127,31 +135,32 @@ typedef struct restore_config {
 	uint32_t tps;
 	// The file format decoder to be used for reading data from a backup file.
 	backup_decoder_t *decoder;
+
 	// The total size of all backup files to be restored.
 	off_t estimated_bytes;
 	// The total number of bytes read from the backup file(s) so far.
-	cf_atomic64 total_bytes;
+	uint64_t total_bytes;
 	// The total number of records read from the backup file(s) so far.
-	cf_atomic64 total_records;
+	uint64_t total_records;
 	// The number of records dropped because they were expired.
-	cf_atomic64 expired_records;
+	uint64_t expired_records;
 	// The number of records dropped because they didn't contain any of the
 	// selected bins or didn't belong to any of the the selected sets.
-	cf_atomic64 skipped_records;
+	uint64_t skipped_records;
 	// The number of records ignored because of record level permanent error while
 	// restoring. e.g RECORD_TOO_BIG Enabled or disabled using
 	// --ignore-record-error flag.
-	cf_atomic64 ignored_records;
+	uint64_t ignored_records;
 	// The number of successfully restored records.
-	cf_atomic64 inserted_records;
+	uint64_t inserted_records;
 	// The number of records dropped because they already existed in the
 	// database.
-	cf_atomic64 existed_records;
+	uint64_t existed_records;
 	// The number of records dropped because the database already contained the
 	// records with a higher generation count.
-	cf_atomic64 fresher_records;
+	uint64_t fresher_records;
 	// How often we backed off due to server overload.
-	cf_atomic64 backoff_count;
+	uint64_t backoff_count;
 	// The current limit for total_bytes for throttling. This is periodically
 	// increased by the counter thread to raise the limit according to the
 	// bandwidth limit.
@@ -161,9 +170,14 @@ typedef struct restore_config {
 	// according to the TPS limit.
 	volatile uint64_t records_limit;
 	// The number of successfully created secondary indexes.
-	volatile uint32_t index_count;
+	uint32_t index_count;
+	// counts of the number of inserted/skipped/matched/mismatched secondary indexes
+	uint32_t skipped_indexes;
+	uint32_t matched_indexes;
+	uint32_t mismatched_indexes;
 	// The number of successfully stored UDF files.
-	volatile uint32_t udf_count;
+	uint32_t udf_count;
+
 	// Authentication mode.
 	char *auth_mode;
 } restore_config_t;
@@ -188,6 +202,14 @@ typedef struct {
 	as_vector *bin_vec;
 	// The sets to be restored, as a vector of set name strings.
 	as_vector *set_vec;
+	// The indexes to be inserted, as a vector of index_param's
+	as_vector *index_vec;
+	// The udfs to be inserted, as a vector of udf_param's
+	as_vector *udf_vec;
+
+	// Mutex for exclusive access to index_vec/udf_vec
+	pthread_mutex_t idx_udf_lock;
+
 	// Indicates a version 3.0 backup file.
 	bool legacy;
 } restore_thread_args;

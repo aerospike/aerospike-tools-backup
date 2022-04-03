@@ -24,8 +24,6 @@
 static void 
 test_setup(void) 
 {
-	// redirect stderr to /dev/null
-	//freopen("/dev/null", "w", stderr);
 }
 
 static void
@@ -71,7 +69,7 @@ cmp_backup_state(const backup_state_t* b1, const backup_state_t* b2)
 		const backup_state_file_t* f2 =
 			(const backup_state_file_t*) as_vector_get((as_vector*) &b2->files, i);
 
-		ck_assert_str_eq(f1->file_name, f2->file_name);
+		ck_assert_str_eq(io_proxy_file_path(f1->io_proxy), io_proxy_file_path(f2->io_proxy));
 		ck_assert_int_eq((int64_t) f1->rec_count_file, (int64_t) f2->rec_count_file);
 		ck_assert_int_eq((int64_t) f1->io_proxy->byte_cnt, (int64_t) f2->io_proxy->byte_cnt);
 		ck_assert_int_eq((int64_t) f1->io_proxy->raw_byte_cnt, (int64_t) f2->io_proxy->raw_byte_cnt);
@@ -134,25 +132,23 @@ END_TEST
 
 START_TEST(test_serialize_io_proxy)
 {
-	FILE* bup = fopen(TMP_FILE_1, "w");
-	FILE* fd = fopen(TMP_FILE_2, "w");
+	file_proxy_t bup, fd;
+	ck_assert_int_eq(file_proxy_write_init(&bup, TMP_FILE_1, 0), 0);
 
 	io_write_proxy_t io;
-	io_write_proxy_init(&io, fd);
+	io_write_proxy_init(&io, TMP_FILE_2, 0);
 
 	ck_assert_int_eq(io_proxy_write(&io, "test", 4), 4);
 	ck_assert_int_eq(io_proxy_flush(&io), 0);
-	ck_assert_int_eq(io_proxy_serialize(&io, bup), 0);
+	ck_assert_int_eq(io_proxy_serialize(&io, &bup), 0);
 
-	fclose(fd);
-	fclose(bup);
+	ck_assert_int_eq(file_proxy_close(&bup), 0);
 
-	bup = fopen(TMP_FILE_1, "r");
-	fd = fopen(TMP_FILE_2, "a");
+	ck_assert_int_eq(file_proxy_read_init(&bup, TMP_FILE_1), 0);
 
 	io_write_proxy_t io2;
-	ck_assert_int_eq(io_proxy_deserialize(&io2, fd, bup), 0);
-	fclose(bup);
+	ck_assert_int_eq(io_proxy_deserialize(&io2, &bup), 0);
+	file_proxy_close(&bup);
 
 	ck_assert_int_eq((int64_t) io.byte_cnt, (int64_t) io2.byte_cnt);
 	ck_assert_int_eq((int64_t) io.raw_byte_cnt, (int64_t) io2.raw_byte_cnt);
@@ -160,7 +156,7 @@ START_TEST(test_serialize_io_proxy)
 	ck_assert_int_eq(io.flags, io2.deserialized_flags);
 	ck_assert_int_eq(io2.flags, IO_PROXY_DESERIALIZE);
 
-	fclose(fd);
+	file_proxy_close(&fd);
 }
 END_TEST
 
@@ -173,14 +169,11 @@ START_TEST(test_init_single_file)
 
 	ck_assert_int_eq(backup_state_init(&b1, TMP_FILE_1), 0);
 	{
-		FILE* fd = fopen(TMP_FILE_2, "w");
-		ck_assert_ptr_ne(fd, NULL);
-
 		io_write_proxy_t* io = test_malloc(sizeof(io_write_proxy_t));
 		ck_assert_ptr_ne(io, NULL);
-		io_write_proxy_init(io, fd);
+		io_write_proxy_init(io, TMP_FILE_2, 0);
 
-		ck_assert(backup_state_save_file(&b1, TMP_FILE_2, io, rec_count));
+		ck_assert(backup_state_save_file(&b1, io, rec_count));
 	}
 	ck_assert_int_eq(backup_state_save(&b1), 0);
 
@@ -190,7 +183,7 @@ START_TEST(test_init_single_file)
 		ck_assert_int_eq(b2.files.size, 1);
 		backup_state_file_t* f = (backup_state_file_t*) as_vector_get(&b2.files, 0);
 
-		ck_assert_str_eq(f->file_name, TMP_FILE_2);
+		ck_assert_str_eq(io_proxy_file_path(f->io_proxy), TMP_FILE_2);
 		ck_assert_int_eq((int64_t) f->rec_count_file, (int64_t) rec_count);
 	}
 
@@ -215,29 +208,26 @@ START_TEST(test_init_multiple_files)
 
 	ck_assert_int_eq(backup_state_init(&b1, TMP_FILE_1), 0);
 
-	for (uint32_t i = 2; i <= 4; i++) {
+	for (uint32_t i = 2; i < 2 + N_FILES; i++) {
 		TMP_FILE_N(file_name, i);
-
-		FILE* fd = fopen(file_name, "w");
-		ck_assert_ptr_ne(fd, NULL);
 
 		io_write_proxy_t* io = test_malloc(sizeof(io_write_proxy_t));
 		ck_assert_ptr_ne(io, NULL);
-		io_write_proxy_init(io, fd);
+		io_write_proxy_init(io, file_name, 0);
 
-		ck_assert(backup_state_save_file(&b1, file_name, io, rec_counts[i - 2]));
+		ck_assert(backup_state_save_file(&b1, io, rec_counts[i - 2]));
 	}
 	ck_assert_int_eq(backup_state_save(&b1), 0);
 
 	ck_assert_int_eq(backup_state_load(&b2, TMP_FILE_1), 0);
 
-	ck_assert_int_eq(b2.files.size, 3);
-	for (uint32_t i = 0; i < 3; i++) {
+	ck_assert_int_eq(b2.files.size, N_FILES);
+	for (uint32_t i = 0; i < N_FILES; i++) {
 		TMP_FILE_N(file_name, i + 2);
 
 		backup_state_file_t* f = (backup_state_file_t*) as_vector_get(&b2.files, i);
 
-		ck_assert_str_eq(f->file_name, file_name);
+		ck_assert_str_eq(io_proxy_file_path(f->io_proxy), file_name);
 		ck_assert_int_eq((int64_t) f->rec_count_file, (int64_t) rec_counts[i]);
 	}
 
@@ -267,7 +257,12 @@ START_TEST(test_random_partitions)
 				(uint16_t) ((*((uint16_t*) last_digest) & ~(MAX_PARTITIONS - 1)) | pid);
 
 			if (v & 0x4) {
-				backup_state_mark_complete(&b1, pid, last_digest);
+				if (v & 0x8) {
+					backup_state_mark_complete(&b1, pid, NULL);
+				}
+				else {
+					backup_state_mark_complete(&b1, pid, last_digest);
+				}
 			}
 			else {
 				backup_state_mark_incomplete(&b1, pid, last_digest);

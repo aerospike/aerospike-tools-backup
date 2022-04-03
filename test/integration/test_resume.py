@@ -1,152 +1,50 @@
 # coding=UTF-8
 
-
 """
 Tests the resumption of failed/interrupted backups.
 """
 
-import lib
-import random
 import signal
 import asyncio
 import os
-import re
 
-chars = [chr(i) for i in range(ord('a'), ord('z'))]
-
-INF_CMD_HEADER_RE = r"^[\d]{4}-[\d]{2}-[\d]{2} [\d]{1,2}:[\d]{2}:[\d]{2} (?:GMT|UTC) \[INF\] \[[\s\d]+\]"
-
-def gen_text(pkey):
-	random.seed(pkey * 16381)
-	return ' '.join([''.join(random.choices(chars, k=random.randint(2, 11))) for _ in range(random.randint(10, 100))])
-
-def get_key(idx):
-	return (idx * 32749) % 32768
-
-def gen_record(pkey):
-	bin_1 = pkey
-	bin_2 = gen_text(pkey)
-
-	return ['bin_1', 'bin_2'], [bin_1, bin_2]
-
-def put_udf_file(context, idx):
-	"""
-	Creates UDF files with the given comments.
-	"""
-	content = "--[=======[\n" + gen_text(idx + 32768) + "\n--]=======]\n"
-	path = lib.put_udf_file(content)
-	context[os.path.basename(path)] = content
-
-def check_udf_files(context, expected_n_udfs):
-	"""
-	Retrieves and verifies the UDF files referred to by the context.
-	"""
-	udf_cnt = 0
-	for path in context:
-		udf_cnt += 1
-		content = lib.get_udf_file(path)
-		assert lib.eq(content, context[path]), "UDF file %s has invalid content" % path
-	assert(udf_cnt == expected_n_udfs)
-
-def put_records(n_records, context, set_name=None, do_indexes=False, n_udfs=0):
-	lib.reset()
-
-	for key_idx in range(n_records):
-		key = get_key(key_idx)
-		lib.write_record(set_name, key, *gen_record(key))
-
-	if do_indexes:
-		lib.create_integer_index(set_name, 'bin_1', 'idx_1')
-		lib.create_string_index(set_name, 'bin_2', 'idx_2')
-
-	for i in range(n_udfs):
-		put_udf_file(context, i)
-
-def check_records(n_records, context, set_name=None, do_indexes=False, n_udfs=0):
-	"""
-	Ensures that all n_records records are in the database
-	"""
-	for key_idx in range(n_records):
-		key = get_key(key_idx)
-		meta_key, meta_ttl, record = lib.read_record(set_name, key)
-
-		expected_bins, expected_values = gen_record(key)
-
-		lib.validate_record(key, record, expected_bins, expected_values)
-		lib.validate_meta(key, meta_key, meta_ttl)
-
-	if do_indexes:
-		lib.check_simple_index(set_name, 'bin_1', 1234)
-		lib.check_simple_index(set_name, 'bin_2', "miozfow o")
-
-	check_udf_files(context, n_udfs)
-
-def backup_output_get_records_written(backup_stderr):
-	"""
-	Parses the output of asbackup and returns a list of:
-
-	[total records backed up, secondary indexes backed up, udfs backed up,
-	 total bytes backed up, approximate bytes per record in backup files]
-	"""
-	reg = re.compile(INF_CMD_HEADER_RE + r" Backed up ([\d]+) record\(s\), " + \
-			r"([\d]+) secondary index\(es\), ([\d]+) UDF file\(s\), " + \
-			r"([\d]+) byte\(s\) in total \(\~([\d]+) B\/rec\)$",
-			flags=re.MULTILINE)
-	match = reg.search(backup_stderr)
-	assert(match is not None)
-
-	return (int(match.group(i)) for i in range(1, 6))
-
-def restore_output_get_records_written(restore_stderr):
-	"""
-	Parses the output of asrestore and returns a list of:
-
-	[expired, skipped, err_ignored, inserted, failed, existed, fresher]
-
-	This statement is printed multiple times, so only look at the last one.
-	"""
-	reg = re.compile(INF_CMD_HEADER_RE + r" Expired ([\d]+) : skipped ([\d]+) : " + \
-			r"err_ignored ([\d]+) : inserted ([\d]+): failed ([\d]+) " + \
-			r"\(existed ([\d]+) , fresher ([\d]+)\)",
-			flags=re.MULTILINE)
-	match = reg.findall(restore_stderr)
-	assert(match is not None)
-
-	return (int(num) for num in match[-1])
-
-async def kill_after(process, dt):
-	await asyncio.sleep(dt)
-	try:
-		os.killpg(os.getpgid(process.pid), signal.SIGINT)
-	except Exception:
-		pass
+import aerospike_servers as as_srv
+import lib
+import record_gen
+from run_backup import backup_async, restore_async
 
 def do_interrupt_run(max_interrupts, n_records=10000, do_indexes=False,
 		n_udfs=0, backup_opts=None, restore_opts=None, state_file_dir=False,
-		state_file_explicit=False):
+		state_file_explicit=False, to_stdout=False, do_matrix=False):
 	if backup_opts == None:
 		backup_opts = []
 	if restore_opts == None:
 		restore_opts = []
 
-	prev_rec_total = 0
-	prev_bytes_total = 0
+	as_srv.start_aerospike_servers()
 
-	for comp_enc_mode in [
+	if do_matrix:
+		comp_enc_mode_list = [
 			[],
 			['--compress=zstd'],
 			['--encrypt=aes128', '--encryption-key-file=test/test_key.pem'],
 			['--compress=zstd', '--encrypt=aes128',
 				'--encryption-key-file=test/test_key.pem'],
-			]:
+			]
+	else:
+		comp_enc_mode_list = [[],]
 
+	for comp_enc_mode in comp_enc_mode_list:
 		i = 1
 		path = None
 		# where to find the backup state on failure
 		state_file = None
 		context = {}
 
-		lib.start()
+		prev_rec_total = 0
+		prev_bytes_total = 0
+
+		as_srv.start_aerospike_servers()
 
 		if state_file_dir:
 			state_path = lib.temporary_path("state_dir")
@@ -156,6 +54,10 @@ def do_interrupt_run(max_interrupts, n_records=10000, do_indexes=False,
 			state_path = lib.temporary_path("asb.state")
 			state_file = state_path
 
+		if to_stdout:
+			bup_file_path = lib.temporary_path("asb")
+			print(bup_file_path)
+
 		while True:
 			opts = comp_enc_mode + backup_opts
 			if i > 1:
@@ -164,37 +66,56 @@ def do_interrupt_run(max_interrupts, n_records=10000, do_indexes=False,
 					# state to where we know it to be
 					if lib.GLOBALS["dir_mode"]:
 						state_file = os.path.join(path, lib.NAMESPACE + '.asb.state')
+					elif to_stdout:
+						state_file = str(lib.NAMESPACE) + ".asb.state"
 					else:
 						state_file = path + '.state'
 
 				opts += ['--continue', state_file]
 				filler = lambda context: None
 			else:
-				filler = lambda context: put_records(n_records, context, lib.SET,
+				filler = lambda context: record_gen.put_records(n_records, context, lib.SET,
 						do_indexes, n_udfs)
 
 			if state_file_dir or state_file_explicit:
 				opts += ['--state-file-dst', state_path]
 
-			bup, path = lib.backup_async(
+			if to_stdout:
+				bup_file = open(bup_file_path, 'ab')
+				path = "-"
+
+			use_opts = opts
+			# don't throttle if we won't be interrupting the backup
+			if i > max_interrupts and ('--records-per-second' in opts):
+				idx = opts.index('--records-per-second')
+				use_opts = opts[:idx] + opts[idx + 2:]
+
+			bup, path = backup_async(
 				filler,
 				context=context,
-				backup_opts=opts,
-				path=path
+				backup_opts=use_opts,
+				path=path,
+				pipe_stdout=bup_file if to_stdout else None
 			)
 			if i <= max_interrupts:
-				lib.sync_wait(kill_after(bup, dt=6))
+				lib.sync_wait(lib.kill_after(bup, dt=10))
 			res = lib.sync_wait(bup.wait())
+
+			if to_stdout:
+				bup_file.close()
 
 			stdout, stderr = lib.sync_wait(bup.communicate())
 			print(stderr.decode())
 
 			(record_total, sindexes, udfs, bytes_total, _) = \
-					backup_output_get_records_written(stderr.decode('utf-8'))
+					record_gen.backup_output_get_records_written(stderr.decode('utf-8'))
 			assert(record_total >= prev_rec_total)
 			assert(bytes_total >= prev_bytes_total)
 			assert(sindexes == 2 if do_indexes else sindexes == 0)
 			assert(udfs == n_udfs)
+
+			prev_rec_total = record_total
+			prev_bytes_total = bytes_total
 
 			if res == 0 or i > max_interrupts:
 				break
@@ -202,14 +123,27 @@ def do_interrupt_run(max_interrupts, n_records=10000, do_indexes=False,
 				i += 1
 		assert(res == 0)
 
-		res = lib.restore_async(path, restore_opts=comp_enc_mode + restore_opts)
+		if to_stdout:
+			path = '-'
+			stdin_fd = open(bup_file_path, 'rb')
+		else:
+			stdin_fd = None
+
+		# give database a second to update
+		lib.safe_sleep(1)
+
+		res = restore_async(path, restore_opts=comp_enc_mode + restore_opts,
+				pipe_stdin=stdin_fd)
 		ret_code = lib.sync_wait(res.wait())
 		stdout, stderr = lib.sync_wait(res.communicate())
 		print(stderr.decode())
 		assert(ret_code == 0)
 
+		if to_stdout:
+			stdin_fd.close()
+
 		(expired, skipped, err_ignored, inserted, failed, existed, fresher) = \
-				restore_output_get_records_written(stderr.decode('utf-8'))
+				record_gen.restore_output_get_records_written(stderr.decode('utf-8'))
 		assert(inserted == n_records)
 		assert(expired == 0)
 		assert(skipped == 0)
@@ -218,63 +152,65 @@ def do_interrupt_run(max_interrupts, n_records=10000, do_indexes=False,
 		assert(fresher == 0)
 		assert(failed == 0)
 
-		check_records(n_records, context, lib.SET, do_indexes, n_udfs)
+		record_gen.check_records(n_records, context, lib.SET, do_indexes, n_udfs)
 
 def test_set_state_file_explicit_dir():
-	do_interrupt_run(1, backup_opts=['--nice', '1', '--parallel', '1'], state_file_dir=True)
+	do_interrupt_run(1, backup_opts=['--records-per-second', '500', '--parallel', '1'], state_file_dir=True)
 
 def test_set_state_file_explicit_file():
-	do_interrupt_run(1, backup_opts=['--nice', '1', '--parallel', '1'], state_file_explicit=True)
+	do_interrupt_run(1, backup_opts=['--records-per-second', '500', '--parallel', '1'], state_file_explicit=True)
 
 def test_interrupt_once():
-	do_interrupt_run(1, backup_opts=['--nice', '1', '--parallel', '1'])
+	do_interrupt_run(1, backup_opts=['--records-per-second', '500', '--parallel', '1'], do_matrix=True)
 
 def test_interrupt_once_parallel():
-	do_interrupt_run(1, backup_opts=['--nice', '1', '--parallel', '8'])
+	do_interrupt_run(1, backup_opts=['--records-per-second', '500', '--parallel', '8'])
 
 def test_interrupt_many():
-	do_interrupt_run(10, backup_opts=['--nice', '1', '--parallel', '1'])
+	do_interrupt_run(10, backup_opts=['--records-per-second', '500', '--parallel', '1'], do_matrix=True)
 
 def test_interrupt_many_parallel():
-	do_interrupt_run(10, backup_opts=['--nice', '1', '--parallel', '8'])
-
-def test_interrupt_once_multipart():
-	do_interrupt_run(1, backup_opts=['--nice', '1', '--partition-list',
-	   '0-512,512-512,1024-512,1536-512,2048-512,2560-512,3072-512,3584-512',
-	   '--parallel', '1'])
-
-def test_interrupt_once_multipart_parallel():
-	do_interrupt_run(1, backup_opts=['--nice', '1', '--partition-list',
-	   '0-512,512-512,1024-512,1536-512,2048-512,2560-512,3072-512,3584-512',
-	   '--parallel', '4'])
+	do_interrupt_run(10, backup_opts=['--records-per-second', '500', '--parallel', '8'])
 
 def test_interrupt_many_multipart():
-	do_interrupt_run(10, backup_opts=['--nice', '1', '--partition-list',
+	do_interrupt_run(10, backup_opts=['--records-per-second', '500', '--partition-list',
 	   '0-512,512-512,1024-512,1536-512,2048-512,2560-512,3072-512,3584-512',
 	   '--parallel', '1'])
 
 def test_interrupt_many_multipart_parallel():
-	do_interrupt_run(10, backup_opts=['--nice', '1', '--partition-list',
+	do_interrupt_run(10, backup_opts=['--records-per-second', '500', '--partition-list',
 		'0-512,512-512,1024-512,1536-512,2048-512,2560-512,3072-512,3584-512',
 		'--parallel', '4'])
 
 def test_interrupt_once_sindex():
-	do_interrupt_run(1, backup_opts=['--nice', '1', '--parallel', '1'], do_indexes=True)
+	do_interrupt_run(1, backup_opts=['--records-per-second', '500', '--parallel', '1'], do_indexes=True)
 
 def test_interrupt_many_sindex():
-	do_interrupt_run(10, backup_opts=['--nice', '1', '--parallel', '1'], do_indexes=True)
+	do_interrupt_run(10, backup_opts=['--records-per-second', '500', '--parallel', '1'], do_indexes=True)
 
 def test_interrupt_once_udf():
-	do_interrupt_run(1, backup_opts=['--nice', '1', '--parallel', '1'], n_udfs=5)
+	do_interrupt_run(1, backup_opts=['--records-per-second', '500', '--parallel', '1'], n_udfs=5)
 
 def test_interrupt_many_udf():
-	do_interrupt_run(1, backup_opts=['--nice', '1', '--parallel', '1'], n_udfs=5)
+	do_interrupt_run(1, backup_opts=['--records-per-second', '500', '--parallel', '1'], n_udfs=5)
 
 def test_interrupt_once_sindex_udf():
-	do_interrupt_run(1, backup_opts=['--nice', '1', '--parallel', '1'], do_indexes=True,
+	do_interrupt_run(1, backup_opts=['--records-per-second', '500', '--parallel', '1'], do_indexes=True,
 			n_udfs=5)
 
 def test_interrupt_many_sindex_udf():
-	do_interrupt_run(10, backup_opts=['--nice', '1', '--parallel', '1'], do_indexes=True,
+	do_interrupt_run(10, backup_opts=['--records-per-second', '500', '--parallel', '1'], do_indexes=True,
 			n_udfs=5)
+
+def test_interrupt_stdout_backup():
+	if not lib.GLOBALS["dir_mode"]:
+		do_interrupt_run(1, backup_opts=['--records-per-second', '500', '--parallel', '1'], to_stdout=True, do_matrix=True)
+
+def test_interrupt_stdout_backup_many():
+	if not lib.GLOBALS["dir_mode"]:
+		do_interrupt_run(10, backup_opts=['--records-per-second', '500', '--parallel', '1'], to_stdout=True)
+
+def test_interrupt_stdout_backup_many_parallel():
+	if not lib.GLOBALS["dir_mode"]:
+		do_interrupt_run(10, backup_opts=['--records-per-second', '500', '--parallel', '8'], to_stdout=True)
 

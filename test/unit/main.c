@@ -23,13 +23,12 @@ int
 main(void)
 {
 	int number_failed;
-	Suite* s;
 	SRunner* sr;
 
-	s = backup_conf_suite();
-	sr = srunner_create(s);
-	srunner_add_suite(sr, backup_state_suite());
+	sr = srunner_create(backup_conf_suite());
+	//srunner_add_suite(sr, backup_state_suite());
     srunner_add_suite(sr, restore_conf_suite());
+    srunner_add_suite(sr, file_proxy_suite());
     srunner_add_suite(sr, io_proxy_suite());
 
 	srunner_set_fork_status(sr, CK_NOFORK);

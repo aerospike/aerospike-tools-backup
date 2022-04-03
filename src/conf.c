@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2021 Aerospike, Inc.
+ * Copyright 2015-2022 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -168,7 +168,7 @@ tls_read_password(char *value, char **ptr)
 		return password_file(value + 5, ptr);
 	}
 
-	*ptr = value;
+	*ptr = safe_strdup(value);
 	return true;
 }
 
@@ -187,7 +187,10 @@ config_str(toml_table_t *curtab, const char *name, void *ptr)
 
 	char *sval;
 	if (0 == toml_rtos(value, &sval)) {
-		*((char**)ptr) = sval;
+		if (*((char**) ptr) != NULL) {
+			cf_free(*((char**) ptr));
+		}
+		*((char**) ptr) = sval;
 		return true;
 	}
 	return false;
@@ -496,26 +499,26 @@ config_include(toml_table_t *conftab, void *c, const char *instance,
 		bool status;
 
 		if (! strcasecmp("file", name)) {
-			char *fname;
+			char *fname = NULL;
 			status = config_str(curtab, name, (void*)&fname);
 
 			if (status) {
 				if (! config_from_file(c, instance, fname, level + 1, is_backup)) {
-					free(fname);
+					cf_free(fname);
 					return false;
 				}
-				free(fname);
+				cf_free(fname);
 			}
 
 		} else if (! strcasecmp("directory", name)) {
-			char *dirname;
+			char *dirname = NULL;
 			status = config_str(curtab, name, (void*)&dirname);
 			if (status) {
 				if (! config_from_dir(c, instance, dirname, level + 1, is_backup)) {
-					free(dirname);
+					cf_free(dirname);
 					return false;
 				}
-				free(dirname);
+				cf_free(dirname);
 			}
 
 		} else {
@@ -543,6 +546,7 @@ config_parse_file(const char *fname, toml_table_t **tab, char errbuf[])
 	}
 
 	*tab = toml_parse_file(fp, errbuf, ERR_BUF_SIZE);
+	fclose(fp);
 
 	if (! *tab) {
 		return false;
@@ -588,17 +592,19 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 		bool status;
 
 		if (! strcasecmp("namespace", name)) {
+			s = NULL;
 			status = config_str(curtab, name, (void*)&s);
 			if (status) {
 				as_strncpy(c->ns, s, AS_NAMESPACE_MAX_SIZE);
-				free(s);
+				cf_free(s);
 			}
 
 		} else if (! strcasecmp("set", name)) {
+			s = NULL;
 			status = config_str(curtab, name, (void*)&s);
 			if (status) {
 				status = parse_set_list(&c->set_list, s);
-				free(s);
+				cf_free(s);
 			}
 
 		} else if (! strcasecmp("continue", name)) {
@@ -609,6 +615,9 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 
 		} else if (! strcasecmp("remove-files", name)) {
 			status = config_bool(curtab, name, (void*)&c->remove_files);
+
+		} else if (! strcasecmp("remove-artifacts", name)) {
+			status = config_bool(curtab, name, (void*)&c->remove_artifacts);
 
 		} else if (! strcasecmp("directory", name)) {
 			status = config_str(curtab, name, (void*)&c->directory);
@@ -626,7 +635,6 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 			status = config_str(curtab, name, (void*)&c->output_file);
 
 		} else if (! strcasecmp("file-limit", name)) {
-
 			status = config_int64(curtab, name, (void*)&i_val);
 			if (i_val > 0) {
 				c->file_limit = (uint64_t)i_val * 1024 * 1024;
@@ -653,19 +661,19 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 			}
 
 		} else if (! strcasecmp("compress", name)) {
-			char* compress_type;
+			char* compress_type = NULL;
 			status = config_str(curtab, name, (void*) &compress_type);
 			if (status) {
 				status = parse_compression_type(compress_type, &c->compress_mode) == 0;
-				free(compress_type);
+				cf_free(compress_type);
 			}
 
 		} else if (! strcasecmp("encrypt", name)) {
-			char* encrypt_type;
+			char* encrypt_type = NULL;
 			status = config_str(curtab, name, (void*) &encrypt_type);
 			if (status) {
 				status = parse_encryption_type(encrypt_type, &c->encrypt_mode) == 0;
-				free(encrypt_type);
+				cf_free(encrypt_type);
 			}
 
 		} else if (! strcasecmp("encryption-key-file", name)) {
@@ -675,12 +683,12 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 				return false;
 			}
 			else {
-				char* key_file;
+				char* key_file = NULL;
 				status = config_str(curtab, name, (void*) &key_file);
 				if (status) {
 					c->pkey = (encryption_key_t*) cf_malloc(sizeof(encryption_key_t));
 					status = io_proxy_read_private_key_file(key_file, c->pkey) == 0;
-					free(key_file);
+					cf_free(key_file);
 				}
 			}
 
@@ -691,12 +699,12 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 				return false;
 			}
 			else {
-				char* env_var;
+				char* env_var = NULL;
 				status = config_str(curtab, name, (void*) &env_var);
 				if (status) {
 					c->pkey = parse_encryption_key_env(env_var);
 					status = c->pkey != NULL;
-					free(env_var);
+					cf_free(env_var);
 				}
 			}
 
@@ -716,19 +724,19 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 			status = config_str(curtab, name, (void*)&c->filter_exp);
 
 		} else if (! strcasecmp("modified-after", name)) {
-			char* mod_after_time;
+			char* mod_after_time = NULL;
 			status = config_str(curtab, name, (void*) &mod_after_time);
 			if (status) {
 				status = parse_date_time(mod_after_time, &c->mod_after);
-				free(mod_after_time);
+				cf_free(mod_after_time);
 			}
 
 		} else if (! strcasecmp("modified-before", name)) {
-			char* mod_before_time;
+			char* mod_before_time = NULL;
 			status = config_str(curtab, name, (void*) &mod_before_time);
 			if (status) {
 				status = parse_date_time(mod_before_time, &c->mod_before);
-				free(mod_before_time);
+				cf_free(mod_before_time);
 			}
 
 		} else if (! strcasecmp("machine", name)) {
@@ -737,8 +745,16 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 		} else if (! strcasecmp("estimate", name)) {
 			status = config_bool(curtab, name, (void*)&c->estimate);
 
+		} else if (! strcasecmp("estimate-samples", name)) {
+			status = config_int64(curtab, name, (void*)&i_val);
+			if (i_val > 0) {
+				c->n_estimate_samples = (uint32_t)i_val;
+			} else {
+				status = false;
+			}
+
 		} else if (! strcasecmp("verbose", name)) {
-			status = config_bool(curtab, name, (void*)&verbose);
+			status = config_bool(curtab, name, (void*)&g_verbose);
 
 		} else if (! strcasecmp("nice", name)) {
 
@@ -786,6 +802,39 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 			status = config_int32(curtab, name, (int32_t*)&i_val);
 			if (i_val >= 0) {
 				c->retry_delay = (uint32_t)i_val;
+			} else {
+				status = false;
+			}
+
+		} else if (! strcasecmp("s3-region", name)) {
+			status = config_str(curtab, name, (void*)&c->s3_region);
+
+		} else if (! strcasecmp("s3-profile", name)) {
+			status = config_str(curtab, name, (void*)&c->s3_profile);
+
+		} else if (! strcasecmp("s3-endpoint-override", name)) {
+			status = config_str(curtab, name, (void*)&c->s3_endpoint_override);
+
+		} else if (! strcasecmp("s3-min-part-size", name)) {
+			status = config_int64(curtab, name, (void*)&i_val);
+			if (i_val > 0) {
+				c->s3_min_part_size = (uint64_t) i_val * 1024 * 1024;
+			} else {
+				status = false;
+			}
+
+		} else if (! strcasecmp("s3-max-async-downloads", name)) {
+			status = config_int64(curtab, name, (void*)&i_val);
+			if (i_val > 0 & i_val <= UINT_MAX) {
+				c->s3_max_async_downloads = (uint32_t) i_val;
+			} else {
+				status = false;
+			}
+
+		} else if (! strcasecmp("s3-max-async-uploads", name)) {
+			status = config_int64(curtab, name, (void*)&i_val);
+			if (i_val > 0 & i_val <= UINT_MAX) {
+				c->s3_max_async_uploads = (uint32_t) i_val;
 			} else {
 				status = false;
 			}
@@ -850,19 +899,19 @@ config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance,
 			status = config_str(curtab, name, (void*)&c->input_file);
 
 		} else if (! strcasecmp("compress", name)) {
-			char* compress_type;
+			char* compress_type = NULL;
 			status = config_str(curtab, name, (void*) &compress_type);
 			if (status) {
 				status = parse_compression_type(compress_type, &c->compress_mode) == 0;
-				free(compress_type);
+				cf_free(compress_type);
 			}
 
 		} else if (! strcasecmp("encrypt", name)) {
-			char* encrypt_type;
+			char* encrypt_type = NULL;
 			status = config_str(curtab, name, (void*) &encrypt_type);
 			if (status) {
 				status = parse_encryption_type(encrypt_type, &c->encrypt_mode) == 0;
-				free(encrypt_type);
+				cf_free(encrypt_type);
 			}
 
 		} else if (! strcasecmp("encryption-key-file", name)) {
@@ -872,12 +921,12 @@ config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance,
 				return false;
 			}
 			else {
-				char* key_file;
+				char* key_file = NULL;
 				status = config_str(curtab, name, (void*) &key_file);
 				if (status) {
 					c->pkey = (encryption_key_t*) cf_malloc(sizeof(encryption_key_t));
 					status = io_proxy_read_private_key_file(key_file, c->pkey) == 0;
-					free(key_file);
+					cf_free(key_file);
 				}
 			}
 
@@ -888,12 +937,12 @@ config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance,
 				return false;
 			}
 			else {
-				char* env_var;
+				char* env_var = NULL;
 				status = config_str(curtab, name, (void*) &env_var);
 				if (status) {
 					c->pkey = parse_encryption_key_env(env_var);
 					status = c->pkey != NULL;
-					free(env_var);
+					cf_free(env_var);
 				}
 			}
 
@@ -910,7 +959,7 @@ config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance,
 			status = config_str(curtab, name, (void*)&c->machine);
 
 		} else if (! strcasecmp("verbose", name)) {
-			status = config_bool(curtab, name, (void*)&verbose);
+			status = config_bool(curtab, name, (void*)&g_verbose);
 
 		} else if (! strcasecmp("bin-list", name)) {
 			status = config_str(curtab, name, (void*)&c->bin_list);
@@ -999,6 +1048,23 @@ config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance,
 			status = config_int32(curtab, name, (int32_t*)&i_val);
 			if (i_val >= 0) {
 				c->retry_delay = (uint32_t)i_val;
+			} else {
+				status = false;
+			}
+
+		} else if (! strcasecmp("s3-region", name)) {
+			status = config_str(curtab, name, (void*)&c->s3_region);
+
+		} else if (! strcasecmp("s3-profile", name)) {
+			status = config_str(curtab, name, (void*)&c->s3_profile);
+
+		} else if (! strcasecmp("s3-endpoint-override", name)) {
+			status = config_str(curtab, name, (void*)&c->s3_endpoint_override);
+
+		} else if (! strcasecmp("s3-max-async-downloads", name)) {
+			status = config_int64(curtab, name, (void*)&i_val);
+			if (i_val > 0 & i_val <= UINT_MAX) {
+				c->s3_max_async_downloads = (uint32_t) i_val;
 			} else {
 				status = false;
 			}

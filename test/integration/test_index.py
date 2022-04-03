@@ -5,6 +5,7 @@ Tests the representation of indexes in backup files.
 """
 
 import lib
+from run_backup import backup_and_restore
 
 SET_NAMES = [None] + lib.index_variations(63)
 INDEX_NAMES = ["normal"] + lib.index_variations(63)
@@ -30,30 +31,33 @@ def test_integer_index():
 	"""
 	Tests integer indexes across all set names, index names, and index paths.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		lambda context: create_indexes(lib.create_integer_index),
 		None,
-		lambda context: check_indexes(lib.check_simple_index, 12345)
+		lambda context: check_indexes(lib.check_simple_index, 12345),
+		restore_delay=1
 	)
 
 def test_string_index():
 	"""
 	Tests string indexes across all set names, index names, and index paths.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		lambda context: create_indexes(lib.create_string_index),
 		None,
-		lambda context: check_indexes(lib.check_simple_index, "foobar")
+		lambda context: check_indexes(lib.check_simple_index, "foobar"),
+		restore_delay=1
 	)
 
 def test_geo_index():
 	"""
 	Tests geo indexes across all set names, index names, and index paths.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		lambda context: create_indexes(lib.create_geo_index),
 		None,
-		lambda context: check_indexes(lib.check_geo_index, (0.0, 0.0))
+		lambda context: check_indexes(lib.check_geo_index, (0.0, 0.0)),
+		restore_delay=1
 	)
 
 def test_integer_list_index():
@@ -61,10 +65,11 @@ def test_integer_list_index():
 	Tests integer list indexes across all set names, index names, and
 	index paths.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		lambda context: create_indexes(lib.create_integer_list_index),
 		None,
-		lambda context: check_indexes(lib.check_list_index, 12345)
+		lambda context: check_indexes(lib.check_list_index, 12345),
+		restore_delay=1
 	)
 
 def test_string_list_index():
@@ -72,10 +77,11 @@ def test_string_list_index():
 	Tests string list indexes across all set names, index names, and
 	index paths.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		lambda context: create_indexes(lib.create_string_list_index),
 		None,
-		lambda context: check_indexes(lib.check_list_index, "foobar")
+		lambda context: check_indexes(lib.check_list_index, "foobar"),
+		restore_delay=1
 	)
 
 def test_integer_map_key_index():
@@ -83,10 +89,11 @@ def test_integer_map_key_index():
 	Tests integer map key indexes across all set names, index names, and
 	index paths.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		lambda context: create_indexes(lib.create_integer_map_key_index),
 		None,
-		lambda context: check_indexes(lib.check_map_key_index, 12345)
+		lambda context: check_indexes(lib.check_map_key_index, 12345),
+		restore_delay=1
 	)
 
 def test_string_map_key_index():
@@ -94,10 +101,11 @@ def test_string_map_key_index():
 	Tests string map key indexes across all set names, index names, and
 	index paths.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		lambda context: create_indexes(lib.create_string_map_key_index),
 		None,
-		lambda context: check_indexes(lib.check_map_key_index, "foobar")
+		lambda context: check_indexes(lib.check_map_key_index, "foobar"),
+		restore_delay=1
 	)
 
 def test_integer_map_value_index():
@@ -105,10 +113,11 @@ def test_integer_map_value_index():
 	Tests integer map value indexes across all set names, index names, and
 	index paths.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		lambda context: create_indexes(lib.create_integer_map_value_index),
 		None,
-		lambda context: check_indexes(lib.check_map_value_index, 12345)
+		lambda context: check_indexes(lib.check_map_value_index, 12345),
+		restore_delay=1
 	)
 
 def test_string_map_value_index():
@@ -116,8 +125,9 @@ def test_string_map_value_index():
 	Tests string map value indexes across all set names, index names, and
 	index paths.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		lambda context: create_indexes(lib.create_string_map_value_index),
 		None,
-		lambda context: check_indexes(lib.check_map_value_index, "foobar")
+		lambda context: check_indexes(lib.check_map_value_index, "foobar"),
+		restore_delay=1
 	)

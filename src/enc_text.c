@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2021 Aerospike, Inc.
+ * Copyright 2015-2022 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -73,7 +73,7 @@ text_output_boolean(io_write_proxy_t *fd, const char *prefix1,
 
 	if (io_proxy_printf(fd, "%s%s %c\n", prefix1, prefix2,
 				v->value ? BOOLEAN_TRUE_CHAR : BOOLEAN_FALSE_CHAR) < 0) {
-		err_code("Error while writing boolean to backup file");
+		err("Error while writing boolean to backup file");
 		return false;
 	}
 
@@ -98,7 +98,7 @@ text_output_integer(io_write_proxy_t *fd, const char *prefix1,
 	as_integer *v = as_integer_fromval(val);
 
 	if (io_proxy_printf(fd, "%s%s %" PRId64 "\n", prefix1, prefix2, v->value) < 0) {
-		err_code("Error while writing integer to backup file");
+		err("Error while writing integer to backup file");
 		return false;
 	}
 
@@ -125,7 +125,7 @@ text_output_double(io_write_proxy_t *fd, const char *prefix1,
 	as_double *v = as_double_fromval(val);
 
 	if (io_proxy_printf(fd, "%s%s %.17g\n", prefix1, prefix2, v->value) < 0) {
-		err_code("Error while writing double to backup file");
+		err("Error while writing double to backup file");
 		return false;
 	}
 
@@ -149,17 +149,17 @@ text_output_data(io_write_proxy_t *fd, const char *prefix1,
 		void *buffer, size_t size)
 {
 	if (io_proxy_printf(fd, "%s%s %zu ", prefix1, prefix2, size) < 0) {
-		err_code("Error while writing data to backup file [1]");
+		err("Error while writing data to backup file [1]");
 		return false;
 	}
 
 	if (io_proxy_write(fd, buffer, size) != (int64_t) size) {
-		err_code("Error while writing data to backup file [2]");
+		err("Error while writing data to backup file [2]");
 		return false;
 	}
 
 	if (io_proxy_printf(fd, "\n") < 0) {
-		err_code("Error while writing data to backup file [3]");
+		err("Error while writing data to backup file [3]");
 		return false;
 	}
 
@@ -306,7 +306,7 @@ text_output_value(io_write_proxy_t *fd, bool compact,
 {
 	if (val == NULL || val->type == AS_NIL) {
 		if (io_proxy_printf(fd, "- N %s\n", bin_name) < 0) {
-			err_code("Error while writing NIL value to backup file");
+			err("Error while writing NIL value to backup file");
 			return false;
 		}
 
@@ -385,18 +385,18 @@ text_put_record(io_write_proxy_t *fd, bool compact,
 	}
 
 	if (io_proxy_printf(fd, "+ n %s\n+ d %s\n", escape(rec->key.ns), enc) < 0) {
-		err_code("Error while writing record meta data to backup file [1]");
+		err("Error while writing record meta data to backup file [1]");
 		return false;
 	}
 
 	if (rec->key.set[0] != 0 && io_proxy_printf(fd, "+ s %s\n", escape(rec->key.set)) < 0) {
-		err_code("Error while writing record meta data to backup file [2]");
+		err("Error while writing record meta data to backup file [2]");
 		return false;
 	}
 
 	if (io_proxy_printf(fd, "+ g %d\n+ t %u\n+ b %d\n", rec->gen, expire,
 			rec->bins.size) < 0) {
-		err_code("Error while writing record meta data to backup file [3]");
+		err("Error while writing record meta data to backup file [3]");
 		return false;
 	}
 
@@ -446,18 +446,18 @@ text_put_udf_file(io_write_proxy_t *fd, const as_udf_file *file)
 
 	if (io_proxy_printf(fd, GLOBAL_PREFIX "u %c %s %u ", (char)type, escape(file->name),
 			file->content.size) < 0) {
-		err_code("Error while writing UDF function to backup file [1]");
+		err("Error while writing UDF function to backup file [1]");
 		return false;
 	}
 
 	if (io_proxy_write(fd, file->content.bytes, file->content.size) !=
 			file->content.size) {
-		err_code("Error while writing UDF function to backup file [2]");
+		err("Error while writing UDF function to backup file [2]");
 		return false;
 	}
 
 	if (io_proxy_printf(fd, "\n") < 0) {
-		err_code("Error while writing UDF function to backup file [3]");
+		err("Error while writing UDF function to backup file [3]");
 		return false;
 	}
 
@@ -502,7 +502,7 @@ text_put_secondary_index(io_write_proxy_t *fd,
 	if (io_proxy_printf(fd, GLOBAL_PREFIX "i %s %s %s %c %u",
 			escape(index->ns), index->set != NULL ? escape(index->set) : "", escape(index->name),
 			text_index_type_to_label(index->type), index->path_vec.size) < 0) {
-		err_code("Error while writing secondary index to backup file [1]");
+		err("Error while writing secondary index to backup file [1]");
 		return false;
 	}
 
@@ -511,13 +511,13 @@ text_put_secondary_index(io_write_proxy_t *fd,
 
 		if (io_proxy_printf(fd, " %s %c", escape(path->path),
 				text_path_type_to_label(path->type)) < 0) {
-			err_code("Error while writing secondary index to backup file [2]");
+			err("Error while writing secondary index to backup file [2]");
 			return false;
 		}
 	}
 
 	if (io_proxy_printf(fd, "\n") < 0) {
-		err_code("Error while writing secondary index to backup file [3]");
+		err("Error while writing secondary index to backup file [3]");
 		return false;
 	}
 

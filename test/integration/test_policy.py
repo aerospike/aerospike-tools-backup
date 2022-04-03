@@ -5,6 +5,7 @@ Tests the --unique, --replace, and --no-generation restore policy options.
 """
 
 import lib
+from run_backup import backup_and_restore
 
 def fill_bins():
 	"""
@@ -70,58 +71,58 @@ def test_no_policy():
 	"""
 	Tests restore without any policy options.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		lambda context: fill_bins(),
 		lambda context: prepare_bins(),
 		lambda context: check_bins_no_policy(),
-		None,
-		None
+		backup_opts=None,
+		restore_opts=None
 	)
 
 def test_no_gen():
 	"""
 	Tests restore with --no-generation.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		lambda context: fill_bins(),
 		lambda context: prepare_bins(),
 		lambda context: check_bins_no_gen(),
-		None,
-		["--no-generation"]
+		backup_opts=None,
+		restore_opts=["--no-generation"]
 	)
 
 def test_replace():
 	"""
 	Tests restore with --replace.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		lambda context: fill_bins(),
 		lambda context: prepare_bins(),
 		lambda context: check_bins_replace(),
-		None,
-		["--replace"]
+		backup_opts=None,
+		restore_opts=["--replace"]
 	)
 
 def test_replace_no_gen():
 	"""
 	Tests restore with --replace and --no-generation.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		lambda context: fill_bins(),
 		lambda context: prepare_bins(),
 		lambda context: check_bins_replace_no_gen(),
-		None,
-		["--replace", "--no-generation"]
+		backup_opts=None,
+		restore_opts=["--replace", "--no-generation"]
 	)
 
 def test_unique():
 	"""
 	Tests restore with --unique.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		lambda context: fill_bins(),
 		lambda context: prepare_bins(),
 		lambda context: check_bins_unique(),
-		None,
-		["--unique"]
+		backup_opts=None,
+		restore_opts=["--unique"]
 	)

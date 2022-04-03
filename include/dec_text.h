@@ -1,7 +1,7 @@
 /*
  * Aerospike Text Format Decoder
  *
- * Copyright (c) 2008-2021 Aerospike, Inc. All rights reserved.
+ * Copyright (c) 2008-2022 Aerospike, Inc. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in

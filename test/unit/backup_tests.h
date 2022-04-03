@@ -7,6 +7,7 @@
 Suite* backup_conf_suite(void);
 Suite* backup_state_suite(void);
 Suite* restore_conf_suite(void);
+Suite* file_proxy_suite(void);
 Suite* io_proxy_suite(void);
 
 

@@ -4,3 +4,31 @@
 	...
 	fun:do_dlopen
 }
+{
+	ignore_libs2n_thread_local_leaks
+	Memcheck:Leak
+	match-leak-kinds:definite
+	...
+	fun:s2n_drbg_instantiate
+}
+{
+	ignore_libaws_still_reachable
+	Memcheck:Leak
+	match-leak-kinds:indirect,reachable
+	...
+	obj:*/libaws-cpp-sdk-core.so
+}
+{
+	ignore_libaws_s3_still_reachable
+	Memcheck:Leak
+	match-leak-kinds:indirect,reachable
+	...
+	obj:*/libaws-cpp-sdk-s3.so
+}
+{
+	ignore_libcrt_still_reachable
+	Memcheck:Leak
+	match-leak-kinds:indirect,reachable
+	...
+	fun:_ZN3Aws3Crt9ApiHandleC1EP13aws_allocator
+}

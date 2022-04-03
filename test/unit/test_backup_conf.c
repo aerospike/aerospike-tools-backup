@@ -43,6 +43,7 @@ tmp_file_init(const char* cluster_args, const char* backup_args,
 	snprintf(file_contents_buf, n_bytes, file_contents, cluster_args,
 			backup_args, asadm_args);
 	fwrite(file_contents_buf, 1, n_bytes, f);
+	cf_free(file_contents_buf);
 	fclose(f);
 }
 
@@ -152,6 +153,7 @@ START_TEST(test_init_empty)
 
 	assert_bup_config_eq(&c1, &c2);
 
+	backup_config_destroy(&c2);
 	backup_config_destroy(&c1);
 }
 END_TEST
@@ -169,6 +171,7 @@ START_TEST(test_name) \
 	c2.field_name = true; \
 	assert_bup_config_eq(&c1, &c2); \
 	\
+	backup_config_destroy(&c2); \
 	backup_config_destroy(&c1); \
 } \
 END_TEST
@@ -190,6 +193,7 @@ START_TEST(test_name) \
 	c2.field_name = 314159lu * (mult); \
 	assert_bup_config_eq(&c1, &c2); \
 	\
+	backup_config_destroy(&c2); \
 	backup_config_destroy(&c1); \
 } \
 END_TEST
@@ -207,9 +211,11 @@ START_TEST(test_name) \
 	backup_config_default(&c2); \
 	\
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0); \
-	c2.field_name = str_val; \
+	cf_free(c2.field_name); \
+	c2.field_name = strdup(str_val); \
 	assert_bup_config_eq(&c1, &c2); \
 	\
+	backup_config_destroy(&c2); \
 	backup_config_destroy(&c1); \
 } \
 END_TEST
@@ -256,6 +262,7 @@ START_TEST(test_init_set_list_single)
 
 	assert_bup_config_eq(&c1, &c2);
 
+	backup_config_destroy(&c2);
 	backup_config_destroy(&c1);
 }
 END_TEST
@@ -276,6 +283,7 @@ START_TEST(test_init_set_list)
 
 	assert_bup_config_eq(&c1, &c2);
 
+	backup_config_destroy(&c2);
 	backup_config_destroy(&c1);
 }
 END_TEST
@@ -290,10 +298,11 @@ START_TEST(test_init_bin_list)
 
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0);
 
-	c2.bin_list = "bin-1,bin-2,bin-3";
+	c2.bin_list = strdup("bin-1,bin-2,bin-3");
 
 	assert_bup_config_eq(&c1, &c2);
 
+	backup_config_destroy(&c2);
 	backup_config_destroy(&c1);
 }
 END_TEST
@@ -323,6 +332,7 @@ START_TEST(test_init_mod_after)
 
 	assert_bup_config_eq(&c1, &c2);
 
+	backup_config_destroy(&c2);
 	backup_config_destroy(&c1);
 }
 END_TEST
@@ -352,6 +362,7 @@ START_TEST(test_init_mod_before)
 
 	assert_bup_config_eq(&c1, &c2);
 
+	backup_config_destroy(&c2);
 	backup_config_destroy(&c1);
 }
 END_TEST
@@ -371,6 +382,7 @@ START_TEST(test_init_compress_mode)
 
 	assert_bup_config_eq(&c1, &c2);
 
+	backup_config_destroy(&c2);
 	backup_config_destroy(&c1);
 }
 END_TEST
@@ -389,6 +401,7 @@ START_TEST(test_init_encryption_mode)
 
 	assert_bup_config_eq(&c1, &c2);
 
+	backup_config_destroy(&c2);
 	backup_config_destroy(&c1);
 }
 END_TEST
@@ -557,11 +570,13 @@ START_TEST(test_init_encrypt_key_file)
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0);
 
 	c2.pkey = (encryption_key_t*) test_malloc(sizeof(encryption_key_t));
-	c2.pkey->data = data;
+	c2.pkey->data = cf_malloc(sizeof(data));
+	memcpy(c2.pkey->data, data, sizeof(data));
 	c2.pkey->len = 1190;
 
 	assert_bup_config_eq(&c1, &c2);
 
+	backup_config_destroy(&c2);
 	backup_config_destroy(&c1);
 }
 END_TEST
@@ -585,11 +600,13 @@ START_TEST(test_init_encryption_key_env)
 	unsetenv("TEST_ENCRYPT_KEY_ENV_VAR");
 
 	c2.pkey = (encryption_key_t*) test_malloc(sizeof(encryption_key_t));
-	c2.pkey->data = data;
+	c2.pkey->data = cf_malloc(sizeof(data));
+	memcpy(c2.pkey->data, data, sizeof(data));
 	c2.pkey->len = 16;
 
 	assert_bup_config_eq(&c1, &c2);
 
+	backup_config_destroy(&c2);
 	backup_config_destroy(&c1);
 }
 END_TEST
@@ -607,6 +624,7 @@ START_TEST(test_name) \
 	c2.field_name = true; \
 	assert_bup_config_eq(&c1, &c2); \
 	\
+	backup_config_destroy(&c2); \
 	backup_config_destroy(&c1); \
 } \
 END_TEST
@@ -628,6 +646,7 @@ START_TEST(test_name) \
 	c2.field_name = 314159lu * (mult); \
 	assert_bup_config_eq(&c1, &c2); \
 	\
+	backup_config_destroy(&c2); \
 	backup_config_destroy(&c1); \
 } \
 END_TEST
@@ -645,9 +664,10 @@ START_TEST(test_name) \
 	backup_config_default(&c2); \
 	\
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0); \
-	c2.field_name = str_val; \
+	c2.field_name = strdup(str_val); \
 	assert_bup_config_eq(&c1, &c2); \
 	\
+	backup_config_destroy(&c2); \
 	backup_config_destroy(&c1); \
 } \
 END_TEST
@@ -666,6 +686,7 @@ START_TEST(test_name) \
 	strcpy(c2.field_name, val); \
 	assert_bup_config_eq(&c1, &c2); \
 	\
+	backup_config_destroy(&c2); \
 	backup_config_destroy(&c1); \
 } \
 END_TEST
@@ -679,6 +700,7 @@ DEFINE_STR_TEST(test_init_directory, "directory", directory, "/home/test_guy/thi
 DEFINE_STR_TEST(test_init_output_file, "output-file", output_file, "test.asb");
 DEFINE_STR_TEST(test_init_prefix, "output-file-prefix", prefix, "special_backup");
 DEFINE_BOOL_TEST(test_init_compact, "compact", compact);
+DEFINE_INT_TEST(test_init_parallel, "parallel", parallel);
 
 DEFINE_BOOL_TEST(test_init_no_bins, "no-bins", no_bins);
 DEFINE_BOOL_TEST(test_init_ttl_zero, "no-ttl-only", ttl_zero);
@@ -689,6 +711,10 @@ DEFINE_BOOL_TEST(test_init_no_records, "no-records", no_records);
 DEFINE_BOOL_TEST(test_init_no_indexes, "no-indexes", no_indexes);
 DEFINE_BOOL_TEST(test_init_no_udfs, "no-udfs", no_udfs);
 DEFINE_INT_TEST_MULT(test_init_file_limit, "file-limit", file_limit, 1024 * 1024);
+DEFINE_STR_TEST(test_init_partition_list, "partition-list", partition_list,
+		"1024-10,3000-1000,4095");
+DEFINE_STR_TEST(test_init_after_digest, "after-digest", after_digest,
+		"EjRWeJq83vEjRRI0VniavN7xI0U=");
 DEFINE_INT_TEST(test_init_max_recs, "max-records", max_records);
 DEFINE_INT_TEST(test_init_records_per_second, "records-per-second", records_per_second);
 
@@ -738,6 +764,7 @@ Suite* backup_conf_suite()
 	tcase_add_test(tc_init, test_init_prefix);
 	tcase_add_test(tc_init, test_init_compact);
 	tcase_add_test(tc_init, test_init_no_bins);
+	tcase_add_test(tc_init, test_init_parallel);
 	tcase_add_test(tc_init, test_init_compress_mode);
 	tcase_add_test(tc_init, test_init_encryption_mode);
 	tcase_add_test(tc_init, test_init_encrypt_key_file);
@@ -751,6 +778,8 @@ Suite* backup_conf_suite()
 	tcase_add_test(tc_init, test_init_no_indexes);
 	tcase_add_test(tc_init, test_init_no_udfs);
 	tcase_add_test(tc_init, test_init_file_limit);
+	tcase_add_test(tc_init, test_init_partition_list);
+	tcase_add_test(tc_init, test_init_after_digest);
 	tcase_add_test(tc_init, test_init_max_recs);
 	tcase_add_test(tc_init, test_init_records_per_second);
 	suite_add_tcase(s, tc_init);

@@ -5,6 +5,7 @@ Tests the representation of keys in backup files.
 """
 
 import lib
+from run_backup import backup_and_restore
 
 STRING_KEYS = lib.identifier_variations(10, False)
 STRING_KEYS += lib.identifier_variations(100, False)
@@ -53,7 +54,7 @@ def test_string_key():
 	"""
 	Test string keys, don't store the user key.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		lambda context: put_keys(lib.SET, STRING_KEYS, "foobar", False),
 		None,
 		lambda context: check_keys(lib.SET, STRING_KEYS, "foobar", False)
@@ -63,7 +64,7 @@ def test_string_key_stored():
 	"""
 	Test string keys, store the user key.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		lambda context: put_keys(lib.SET, STRING_KEYS, "foobar", True),
 		None,
 		lambda context: check_keys(lib.SET, STRING_KEYS, "foobar", True)
@@ -73,7 +74,7 @@ def test_blob_key():
 	"""
 	Test BLOB keys, don't store the user key.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		lambda context: put_keys(lib.SET, BLOB_KEYS, "foobar", False),
 		None,
 		lambda context: check_keys(lib.SET, BLOB_KEYS, "foobar", False)
@@ -83,7 +84,7 @@ def test_blob_key_stored():
 	"""
 	Test BLOB keys, store the user key.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		lambda context: put_keys(lib.SET, BLOB_KEYS, "foobar", True),
 		None,
 		lambda context: check_keys(lib.SET, BLOB_KEYS, "foobar", True)
@@ -93,18 +94,18 @@ def test_blob_key_stored_compact():
 	"""
 	Test BLOB keys, store the user key, pass --compact to backup.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		lambda context: put_keys(lib.SET, BLOB_KEYS, "foobar", True),
 		None,
 		lambda context: check_keys(lib.SET, BLOB_KEYS, "foobar", True),
-		["--compact"]
+		backup_opts=["--compact"]
 	)
 
 def test_integer_key():
 	"""
 	Test integer keys, don't store the user key.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		lambda context: put_keys(lib.SET, INTEGER_KEYS, "foobar", False),
 		None,
 		lambda context: check_keys(lib.SET, INTEGER_KEYS, "foobar", False)
@@ -114,7 +115,7 @@ def test_integer_key_stored():
 	"""
 	Test integer keys, store the user key.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		lambda context: put_keys(lib.SET, INTEGER_KEYS, "foobar", True),
 		None,
 		lambda context: check_keys(lib.SET, INTEGER_KEYS, "foobar", True)

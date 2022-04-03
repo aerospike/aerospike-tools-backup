@@ -1,7 +1,7 @@
 /*
  * Aerospike Utility Functions
  *
- * Copyright (c) 2008-2021 Aerospike, Inc. All rights reserved.
+ * Copyright (c) 2008-2022 Aerospike, Inc. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -223,7 +223,15 @@ typedef enum {
 	COMMAND_OPT_SOCKET_TIMEOUT,
 	COMMAND_OPT_TOTAL_TIMEOUT,
 	COMMAND_OPT_MAX_RETRIES,
-	COMMAND_OPT_RETRY_DELAY
+	COMMAND_OPT_RETRY_DELAY,
+	COMMAND_OPT_REMOVE_ARTIFACTS,
+	COMMAND_OPT_ESTIMATE_SAMPLES,
+	COMMAND_OPT_S3_REGION,
+	COMMAND_OPT_S3_PROFILE,
+	COMMAND_OPT_S3_ENDPOINT_OVERRIDE,
+	COMMAND_OPT_S3_MIN_PART_SIZE,
+	COMMAND_OPT_S3_MAX_ASYNC_DOWNLOADS,
+	COMMAND_OPT_S3_MAX_ASYNC_UPLOADS
 } cmd_opt;
 
 /*
@@ -254,7 +262,8 @@ typedef struct {
 	uint8_t buffer[2];
 } b64_context;
 
-extern bool verbose;
+extern bool g_verbose;
+extern bool g_silent;
 extern const uint8_t b64map[256];
 
 
@@ -285,7 +294,14 @@ extern const uint8_t b64map[256];
 // Public API.
 //
 
-void ver(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
+#define ver(...) \
+	do { \
+		if (g_verbose) { \
+			_ver_fn(__VA_ARGS__); \
+		} \
+	} while(0)
+
+void _ver_fn(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
 void inf(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
 void err(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
 void err_code(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
@@ -293,8 +309,9 @@ const char* boolstr(bool val);
 void hex_dump_ver(const void *data, uint32_t len);
 void hex_dump_inf(const void *data, uint32_t len);
 void hex_dump_err(const void *data, uint32_t len);
+bool str_vector_clone(as_vector* dst, const as_vector* src);
 bool str_vector_contains(const as_vector* v, const char* str);
-char* str_vector_tostring(as_vector* v);
+char* str_vector_tostring(const as_vector* v);
 void enable_client_log(void);
 void *safe_malloc(size_t size);
 char *safe_strdup(const char *string);
@@ -302,6 +319,9 @@ void safe_lock(pthread_mutex_t* mutex);
 void safe_unlock(pthread_mutex_t* mutex);
 void safe_wait(pthread_cond_t *cond, pthread_mutex_t* mutex);
 void safe_signal(pthread_cond_t *cond);
+double erfinv(double y);
+double confidence_z(double p, uint64_t n_records);
+char* dyn_sprintf(const char* format, ...) __attribute__ ((format (printf, 1, 2)));
 bool better_atoi(const char *string, uint64_t *val);
 bool parse_date_time(const char *string, int64_t *nanos);
 bool format_date_time(int64_t nanos, char *buffer, size_t size);
@@ -312,10 +332,10 @@ char *trim_string(char *str);
 void split_string(char *str, char split, bool trim, as_vector *vec);
 void format_eta(int32_t seconds, char *buffer, size_t size);
 char *print_char(int32_t ch);
-bool write_int64(uint64_t val, FILE* fd);
-bool write_int32(uint32_t val, FILE* fd);
-bool read_int64(uint64_t* val, FILE* fd);
-bool read_int32(uint32_t* val, FILE* fd);
+bool write_int64(uint64_t val, file_proxy_t* fd);
+bool write_int32(uint32_t val, file_proxy_t* fd);
+bool read_int64(uint64_t* val, file_proxy_t* fd);
+bool read_int32(uint32_t* val, file_proxy_t* fd);
 int32_t read_char(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no);
 int32_t read_char_dec(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
 		b64_context *b64c);
@@ -326,12 +346,19 @@ bool read_block(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
 		void *buffer, size_t size);
 bool read_block_dec(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
 		void *buffer, size_t size, b64_context *b64c);
+
+// the following functions are only valid in C, not C++
+#ifndef __cplusplus
+
 void get_node_names(as_cluster *clust, node_spec *node_specs, uint32_t n_node_specs,
 		char (**node_names)[][AS_NODE_NAME_SIZE], uint32_t *n_node_names);
 bool get_info(aerospike *as, const char *value, const char *node_name, void *context,
 		info_callback callback, bool kv_split);
 bool get_migrations(aerospike *as, char (*node_names)[][AS_NODE_NAME_SIZE],
 		uint32_t n_node_names, uint64_t *mig_count);
+
+#endif /* __cplusplus */
+
 bool parse_index_info(char *ns, char *index_str, index_param *index);
 bool parse_set_list(as_vector* dst, const char* set_list);
 encryption_key_t* parse_encryption_key_env(const char* env_var_name);

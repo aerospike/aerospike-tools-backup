@@ -1,7 +1,7 @@
 /*
  * Aerospike Format Encoder Interface
  *
- * Copyright (c) 2008-2021 Aerospike, Inc. All rights reserved.
+ * Copyright (c) 2008-2022 Aerospike, Inc. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -128,6 +128,9 @@ typedef struct {
 	// The path expressions of the index as a vector of path_param. Currently,
 	// there's always only one path expression.
 	as_vector path_vec;
+	// The as_index_task struct populated by the aerospike_index_create_complex
+	// command which is used by aerospike_index_create_wait
+	as_index_task task;
 } index_param;
 
 /*

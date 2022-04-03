@@ -4,9 +4,11 @@
 Tests the backing up of individual sets and groups of sets
 """
 
+import aerospike
 import os.path
 
 import lib
+from run_backup import backup_and_restore
 
 SET_NAMES = [None] + lib.index_variations(63)
 
@@ -73,7 +75,7 @@ def check_index(exists, set_name, bin_name, is_integer_index):
 	try:
 		lib.check_simple_index(set_name, bin_name, 42 if is_integer_index else "foobar")
 		found = True
-	except Exception:
+	except aerospike.exception.IndexNotFound:
 		found = False
 
 	if exists:
@@ -115,7 +117,7 @@ def test_no_filter():
 	"""
 	Tests backup and restore without any filters.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		put_data,
 		None,
 		lambda context: check_data(context,
@@ -123,15 +125,15 @@ def test_no_filter():
 			True, True,
 			True, True, True,
 			True),
-		None,
-		None
+		restore_opts=["--wait"],
+		restore_delay=1
 	)
 
 def test_backup_no_bins():
 	"""
 	Tests the --no-bins backup option.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		put_data,
 		None,
 		lambda context: check_data(context,
@@ -139,15 +141,16 @@ def test_backup_no_bins():
 			False, False,
 			True, True, True,
 			True),
-		["--no-bins"],
-		None
+		backup_opts=["--no-bins"],
+		restore_opts=["--wait"],
+		restore_delay=1
 	)
 
 def test_backup_set():
 	"""
 	Tests the --set backup option.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		put_data,
 		None,
 		lambda context: check_data(context,
@@ -155,15 +158,16 @@ def test_backup_set():
 			True, True,
 			True, False, False,
 			True),
-		["--set", SET_NAME_1],
-		None
+		backup_opts=["--set", SET_NAME_1],
+		restore_opts=["--wait"],
+		restore_delay=1
 	)
 
 def test_backup_sets():
 	"""
 	Tests the --set backup option with 2 sets.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		put_data,
 		None,
 		lambda context: check_data(context,
@@ -171,15 +175,16 @@ def test_backup_sets():
 			True, True,
 			True, True, False,
 			True),
-		["--set", "%s,%s" % (SET_NAME_1, SET_NAME_2)],
-		None
+		backup_opts=["--set", "%s,%s" % (SET_NAME_1, SET_NAME_2)],
+		restore_opts=["--wait"],
+		restore_delay=1
 	)
 
 def test_backup_all_sets():
 	"""
 	Tests the --set backup option with all 3 sets.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		put_data,
 		None,
 		lambda context: check_data(context,
@@ -187,15 +192,16 @@ def test_backup_all_sets():
 			True, True,
 			True, True, True,
 			True),
-		["--set", "%s,%s,%s" % (SET_NAME_1, SET_NAME_2, SET_NAME_3)],
-		None
+		backup_opts=["--set", "%s,%s,%s" % (SET_NAME_1, SET_NAME_2, SET_NAME_3)],
+		restore_opts=["--wait"],
+		restore_delay=1
 	)
 
 def test_restore_set_list():
 	"""
 	Tests the --set-list restore option.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		put_data,
 		None,
 		lambda context: check_data(context,
@@ -203,15 +209,15 @@ def test_restore_set_list():
 			True, True,
 			True, False, False,
 			True),
-		None,
-		["--set-list", SET_NAME_1]
+		restore_opts=["--set-list", SET_NAME_1, "--wait"],
+		restore_delay=1
 	)
 
 def test_backup_bin_list():
 	"""
 	Tests the --bin-list backup option.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		put_data,
 		None,
 		lambda context: check_data(context,
@@ -219,15 +225,16 @@ def test_backup_bin_list():
 			True, False,
 			True, True, True,
 			True),
-		["--bin-list", BIN_NAME_1],
-		None
+		backup_opts=["--bin-list", BIN_NAME_1],
+		restore_opts=["--wait"],
+		restore_delay=1
 	)
 
 def test_restore_bin_list():
 	"""
 	Tests the --bin-list restore option.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		put_data,
 		None,
 		lambda context: check_data(context,
@@ -235,15 +242,15 @@ def test_restore_bin_list():
 			True, False,
 			True, True, True,
 			True),
-		None,
-		["--bin-list", BIN_NAME_1]
+		restore_opts=["--bin-list", BIN_NAME_1, "--wait"],
+		restore_delay=1
 	)
 
 def test_backup_no_records():
 	"""
 	Tests the --no-records backup option.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		put_data,
 		None,
 		lambda context: check_data(context,
@@ -251,15 +258,16 @@ def test_backup_no_records():
 			False, False,
 			True, True, True,
 			True),
-		["--no-records"],
-		None
+		backup_opts=["--no-records"],
+		restore_opts=["--wait"],
+		restore_delay=1
 	)
 
 def test_restore_no_records():
 	"""
 	Tests the --no-records restore option.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		put_data,
 		None,
 		lambda context: check_data(context,
@@ -267,15 +275,15 @@ def test_restore_no_records():
 			False, False,
 			True, True, True,
 			True),
-		None,
-		["--no-records"]
+		restore_opts=["--no-records", "--wait"],
+		restore_delay=1
 	)
 
 def test_backup_no_indexes():
 	"""
 	Tests the --no-indexes backup option.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		put_data,
 		None,
 		lambda context: check_data(context,
@@ -283,15 +291,16 @@ def test_backup_no_indexes():
 			True, True,
 			False, False, False,
 			True),
-		["--no-indexes"],
-		None
+		backup_opts=["--no-indexes"],
+		restore_opts=["--wait"],
+		restore_delay=1
 	)
 
 def test_restore_no_indexes():
 	"""
 	Tests the --no-indexes restore option.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		put_data,
 		None,
 		lambda context: check_data(context,
@@ -299,15 +308,15 @@ def test_restore_no_indexes():
 			True, True,
 			False, False, False,
 			True),
-		None,
-		["--no-indexes"]
+		restore_opts=["--no-indexes", "--wait"],
+		restore_delay=1
 	)
 
 def test_backup_no_udfs():
 	"""
 	Tests the --no-udfs backup option.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		put_data,
 		None,
 		lambda context: check_data(context,
@@ -315,15 +324,16 @@ def test_backup_no_udfs():
 			True, True,
 			True, True, True,
 			False),
-		["--no-udfs"],
-		None
+		backup_opts=["--no-udfs"],
+		restore_opts=["--wait"],
+		restore_delay=1
 	)
 
 def test_restore_no_udfs():
 	"""
 	Tests the --no-udfs restore option.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		put_data,
 		None,
 		lambda context: check_data(context,
@@ -331,7 +341,7 @@ def test_restore_no_udfs():
 			True, True,
 			True, True, True,
 			False),
-		None,
-		["--no-udfs"]
+		restore_opts=["--no-udfs", "--wait"],
+		restore_delay=1
 	)
 

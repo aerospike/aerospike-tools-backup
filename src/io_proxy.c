@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2021 Aerospike, Inc.
+ * Copyright 2021-2022 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -39,16 +39,21 @@
 
 #include <utils.h>
 
- 
+
 //==========================================================
 // Forward Declarations.
 //
 
-static int _proxy_init(io_proxy_t* io, FILE* file, uint8_t options);
+static int _proxy_init(io_proxy_t* io, uint8_t options);
+static void _proxy_free(io_proxy_t* io);
 static void _io_proxy_set_error(io_proxy_t* io);
 static void _consumer_buffer_init(consumer_buffer_t* cb, uint64_t size);
 static void _consumer_buffer_free(consumer_buffer_t* cb);
 static void __zero_if_eq(uint64_t* pos, uint64_t* data_pos);
+static int _consumer_buffer_serialize(const consumer_buffer_t* cb,
+		file_proxy_t* dst);
+static int _consumer_buffer_deserialize(consumer_buffer_t* cb,
+		file_proxy_t* src);
 static void _consumer_buffer_write(consumer_buffer_t* cb, const void** src,
 		uint64_t *n_bytes);
 static void _consumer_buffer_putc(consumer_buffer_t* cb, char c);
@@ -56,18 +61,18 @@ static void _consumer_buffer_read(consumer_buffer_t* cb, void** dst,
 		uint64_t *n_bytes);
 static int32_t _consumer_buffer_getc(consumer_buffer_t* cb);
 static int32_t _consumer_buffer_peekc(consumer_buffer_t* cb);
-static int _consumer_buffer_fread(consumer_buffer_t* cb, FILE* file);
-static int64_t _consumer_buffer_fwrite(consumer_buffer_t* cb, FILE* file);
+static int _consumer_buffer_fread(consumer_buffer_t* cb, file_proxy_t* file);
+static int64_t _consumer_buffer_fwrite(consumer_buffer_t* cb,
+		file_proxy_t* file);
 static int64_t _consumer_buffer_compress(io_proxy_t* io, consumer_buffer_t* dst,
 		consumer_buffer_t* src, ZSTD_EndDirective z_ed);
 static int _consumer_buffer_decompress(io_proxy_t* io, consumer_buffer_t* dst,
 		consumer_buffer_t* src);
+static int _comp_buffer_end_block(io_proxy_t* io);
 static int _consumer_buffer_encrypt(io_proxy_t* io, consumer_buffer_t* dst,
 		consumer_buffer_t* src);
 static void _consumer_buffer_decrypt(io_proxy_t* io, consumer_buffer_t* dst,
 		consumer_buffer_t* src);
-static __attribute__((pure)) bool _is_write_proxy(io_proxy_t* io);
-static __attribute__((pure)) bool _is_read_proxy(io_proxy_t* io);
 static __attribute__((pure)) uint64_t _get_pkey_digest_len(uint8_t flags);
 static __attribute__((pure)) bool _at_eof(io_proxy_t* io);
 static __attribute__((pure)) uint64_t _calc_output_buffer_len(
@@ -83,7 +88,7 @@ static int _init_fn(io_write_proxy_t* io);
 static int _commit_write(io_write_proxy_t* io, ZSTD_EndDirective z_ed);
 static int _buffer_read_block(io_write_proxy_t* io);
 
- 
+
 //==========================================================
 // Public API.
 //
@@ -93,6 +98,17 @@ encryption_key_init(encryption_key_t* key, uint8_t* pkey_data, uint64_t len)
 {
 	key->data = pkey_data;
 	key->len = len;
+}
+
+void
+encryption_key_clone(encryption_key_t* dst, const encryption_key_t* src)
+{
+	dst->data = cf_malloc(src->len);
+	dst->len = src->len;
+
+	if (src->len > 0) {
+		memcpy(dst->data, src->data, src->len);
+	}
 }
 
 int
@@ -139,15 +155,24 @@ encryption_key_free(encryption_key_t* key)
 }
 
 int
-io_write_proxy_init(io_write_proxy_t* io, FILE* file)
+io_write_proxy_init(io_write_proxy_t* io, const char* file_path,
+		uint64_t max_file_size)
 {
-	return _proxy_init(io, file, IO_WRITE_PROXY);
+	if (file_proxy_write_init(&io->file, file_path, max_file_size) != 0) {
+		return -1;
+	}
+
+	return _proxy_init(io, IO_WRITE_PROXY);
 }
 
 int
-io_read_proxy_init(io_write_proxy_t* io, FILE* file)
+io_read_proxy_init(io_write_proxy_t* io, const char* file_path)
 {
-	return _proxy_init(io, file, IO_READ_PROXY);
+	if (file_proxy_read_init(&io->file, file_path) != 0) {
+		return -1;
+	}
+
+	return _proxy_init(io, IO_READ_PROXY);
 }
 
 int
@@ -157,8 +182,12 @@ io_proxy_initialize(io_write_proxy_t* io)
 }
 
 int
-io_proxy_serialize(const io_proxy_t* io, FILE* file)
+io_proxy_serialize(io_proxy_t* io, file_proxy_t* file)
 {
+	if (_init_fn((io_write_proxy_t*) io) != 0) {
+		return -1;
+	}
+
 	io_proxy_serial_t data = {
 		.byte_cnt = htobe64(io->byte_cnt),
 		.raw_byte_cnt = htobe64(io->raw_byte_cnt),
@@ -174,8 +203,26 @@ io_proxy_serialize(const io_proxy_t* io, FILE* file)
 		memset(data.iv, 0, AES_BLOCK_SIZE);
 	}
 
-	if (fwrite(&data, 1, sizeof(io_proxy_serial_t), file) != sizeof(io_proxy_serial_t)) {
+	if (file_proxy_write(file, &data, sizeof(io_proxy_serial_t)) != sizeof(io_proxy_serial_t)) {
 		err("Writing serialized io_proxy to file failed");
+		return -1;
+	}
+
+	if (_consumer_buffer_serialize(&io->buffer, file) != 0) {
+		return -1;
+	}
+
+	if (io_proxy_do_compress(io) && (_comp_buffer_end_block(io) != 0 ||
+				_consumer_buffer_serialize(&io->comp_buffer, file) != 0)) {
+		return -1;
+	}
+
+	if (io_proxy_do_encrypt(io) && _consumer_buffer_serialize(&io->encrypt_buffer,
+				file) != 0) {
+		return -1;
+	}
+
+	if (file_proxy_serialize(&io->file, file) != 0) {
 		return -1;
 	}
 
@@ -183,16 +230,33 @@ io_proxy_serialize(const io_proxy_t* io, FILE* file)
 }
 
 int
-io_proxy_deserialize(io_proxy_t* io, FILE* fd, FILE* src)
+io_proxy_deserialize(io_proxy_t* io, file_proxy_t* src)
 {
 	io_proxy_serial_t data;
 
-	if (fread(&data, 1, sizeof(io_proxy_serial_t), src) != sizeof(io_proxy_serial_t)) {
+	if (file_proxy_read(src, &data, sizeof(io_proxy_serial_t)) != sizeof(io_proxy_serial_t)) {
 		err("Reading serialized io_proxy from file failed");
 		return -1;
 	}
 
-	io->fd = fd;
+	if (_consumer_buffer_deserialize(&io->buffer, src) != 0) {
+		return -1;
+	}
+
+	if (((data.flags & IO_PROXY_COMPRESS_MASK) != IO_PROXY_COMPRESS_NONE) &&
+			_consumer_buffer_deserialize(&io->comp_buffer, src) != 0) {
+		return -1;
+	}
+
+	if (((data.flags & IO_PROXY_ENCRYPT_MASK) != IO_PROXY_ENCRYPT_NONE) &&
+			_consumer_buffer_deserialize(&io->encrypt_buffer, src) != 0) {
+		return -1;
+	}
+
+	if (file_proxy_deserialize(&io->file, src) != 0) {
+		return -1;
+	}
+
 	io->byte_cnt = be64toh(data.byte_cnt);
 	io->raw_byte_cnt = be64toh(data.raw_byte_cnt);
 	io->num = be32toh(data.num);
@@ -202,18 +266,11 @@ io_proxy_deserialize(io_proxy_t* io, FILE* fd, FILE* src)
 	io->initialized = 0;
 
 	if (data.flags & IO_PROXY_ENCRYPT_MASK) {
-		// copy the IV into the iv field of the io_proxy to be encrypted/incremented
-		// at initialization
+		// copy the IV into the iv field of the io_proxy
 		memcpy(io->iv, data.iv, AES_BLOCK_SIZE);
 	}
 
 	return 0;
-}
-
-void
-io_proxy_always_buffer(io_proxy_t* io)
-{
-	io->flags |= IO_PROXY_ALWAYS_BUFFER;
 }
 
 int
@@ -264,7 +321,7 @@ io_proxy_init_encryption(io_proxy_t* io, const encryption_key_t* pkey,
 	}
 
 	// we will need to use decryption when reading
-	if (_is_read_proxy(io)) {
+	if (io_proxy_is_reader(io)) {
 		res = AES_set_decrypt_key(pkey_digest, (int) (pkey_digest_len * 8),
 				&io->decrypt_pkey_digest);
 		if (res < 0) {
@@ -311,7 +368,7 @@ io_proxy_init_compression(io_proxy_t* io, compression_opt compress_mode)
 		return 0;
 	}
 
-	if (_is_write_proxy(io)) {
+	if (io_proxy_is_writer(io)) {
 		io->cctx = ZSTD_createCCtx();
 	}
 	else {
@@ -322,35 +379,36 @@ io_proxy_init_compression(io_proxy_t* io, compression_opt compress_mode)
 	return 0;
 }
 
-void
-io_proxy_free(io_proxy_t* io)
+int
+io_proxy_close(io_proxy_t* io)
 {
-	if (io_proxy_do_compress(io)) {
-		if (_is_write_proxy(io)) {
-			ZSTD_freeCCtx(io->cctx);
-		}
-		else {
-			ZSTD_freeDCtx(io->dctx);
-		}
-		if (io->initialized) {
-			// comp_buffer and decomp_buffer alias each other
-			_consumer_buffer_free(&io->comp_buffer);
-		}
+	if (file_proxy_close(&io->file) != 0) {
+		return -1;
 	}
-	if (io_proxy_do_encrypt(io)) {
-		memset(&io->pkey_digest, 0, sizeof(AES_KEY));
-		memset(&io->decrypt_pkey_digest, 0, sizeof(AES_KEY));
+	_proxy_free(io);
+	return 0;
+}
 
-		if (io->initialized) {
-			memset(io->iv, 0, AES_BLOCK_SIZE);
-			// encrypt_buffer and decrypt_buffer alias each other
-			_consumer_buffer_free(&io->encrypt_buffer);
-		}
+int
+io_proxy_close2(io_proxy_t* io, uint8_t mode)
+{
+	if (file_proxy_close2(&io->file, mode) != 0) {
+		return -1;
 	}
-	if ((io_proxy_do_compress(io) || io_proxy_do_encrypt(io) ||
-				(io->flags & IO_PROXY_ALWAYS_BUFFER)) && io->initialized) {
-		_consumer_buffer_free(&io->buffer);
-	}
+	_proxy_free(io);
+	return 0;
+}
+
+__attribute__((pure)) bool
+io_proxy_is_writer(io_proxy_t* io)
+{
+	return (io->flags & IO_PROXY_TYPE_MASK) == IO_WRITE_PROXY;
+}
+
+__attribute__((pure)) bool
+io_proxy_is_reader(io_proxy_t* io)
+{
+	return (io->flags & IO_PROXY_TYPE_MASK) == IO_READ_PROXY;
 }
 
 __attribute__((pure)) bool
@@ -363,6 +421,12 @@ __attribute__((pure)) bool
 io_proxy_do_encrypt(const io_proxy_t* io)
 {
 	return (io->flags & IO_PROXY_ENCRYPT_MASK) != 0;
+}
+
+const char*
+io_proxy_file_path(const io_proxy_t* io)
+{
+	return file_proxy_path(&io->file);
 }
 
 int
@@ -402,7 +466,7 @@ io_write_proxy_bytes_written(const io_write_proxy_t* io)
 	}
 
 	if (io->buffer.src == NULL) {
-		int64_t res = ftell(io->fd);
+		int64_t res = file_proxy_tellg(&io->file);
 		return res;
 	}
 	else {
@@ -418,7 +482,7 @@ io_write_proxy_absolute_pos(const io_write_proxy_t* io)
 	}
 
 	if (io->buffer.src == NULL) {
-		int64_t res = ftell(io->fd);
+		int64_t res = file_proxy_tellg(&io->file);
 		return res;
 	}
 	else {
@@ -434,7 +498,7 @@ io_read_proxy_estimate_pos(const io_read_proxy_t* io)
 	}
 
 	if (io->buffer.src == NULL) {
-		return ftell(io->fd);
+		return file_proxy_tellg(&io->file);
 	}
 	else {
 		// queued_bytes is the total number of (potentially) compressed bytes of
@@ -481,13 +545,13 @@ io_proxy_write(io_write_proxy_t* io, const void* buf, size_t n_bytes)
 		return -1;
 	}
 
-	if (UNLIKELY(!_is_write_proxy(io))) {
+	if (UNLIKELY(!io_proxy_is_writer(io))) {
 		err("Can only write from a write proxy");
 		return -1;
 	}
 
 	if (io->buffer.src == NULL) {
-		return (ssize_t) fwrite(buf, 1, n_bytes, io->fd);
+		return (ssize_t) file_proxy_write(&io->file, buf, n_bytes);
 	}
 
 	while (n_bytes > 0) {
@@ -510,13 +574,13 @@ io_proxy_putc(io_write_proxy_t* io, char c)
 		return -1;
 	}
 
-	if (UNLIKELY(!_is_write_proxy(io))) {
+	if (UNLIKELY(!io_proxy_is_writer(io))) {
 		err("Can only write from a write proxy");
 		return -1;
 	}
 
 	if (io->buffer.src == NULL) {
-		return (int32_t) putc(c, io->fd);
+		return (int32_t) file_proxy_putc(&io->file, c);
 	}
 
 	_consumer_buffer_putc(&io->buffer, c);
@@ -566,13 +630,13 @@ io_proxy_read(io_read_proxy_t* io, void* buf, size_t n_bytes)
 		return -1;
 	}
 
-	if (UNLIKELY(!_is_read_proxy(io))) {
+	if (UNLIKELY(!io_proxy_is_reader(io))) {
 		err("Can only read from a read proxy");
 		return -1;
 	}
 
 	if (io->buffer.src == NULL) {
-		return (ssize_t) fread(buf, 1, n_bytes, io->fd);
+		return (ssize_t) file_proxy_read(&io->file, buf, n_bytes);
 	}
 
 	while (n_bytes > 0) {
@@ -597,16 +661,16 @@ io_proxy_getc(io_read_proxy_t* io)
 	int32_t res;
 
 	if (_init_fn(io) != 0) {
-		return -1;
+		return EOF;
 	}
 
-	if (UNLIKELY(!_is_read_proxy(io))) {
+	if (UNLIKELY(!io_proxy_is_reader(io))) {
 		err("Can only read from a read proxy");
-		return -1;
+		return EOF;
 	}
 
 	if (io->buffer.src == NULL) {
-		res = getc(io->fd);
+		res = file_proxy_getc(&io->file);
 	}
 	else {
 		if (io->buffer.pos == io->buffer.data_pos) {
@@ -631,16 +695,16 @@ io_proxy_getc_unlocked(io_read_proxy_t* io)
 	int32_t res;
 
 	if (_init_fn(io) != 0) {
-		return -1;
+		return EOF;
 	}
 
-	if (UNLIKELY(!_is_read_proxy(io))) {
+	if (UNLIKELY(!io_proxy_is_reader(io))) {
 		err("Can only read from a read proxy");
-		return -1;
+		return EOF;
 	}
 
 	if (io->buffer.src == NULL) {
-		res = getc_unlocked(io->fd);
+		res = file_proxy_getc_unlocked(&io->file);
 	}
 	else {
 		if (io->buffer.pos == io->buffer.data_pos) {
@@ -686,22 +750,17 @@ io_proxy_gets(io_read_proxy_t* io, char* str, int n)
 int32_t
 io_proxy_peekc_unlocked(io_read_proxy_t* io)
 {
-	int32_t c;
-
 	if (_init_fn(io) != 0) {
-		return -1;
+		return EOF;
 	}
 
-	if (UNLIKELY(!_is_read_proxy(io))) {
+	if (UNLIKELY(!io_proxy_is_reader(io))) {
 		err("Can only read from a read proxy");
-		return -1;
+		return EOF;
 	}
 
 	if (io->buffer.src == NULL) {
-		c = getc_unlocked(io->fd);
-		ungetc(c, io->fd);
-
-		return c;
+		return file_proxy_peekc_unlocked(&io->file);
 	}
 
 	if (io->buffer.pos == io->buffer.data_pos) {
@@ -723,7 +782,7 @@ io_proxy_flush(io_write_proxy_t* io)
 		return -1;
 	}
 
-	if (UNLIKELY(!_is_write_proxy(io))) {
+	if (UNLIKELY(!io_proxy_is_writer(io))) {
 		err("Cannot flush a read proxy");
 		return -1;
 	}
@@ -731,9 +790,7 @@ io_proxy_flush(io_write_proxy_t* io)
 	if (ret != 0) {
 		return ret;
 	}
-	fflush(io->fd);
-
-	return 0;
+	return file_proxy_flush(&io->file);
 }
 
 int
@@ -743,15 +800,14 @@ io_proxy_error(io_proxy_t* io)
 	return (io->flags & IO_PROXY_ERROR) != 0;
 }
 
- 
+
 //==========================================================
 // Local Helpers.
 //
 
 static int
-_proxy_init(io_proxy_t* io, FILE* file, uint8_t options)
+_proxy_init(io_proxy_t* io, uint8_t options)
 {
-	io->fd = file;
 	io->byte_cnt = 0;
 	// raw_byte_cnt and parsed_byte_cnt are unioned together, so only clear one
 	io->raw_byte_cnt = 0;
@@ -761,6 +817,31 @@ _proxy_init(io_proxy_t* io, FILE* file, uint8_t options)
 	io->num = 0;
 
 	return 0;
+}
+
+static void
+_proxy_free(io_proxy_t* io)
+{
+	if (io->initialized) {
+		if (io_proxy_do_compress(io)) {
+			if (io_proxy_is_writer(io)) {
+				ZSTD_freeCCtx(io->cctx);
+			}
+			else {
+				ZSTD_freeDCtx(io->dctx);
+			}
+			// comp_buffer and decomp_buffer alias each other
+			_consumer_buffer_free(&io->comp_buffer);
+		}
+		if (io_proxy_do_encrypt(io)) {
+			memset(&io->pkey_digest, 0, sizeof(AES_KEY));
+			memset(&io->decrypt_pkey_digest, 0, sizeof(AES_KEY));
+			memset(io->iv, 0, AES_BLOCK_SIZE);
+			// encrypt_buffer and decrypt_buffer alias each other
+			_consumer_buffer_free(&io->encrypt_buffer);
+		}
+		_consumer_buffer_free(&io->buffer);
+	}
 }
 
 static void
@@ -807,6 +888,48 @@ __zero_if_eq(uint64_t* pos_ptr, uint64_t* dpos_ptr)
 			: "cc");
 	*pos_ptr = pos;
 	*dpos_ptr = dpos;
+}
+
+static int
+_consumer_buffer_serialize(const consumer_buffer_t* cb, file_proxy_t* dst)
+{
+	if (!write_int64(cb->size, dst) || !write_int64(cb->pos, dst) ||
+			!write_int64(cb->data_pos, dst)) {
+		err("Serializing consumer buffer fields to file failed");
+		return -1;
+	}
+
+	if (file_proxy_write(dst, cb->src, cb->pos) != cb->pos) {
+		err("Serializing consumer buffer data to file failed");
+		return -1;
+	}
+
+	return 0;
+}
+
+static int
+_consumer_buffer_deserialize(consumer_buffer_t* cb, file_proxy_t* src)
+{
+	if (!read_int64(&cb->size, src) || !read_int64(&cb->pos, src) ||
+			!read_int64(&cb->data_pos, src)) {
+		err("Deserializing consumer buffer fields from file failed");
+		return -1;
+	}
+
+	cb->src = cf_malloc(cb->size);
+	if (cb->src == NULL) {
+		err("Unable to malloc %" PRIu64 " bytes for deserialized consumer buffer",
+				cb->size);
+		return -1;
+	}
+
+	if (file_proxy_read(src, cb->src, cb->pos) != cb->pos) {
+		err("Deserializing consumer buffer data from file failed");
+		cf_free(cb->src);
+		return -1;
+	}
+
+	return 0;
 }
 
 /*
@@ -861,7 +984,7 @@ _consumer_buffer_read(consumer_buffer_t* cb, void** dst, uint64_t *n_bytes)
 static int32_t
 _consumer_buffer_getc(consumer_buffer_t* cb)
 {
-	int32_t res = (int32_t) ((char*) cb->src)[cb->data_pos];
+	int32_t res = (int32_t) ((uint8_t*) cb->src)[cb->data_pos];
 
 	cb->data_pos++;
 	__zero_if_eq(&cb->pos, &cb->data_pos);
@@ -877,7 +1000,7 @@ _consumer_buffer_getc(consumer_buffer_t* cb)
 static int32_t
 _consumer_buffer_peekc(consumer_buffer_t* cb)
 {
-	return (int32_t) ((char*) cb->src)[cb->data_pos];
+	return (int32_t) ((uint8_t*) cb->src)[cb->data_pos];
 }
 
 /*
@@ -885,17 +1008,17 @@ _consumer_buffer_peekc(consumer_buffer_t* cb)
  * read from the file, and -1 if there was an error
  */
 static int
-_consumer_buffer_fread(consumer_buffer_t* cb, FILE* file)
+_consumer_buffer_fread(consumer_buffer_t* cb, file_proxy_t* file)
 {
-	size_t n_bytes = fread(cb->src + cb->pos, 1, cb->size - cb->pos, file);
-	if (ferror(file)) {
-		err("Failed reading data from file");
-		return -1;
-	}
+	size_t n_bytes = file_proxy_read(file, cb->src + cb->pos, cb->size - cb->pos);
 
 	cb->pos += n_bytes;
-	if (feof(file)) {
+	if (file_proxy_eof(file)) {
 		return 0;
+	}
+	else if (n_bytes == 0) {
+		err("Failed reading data from file");
+		return -1;
 	}
 	return 1;
 }
@@ -904,11 +1027,11 @@ _consumer_buffer_fread(consumer_buffer_t* cb, FILE* file)
  * returns the number of bytes left to be written, or -1 if there was an error
  */
 static int64_t
-_consumer_buffer_fwrite(consumer_buffer_t* cb, FILE* file)
+_consumer_buffer_fwrite(consumer_buffer_t* cb, file_proxy_t* file)
 {
-	size_t n_bytes = fwrite(cb->src + cb->data_pos, 1, cb->pos - cb->data_pos,
-			file);
-	if (ferror(file)) {
+	size_t n_bytes = file_proxy_write(file, cb->src + cb->data_pos,
+			cb->pos - cb->data_pos);
+	if (cb->pos > 0 && n_bytes == 0) {
 		err("Failed writing data to file");
 		return -1;
 	}
@@ -990,6 +1113,44 @@ _consumer_buffer_decompress(io_proxy_t* io, consumer_buffer_t* dst,
 }
 
 /*
+ * Ends the current compression block in the comp buffer, but doesn't write the
+ * changes through the remaining buffers. This may expand the size of the comp
+ * buffer.
+ */
+static int
+_comp_buffer_end_block(io_proxy_t* io)
+{
+	uint64_t rem_bytes;
+
+	while ((rem_bytes = ZSTD_endStream(io->cctx,
+					(ZSTD_outBuffer*) &io->comp_buffer)) > 0 &&
+			!ZSTD_isError(rem_bytes)) {
+
+		uint64_t new_size = 2 * rem_bytes + io->comp_buffer.size;
+		// expand the size of the compression buffer
+		void* new_src = cf_realloc(io->comp_buffer.src, new_size);
+
+		if (new_src == NULL) {
+			err("Failed to reallocate %" PRIu64 " bytes for expanded "
+					"compression buffer",
+					new_size);
+			return -1;
+		}
+
+		io->comp_buffer.src = new_src;
+		io->comp_buffer.size = new_size;
+	}
+
+	if (ZSTD_isError(rem_bytes)) {
+		err("Failed to compress data: %s",
+				ZSTD_getErrorName(rem_bytes));
+		return -1;
+	}
+
+	return 0;
+}
+
+/*
  * encrypts data from src into dst using AES CTR mode
  *
  * if all of src was encrypted into dst, 1 is returned, otherwise is 0 is
@@ -1028,18 +1189,6 @@ _consumer_buffer_decrypt(io_proxy_t* io, consumer_buffer_t* dst,
 }
 
 
-static __attribute__((pure)) bool
-_is_write_proxy(io_proxy_t* io)
-{
-	return (io->flags & IO_PROXY_TYPE_MASK) == IO_WRITE_PROXY;
-}
-
-static __attribute__((pure)) bool
-_is_read_proxy(io_proxy_t* io)
-{
-	return (io->flags & IO_PROXY_TYPE_MASK) == IO_READ_PROXY;
-}
-
 static __attribute__((pure)) uint64_t
 _get_pkey_digest_len(uint8_t flags)
 {
@@ -1069,11 +1218,7 @@ _calc_output_buffer_len(const io_proxy_t* io)
 	if (io_proxy_do_compress(io)) {
 		return ZSTD_CStreamOutSize();
 	}
-	if (io->flags & IO_PROXY_ALWAYS_BUFFER) {
-		return IO_PROXY_DEFAULT_BUFFER_SIZE;
-	}
-	// no buffer is needed for straight reading/writing
-	return 0;
+	return IO_PROXY_DEFAULT_BUFFER_SIZE;
 }
 
 /*
@@ -1092,8 +1237,7 @@ _calc_input_buffer_len(const io_proxy_t* io)
 	if (io_proxy_do_compress(io)) {
 		return ZSTD_CStreamInSize();
 	}
-	// no buffer is needed for straight reading/writing
-	return 0;
+	return IO_PROXY_DEFAULT_BUFFER_SIZE;
 }
 
 
@@ -1187,7 +1331,7 @@ static int
 _init_fn(io_write_proxy_t* io)
 {
 	uint32_t buf_len;
-	bool write = _is_write_proxy(io);
+	bool write = io_proxy_is_writer(io);
 
 	if (UNLIKELY(!io->initialized)) {
 
@@ -1203,17 +1347,32 @@ _init_fn(io_write_proxy_t* io)
 						io->deserialized_flags & IO_PROXY_INIT_FLAGS);
 				return -1;
 			}
+
+			if (!io_proxy_do_compress(io)) {
+				memset(&io->comp_buffer, 0, sizeof(io->comp_buffer));
+			}
+
+			if (io_proxy_do_encrypt(io)) {
+				// for encryption, we need to encrypt the IV back into ecount_buf
+				// and increment IV for the next encryption block
+				AES_encrypt(io->iv, io->ecount_buf, &io->pkey_digest);
+				// increment the IV for the next block of encrypted data
+				_ctr128_add_to(io->iv, io->iv, 1);
+			}
+			else {
+				memset(&io->encrypt_buffer, 0, sizeof(io->encrypt_buffer));
+			}
+
+			// skip initialization of everything else, as this has already been
+			// done in deserialize
+			io->initialized = 1;
+			return 0;
 		}
 
 		buf_len = (uint32_t) (write ? _calc_output_buffer_len(io) :
 				_calc_input_buffer_len(io));
 
-		if (buf_len > 0) {
-			_consumer_buffer_init(&io->buffer, buf_len);
-		}
-		else {
-			memset(&io->buffer, 0, sizeof(io->buffer));
-		}
+		_consumer_buffer_init(&io->buffer, buf_len);
 
 		if (io_proxy_do_compress(io)) {
 			// comp_buffer and decomp_buffer alias each other
@@ -1227,65 +1386,57 @@ _init_fn(io_write_proxy_t* io)
 			// encrypt_buffer and decrypt_buffer alias each other
 			_consumer_buffer_init(&io->encrypt_buffer, buf_len);
 
-			if (io->flags & IO_PROXY_DESERIALIZE) {
-				// encrypt the IV into ecount_buf
+			if (write) {
+				// generate an IV, encrypt it, and store it at the beginning of
+				// the file
+				_gen_iv(io->iv);
+				void* ecount_buf_ptr = (void*) io->ecount_buf;
+				uint64_t n_bytes = AES_BLOCK_SIZE;
+
 				AES_encrypt(io->iv, io->ecount_buf, &io->pkey_digest);
 
-				// fall through to increment the IV, since we serialized IV - 1
+				// write the encrypted IV directly to the encrypt buffer,
+				// otherwise we will end up trying to compress/encrypt the
+				// key again
+				_consumer_buffer_write(&io->encrypt_buffer,
+						(const void**) &ecount_buf_ptr, &n_bytes);
+				if (n_bytes != 0) {
+					err("Unable to write encrypted IV to buffer");
+					return -1;
+				}
+
+				// increment byte_cnt and raw_byte_cnt (by the same amount
+				// since the encrypted IV can't be compressed) by the number
+				// of bytes just read from the file
+				io->raw_byte_cnt += AES_BLOCK_SIZE;
 			}
 			else {
-				if (write) {
-					// generate an IV, encrypt it, and store it at the beginning of
-					// the file
-					_gen_iv(io->iv);
-					void* ecount_buf_ptr = (void*) io->ecount_buf;
-					uint64_t n_bytes = AES_BLOCK_SIZE;
+				// decrypt the IV, which is at the very beginning of the file
+				consumer_buffer_t iv_buf;
+				_consumer_buffer_init(&iv_buf, AES_BLOCK_SIZE);
 
-					AES_encrypt(io->iv, io->ecount_buf, &io->pkey_digest);
-
-					// write the encrypted IV directly to the encrypt buffer,
-					// otherwise we will end up trying to compress/encrypt the
-					// key again
-					_consumer_buffer_write(&io->encrypt_buffer,
-							(const void**) &ecount_buf_ptr, &n_bytes);
-					if (n_bytes != 0) {
-						err("Unable to write encrypted IV to buffer");
-						return -1;
-					}
-
-					// increment byte_cnt and raw_byte_cnt (by the same amount
-					// since the encrypted IV can't be compressed) by the number
-					// of bytes just read from the file
-					io->raw_byte_cnt += AES_BLOCK_SIZE;
-				}
-				else {
-					// decrypt the IV, which is at the very beginning of the file
-					consumer_buffer_t iv_buf;
-					_consumer_buffer_init(&iv_buf, AES_BLOCK_SIZE);
-
-					// read it directly from the file to bypass
-					// decryption/decompression steps
-					int status = _consumer_buffer_fread(&iv_buf, io->fd);
-					if (status < 0) {
-						_consumer_buffer_free(&iv_buf);
-						return status;
-					}
-					// the entire IV must have been at the beginning of the file,
-					// so we should have been able to successfully read all 32 bytes
-					// of it
-					if (iv_buf.pos != iv_buf.size) {
-						err("Error when reading IV from file: only %" PRIu64 " "
-								"bytes were found, but expected %d",
-								iv_buf.pos, AES_BLOCK_SIZE);
-						_consumer_buffer_free(&iv_buf);
-						return -1;
-					}
-					AES_decrypt(iv_buf.src, io->iv, &io->decrypt_pkey_digest);
+				// read it directly from the file to bypass
+				// decryption/decompression steps
+				int status = _consumer_buffer_fread(&iv_buf, &io->file);
+				if (status < 0) {
 					_consumer_buffer_free(&iv_buf);
-
-					// increment byte_cnt by the number of bytes just read from the file
-					io->byte_cnt += AES_BLOCK_SIZE;
+					return status;
 				}
+				// the entire IV must have been at the beginning of the file,
+				// so we should have been able to successfully read all 32 bytes
+				// of it
+				if (iv_buf.pos != iv_buf.size) {
+					err("Error when reading IV from file: only %" PRIu64 " "
+							"bytes were found, but expected %d",
+							iv_buf.pos, AES_BLOCK_SIZE);
+					_consumer_buffer_free(&iv_buf);
+					return -1;
+				}
+				AES_decrypt(iv_buf.src, io->iv, &io->decrypt_pkey_digest);
+				_consumer_buffer_free(&iv_buf);
+
+				// increment byte_cnt by the number of bytes just read from the file
+				io->byte_cnt += AES_BLOCK_SIZE;
 			}
 
 			// increment the IV for the first block of encrypted data
@@ -1347,7 +1498,7 @@ _commit_write(io_write_proxy_t* io, ZSTD_EndDirective z_ed)
 
 		// write the contents of the buffer to the fd now
 		uint64_t n_bytes = trans_buffer->pos - trans_buffer->data_pos;
-		int64_t res = _consumer_buffer_fwrite(trans_buffer, io->fd);
+		int64_t res = _consumer_buffer_fwrite(trans_buffer, &io->file);
 		if (res < 0) {
 			// an io error happened on the file
 			_io_proxy_set_error(io);
@@ -1448,7 +1599,7 @@ _buffer_read_block(io_write_proxy_t* io)
 		// to count the number of bytes read directly from the file, which is
 		// just the pos of the buffer after the read minus the pos before
 		io->byte_cnt -= in_buffer->pos;
-		int status = _consumer_buffer_fread(in_buffer, io->fd);
+		int status = _consumer_buffer_fread(in_buffer, &io->file);
 		if (status < 0) {
 			// an io error happened on the file
 			_io_proxy_set_error(io);

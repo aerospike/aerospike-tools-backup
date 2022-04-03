@@ -7,6 +7,7 @@ Tests the representation of UDF files in backup files.
 import os.path
 
 import lib
+from run_backup import backup_and_restore
 
 COMMENTS = lib.identifier_variations(100, False)
 
@@ -31,7 +32,7 @@ def test_udf_file():
 	"""
 	Test UDF files.
 	"""
-	lib.backup_and_restore(
+	backup_and_restore(
 		lambda context: put_udf_files(context, COMMENTS),
 		None,
 		check_udf_files

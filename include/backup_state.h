@@ -1,7 +1,7 @@
 /*
- * Aerospike Backup
+ * Aerospike Backup State
  *
- * Copyright (c) 2008-2021 Aerospike, Inc. All rights reserved.
+ * Copyright (c) 2022 Aerospike, Inc. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -42,23 +42,25 @@
 
 #define DEFAULT_BACKUP_FILE_LIST_SIZE 8
 
-#define BACKUP_STATE_STATUS_NONE        0x0
-#define BACKUP_STATE_STATUS_COMPLETE    0x1
-#define BACKUP_STATE_STATUS_INCOMPLETE  0x2
-#define BACKUP_STATE_STATUS_NOT_STARTED 0x3
-#define BACKUP_STATE_STATUS_BITS 2
-#define BACKUP_STATE_STATUS_MASK ((1u << BACKUP_STATE_STATUS_BITS) - 1)
+#define BACKUP_STATE_STATUS_NONE           0x0
+#define BACKUP_STATE_STATUS_COMPLETE       0x1
+#define BACKUP_STATE_STATUS_INCOMPLETE     0x2
+#define BACKUP_STATE_STATUS_NOT_STARTED    0x3
+#define BACKUP_STATE_STATUS_COMPLETE_EMPTY 0x4
+#define BACKUP_STATE_STATUS_BITS 3
+#define BACKUP_STATE_STATUS_MASK ((1lu << BACKUP_STATE_STATUS_BITS) - 1)
 
-#define BACKUP_STATE_PARTS_STATUS_SIZE ((BACKUP_STATE_STATUS_BITS * MAX_PARTITIONS) / 8)
+#define BACKUP_STATE_PARTS_PER_INT ((8 * sizeof(uint64_t)) / BACKUP_STATE_STATUS_BITS)
+#define BACKUP_STATE_PARTS_STATUS_SIZE \
+	((MAX_PARTITIONS + BACKUP_STATE_PARTS_PER_INT - 1) / BACKUP_STATE_PARTS_PER_INT)
 
 typedef struct backup_state_file {
 	io_proxy_t* io_proxy;
-	char* file_name;
 	uint64_t rec_count_file;
 } backup_state_file_t;
 
 typedef struct backup_state_partitions {
-	uint8_t status[BACKUP_STATE_PARTS_STATUS_SIZE];
+	uint64_t status[BACKUP_STATE_PARTS_STATUS_SIZE];
 
 	as_digest_value digests[MAX_PARTITIONS];
 } backup_state_partitions_t;
@@ -77,7 +79,7 @@ typedef struct backup_state {
 	/*
 	 * The file the backup state will be written to.
 	 */
-	FILE* fd;
+	file_proxy_t* file;
 
 	backup_state_partitions_t partitions;
 
@@ -92,6 +94,9 @@ typedef struct backup_state {
 	 * freed).
 	 */
 	as_vector files;
+	// Flag to be set when files is sorted. Unset when files are added to the
+	// list, set again when a file is queried from the list.
+	bool files_sorted;
 } backup_state_t;
 
 
@@ -115,7 +120,7 @@ int backup_state_load(backup_state_t*, const char* path);
  *
  * Returns 0 on success, nonzero on failure.
  */
-int backup_state_save(const backup_state_t*);
+int backup_state_save(backup_state_t*);
 
 /*
  * Frees resources associated with the backup state.
@@ -126,7 +131,7 @@ void backup_state_free(backup_state_t*);
  * Returns true if every partition in the backup state is marked
  * BACKUP_STATE_STATUS_COMPLETE.
  */
-bool backup_state_complete(const backup_state_t*);
+bool backup_state_is_complete(const backup_state_t*);
 
 /*
  * Returns the status of the given partition id, setting the value to the last
@@ -146,6 +151,9 @@ void backup_state_clear_partition(backup_state_t*, uint16_t partition_id);
  *
  * This method needs the last_digest because scan resumption requires the
  * last_digest of each partition, even completed ones.
+ *
+ * If last_digest is NULL, this means the partition has been scanned, but no
+ * records were found (i.e. the partition is empty).
  */
 void backup_state_mark_complete(backup_state_t*, uint16_t partition_id,
 		const uint8_t* last_digest);
@@ -182,6 +190,12 @@ void backup_state_load_global_status(const backup_state_t*,
  * io_proxy should not be used or closed/freed after this call. The io_proxy
  * passed to this method must be heap-allocated.
  */
-bool backup_state_save_file(backup_state_t*, const char* file_name, io_proxy_t* file,
+bool backup_state_save_file(backup_state_t*, io_proxy_t* file,
 		uint64_t rec_count_file);
+
+/*
+ * Checks whether the given file_name is in the list of files in the backup
+ * state.
+ */
+bool backup_state_contains_file(backup_state_t*, const char* file_name);
 

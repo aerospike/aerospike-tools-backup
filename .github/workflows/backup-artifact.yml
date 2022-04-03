@@ -8,6 +8,44 @@ jobs:
     env:
       CLIENTREPO: ${GITHUB_WORKSPACE}/client
     steps:
+    - name: install AWS requirements
+      id: install-aws-requirements
+      run: |
+        sudo apt install -y libcurl4-openssl-dev libssl-dev uuid-dev zlib1g-dev libpulse-dev
+    - name: Cache AWS C++ sdk
+      id: cache-aws-sdk-cpp
+      uses: actions/cache@v2
+      env:
+        cache-name: aws-sdk-cpp
+      with:
+        path: aws-sdk-cpp
+        key: aws-sdk-cpp-v2-${{ runner.os }}
+    - name: Download AWS C++ sdk
+      uses: actions/checkout@v2
+      if: steps.cache-aws-sdk-cpp.outputs.cache-hit != 'true'
+      with:
+        repository: aws/aws-sdk-cpp
+        submodules: recursive
+        ref: 1.9.177
+        path: aws-sdk-cpp
+    - name: Build AWS C++ sdk shared library
+      if: steps.cache-aws-sdk-cpp.outputs.cache-hit != 'true'
+      run: |
+        mkdir aws-sdk-cpp/build
+        cd aws-sdk-cpp/build
+        cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=ON -DENABLE_TESTING=OFF -DCMAKE_PREFIX_PATH=/usr/local
+        make
+    - name: Build AWS C++ sdk static library
+      if: steps.cache-aws-sdk-cpp.outputs.cache-hit != 'true'
+      run: |
+        mkdir aws-sdk-cpp/build_static
+        cd aws-sdk-cpp/build_static
+        cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_PREFIX_PATH=/usr/local
+        make
+    - name: Install AWS C++ sdk shared library
+      run: |
+        cd aws-sdk-cpp/build
+        sudo make install
     - name: Download zstd
       uses: dsaltares/fetch-gh-release-asset@0.0.5
       with:
@@ -38,6 +76,7 @@ jobs:
       with:
         repository: aerospike/aerospike-client-c
         submodules: recursive
+        ref: 6.0.0
         path: client
     - name: Checkout asbackup
       uses: actions/checkout@v2
@@ -53,9 +92,16 @@ jobs:
         cp -r bin dyn_bin
         make clean
       working-directory: main
-    - name: Build asbackup with static link to zstd
+    - name: Uninstall AWS C++ sdk shared library
       run: |
-        make LINK_ZSTD_STATIC=1
+          sudo rm /usr/local/lib/libaws-cpp-*
+    - name: Install AWS C++ sdk static library
+      run: |
+        cd aws-sdk-cpp/build_static
+        sudo make install
+    - name: Build asbackup with static link to zstd and aws-sdk-cpp
+      run: |
+        make LINK_ZSTD_STATIC=1 AWS_SDK_STATIC_PATH=/usr/local/lib
         cp -r bin static_bin
         make clean
       working-directory: main
@@ -74,13 +120,13 @@ jobs:
     - name: Upload static zstd asbackup artifact
       uses: actions/upload-artifact@v2
       with: 
-        name: asbackup-libzstd-static
+        name: asbackup-static
         path: main/static_bin/asbackup
         if-no-files-found: error
     - name: Upload static zstd asrestore artifact
       uses: actions/upload-artifact@v2
       with: 
-        name: asrestore-libzstd-static
+        name: asrestore-static
         path: main/static_bin/asrestore
         if-no-files-found: error
   pre-release:

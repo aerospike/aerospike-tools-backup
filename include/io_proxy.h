@@ -1,7 +1,7 @@
 /*
- * Aerospike Backup
+ * Aerospike IO Proxy
  *
- * Copyright (c) 2021-2021 Aerospike, Inc. All rights reserved.
+ * Copyright (c) 2021-2022 Aerospike, Inc. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -33,10 +33,11 @@
 #include <stdio.h>
 
 #include <openssl/aes.h>
-
 #include <zstd.h>
 
+#include <file_proxy.h>
 
+ 
 //==========================================================
 // Typedefs & Constants.
 //
@@ -143,7 +144,7 @@ typedef struct consumer_buffer_s {
 
 typedef struct io_proxy_s {
 	// the file that the proxy buffers reads/writes from
-	FILE* fd;
+	file_proxy_t file;
 
 	consumer_buffer_t buffer;
 
@@ -240,6 +241,11 @@ typedef struct io_proxy_serial_s {
 void encryption_key_init(encryption_key_t*, uint8_t* pkey_data, uint64_t len);
 
 /*
+ * Copies the src encryption key into dst, initializing dst.
+ */
+void encryption_key_clone(encryption_key_t* dst, const encryption_key_t* src);
+
+/*
  * reads a private key from the given file into the pkey buffer and
  * initializes/populates the key passed
  */
@@ -253,10 +259,13 @@ void encryption_key_free(encryption_key_t*);
  * initiazes io read/write proxies wrapping a file. These functions by
  * default set the proxies with encryption and compression disabled
  *
+ * max_file_size is the max expected file size of the file
+ *
  * returns 0 on success and < 0 on failure
  */
-int io_write_proxy_init(io_write_proxy_t*, FILE* file);
-int io_read_proxy_init(io_read_proxy_t*, FILE* file);
+int io_write_proxy_init(io_write_proxy_t*, const char* file_path,
+		uint64_t max_file_size);
+int io_read_proxy_init(io_read_proxy_t*, const char* file_path);
 
 /*
  * Fully initializes the io proxy (must be called after encryption/compression
@@ -267,22 +276,16 @@ int io_proxy_initialize(io_write_proxy_t*);
 /*
  * Serializes an io_proxy into file, returning 0 on success and < 0 on failure.
  */
-int io_proxy_serialize(const io_proxy_t*, FILE* dst);
+int io_proxy_serialize(io_proxy_t*, file_proxy_t* dst);
 
 /*
  * Deserializes an io_proxy from the file, fully initializing the io_proxy.
  *
- * fd is the file to be proxied, src is where the serialized io_proxy is read
- * from.
+ * src is where the serialized io_proxy is read from.
  *
  * Returns 0 on success and < 0 on failure.
  */
-int io_proxy_deserialize(io_proxy_t*, FILE* fd, FILE* src);
-
-/*
- * sets the IO_PROXY_ALWAYS_BUFFER flag
- */
-void io_proxy_always_buffer(io_proxy_t*);
+int io_proxy_deserialize(io_proxy_t*, file_proxy_t* src);
 
 /*
  * enables encrypting of data through this io proxy
@@ -313,7 +316,20 @@ int io_proxy_init_encryption_file(io_proxy_t*, const char* pkey_file_path,
  */
 int io_proxy_init_compression(io_proxy_t*, compression_opt comp_mode);
 
-void io_proxy_free(io_proxy_t*);
+/*
+ * Closes the io_proxy and frees resources associated with it. If this returns
+ * non-zero, then the io_proxy is still in a valid state and hasn't been closed.
+ *
+ * Returns 0 on success and EOF on error.
+ *
+ * Mode is the mode in which to free the io proxy. One of the FILE_PROXY_*
+ * modes (see file_proxy_close2)
+ */
+int io_proxy_close(io_proxy_t*);
+int io_proxy_close2(io_proxy_t*, uint8_t mode);
+
+__attribute__((pure)) bool io_proxy_is_writer(io_proxy_t* io);
+__attribute__((pure)) bool io_proxy_is_reader(io_proxy_t* io);
 
 /*
  * returns true if the io_proxy has compression enabled
@@ -324,6 +340,11 @@ __attribute__((pure)) bool io_proxy_do_compress(const io_proxy_t* io);
  * returns true if the io_proxy has encryption enabled
  */
 __attribute__((pure)) bool io_proxy_do_encrypt(const io_proxy_t* io);
+
+/*
+ * returns the file path used to open this io proxy
+ */
+const char* io_proxy_file_path(const io_proxy_t* io);
 
 /*
  * parses the compression string, assigning the matching enum value to opt and
@@ -400,6 +421,9 @@ char* io_proxy_gets(io_read_proxy_t*, char* str, int n);
  */
 int32_t io_proxy_peekc_unlocked(io_read_proxy_t*);
 
+/*
+ * flushes the internal buffers of the io proxy
+ */
 int io_proxy_flush(io_write_proxy_t*);
 
 /*
