@@ -1106,6 +1106,7 @@ private:
 			const Aws::S3::Model::GetObjectOutcome& outcome,
 			const std::shared_ptr<const Aws::Client::AsyncCallerContext>& context) {
 		(void) client;
+		(void) req;
 
 		std::shared_ptr<const StreamManager::AsyncContext> async_ctx =
 			std::static_pointer_cast<const StreamManager::AsyncContext>(context);
@@ -1414,8 +1415,6 @@ GroupDownloadManager* S3API::GetGroupDownloadManager() {
 }
 
 bool DownloadManager::AwaitDownloadPart() {
-	uint64_t idx = result_queue.start;
-
 	std::pair<Aws::S3::Model::GetObjectResult, uint64_t>* res = result_queue.pop();
 	g_api.GetGroupDownloadManager()->PartComplete(true);
 	if (res == nullptr) {
