@@ -420,3 +420,14 @@ typedef struct exp_component {
 as_exp* exp_component_join_and_compile(as_exp_ops join_op, uint32_t n_ops,
 		exp_component_t** components);
 
+/*
+ * Frees an as_config_tls. May be called multiple times without double frees
+ * happening.
+ */
+void tls_config_destroy(as_config_tls* tls);
+
+/*
+ * Duplicates an as_config_tls object.
+ */
+void tls_config_clone(as_config_tls* clone, const as_config_tls* src);
+

@@ -201,14 +201,3 @@ bool backup_config_log_start(const backup_config_t* conf);
  */
 bool backup_config_can_resume(const backup_config_t* conf);
 
-/*
- * Frees an as_config_tls. May be called multiple times without double frees
- * happening.
- */
-void tls_config_destroy(as_config_tls* tls);
-
-/*
- * Duplicates an as_config_tls object.
- */
-void tls_config_clone(as_config_tls* clone, const as_config_tls* src);
-

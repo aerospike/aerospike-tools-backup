@@ -1759,3 +1759,55 @@ exp_component_join_and_compile(as_exp_ops join_op, uint32_t n_ops,
 	return compiled_exp;
 }
 
+void
+tls_config_destroy(as_config_tls* tls)
+{
+	if (tls->cafile != NULL) {
+		cf_free(tls->cafile);
+	}
+
+	if (tls->capath != NULL) {
+		cf_free(tls->capath);
+	}
+
+	if (tls->protocols != NULL) {
+		cf_free(tls->protocols);
+	}
+
+	if (tls->cipher_suite != NULL) {
+		cf_free(tls->cipher_suite);
+	}
+
+	if (tls->cert_blacklist != NULL) {
+		cf_free(tls->cert_blacklist);
+	}
+
+	if (tls->keyfile != NULL) {
+		cf_free(tls->keyfile);
+	}
+
+	if (tls->keyfile_pw != NULL) {
+		cf_free(tls->keyfile_pw);
+	}
+
+	if (tls->certfile != NULL) {
+		cf_free(tls->certfile);
+	}
+
+	memset(tls, 0, sizeof(as_config_tls));
+}
+
+void
+tls_config_clone(as_config_tls* clone, const as_config_tls* src)
+{
+	memcpy(clone, src, sizeof(as_config_tls));
+	clone->cafile = safe_strdup(src->cafile);
+	clone->capath = safe_strdup(src->capath);
+	clone->protocols = safe_strdup(src->protocols);
+	clone->cipher_suite = safe_strdup(src->cipher_suite);
+	clone->cert_blacklist = safe_strdup(src->cert_blacklist);
+	clone->keyfile = safe_strdup(src->keyfile);
+	clone->keyfile_pw = safe_strdup(src->keyfile_pw);
+	clone->certfile = safe_strdup(src->certfile);
+}
+

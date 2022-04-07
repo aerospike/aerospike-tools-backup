@@ -74,10 +74,10 @@ static const char * print_set(const char *set);
 static bool compare_sets(const char *set1, const char *set2);
 static index_status check_index(aerospike *as, index_param *index, uint32_t timeout);
 static bool restore_index(aerospike *as, index_param *index,
-		as_vector *set_vec, restore_thread_args*, uint32_t timeout);
+		as_vector *set_vec, restore_thread_args_t*, uint32_t timeout);
 static bool wait_index(index_param *index);
 static bool restore_indexes(aerospike *as, as_vector *index_vec, as_vector *set_vec,
-		restore_thread_args*, bool wait, uint32_t timeout);
+		restore_thread_args_t*, bool wait, uint32_t timeout);
 static bool restore_udf(aerospike *as, udf_param *udf, uint32_t timeout);
 static bool wait_udf(aerospike *as, udf_param *udf, uint32_t timeout);
 static bool parse_list(const char *which, size_t size, char *list, as_vector *vec);
@@ -187,8 +187,6 @@ restore_main(int32_t argc, char **argv)
 
 	restore_config_t conf;
 	restore_config_default(&conf);
-	
-	conf.decoder = &(backup_decoder_t){ text_parse };
 
 	int32_t optcase;
 	uint64_t tmp;
@@ -619,8 +617,50 @@ restore_main(int32_t argc, char **argv)
 
 	s3_set_max_async_downloads(conf.s3_max_async_downloads);
 
+	if (conf.nice_list != NULL) {
+		as_vector nice_vec;
+		as_vector_inita(&nice_vec, sizeof(void*), 2);
+
+		if (!parse_list("nice", 10, conf.nice_list, &nice_vec)) {
+			err("Error while parsing nice list");
+			as_vector_destroy(&nice_vec);
+			goto cleanup1;
+		}
+
+		if (nice_vec.size != 2) {
+			err("Invalid nice option");
+			as_vector_destroy(&nice_vec);
+			goto cleanup1;
+		}
+
+		char *item0 = as_vector_get_ptr(&nice_vec, 0);
+		char *item1 = as_vector_get_ptr(&nice_vec ,1);
+
+		if (!better_atoi(item0, &tmp) || tmp < 1) {
+			err("Invalid bandwidth value %s", item0);
+			as_vector_destroy(&nice_vec);
+			goto cleanup1;
+		}
+
+		conf.bandwidth = tmp * 1024 * 1024;
+
+		if (!better_atoi(item1, &tmp) || tmp < 1 || tmp > 1000000000) {
+			err("Invalid TPS value %s", item1);
+			as_vector_destroy(&nice_vec);
+			goto cleanup1;
+		}
+
+		conf.tps = (uint32_t)tmp;
+	}
+
 	signal(SIGINT, sig_hand);
 	signal(SIGTERM, sig_hand);
+
+	restore_status_t status;
+	if (!restore_status_init(&status, &conf)) {
+		err("Failed to initialize restore status");
+		goto cleanup1;
+	}
 
 	inf("Starting restore to %s (bins: %s, sets: %s) from %s", conf.host,
 			conf.bin_list == NULL ? "[all]" : conf.bin_list,
@@ -633,91 +673,19 @@ restore_main(int32_t argc, char **argv)
 
 	if (conf.machine != NULL && (mach_fd = fopen(conf.machine, "a")) == NULL) {
 		err_code("Error while opening machine-readable file %s", conf.machine);
-		goto cleanup1;
-	}
-
-	as_config as_conf;
-	as_config_init(&as_conf);
-	as_conf.conn_timeout_ms = conf.timeout;
-	as_conf.use_services_alternate = conf.use_services_alternate;
-
-	if (!as_config_add_hosts(&as_conf, conf.host, (uint16_t)conf.port)) {
-		err("Invalid host(s) string %s", conf.host);
 		goto cleanup2;
-	}
-
-	if (conf.tls_name != NULL) {
-		add_default_tls_host(&as_conf, conf.tls_name);
-	}
-
-	if (conf.auth_mode && ! as_auth_mode_from_string(&as_conf.auth_mode, conf.auth_mode)) {
-		err("Invalid authentication mode %s. Allowed values are INTERNAL / "
-				"EXTERNAL / EXTERNAL_INSECURE / PKI\n",
-				conf.auth_mode);
-		goto cleanup2;
-	}
-
-	if (conf.user) {
-		if (strcmp(conf.password, DEFAULTPASSWORD) == 0) {
-			conf.password = getpass("Enter Password: ");
-		}
-
-		if (! as_config_set_user(&as_conf, conf.user, conf.password)) {
-			printf("Invalid password for user name `%s`\n", conf.user);
-			goto cleanup2;
-		}
-	}
-
-	if (conf.tls.keyfile && conf.tls.keyfile_pw) {
-		if (strcmp(conf.tls.keyfile_pw, DEFAULTPASSWORD) == 0) {
-			conf.tls.keyfile_pw = getpass("Enter TLS-Keyfile Password: ");
-		}
-
-		if (!tls_read_password(conf.tls.keyfile_pw, &conf.tls.keyfile_pw)) {
-			goto cleanup2;
-		}
-	}
-
-	memcpy(&as_conf.tls, &conf.tls, sizeof(as_config_tls));
-	memset(&conf.tls, 0, sizeof(conf.tls));
-
-	aerospike as;
-	aerospike_init(&as, &as_conf);
-	conf.as = &as;
-	as_error ae;
-
-	ver("Connecting to cluster");
-
-	if (aerospike_connect(&as, &ae) != AEROSPIKE_OK) {
-		err("Error while connecting to %s:%d - code %d: %s at %s:%d", conf.host, conf.port, ae.code,
-				ae.message, ae.file, ae.line);
-		goto cleanup3;
 	}
 
 	char (*node_names)[][AS_NODE_NAME_SIZE] = NULL;
 	uint32_t n_node_names;
-	get_node_names(as.cluster, NULL, 0, &node_names, &n_node_names);
+	get_node_names(status.as->cluster, NULL, 0, &node_names, &n_node_names);
 
 	inf("Processing %u node(s)", n_node_names);
-	conf.estimated_bytes = 0;
-	as_store_uint64(&conf.total_bytes, 0);
-	as_store_uint64(&conf.total_records, 0);
-	as_store_uint64(&conf.expired_records, 0);
-	as_store_uint64(&conf.skipped_records, 0);
-	as_store_uint64(&conf.ignored_records, 0);
-	as_store_uint64(&conf.inserted_records, 0);
-	as_store_uint64(&conf.existed_records, 0);
-	as_store_uint64(&conf.fresher_records, 0);
-	as_store_uint64(&conf.backoff_count, 0);
-	as_store_uint32(&conf.index_count, 0);
-	as_store_uint32(&conf.skipped_indexes, 0);
-	as_store_uint32(&conf.matched_indexes, 0);
-	as_store_uint32(&conf.mismatched_indexes, 0);
-	as_store_uint32(&conf.udf_count, 0);
 
 	pthread_t counter_thread;
 	counter_thread_args counter_args;
 	counter_args.conf = &conf;
+	counter_args.status = &status;
 	counter_args.node_names = node_names;
 	counter_args.n_node_names = n_node_names;
 	counter_args.mach_fd = mach_fd;
@@ -726,140 +694,68 @@ restore_main(int32_t argc, char **argv)
 
 	if (pthread_create(&counter_thread, NULL, counter_thread_func, &counter_args) != 0) {
 		err_code("Error while creating counter thread");
-		goto cleanup4;
+		goto cleanup3;
 	}
 
 	pthread_t restore_threads[MAX_THREADS];
-	restore_thread_args restore_args;
+	restore_thread_args_t restore_args;
 	restore_args.conf = &conf;
+	restore_args.status = &status;
 	restore_args.path = NULL;
 	restore_args.shared_fd = NULL;
 	restore_args.line_no = NULL;
 	restore_args.legacy = false;
 
-	if (pthread_mutex_init(&restore_args.idx_udf_lock, NULL) != 0) {
-		err("Failed to initialize mutex lock");
-		goto cleanup5;
-	}
-
-	cf_queue *job_queue = cf_queue_create(sizeof (restore_thread_args), true);
+	cf_queue *job_queue = cf_queue_create(sizeof (restore_thread_args_t), true);
 
 	if (job_queue == NULL) {
 		err_code("Error while allocating job queue");
-		goto cleanup6;
+		goto cleanup4;
 	}
 
 	uint32_t line_no;
-	as_vector file_vec, index_vec, udf_vec, ns_vec, nice_vec, bin_vec, set_vec;
-	as_vector_inita(&file_vec, sizeof (void *), 25)
-	as_vector_inita(&index_vec, sizeof (index_param), 25);
-	as_vector_inita(&udf_vec, sizeof (udf_param), 25);
-	as_vector_inita(&ns_vec, sizeof (void *), 25);
-	as_vector_inita(&nice_vec, sizeof (void *), 25);
-	as_vector_inita(&bin_vec, sizeof (void *), 25);
-	as_vector_inita(&set_vec, sizeof (void *), 25);
-
-	if (conf.ns_list != NULL && !parse_list("namespace", AS_MAX_NAMESPACE_SIZE, conf.ns_list,
-			&ns_vec)) {
-		err("Error while parsing namespace list");
-		goto cleanup7;
-	}
-
-	if (ns_vec.size > 2) {
-		err("Invalid namespace option");
-		goto cleanup7;
-	}
-
-	if (conf.nice_list != NULL) {
-		if (!parse_list("nice", 10, conf.nice_list, &nice_vec)) {
-			err("Error while parsing nice list");
-			goto cleanup7;
-		}
-
-		if (nice_vec.size != 2) {
-			err("Invalid nice option");
-			goto cleanup7;
-		}
-
-		char *item0 = as_vector_get_ptr(&nice_vec, 0);
-		char *item1 = as_vector_get_ptr(&nice_vec ,1);
-
-		if (!better_atoi(item0, &tmp) || tmp < 1) {
-			err("Invalid bandwidth value %s", item0);
-			goto cleanup7;
-		}
-
-		conf.bandwidth = tmp * 1024 * 1024;
-
-		if (!better_atoi(item1, &tmp) || tmp < 1 || tmp > 1000000000) {
-			err("Invalid TPS value %s", item1);
-			goto cleanup7;
-		}
-
-		conf.tps = (uint32_t)tmp;
-	}
-
-	conf.bytes_limit = conf.bandwidth;
-	conf.records_limit = conf.tps;
-
-	if (conf.bin_list != NULL && !parse_list("bin", AS_BIN_NAME_MAX_SIZE, conf.bin_list,
-			&bin_vec)) {
-		err("Error while parsing bin list");
-		goto cleanup7;
-	}
-
-	if (conf.set_list != NULL && !parse_list("set", AS_SET_MAX_SIZE, conf.set_list, &set_vec)) {
-		err("Error while parsing set list");
-		goto cleanup7;
-	}
-
-	restore_args.ns_vec = &ns_vec;
-	restore_args.bin_vec = &bin_vec;
-	restore_args.set_vec = &set_vec;
-	restore_args.index_vec = &index_vec;
-	restore_args.udf_vec = &udf_vec;
 
 	// restoring from a directory
 	if (conf.directory != NULL) {
-		if (!get_backup_files(conf.directory, &file_vec)) {
+		if (!get_backup_files(conf.directory, &status.file_vec)) {
 			err("Error while getting backup files");
-			goto cleanup7;
+			goto cleanup5;
 		}
 
-		if (file_vec.size == 0) {
+		if (status.file_vec.size == 0) {
 			err("No backup files found");
-			goto cleanup7;
+			goto cleanup5;
 		}
 
 		if (!conf.no_records) {
-			ver("Triaging %u backup file(s)", file_vec.size);
+			ver("Triaging %u backup file(s)", status.file_vec.size);
 
-			for (uint32_t i = 0; i < file_vec.size; ++i) {
-				char *path = as_vector_get_ptr(&file_vec, i);
+			for (uint32_t i = 0; i < status.file_vec.size; ++i) {
+				char *path = as_vector_get_ptr(&status.file_vec, i);
 				off_t size = get_file_size(path);
 				if (size == -1) {
 					err("Failed to get the size of file %s", path);
-					goto cleanup7;
+					goto cleanup5;
 				}
 
-				conf.estimated_bytes += size;
+				status.estimated_bytes += size;
 			}
 		}
 
-		ver("Pushing %u exclusive job(s) to job queue", file_vec.size);
+		ver("Pushing %u exclusive job(s) to job queue", status.file_vec.size);
 
 		// push a job for each backup file
-		for (uint32_t i = 0; i < file_vec.size; ++i) {
-			restore_args.path = as_vector_get_ptr(&file_vec, i);
+		for (uint32_t i = 0; i < status.file_vec.size; ++i) {
+			restore_args.path = as_vector_get_ptr(&status.file_vec, i);
 
 			if (cf_queue_push(job_queue, &restore_args) != CF_QUEUE_OK) {
 				err("Error while queueing restore job");
-				goto cleanup8;
+				goto cleanup6;
 			}
 		}
 
-		if (file_vec.size < conf.parallel) {
-			conf.parallel = file_vec.size;
+		if (status.file_vec.size < conf.parallel) {
+			conf.parallel = status.file_vec.size;
 		}
 	}
 	// restoring from a single backup file
@@ -869,13 +765,13 @@ restore_main(int32_t argc, char **argv)
 		restore_args.shared_fd =
 			(io_read_proxy_t*) cf_malloc(sizeof(io_read_proxy_t));
 		// open the file, file descriptor goes to restore_args.shared_fd
-		if (!open_file(conf.input_file, restore_args.ns_vec, restore_args.shared_fd,
+		if (!open_file(conf.input_file, &status.ns_vec, restore_args.shared_fd,
 				&restore_args.legacy, &line_no, NULL,
-				conf.no_records ? NULL : &conf.estimated_bytes,
+				conf.no_records ? NULL : &status.estimated_bytes,
 				conf.compress_mode, conf.encrypt_mode, conf.pkey)) {
 			err("Error while opening shared backup file");
 			cf_free(restore_args.shared_fd);
-			goto cleanup7;
+			goto cleanup5;
 		}
 
 		ver("Pushing %u shared job(s) to job queue", conf.parallel);
@@ -887,7 +783,7 @@ restore_main(int32_t argc, char **argv)
 		for (uint32_t i = 0; i < conf.parallel; ++i) {
 			if (cf_queue_push(job_queue, &restore_args) != CF_QUEUE_OK) {
 				err("Error while queueing restore job");
-				goto cleanup8;
+				goto cleanup6;
 			}
 		}
 	}
@@ -902,7 +798,7 @@ restore_main(int32_t argc, char **argv)
 	for (uint32_t i = 0; i < conf.parallel; ++i) {
 		if (pthread_create(&restore_threads[i], NULL, restore_thread_func, job_queue) != 0) {
 			err_code("Error while creating restore thread");
-			goto cleanup9;
+			goto cleanup7;
 		}
 
 		++threads_ok;
@@ -910,7 +806,7 @@ restore_main(int32_t argc, char **argv)
 
 	res = EXIT_SUCCESS;
 
-cleanup9:
+cleanup7:
 	ver("Waiting for %u restore thread(s)", threads_ok);
 
 	void *thread_res;
@@ -930,31 +826,24 @@ cleanup9:
 	}
 
 	if (res == EXIT_SUCCESS && !conf.no_indexes &&
-			!restore_indexes(&as, &index_vec, &set_vec, &restore_args, conf.wait, conf.timeout)) {
+			!restore_indexes(status.as, &status.index_vec, &status.set_vec,
+				&restore_args, conf.wait, conf.timeout)) {
 		err("Error while restoring secondary indexes to cluster");
 		res = EXIT_FAILURE;
 	}
 
 	if (res == EXIT_SUCCESS && conf.wait) {
-		for (uint32_t i = 0; i < udf_vec.size; i++) {
-			udf_param* udf = as_vector_get(&udf_vec, i);
-			if (!wait_udf(&as, udf, conf.timeout)) {
+		for (uint32_t i = 0; i < status.udf_vec.size; i++) {
+			udf_param* udf = as_vector_get(&status.udf_vec, i);
+			if (!wait_udf(status.as, udf, conf.timeout)) {
 				err("Error while waiting for UDF upload");
 				res = EXIT_FAILURE;
 			}
 		}
 	}
 
-cleanup8:
-	free_indexes(&index_vec);
-	free_udfs(&udf_vec);
-
-	if (conf.directory != NULL) {
-		for (uint32_t i = 0; i < file_vec.size; ++i) {
-			cf_free(as_vector_get_ptr(&file_vec, i));
-		}
-	}
-	else {
+cleanup6:
+	if (conf.directory == NULL) {
 		if (!close_file(restore_args.shared_fd)) {
 			err("Error while closing shared backup file");
 			res = EXIT_FAILURE;
@@ -962,20 +851,10 @@ cleanup8:
 		cf_free(restore_args.shared_fd);
 	}
 
-cleanup7:
-	as_vector_destroy(&set_vec);
-	as_vector_destroy(&bin_vec);
-	as_vector_destroy(&nice_vec);
-	as_vector_destroy(&ns_vec);
-	as_vector_destroy(&udf_vec);
-	as_vector_destroy(&index_vec);
-	as_vector_destroy(&file_vec);
+cleanup5:
 	cf_queue_destroy(job_queue);
 
-cleanup6:
-	pthread_mutex_destroy(&restore_args.idx_udf_lock);
-
-cleanup5:
+cleanup4:
 	stop();
 
 	ver("Waiting for counter thread");
@@ -985,20 +864,17 @@ cleanup5:
 		res = EXIT_FAILURE;
 	}
 
-cleanup4:
+cleanup3:
 	if (node_names != NULL) {
 		cf_free(node_names);
 	}
-
-	aerospike_close(&as, &ae);
-
-cleanup3:
-	aerospike_destroy(&as);
 
 cleanup2:
 	if (mach_fd != NULL) {
 		fclose(mach_fd);
 	}
+
+	restore_status_destroy(&status);
 
 cleanup1:
 	restore_config_destroy(&conf);
@@ -1057,8 +933,6 @@ restore_config_default(restore_config_t *conf)
 
 	memset(&conf->tls, 0, sizeof(as_config_tls));
 	conf->tls_name = NULL;
-	conf->as = NULL;
-	conf->decoder = NULL;
 }
 
 void
@@ -1129,38 +1003,184 @@ restore_config_destroy(restore_config_t *conf)
 		cf_free(conf->tls_name);
 	}
 
-	if (conf->tls.cafile != NULL) {
-		cf_free(conf->tls.cafile);
+	tls_config_destroy(&conf->tls);
+}
+
+bool
+restore_status_init(restore_status_t* status, const restore_config_t* conf)
+{
+	status->decoder = (backup_decoder_t){ text_parse };
+
+	as_vector_inita(&status->file_vec, sizeof(void*), 25)
+	as_vector_inita(&status->index_vec, sizeof(index_param), 25);
+	as_vector_inita(&status->udf_vec, sizeof(udf_param), 25);
+	as_vector_inita(&status->ns_vec, sizeof(void*), 25);
+	as_vector_inita(&status->bin_vec, sizeof(void*), 25);
+	as_vector_inita(&status->set_vec, sizeof(void*), 25);
+
+	status->bytes_limit = conf->bandwidth;
+	status->records_limit = conf->tps;
+
+	if (pthread_mutex_init(&status->idx_udf_lock, NULL) != 0) {
+		err("Failed to initialize mutex lock");
+		goto cleanup1;
 	}
 
-	if (conf->tls.capath != NULL) {
-		cf_free(conf->tls.capath);
+	if (conf->ns_list != NULL && !parse_list("namespace", AS_MAX_NAMESPACE_SIZE,
+				conf->ns_list, &status->ns_vec)) {
+		err("Error while parsing namespace list");
+		goto cleanup2;
 	}
 
-	if (conf->tls.protocols != NULL) {
-		cf_free(conf->tls.protocols);
+	if (status->ns_vec.size > 2) {
+		err("Invalid namespace option");
+		goto cleanup2;
 	}
 
-	if (conf->tls.cipher_suite != NULL) {
-		cf_free(conf->tls.cipher_suite);
+	if (conf->bin_list != NULL && !parse_list("bin", AS_BIN_NAME_MAX_SIZE,
+				conf->bin_list, &status->bin_vec)) {
+		err("Error while parsing bin list");
+		goto cleanup2;
 	}
 
-	if (conf->tls.cert_blacklist != NULL) {
-		cf_free(conf->tls.cert_blacklist);
+	if (conf->set_list != NULL && !parse_list("set", AS_SET_MAX_SIZE,
+				conf->set_list, &status->set_vec)) {
+		err("Error while parsing set list");
+		goto cleanup2;
 	}
 
-	if (conf->tls.keyfile != NULL) {
-		cf_free(conf->tls.keyfile);
+	as_config as_conf;
+	as_config_init(&as_conf);
+	as_conf.conn_timeout_ms = conf->timeout;
+	as_conf.use_services_alternate = conf->use_services_alternate;
+	tls_config_clone(&as_conf.tls, &conf->tls);
+
+	if (!as_config_add_hosts(&as_conf, conf->host, (uint16_t) conf->port)) {
+		err("Invalid host(s) string %s", conf->host);
+		goto cleanup3;
 	}
 
-	if (conf->tls.keyfile_pw != NULL) {
-		cf_free(conf->tls.keyfile_pw);
+	if (conf->tls_name != NULL) {
+		add_default_tls_host(&as_conf, conf->tls_name);
 	}
 
-	if (conf->tls.certfile != NULL) {
-		cf_free(conf->tls.certfile);
+	if (conf->auth_mode && !as_auth_mode_from_string(&as_conf.auth_mode, conf->auth_mode)) {
+		err("Invalid authentication mode %s. Allowed values are INTERNAL / "
+				"EXTERNAL / EXTERNAL_INSECURE / PKI\n",
+				conf->auth_mode);
+		goto cleanup3;
 	}
 
+	char* password;
+	if (conf->user) {
+		if (strcmp(conf->password, DEFAULTPASSWORD) == 0) {
+			password = getpass("Enter Password: ");
+		}
+		else {
+			password = conf->password;
+		}
+
+		if (!as_config_set_user(&as_conf, conf->user, password)) {
+			printf("Invalid password for user name `%s`\n", conf->user);
+			goto cleanup3;
+		}
+	}
+
+	if (conf->tls.keyfile && conf->tls.keyfile_pw) {
+		char* keyfile_pw;
+		if (strcmp(conf->tls.keyfile_pw, DEFAULTPASSWORD) == 0) {
+			keyfile_pw = getpass("Enter TLS-Keyfile Password: ");
+		}
+		else {
+			keyfile_pw = conf->tls.keyfile_pw;
+		}
+
+		// we'll be overwriting the old keyfile_pw string
+		cf_free(as_conf.tls.keyfile_pw);
+		if (!tls_read_password(keyfile_pw, &as_conf.tls.keyfile_pw)) {
+			goto cleanup3;
+		}
+	}
+
+	status->as = cf_malloc(sizeof(aerospike));
+	if (status->as == NULL) {
+		err("Failed to malloc aerospike struct");
+		goto cleanup3;
+	}
+
+	aerospike_init(status->as, &as_conf);
+	as_error ae;
+
+	ver("Connecting to cluster");
+
+	if (aerospike_connect(status->as, &ae) != AEROSPIKE_OK) {
+		err("Error while connecting to %s:%d - code %d: %s at %s:%d",
+				conf->host, conf->port, ae.code, ae.message, ae.file, ae.line);
+		goto cleanup4;
+	}
+
+	status->estimated_bytes = 0;
+	as_store_uint64(&status->total_bytes, 0);
+	as_store_uint64(&status->total_records, 0);
+	as_store_uint64(&status->expired_records, 0);
+	as_store_uint64(&status->skipped_records, 0);
+	as_store_uint64(&status->ignored_records, 0);
+	as_store_uint64(&status->inserted_records, 0);
+	as_store_uint64(&status->existed_records, 0);
+	as_store_uint64(&status->fresher_records, 0);
+	as_store_uint64(&status->backoff_count, 0);
+	as_store_uint32(&status->index_count, 0);
+	as_store_uint32(&status->skipped_indexes, 0);
+	as_store_uint32(&status->matched_indexes, 0);
+	as_store_uint32(&status->mismatched_indexes, 0);
+	as_store_uint32(&status->udf_count, 0);
+
+	return true;
+
+cleanup4:
+	aerospike_destroy(status->as);
+	cf_free(status->as);
+
+cleanup3:
+	tls_config_destroy(&as_conf.tls);
+
+cleanup2:
+	pthread_mutex_destroy(&status->idx_udf_lock);
+
+cleanup1:
+	as_vector_destroy(&status->file_vec);
+	as_vector_destroy(&status->index_vec);
+	as_vector_destroy(&status->udf_vec);
+	as_vector_destroy(&status->ns_vec);
+	as_vector_destroy(&status->bin_vec);
+	as_vector_destroy(&status->set_vec);
+
+	return false;
+}
+
+void
+restore_status_destroy(restore_status_t* status)
+{
+	as_error ae;
+	aerospike_close(status->as, &ae);
+	aerospike_destroy(status->as);
+	cf_free(status->as);
+
+	pthread_mutex_destroy(&status->idx_udf_lock);
+
+	free_indexes(&status->index_vec);
+	free_udfs(&status->udf_vec);
+
+	for (uint32_t i = 0; i < status->file_vec.size; ++i) {
+		cf_free(as_vector_get_ptr(&status->file_vec, i));
+	}
+
+	as_vector_destroy(&status->file_vec);
+	as_vector_destroy(&status->index_vec);
+	as_vector_destroy(&status->udf_vec);
+	as_vector_destroy(&status->ns_vec);
+	as_vector_destroy(&status->bin_vec);
+	as_vector_destroy(&status->set_vec);
 }
 
 
@@ -1261,7 +1281,7 @@ update_file_pos(per_thread_context_t* ptc)
 	uint64_t diff = (uint64_t) pos - ptc->byte_count_file;
 
 	ptc->byte_count_file = (uint64_t) pos;
-	as_add_uint64(&ptc->conf->total_bytes, diff);
+	as_add_uint64(&ptc->status->total_bytes, diff);
 
 	return 0;
 }
@@ -1561,15 +1581,15 @@ check_set(char *set, as_vector *set_vec)
 /*
  * Main restore worker thread function.
  *
- *   - Pops the restore_thread_args for a backup file off the job queue.
- *     - When restoring from a single file, all restore_thread_args elements in the queue are
+ *   - Pops the restore_thread_args_t for a backup file off the job queue.
+ *     - When restoring from a single file, all restore_thread_args_t elements in the queue are
  *       identical and there are initially as many elements in the queue as there are threads.
  *     - When restoring from a directory, the queue initially contains one element for each backup
  *       file in the directory.
  *   - Initializes a per_thread_context for that backup file.
  *   - If restoring from a single file: uses the shared file descriptor given by
- *     restore_thread_args.shared_fd.
- *   - If restoring from a directory: opens the backup file given by restore_thread_args.path.
+ *     restore_thread_args_t.shared_fd.
+ *   - If restoring from a directory: opens the backup file given by restore_thread_args_t.path.
  *   - Reads the records from the backup file and stores them in the database.
  *   - Secondary indexes and UDF files are not handled here. They are handled on the main thread.
  *
@@ -1592,7 +1612,7 @@ restore_thread_func(void *cont)
 			break;
 		}
 
-		restore_thread_args args;
+		restore_thread_args_t args;
 		int32_t q_res = cf_queue_pop(job_queue, &args, CF_QUEUE_NOWAIT);
 
 		if (q_res == CF_QUEUE_EMPTY) {
@@ -1610,12 +1630,13 @@ restore_thread_func(void *cont)
 		uint32_t line_no;
 		per_thread_context_t ptc;
 		ptc.conf = args.conf;
+		ptc.status = args.status;
 		ptc.path = args.path;
 		ptc.shared_fd = args.shared_fd;
 		ptc.line_no = args.line_no != NULL ? args.line_no : &line_no;
-		ptc.ns_vec = args.ns_vec;
-		ptc.bin_vec = args.bin_vec;
-		ptc.set_vec = args.set_vec;
+		ptc.ns_vec = &args.status->ns_vec;
+		ptc.bin_vec = &args.status->bin_vec;
+		ptc.set_vec = &args.status->set_vec;
 		ptc.legacy = args.legacy;
 		ptc.stat_records = 0;
 		ptc.read_time = 0;
@@ -1704,7 +1725,7 @@ restore_thread_func(void *cont)
 			}
 
 			cf_clock read_start = as_load_bool(&g_verbose) ? cf_getus() : 0;
-			decoder_status res = ptc.conf->decoder->parse(ptc.fd, ptc.legacy,
+			decoder_status res = ptc.status->decoder.parse(ptc.fd, ptc.legacy,
 					ptc.ns_vec, ptc.bin_vec, ptc.line_no, &rec,
 					ptc.conf->extra_ttl, &expired, &index, &udf);
 			cf_clock read_time = as_load_bool(&g_verbose) ? cf_getus() - read_start : 0;
@@ -1741,17 +1762,17 @@ restore_thread_func(void *cont)
 					continue;
 				}
 				else if (!args.conf->indexes_last &&
-						!restore_index(args.conf->as, &index, ptc.set_vec,
+						!restore_index(args.status->as, &index, ptc.set_vec,
 							&args, args.conf->timeout)) {
 					err("Error while restoring secondary index");
 					break;
 				}
 
-				pthread_mutex_lock(&args.idx_udf_lock);
-				as_vector_append(args.index_vec, &index);
-				pthread_mutex_unlock(&args.idx_udf_lock);
+				pthread_mutex_lock(&args.status->idx_udf_lock);
+				as_vector_append(&args.status->index_vec, &index);
+				pthread_mutex_unlock(&args.status->idx_udf_lock);
 
-				as_incr_uint32(&args.conf->index_count);
+				as_incr_uint32(&args.status->index_count);
 				continue;
 			}
 
@@ -1761,16 +1782,16 @@ restore_thread_func(void *cont)
 					free_udf(&udf);
 					continue;
 				}
-				else if (!restore_udf(args.conf->as, &udf, args.conf->timeout)) {
+				else if (!restore_udf(args.status->as, &udf, args.conf->timeout)) {
 					err("Error while restoring UDF");
 					break;
 				}
 
-				pthread_mutex_lock(&args.idx_udf_lock);
-				as_vector_append(args.udf_vec, &udf);
-				pthread_mutex_unlock(&args.idx_udf_lock);
+				pthread_mutex_lock(&args.status->idx_udf_lock);
+				as_vector_append(&args.status->udf_vec, &udf);
+				pthread_mutex_unlock(&args.status->idx_udf_lock);
 
-				as_incr_uint32(&args.conf->udf_count);
+				as_incr_uint32(&args.status->udf_count);
 				continue;
 			}
 
@@ -1780,9 +1801,9 @@ restore_thread_func(void *cont)
 				}
 
 				if (expired) {
-					as_incr_uint64(&ptc.conf->expired_records);
+					as_incr_uint64(&ptc.status->expired_records);
 				} else if (rec.bins.size == 0 || !check_set(rec.key.set, ptc.set_vec)) {
-					as_incr_uint64(&ptc.conf->skipped_records);
+					as_incr_uint64(&ptc.status->skipped_records);
 				} else {
 					useconds_t backoff = INITIAL_BACKOFF * 1000;
 					int32_t tries;
@@ -1792,7 +1813,7 @@ restore_thread_func(void *cont)
 						policy.key = rec.key.valuep != NULL ? AS_POLICY_KEY_SEND :
 								AS_POLICY_KEY_DIGEST;
 						cf_clock store_start = as_load_bool(&g_verbose) ? cf_getus() : 0;
-						as_status put = aerospike_key_put(ptc.conf->as, &ae, &policy, &rec.key,
+						as_status put = aerospike_key_put(ptc.status->as, &ae, &policy, &rec.key,
 								&rec);
 						cf_clock now = as_load_bool(&g_verbose) ? cf_getus() : 0;
 						cf_clock store_time = now - store_start;
@@ -1820,7 +1841,7 @@ restore_thread_func(void *cont)
 							case AEROSPIKE_ERR_ALWAYS_FORBIDDEN:
 								ver("Error while storing record - code %d: %s at %s:%d",
 										ae.code, ae.message, ae.file, ae.line);
-								as_incr_uint64(&ptc.conf->ignored_records);
+								as_incr_uint64(&ptc.status->ignored_records);
 
 								if (! flag_ignore_rec_error) {
 									stop();
@@ -1832,17 +1853,17 @@ restore_thread_func(void *cont)
 							// Conditional error based on input config. No
 							// retries.
 							case AEROSPIKE_ERR_RECORD_GENERATION:
-								as_incr_uint64(&ptc.conf->fresher_records);
+								as_incr_uint64(&ptc.status->fresher_records);
 								break;
 
 							case AEROSPIKE_ERR_RECORD_EXISTS:
-								as_incr_uint64(&ptc.conf->existed_records);
+								as_incr_uint64(&ptc.status->existed_records);
 								break;
 
 							case AEROSPIKE_OK:
 								print_stat(&ptc, &prev_log, &prev_records,
 										&now, &store_time, &read_time);
-								as_incr_uint64(&ptc.conf->inserted_records);
+								as_incr_uint64(&ptc.status->inserted_records);
 								break;
 
 							// All other cases attempt retry.
@@ -1868,7 +1889,7 @@ restore_thread_func(void *cont)
 								if (put == AEROSPIKE_ERR_DEVICE_OVERLOAD) {
 									usleep(backoff);
 									backoff *= 2;
-									as_incr_uint64(&ptc.conf->backoff_count);
+									as_incr_uint64(&ptc.status->backoff_count);
 								} else {
 									backoff = INITIAL_BACKOFF * 1000;
 									sleep_for(1);
@@ -1883,14 +1904,14 @@ restore_thread_func(void *cont)
 					}
 				}
 
-				as_incr_uint64(&ptc.conf->total_records);
+				as_incr_uint64(&ptc.status->total_records);
 				as_record_destroy(&rec);
 
 				if (ptc.conf->bandwidth > 0 && ptc.conf->tps > 0) {
 					safe_lock(&limit_mutex);
 
-					while ((as_load_uint64(&ptc.conf->total_bytes) >= ptc.conf->bytes_limit ||
-								as_load_uint64(&ptc.conf->total_records) >= ptc.conf->records_limit) &&
+					while ((as_load_uint64(&ptc.status->total_bytes) >= ptc.status->bytes_limit ||
+								as_load_uint64(&ptc.status->total_records) >= ptc.status->records_limit) &&
 							!has_stopped()) {
 						safe_wait(&limit_cond, &limit_mutex);
 					}
@@ -1946,14 +1967,15 @@ counter_thread_func(void *cont)
 
 	counter_thread_args *args = (counter_thread_args *)cont;
 	restore_config_t *conf = args->conf;
+	restore_status_t *status = args->status;
 
 	cf_clock prev_ms = cf_getms();
 
 	uint32_t iter = 0;
 	cf_clock print_prev_ms = prev_ms;
-	uint64_t prev_bytes = as_load_uint64(&conf->total_bytes);
+	uint64_t prev_bytes = as_load_uint64(&status->total_bytes);
 	uint64_t mach_prev_bytes = prev_bytes;
-	uint64_t prev_records = as_load_uint64(&conf->total_records);
+	uint64_t prev_records = as_load_uint64(&status->total_records);
 
 	while (true) {
 		sleep_for(1);
@@ -1963,21 +1985,21 @@ counter_thread_func(void *cont)
 		uint32_t ms = (uint32_t)(now_ms - prev_ms);
 		prev_ms = now_ms;
 
-		uint64_t now_bytes = as_load_uint64(&conf->total_bytes);
-		uint64_t now_records = as_load_uint64(&conf->total_records);
+		uint64_t now_bytes = as_load_uint64(&status->total_bytes);
+		uint64_t now_records = as_load_uint64(&status->total_records);
 
-		uint64_t expired_records = as_load_uint64(&conf->expired_records);
-		uint64_t skipped_records = as_load_uint64(&conf->skipped_records);
-		uint64_t ignored_records = as_load_uint64(&conf->ignored_records);
-		uint64_t inserted_records = as_load_uint64(&conf->inserted_records);
-		uint64_t existed_records = as_load_uint64(&conf->existed_records);
-		uint64_t fresher_records = as_load_uint64(&conf->fresher_records);
-		uint64_t backoff_count = as_load_uint64(&conf->backoff_count);
-		uint32_t index_count = as_load_uint32(&conf->index_count);
-		uint32_t udf_count = as_load_uint32(&conf->udf_count);
+		uint64_t expired_records = as_load_uint64(&status->expired_records);
+		uint64_t skipped_records = as_load_uint64(&status->skipped_records);
+		uint64_t ignored_records = as_load_uint64(&status->ignored_records);
+		uint64_t inserted_records = as_load_uint64(&status->inserted_records);
+		uint64_t existed_records = as_load_uint64(&status->existed_records);
+		uint64_t fresher_records = as_load_uint64(&status->fresher_records);
+		uint64_t backoff_count = as_load_uint64(&status->backoff_count);
+		uint32_t index_count = as_load_uint32(&status->index_count);
+		uint32_t udf_count = as_load_uint32(&status->udf_count);
 
-		int32_t percent = conf->estimated_bytes == 0 ? -1 :
-			(int32_t)(now_bytes * 100 / (uint64_t)conf->estimated_bytes);
+		int32_t percent = status->estimated_bytes == 0 ? -1 :
+			(int32_t) (now_bytes * 100 / (uint64_t) status->estimated_bytes);
 
 		if (last_iter || iter++ % 10 == 0) {
 			uint64_t bytes = now_bytes - prev_bytes;
@@ -2000,8 +2022,8 @@ counter_thread_func(void *cont)
 					existed_records + fresher_records, existed_records,
 					fresher_records);
 
-			int32_t eta = (bytes == 0 || conf->estimated_bytes == 0) ? -1 :
-				(int32_t)(((uint64_t)conf->estimated_bytes - now_bytes) * ms / bytes / 1000);
+			int32_t eta = (bytes == 0 || status->estimated_bytes == 0) ? -1 :
+				(int32_t) (((uint64_t) status->estimated_bytes - now_bytes) * ms / bytes / 1000);
 			char eta_buff[ETA_BUF_SIZE];
 			format_eta(eta, eta_buff, sizeof eta_buff);
 
@@ -2021,8 +2043,8 @@ counter_thread_func(void *cont)
 
 			uint64_t bytes = now_bytes - mach_prev_bytes;
 
-			int32_t eta = (bytes == 0 || conf->estimated_bytes == 0) ? -1 :
-				(int32_t)(((uint64_t)conf->estimated_bytes - now_bytes) * ms / bytes / 1000);
+			int32_t eta = (bytes == 0 || status->estimated_bytes == 0) ? -1 :
+				(int32_t) (((uint64_t) status->estimated_bytes - now_bytes) * ms / bytes / 1000);
 			char eta_buff[ETA_BUF_SIZE];
 			format_eta(eta, eta_buff, sizeof eta_buff);
 
@@ -2038,8 +2060,8 @@ counter_thread_func(void *cont)
 
 		if (conf->bandwidth > 0 && conf->tps > 0) {
 			if (ms > 0) {
-				conf->bytes_limit += conf->bandwidth * 1000 / ms;
-				conf->records_limit += conf->tps * 1000 / ms;
+				status->bytes_limit += conf->bandwidth * 1000 / ms;
+				status->records_limit += conf->tps * 1000 / ms;
 			}
 
 			safe_signal(&limit_cond);
@@ -2249,14 +2271,14 @@ cleanup0:
 
 static bool
 restore_index(aerospike *as, index_param *index, as_vector *set_vec,
-		restore_thread_args* args, uint32_t timeout)
+		restore_thread_args_t* args, uint32_t timeout)
 {
 	path_param *path = as_vector_get(&index->path_vec, 0);
 
 	if (!check_set(index->set, set_vec)) {
 		ver("Skipping index with unwanted set %s:%s:%s (%s)", index->ns, index->set,
 				index->name, path->path);
-		as_incr_uint32(&args->conf->skipped_indexes);
+		as_incr_uint32(&args->status->skipped_indexes);
 
 		index->task.as = as;
 		memcpy(index->task.ns, index->ns, sizeof(as_namespace));
@@ -2359,10 +2381,10 @@ restore_index(aerospike *as, index_param *index, as_vector *set_vec,
 					path->path);
 
 			if (orig_stat == INDEX_STATUS_DIFFERENT) {
-				as_incr_uint32(&args->conf->mismatched_indexes);
+				as_incr_uint32(&args->status->mismatched_indexes);
 			}
 			else {
-				as_incr_uint32(&args->conf->matched_indexes);
+				as_incr_uint32(&args->status->matched_indexes);
 			}
 
 			index->task.as = as;
@@ -2420,7 +2442,7 @@ wait_index(index_param *index)
  * @result           `true`, if successful.
  */
 static bool
-restore_indexes(aerospike *as, as_vector *index_vec, as_vector *set_vec, restore_thread_args* args,
+restore_indexes(aerospike *as, as_vector *index_vec, as_vector *set_vec, restore_thread_args_t* args,
 		bool wait, uint32_t timeout)
 {
 	bool res = true;
@@ -2435,9 +2457,9 @@ restore_indexes(aerospike *as, as_vector *index_vec, as_vector *set_vec, restore
 		}
 	}
 
-	uint32_t skipped = as_load_uint32(&args->conf->skipped_indexes);
-	uint32_t matched = as_load_uint32(&args->conf->matched_indexes);
-	uint32_t mismatched = as_load_uint32(&args->conf->mismatched_indexes);
+	uint32_t skipped = as_load_uint32(&args->status->skipped_indexes);
+	uint32_t matched = as_load_uint32(&args->status->matched_indexes);
+	uint32_t mismatched = as_load_uint32(&args->status->mismatched_indexes);
 
 	if (skipped > 0) {
 		inf("Skipped %d index(es) with unwanted set(s)", skipped);

@@ -423,6 +423,7 @@ cleanup3:
 cleanup2:
 	if (status->as != NULL) {
 		aerospike_destroy(status->as);
+		cf_free(status->as);
 	}
 
 	pthread_mutex_destroy(&status->committed_count_mutex);

@@ -98,8 +98,6 @@ typedef struct restore_config {
 	as_config_tls tls;
 	char* tls_name;
 
-	// The Aerospike client.
-	aerospike *as;
 	// The (optional) source and (also optional) target namespace to be restored.
 	char *ns_list;
 	// The directory to restore from. `NULL`, when restoring from a single file.
@@ -133,8 +131,35 @@ typedef struct restore_config {
 	uint64_t bandwidth;
 	// The TPS cap for throttling.
 	uint32_t tps;
+
+	// Authentication mode.
+	char *auth_mode;
+} restore_config_t;
+
+
+typedef struct restore_status {
+	// The Aerospike client.
+	aerospike* as;
+
 	// The file format decoder to be used for reading data from a backup file.
-	backup_decoder_t *decoder;
+	backup_decoder_t decoder;
+
+	// The list of backup files to restore.
+	as_vector file_vec;
+	// The (optional) source and (also optional) target namespace to be
+	// restored, as a vector of strings.
+	as_vector ns_vec;
+	// The bins to be restored, as a vector of bin name strings.
+	as_vector bin_vec;
+	// The sets to be restored, as a vector of set name strings.
+	as_vector set_vec;
+	// The indexes to be inserted, as a vector of index_param's
+	as_vector index_vec;
+	// The udfs to be inserted, as a vector of udf_param's
+	as_vector udf_vec;
+
+	// Mutex for exclusive access to index_vec/udf_vec
+	pthread_mutex_t idx_udf_lock;
 
 	// The total size of all backup files to be restored.
 	off_t estimated_bytes;
@@ -177,42 +202,27 @@ typedef struct restore_config {
 	uint32_t mismatched_indexes;
 	// The number of successfully stored UDF files.
 	uint32_t udf_count;
-
-	// Authentication mode.
-	char *auth_mode;
-} restore_config_t;
+} restore_status_t;
 
 
 /*
  * The backup file information pushed to the job queue and picked up by the restore threads.
  */
-typedef struct {
-	// The global restore configuration and stats.
+typedef struct restore_thread_args {
+	// The global restore configuration.
 	restore_config_t *conf;
+	// The global resture stats.
+	restore_status_t *status;
 	// The backup file to be restored.
 	char *path;
 	// When restoring from a single file, the file descriptor of that file.
 	io_read_proxy_t* shared_fd;
 	// The current line number.
 	uint32_t *line_no;
-	// The (optional) source and (also optional) target namespace to be
-	// restored, as a vector of strings.
-	as_vector *ns_vec;
-	// The bins to be restored, as a vector of bin name strings.
-	as_vector *bin_vec;
-	// The sets to be restored, as a vector of set name strings.
-	as_vector *set_vec;
-	// The indexes to be inserted, as a vector of index_param's
-	as_vector *index_vec;
-	// The udfs to be inserted, as a vector of udf_param's
-	as_vector *udf_vec;
-
-	// Mutex for exclusive access to index_vec/udf_vec
-	pthread_mutex_t idx_udf_lock;
 
 	// Indicates a version 3.0 backup file.
 	bool legacy;
-} restore_thread_args;
+} restore_thread_args_t;
 
 /*
  * The per-thread context for information about the currently processed backup file. Each restore
@@ -221,6 +231,8 @@ typedef struct {
 typedef struct per_thread_context {
 	// The global restore configuration and stats.
 	restore_config_t *conf;
+	// The global resture stats.
+	restore_status_t *status;
 	// The backup file to be restored. Copied from restore_thread_args.path.
 	char *path;
 	// When restoring from a single file, the file descriptor of that file.
@@ -273,4 +285,7 @@ typedef enum {
 extern int32_t restore_main(int32_t argc, char **argv);
 extern void restore_config_default(restore_config_t *conf);
 extern void restore_config_destroy(restore_config_t *conf);
+extern bool restore_status_init(restore_status_t *status,
+		const restore_config_t* conf);
+extern void restore_status_destroy(restore_status_t *status);
 
