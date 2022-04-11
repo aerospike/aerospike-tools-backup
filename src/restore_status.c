@@ -22,8 +22,9 @@
 #include <restore_status.h>
 
 #include <conf.h>
-#include <encode.h>
 #include <dec_text.h>
+#include <encode.h>
+#include <file_proxy.h>
 
 
 //==========================================================
@@ -55,6 +56,31 @@ restore_status_init(restore_status_t* status, const restore_config_t* conf)
 	if (pthread_mutex_init(&status->idx_udf_lock, NULL) != 0) {
 		err("Failed to initialize mutex lock");
 		goto cleanup1;
+	}
+
+	if (pthread_mutex_init(&status->stop_lock, NULL) != 0) {
+		err("Failed to initialize mutex lock");
+		goto cleanup_mutex1;
+	}
+
+	if (pthread_cond_init(&status->stop_cond, NULL) != 0) {
+		err("Failed to initialize condition variable");
+		goto cleanup_mutex2;
+	}
+
+	if (pthread_mutex_init(&status->file_read_mutex, NULL) != 0) {
+		err("Failed to initialize mutex lock");
+		goto cleanup_mutex3;
+	}
+
+	if (pthread_mutex_init(&status->limit_mutex, NULL) != 0) {
+		err("Failed to initialize mutex lock");
+		goto cleanup_mutex4;
+	}
+
+	if (pthread_cond_init(&status->limit_cond, NULL) != 0) {
+		err("Failed to initialize condition variable");
+		goto cleanup_mutex5;
 	}
 
 	if (conf->ns_list != NULL && !restore_config_parse_list("namespace",
@@ -165,6 +191,7 @@ restore_status_init(restore_status_t* status, const restore_config_t* conf)
 	as_store_uint32(&status->matched_indexes, 0);
 	as_store_uint32(&status->mismatched_indexes, 0);
 	as_store_uint32(&status->udf_count, 0);
+	as_store_bool(&status->stop, false);
 
 	return true;
 
@@ -176,6 +203,16 @@ cleanup3:
 	tls_config_destroy(&as_conf.tls);
 
 cleanup2:
+	pthread_cond_destroy(&status->limit_cond);
+cleanup_mutex5:
+	pthread_mutex_destroy(&status->limit_mutex);
+cleanup_mutex4:
+	pthread_mutex_destroy(&status->file_read_mutex);
+cleanup_mutex3:
+	pthread_cond_destroy(&status->stop_cond);
+cleanup_mutex2:
+	pthread_mutex_destroy(&status->stop_lock);
+cleanup_mutex1:
 	pthread_mutex_destroy(&status->idx_udf_lock);
 
 cleanup1:
@@ -198,6 +235,11 @@ restore_status_destroy(restore_status_t* status)
 	cf_free(status->as);
 
 	pthread_mutex_destroy(&status->idx_udf_lock);
+	pthread_mutex_destroy(&status->stop_lock);
+	pthread_cond_destroy(&status->stop_cond);
+	pthread_mutex_destroy(&status->file_read_mutex);
+	pthread_mutex_destroy(&status->limit_mutex);
+	pthread_cond_destroy(&status->limit_cond);
 
 	free_indexes(&status->index_vec);
 	free_udfs(&status->udf_vec);
@@ -212,6 +254,49 @@ restore_status_destroy(restore_status_t* status)
 	as_vector_destroy(&status->ns_vec);
 	as_vector_destroy(&status->bin_vec);
 	as_vector_destroy(&status->set_vec);
+}
+
+bool
+restore_status_has_stopped(const restore_status_t* status)
+{
+	return as_load_uint8((uint8_t*) &status->stop);
+}
+
+void
+restore_status_stop(restore_status_t* status)
+{
+	// sets the stop variable. No need to grab a lock since condidition
+	// variables all used timed waits, so deadlock is impossible.
+	as_store_uint8((uint8_t*) &status->stop, 1);
+
+	// wakes all threads waiting on the stop condition
+	pthread_cond_broadcast(&status->stop_cond);
+
+	s3_disable_request_processing();
+}
+
+void
+restore_status_sleep_for(restore_status_t* status, uint64_t n_secs)
+{
+#ifdef __APPLE__
+	// MacOS uses gettimeofday instead of the monotonic clock for timed waits on
+	// condition variables
+	struct timespec t;
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	TIMEVAL_TO_TIMESPEC(&tv, &t);
+#else
+	struct timespec t;
+	clock_gettime(CLOCK_MONOTONIC, &t);
+#endif /* __APPLE__ */
+
+	t.tv_sec += (int64_t) n_secs;
+
+	pthread_mutex_lock(&status->stop_lock);
+	while (!restore_status_has_stopped(status) && timespec_has_not_happened(&t)) {
+		pthread_cond_timedwait(&status->stop_cond, &status->stop_lock, &t);
+	}
+	pthread_mutex_unlock(&status->stop_lock);
 }
 
 

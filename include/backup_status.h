@@ -225,6 +225,10 @@ void backup_status_abort_backup(backup_status_t* status);
  */
 void backup_status_abort_backup_unsafe(backup_status_t* status);
 
+/*
+ * Sleep on the stop condition, exiting from the sleep early if the program is
+ * stopped
+ */
 void backup_status_sleep_for(backup_status_t* status, uint64_t n_secs);
 
 /*

@@ -104,6 +104,23 @@ typedef struct restore_status {
 	uint32_t mismatched_indexes;
 	// The number of successfully stored UDF files.
 	uint32_t udf_count;
+
+	// Set when the restore has finished running.
+	bool stop;
+
+	// Used when sleeping to ensure immediate awakening when the restore job
+	// finishes.
+	pthread_mutex_t stop_lock;
+	pthread_cond_t stop_cond;
+
+	// Used by threads when reading from one file to ensure mutual exclusion on access
+	// to the file
+	pthread_mutex_t file_read_mutex;
+
+	// Used by the counter thread to signal newly available bandwidth or
+	// transactions to the restore threads.
+	pthread_mutex_t limit_mutex;
+	pthread_cond_t limit_cond;
 } restore_status_t;
 
 
@@ -114,4 +131,20 @@ typedef struct restore_status {
 bool restore_status_init(restore_status_t*, const restore_config_t*);
 
 void restore_status_destroy(restore_status_t*);
+
+/*
+ * Returns true if the program has stoppped
+ */
+bool restore_status_has_stopped(const restore_status_t*);
+
+/*
+ * Stops the program immediately.
+ */
+void restore_status_stop(restore_status_t*);
+
+/*
+ * Sleep on the stop condition, exiting from the sleep early if the program is
+ * stopped
+ */
+void restore_status_sleep_for(restore_status_t* status, uint64_t n_secs);
 

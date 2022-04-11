@@ -33,18 +33,8 @@
 
 #define OPTIONS_SHORT "-h:Sp:A:U:P::n:d:i:t:vm:B:s:urgN:RILFwVZT:y:z:"
 
-static pthread_mutex_t g_stop_lock;
-static pthread_cond_t g_stop_cond;
-// Makes background threads exit.
-static volatile bool g_stop = false;
-
-// Used by threads when reading from one file to ensure mutual exclusion on access
-// to the file
-static pthread_mutex_t file_read_mutex = PTHREAD_MUTEX_INITIALIZER;
-// Used by the counter thread to signal newly available bandwidth or
-// transactions to the restore threads.
-static pthread_cond_t limit_cond = PTHREAD_COND_INITIALIZER;
-static pthread_mutex_t limit_mutex = PTHREAD_MUTEX_INITIALIZER;
+static restore_config_t* g_conf;
+static restore_status_t* g_status;
 
 
 //==========================================================
@@ -53,8 +43,6 @@ static pthread_mutex_t limit_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static bool has_stopped(void);
 static void stop(void);
-static void stop_nolock(void);
-static void sleep_for(uint64_t n_secs);
 static int update_file_pos(per_thread_context_t* ptc);
 static bool close_file(io_read_proxy_t *fd);
 static bool open_file(const char *file_path, as_vector *ns_vec, io_read_proxy_t *fd,
@@ -88,6 +76,7 @@ restore_main(int32_t argc, char **argv)
 	int32_t res = EXIT_FAILURE;
 
 	restore_config_t conf;
+	g_conf = &conf;
 
 	int restore_config_res = restore_config_init(argc, argv, &conf);
 	if (restore_config_res != 0) {
@@ -97,14 +86,15 @@ restore_main(int32_t argc, char **argv)
 		goto cleanup1;
 	}
 
-	signal(SIGINT, sig_hand);
-	signal(SIGTERM, sig_hand);
-
 	restore_status_t status;
+	g_status = &status;
 	if (!restore_status_init(&status, &conf)) {
 		err("Failed to initialize restore status");
 		goto cleanup1;
 	}
+
+	signal(SIGINT, sig_hand);
+	signal(SIGTERM, sig_hand);
 
 	inf("Starting restore to %s (bins: %s, sets: %s) from %s", conf.host,
 			conf.bin_list == NULL ? "[all]" : conf.bin_list,
@@ -407,12 +397,12 @@ restore_config_destroy(restore_config_t *conf)
 //
 
 /*
- * returns true if the program has stoppped
+ * Checks if the program has been stopped.
  */
 static bool
 has_stopped(void)
 {
-	return as_load_uint8((uint8_t*) &g_stop);
+	return restore_status_has_stopped(g_status);
 }
 
 /*
@@ -421,67 +411,7 @@ has_stopped(void)
 static void
 stop(void)
 {
-	pthread_mutex_lock(&g_stop_lock);
-
-	// sets the stop variable
-	as_store_uint8((uint8_t*) &g_stop, 1);
-
-	// wakes all threads waiting on the stop condition
-	pthread_cond_broadcast(&g_stop_cond);
-
-	pthread_mutex_unlock(&g_stop_lock);
-
-	s3_disable_request_processing();
-}
-
-/*
- * stops the program, which is safe in interrupt contexts
- */
-static void
-stop_nolock(void)
-{
-	bool was_locked = (pthread_mutex_trylock(&g_stop_lock) == 0);
-
-	// sets the stop variable
-	as_store_uint8((uint8_t*) &g_stop, 1);
-
-	// wakes all threads waiting on the stop condition
-	// this can potentially miss some threads waiting on a condition variable if
-	// trylock failed, but they will eventually time out
-	pthread_cond_broadcast(&g_stop_cond);
-
-	if (was_locked) {
-		pthread_mutex_unlock(&g_stop_lock);
-	}
-
-	s3_disable_request_processing();
-}
-
-/*
- * sleep on the stop condition, exiting from the sleep early if the program is
- * stopped
- */
-static void
-sleep_for(uint64_t n_secs)
-{
-#ifdef __APPLE__
-	// MacOS uses gettimeofday instead of the monotonic clock for timed waits on
-	// mutexes
-	struct timespec t;
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-	TIMEVAL_TO_TIMESPEC(&tv, &t);
-#else
-	struct timespec t;
-	clock_gettime(CLOCK_MONOTONIC, &t);
-#endif /* __APPLE__ */
-	t.tv_sec += (int64_t) n_secs;
-
-	pthread_mutex_lock(&g_stop_lock);
-	while (!as_load_uint8((uint8_t*) &g_stop) && timespec_has_not_happened(&t)) {
-		pthread_cond_timedwait(&g_stop_cond, &g_stop_lock, &t);
-	}
-	pthread_mutex_unlock(&g_stop_lock);
+	restore_status_stop(g_status);
 }
 
 /*
@@ -864,15 +794,15 @@ restore_thread_func(void *cont)
 
 			// restoring from a single backup file: allow one thread at a time to read
 			if (ptc.conf->input_file != NULL) {
-				safe_lock(&file_read_mutex);
+				safe_lock(&ptc.status->file_read_mutex);
 			}
 
 			// check the stop flag inside the critical section; makes sure that we do not try to
 			// read from the shared file descriptor after another thread encountered an error and
 			// set the stop flag
-			if (has_stopped()) {
+			if (restore_status_has_stopped(ptc.status)) {
 				if (ptc.conf->input_file != NULL) {
-					safe_unlock(&file_read_mutex);
+					safe_unlock(&ptc.status->file_read_mutex);
 				}
 
 				break;
@@ -890,7 +820,7 @@ restore_thread_func(void *cont)
 			}
 
 			if (ptc.conf->input_file != NULL) {
-				safe_unlock(&file_read_mutex);
+				safe_unlock(&ptc.status->file_read_mutex);
 			}
 			// only update the file pos in dir mode
 			else if (update_file_pos(&ptc) < 0) {
@@ -962,7 +892,7 @@ restore_thread_func(void *cont)
 					useconds_t backoff = INITIAL_BACKOFF * 1000;
 					int32_t tries;
 
-					for (tries = 0; tries < MAX_TRIES && !has_stopped(); ++tries) {
+					for (tries = 0; tries < MAX_TRIES && !restore_status_has_stopped(ptc.status); ++tries) {
 						as_error ae;
 						policy.key = rec.key.valuep != NULL ? AS_POLICY_KEY_SEND :
 								AS_POLICY_KEY_DIGEST;
@@ -1046,8 +976,8 @@ restore_thread_func(void *cont)
 									as_incr_uint64(&ptc.status->backoff_count);
 								} else {
 									backoff = INITIAL_BACKOFF * 1000;
-									sleep_for(1);
-								} 
+									restore_status_sleep_for(ptc.status, 1);
+								}
 								break;
 
 						}
@@ -1062,15 +992,15 @@ restore_thread_func(void *cont)
 				as_record_destroy(&rec);
 
 				if (ptc.conf->bandwidth > 0 && ptc.conf->tps > 0) {
-					safe_lock(&limit_mutex);
+					safe_lock(&ptc.status->limit_mutex);
 
 					while ((as_load_uint64(&ptc.status->total_bytes) >= ptc.status->bytes_limit ||
 								as_load_uint64(&ptc.status->total_records) >= ptc.status->records_limit) &&
-							!has_stopped()) {
-						safe_wait(&limit_cond, &limit_mutex);
+							!restore_status_has_stopped(ptc.status)) {
+						safe_wait(&ptc.status->limit_cond, &ptc.status->limit_mutex);
 					}
 
-					safe_unlock(&limit_mutex);
+					safe_unlock(&ptc.status->limit_mutex);
 				}
 
 				continue;
@@ -1132,8 +1062,8 @@ counter_thread_func(void *cont)
 	uint64_t prev_records = as_load_uint64(&status->total_records);
 
 	while (true) {
-		sleep_for(1);
-		bool last_iter = has_stopped();
+		restore_status_sleep_for(status, 1);
+		bool last_iter = restore_status_has_stopped(status);
 
 		cf_clock now_ms = cf_getms();
 		uint32_t ms = (uint32_t)(now_ms - prev_ms);
@@ -1210,7 +1140,7 @@ counter_thread_func(void *cont)
 			mach_prev_bytes = now_bytes;
 		}
 
-		safe_lock(&limit_mutex);
+		safe_lock(&status->limit_mutex);
 
 		if (conf->bandwidth > 0 && conf->tps > 0) {
 			if (ms > 0) {
@@ -1218,10 +1148,10 @@ counter_thread_func(void *cont)
 				status->records_limit += conf->tps * 1000 / ms;
 			}
 
-			safe_signal(&limit_cond);
+			safe_signal(&status->limit_cond);
 		}
 
-		safe_unlock(&limit_mutex);
+		safe_unlock(&status->limit_mutex);
 
 		if (last_iter) {
 			if (args->mach_fd != NULL && (fprintf(args->mach_fd,
@@ -1508,7 +1438,7 @@ restore_index(aerospike *as, index_param *index, as_vector *set_vec,
 		// aerospike_index_remove() is asynchronous. Check the index again, because AEROSPIKE_OK
 		// doesn't necessarily mean that the index is gone.
 		for (int32_t tries = 0; tries < MAX_TRIES; ++tries) {
-			sleep_for(1);
+			restore_status_sleep_for(args->status, 1);
 			stat = check_index(as, index, timeout);
 
 			if (stat != INDEX_STATUS_DIFFERENT) {
@@ -1693,7 +1623,7 @@ sig_hand(int32_t sig)
 {
 	(void)sig;
 	err("### Restore interrupted ###");
-	stop_nolock();
+	stop();
 }
 
 static void
