@@ -28,14 +28,6 @@
 // Includes.
 //
 
-#pragma GCC diagnostic ignored "-Wconversion"
-#pragma GCC diagnostic ignored "-Wsign-conversion"
-
-#include <aerospike/as_node.h>
-
-#pragma GCC diagnostic warning "-Wconversion"
-#pragma GCC diagnostic warning "-Wsign-conversion"
-
 #include <restore_config.h>
 #include <utils.h>
 
