@@ -46,96 +46,11 @@
 
 #include <encode.h>
 #include <io_proxy.h>
+#include <restore_config.h>
 #include <utils.h>
-
-// The default number of restore threads.
-#define DEFAULT_THREADS 20
-
-// Maximal number of tries for each record put.
-#define MAX_TRIES 10
-// Initial backoff delay (in ms) between tries when overloaded; doubled after
-// each try.
-#define INITIAL_BACKOFF 10
 
 // The interval for logging per-thread timing stats.
 #define STAT_INTERVAL 10
-
-/*
- * The global restore configuration and stats shared by all restore threads and the counter thread.
- */
-typedef struct restore_config {
-
-	char *host;
-	int32_t port;
-	bool use_services_alternate;
-	char *user;
-	char *password;
-	uint32_t parallel;
-	char *nice_list;
-	bool no_records;
-	bool no_indexes;
-	bool indexes_last;
-	bool no_udfs;
-	bool wait;
-	// timeout for Aerospike commands.
-	uint32_t timeout;
-
-	// C client socket timeout/retry policies.
-	uint32_t socket_timeout;
-	uint32_t total_timeout;
-	uint32_t max_retries;
-	uint32_t retry_delay;
-
-	// The region to use for S3.
-	char* s3_region;
-	// The profile to use for AWS credentials.
-	char* s3_profile;
-	// An alternative endpoint for S3 compatible storage to send all S3 requests to.
-	char* s3_endpoint_override;
-	// Max simultaneous download requests from S3 allowed at a time.
-	uint32_t s3_max_async_downloads;
-
-	as_config_tls tls;
-	char* tls_name;
-
-	// The (optional) source and (also optional) target namespace to be restored.
-	char *ns_list;
-	// The directory to restore from. `NULL`, when restoring from a single file.
-	char *directory;
-	// The file to restore from. `NULL`, when restoring from a directory.
-	char *input_file;
-	// The path for the machine-readable output.
-	char *machine;
-	// The bins to be restored.
-	char *bin_list;
-	// The sets to be restored.
-	char *set_list;
-	// The encryption key given by the user
-	encryption_key_t* pkey;
-	// The compression mode to be used (default is none)
-	compression_opt compress_mode;
-	// The encryption mode to be used (default is none)
-	encryption_opt encrypt_mode;
-	// Indicates that existing records shouldn't be touched.
-	bool unique;
-	// Indicates that existing records should be replaced instead of updated.
-	bool replace;
-	// Ignore record specific errors.
-	bool ignore_rec_error;
-	// Indicates that the generation count of existing records should be ignored.
-	bool no_generation;
-	// Amount of extra time-to-live to add to records that have expirable
-	// void-times.
-	int32_t extra_ttl;
-	// The B/s cap for throttling.
-	uint64_t bandwidth;
-	// The TPS cap for throttling.
-	uint32_t tps;
-
-	// Authentication mode.
-	char *auth_mode;
-} restore_config_t;
-
 
 typedef struct restore_status {
 	// The Aerospike client.
@@ -282,9 +197,7 @@ typedef enum {
 	INDEX_STATUS_DIFFERENT
 } index_status;
 
-extern int32_t restore_main(int32_t argc, char **argv);
-extern void restore_config_default(restore_config_t *conf);
-extern void restore_config_destroy(restore_config_t *conf);
+int32_t restore_main(int32_t argc, char **argv);
 extern bool restore_status_init(restore_status_t *status,
 		const restore_config_t* conf);
 extern void restore_status_destroy(restore_status_t *status);

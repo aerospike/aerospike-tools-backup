@@ -176,6 +176,9 @@ typedef struct backup_config {
 /*
  * Parses command line arguments from argv and populates/initializes the
  * backup_config_t struct.
+ *
+ * The backup_config_t struct returned by this method is always destroyable (and
+ * should be destroyed) regardless of the return value
  */
 int backup_config_init(int argc, char* argv[], backup_config_t* conf);
 
