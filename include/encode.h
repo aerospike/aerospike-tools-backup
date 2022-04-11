@@ -228,3 +228,16 @@ typedef struct backup_decoder {
 			udf_param *udf);
 } backup_decoder_t;
 
+
+//==========================================================
+// Public API.
+//
+
+void free_udf(udf_param *param);
+
+void free_udfs(as_vector *udf_vec);
+
+void free_index(index_param *param);
+
+void free_indexes(as_vector *index_vec);
+
