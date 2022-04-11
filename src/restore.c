@@ -411,12 +411,12 @@ restore_status_init(restore_status_t* status, const restore_config_t* conf)
 {
 	status->decoder = (backup_decoder_t){ text_parse };
 
-	as_vector_inita(&status->file_vec, sizeof(void*), 25)
-	as_vector_inita(&status->index_vec, sizeof(index_param), 25);
-	as_vector_inita(&status->udf_vec, sizeof(udf_param), 25);
-	as_vector_inita(&status->ns_vec, sizeof(void*), 25);
-	as_vector_inita(&status->bin_vec, sizeof(void*), 25);
-	as_vector_inita(&status->set_vec, sizeof(void*), 25);
+	as_vector_init(&status->file_vec, sizeof(void*), 25);
+	as_vector_init(&status->index_vec, sizeof(index_param), 25);
+	as_vector_init(&status->udf_vec, sizeof(udf_param), 25);
+	as_vector_init(&status->ns_vec, sizeof(void*), 25);
+	as_vector_init(&status->bin_vec, sizeof(void*), 25);
+	as_vector_init(&status->set_vec, sizeof(void*), 25);
 
 	status->bytes_limit = conf->bandwidth;
 	status->records_limit = conf->tps;
