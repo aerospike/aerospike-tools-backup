@@ -53,6 +53,7 @@ static bool ns_count_callback(void *context_, const char *key, const char *value
 static bool set_count_callback(void *context_, const char *key_, const char *value_);
 static bool get_object_count(aerospike *as, const char *namespace, as_vector* set_list,
 		char (*node_names)[][AS_NODE_NAME_SIZE], uint32_t n_node_names, uint64_t *obj_count);
+static bool check_server_version(backup_status_t* status, const backup_config_t* conf);
 
 
 //==========================================================
@@ -399,6 +400,10 @@ backup_status_init(backup_status_t* status, backup_config_t* conf)
 	if (has_ldt) {
 		err("The cluster has LDT enabled for namespace %s; please use an older version of "
 				"this tool to create a backup", conf->ns);
+		goto cleanup3;
+	}
+
+	if (!check_server_version(status, conf)) {
 		goto cleanup3;
 	}
 
@@ -1453,6 +1458,75 @@ get_object_count(aerospike *as, const char *namespace, as_vector* set_list,
 	}
 
 	*obj_count /= ns_context.factor;
+	return true;
+}
+
+/*
+ * Checks that all features being used in this backup run are supported by the
+ * version of the server running.
+ */
+static bool
+check_server_version(backup_status_t* status, const backup_config_t* conf)
+{
+	as_error ae;
+	char* response;
+
+	if (aerospike_info_any(status->as, &ae, NULL, "version", &response) != AEROSPIKE_OK) {
+		err("Error while querying server version for %s:%d - code %d:\n"
+				"%s at %s:%d",
+				conf->host, conf->port, ae.code,
+				ae.message, ae.file, ae.line);
+		return false;
+	}
+
+	char* build_str = strstr(response, "build");
+	if (build_str == NULL || strlen(build_str) <= 6) {
+		err("Invalid info request response from server: %s\n", response);
+		cf_free(response);
+		return false;
+	}
+
+	char* version_str = build_str + 6;
+	uint32_t major, minor;
+	if (sscanf(version_str, "%" PRIu32 ".%" PRIu32 ".%*" PRIu32 ".%*" PRIu32 "\n",
+				&major, &minor) != 2) {
+		err("Invalid info request build number: %s\n", version_str);
+		cf_free(response);
+		return false;
+	}
+
+	cf_free(response);
+
+	if (major < 4 || (major == 4 && minor < 9)) {
+		err("Aerospike Server version 4.9 or greater is required to run "
+				"asbackup, but version %" PRIu32 ".%" PRIu32 " is in use.",
+				major, minor);
+		return false;
+	}
+
+	if ((conf->mod_before != 0 || conf->mod_after != 0) && (major < 5 ||
+				(major == 5 && minor < 2))) {
+		err("Aerospike Server version 5.2 or greater is required for "
+				"--modified-before and --modified-after, but version "
+				"%" PRIu32 ".%" PRIu32 " is in use",
+				major, minor);
+		return false;
+	}
+
+	if (conf->set_list.size > 1 && (major < 5 || (major == 5 && minor < 2))) {
+		err("Aerospike Server version 5.2 or greater is required for multi-set "
+				"backup, but version %" PRIu32 ".%" PRIu32 " is in use",
+				major, minor);
+		return false;
+	}
+
+	if (conf->ttl_zero && (major < 5 || (major == 5 && minor < 2))) {
+		err("Aerospike Server version 5.2 or greater is required for "
+				"--no-ttl-only, but version %" PRIu32 ".%" PRIu32 " is in use",
+				major, minor);
+		return false;
+	}
+
 	return true;
 }
 

@@ -139,6 +139,8 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 		{ "socket-timeout", required_argument, NULL, COMMAND_OPT_SOCKET_TIMEOUT },
 		{ "total-timeout", required_argument, NULL, COMMAND_OPT_TOTAL_TIMEOUT },
 		{ "max-retries", required_argument, NULL, COMMAND_OPT_MAX_RETRIES },
+		{ "sleep-between-retries", required_argument, NULL, COMMAND_OPT_RETRY_DELAY },
+		// support the `--retry-delay` option until a major version bump.
 		{ "retry-delay", required_argument, NULL, COMMAND_OPT_RETRY_DELAY },
 
 		{ "s3-region", required_argument, NULL, COMMAND_OPT_S3_REGION },
@@ -1244,7 +1246,7 @@ usage(const char *name)
 	fprintf(stderr, "      --max-retries <n>\n");
 	fprintf(stderr, "                      Maximum number of retries before aborting the current transaction.\n");
 	fprintf(stderr, "                      The default is 5.\n");
-	fprintf(stderr, "      --retry-delay <ms>\n");
+	fprintf(stderr, "      --sleep-between-retries <ms>\n");
 	fprintf(stderr, "                      The amount of time to sleep between retries. Default is 0.\n");
 	fprintf(stderr, "      --s3-region <region>\n");
 	fprintf(stderr, "                      The S3 region that the bucket(s) exist in.\n");
