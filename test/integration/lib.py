@@ -18,7 +18,6 @@ import asyncio
 import docker
 
 import aerospike
-from aerospike import predexp as predexp
 from aerospike_client import validate_client, get_client
 
 WORK_DIRECTORY = "work"
