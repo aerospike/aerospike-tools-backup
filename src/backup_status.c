@@ -1497,6 +1497,8 @@ check_server_version(backup_status_t* status, const backup_config_t* conf)
 
 	cf_free(response);
 
+	ver("Connected to server version %u.%u", major, minor);
+
 	if (major < 4 || (major == 4 && minor < 9)) {
 		err("Aerospike Server version 4.9 or greater is required to run "
 				"asbackup, but version %" PRIu32 ".%" PRIu32 " is in use.",

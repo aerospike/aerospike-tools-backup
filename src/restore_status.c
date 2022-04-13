@@ -32,6 +32,8 @@
 //
 
 static void add_default_tls_host(as_config *as_conf, const char* tls_name);
+static bool check_server_version(restore_status_t* status,
+		const restore_config_t* conf);
 
 
 //==========================================================
@@ -176,6 +178,10 @@ restore_status_init(restore_status_t* status, const restore_config_t* conf)
 		goto cleanup4;
 	}
 
+	if (!check_server_version(status, conf)) {
+		goto cleanup5;
+	}
+
 	status->estimated_bytes = 0;
 	as_store_uint64(&status->total_bytes, 0);
 	as_store_uint64(&status->total_records, 0);
@@ -194,6 +200,9 @@ restore_status_init(restore_status_t* status, const restore_config_t* conf)
 	as_store_bool(&status->stop, false);
 
 	return true;
+
+cleanup5:
+	aerospike_close(status->as, &ae);
 
 cleanup4:
 	aerospike_destroy(status->as);
@@ -323,5 +332,53 @@ add_default_tls_host(as_config *as_conf, const char* tls_name)
 			host->tls_name = strdup(tls_name);
 		}
 	}
+}
+
+/*
+ * Checks that all features being used in this restore run are supported by the
+ * version of the server running.
+ */
+static bool
+check_server_version(restore_status_t* status, const restore_config_t* conf)
+{
+	as_error ae;
+	char* response;
+
+	if (aerospike_info_any(status->as, &ae, NULL, "version", &response) != AEROSPIKE_OK) {
+		err("Error while querying server version for %s:%d - code %d:\n"
+				"%s at %s:%d",
+				conf->host, conf->port, ae.code,
+				ae.message, ae.file, ae.line);
+		return false;
+	}
+
+	char* build_str = strstr(response, "build");
+	if (build_str == NULL || strlen(build_str) <= 6) {
+		err("Invalid info request response from server: %s\n", response);
+		cf_free(response);
+		return false;
+	}
+
+	char* version_str = build_str + 6;
+	uint32_t major, minor;
+	if (sscanf(version_str, "%" PRIu32 ".%" PRIu32 ".%*" PRIu32 ".%*" PRIu32 "\n",
+				&major, &minor) != 2) {
+		err("Invalid info request build number: %s\n", version_str);
+		cf_free(response);
+		return false;
+	}
+
+	cf_free(response);
+
+	ver("Connected to server version %u.%u", major, minor);
+
+	if (major < 4 || (major == 4 && minor < 9)) {
+		err("Aerospike Server version 4.9 or greater is required to run "
+				"asrestore, but version %" PRIu32 ".%" PRIu32 " is in use.",
+				major, minor);
+		return false;
+	}
+
+	return true;
 }
 
