@@ -391,6 +391,8 @@ run_backup(backup_config_t* conf)
 			// don't do any throttling
 			estimate_conf->bandwidth = 0;
 			estimate_conf->records_per_second = 0;
+			// don't use max-records for the estimate (use estimate-samples)
+			estimate_conf->max_records = 0;
 
 			bool cur_silent_val = as_load_bool(&g_silent);
 			as_store_bool(&g_silent, true);
@@ -1398,11 +1400,14 @@ scan_callback(const as_val *val, void *cont)
 	bool ok;
 	if (bjc->conf->estimate) {
 		uint32_t sample_idx = as_faa_uint32(bjc->n_samples, 1);
+		// should never happen, but just to ensure we don't write past the end
+		// of the sample buffer, check that we don't exceed estimate_samples
 		if (sample_idx >= bjc->conf->n_estimate_samples) {
 			as_store_uint32(bjc->n_samples, bjc->conf->n_estimate_samples);
-			inf("Backed up enough samples for estimate");
 			safe_unlock(&bjc->status->file_write_mutex);
-			return false;
+			// don't abort the scan, as this will cause a broken pipe error on
+			// the server. Let the scan gracefully terminate.
+			return true;
 		}
 
 		int64_t prev_pos = io_write_proxy_absolute_pos(bjc->fd);

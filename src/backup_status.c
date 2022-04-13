@@ -63,10 +63,14 @@ static bool check_server_version(backup_status_t* status, const backup_config_t*
 bool
 backup_status_init(backup_status_t* status, backup_config_t* conf)
 {
+	uint64_t max_records;
+
 	status->node_specs = NULL;
 	status->n_node_specs = 0;
 
 	status->as = NULL;
+
+	max_records = conf->estimate ? conf->n_estimate_samples : conf->max_records;
 
 	status->policy = (as_policy_scan*) cf_malloc(sizeof(as_policy_scan));
 	as_policy_scan_init(status->policy);
@@ -74,7 +78,7 @@ backup_status_init(backup_status_t* status, backup_config_t* conf)
 	status->policy->base.total_timeout = conf->total_timeout;
 	status->policy->base.max_retries = conf->max_retries;
 	status->policy->base.sleep_between_retries = conf->retry_delay;
-	status->policy->max_records = conf->max_records;
+	status->policy->max_records = max_records;
 	status->policy->records_per_second = conf->records_per_second;
 
 	memset(status->set, 0, sizeof(as_set));
@@ -410,8 +414,8 @@ backup_status_init(backup_status_t* status, backup_config_t* conf)
 	if (conf->estimate && status->rec_count_estimate > conf->n_estimate_samples) {
 		status->rec_count_estimate = conf->n_estimate_samples;
 	}
-	if (conf->max_records > 0 && status->rec_count_estimate > conf->max_records) {
-		status->rec_count_estimate = conf->max_records;
+	if (max_records > 0 && status->rec_count_estimate > max_records) {
+		status->rec_count_estimate = max_records;
 	}
 
 	if (node_names != NULL) {
@@ -510,7 +514,10 @@ void
 backup_status_set_n_threads(backup_status_t* status, const backup_config_t* conf,
 		uint32_t n_tasks, uint32_t n_threads)
 {
-	status->policy->max_records = (conf->max_records + n_tasks - 1) / n_tasks;
+	uint64_t max_records = conf->estimate ? conf->n_estimate_samples :
+		conf->max_records;
+
+	status->policy->max_records = (max_records + n_tasks - 1) / n_tasks;
 	status->policy->records_per_second = conf->records_per_second / n_threads;
 
 	// don't allow this to set rps to 0 if n_threads > rps (this would mean no

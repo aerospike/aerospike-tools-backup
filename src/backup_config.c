@@ -723,6 +723,12 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 				conf->after_digest != NULL || conf->partition_list != NULL) {
 			inf("Warning: using estimate with any of the following will ignore their effects when calculating estimated time/storage: filter-exp, node-list, modified-after, modified-before, no-ttl-only, after-digest, partition-list");
 		}
+
+		if (conf->max_records > 0) {
+			inf("Warning: max-records is ignored with --estimate, use "
+					"--estimate-samples to limit the number of backup samples "
+					"taken (default is 10,000)");
+		}
 	}
 
 	return 0;
