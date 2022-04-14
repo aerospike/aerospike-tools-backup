@@ -1590,6 +1590,39 @@ parse_encryption_key_env(const char* env_var_name)
 	return pkey;
 }
 
+int
+get_server_version(aerospike* as, server_version_t* version_info)
+{
+	as_error ae;
+	char* response;
+
+	if (aerospike_info_any(as, &ae, NULL, "version", &response) != AEROSPIKE_OK) {
+		err("Error while querying server version - code %d:\n"
+				"%s at %s:%d",
+				ae.code, ae.message, ae.file, ae.line);
+		return -1;
+	}
+
+	char* build_str = strstr(response, "build");
+	if (build_str == NULL || strlen(build_str) <= 6) {
+		err("Invalid info request response from server: %s\n", response);
+		cf_free(response);
+		return -1;
+	}
+
+	char* version_str = build_str + 6;
+	if (sscanf(version_str, "%" PRIu32 ".%" PRIu32 ".%" PRIu32 ".%" PRIu32 "\n",
+				&version_info->major, &version_info->minor,
+				&version_info->patch, &version_info->build_id) != 4) {
+		err("Invalid info request build number: %s\n", version_str);
+		cf_free(response);
+		return -1;
+	}
+
+	cf_free(response);
+	return 0;
+}
+
 #ifdef __APPLE__
 
 char*

@@ -262,6 +262,17 @@ typedef struct {
 	uint8_t buffer[2];
 } b64_context;
 
+/*
+ * Struct containing server version information.
+ */
+typedef struct server_version {
+	// server version looks like "<major>.<minor>.<patch>.<build_id>"
+	uint32_t major;
+	uint32_t minor;
+	uint32_t patch;
+	uint32_t build_id;
+} server_version_t;
+
 extern bool g_verbose;
 extern bool g_silent;
 extern const uint8_t b64map[256];
@@ -288,6 +299,10 @@ extern const uint8_t b64map[256];
 #define be64toh OSSwapBigToHostInt64
 
 #endif /* __APPLE__ */
+
+#define SERVER_VERSION_BEFORE(version_info, _major, _minor) \
+	((version_info)->major < _major || \
+	 ((version_info)->major == _major && (version_info)->minor < _minor))
 
 
 //==========================================================
@@ -362,6 +377,10 @@ bool get_migrations(aerospike *as, char (*node_names)[][AS_NODE_NAME_SIZE],
 bool parse_index_info(char *ns, char *index_str, index_param *index);
 bool parse_set_list(as_vector* dst, const char* set_list);
 encryption_key_t* parse_encryption_key_env(const char* env_var_name);
+
+// Gets the current server version via an info command, returning 0 on success
+// and nonzero on failure.
+int get_server_version(aerospike* as, server_version_t*);
 
 #ifdef __APPLE__
 char* strchrnul(const char* s, int c_in);

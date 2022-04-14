@@ -23,6 +23,7 @@
 
 #include <backup_state.h>
 #include <conf.h>
+#include <utils.h>
 
 
 //==========================================================
@@ -1475,46 +1476,25 @@ get_object_count(aerospike *as, const char *namespace, as_vector* set_list,
 static bool
 check_server_version(backup_status_t* status, const backup_config_t* conf)
 {
-	as_error ae;
-	char* response;
-
-	if (aerospike_info_any(status->as, &ae, NULL, "version", &response) != AEROSPIKE_OK) {
-		err("Error while querying server version for %s:%d - code %d:\n"
-				"%s at %s:%d",
-				conf->host, conf->port, ae.code,
-				ae.message, ae.file, ae.line);
+	server_version_t version_info;
+	if (get_server_version(status->as, &version_info) != 0) {
 		return false;
 	}
 
-	char* build_str = strstr(response, "build");
-	if (build_str == NULL || strlen(build_str) <= 6) {
-		err("Invalid info request response from server: %s\n", response);
-		cf_free(response);
-		return false;
-	}
-
-	char* version_str = build_str + 6;
-	uint32_t major, minor;
-	if (sscanf(version_str, "%" PRIu32 ".%" PRIu32 ".%*" PRIu32 ".%*" PRIu32 "\n",
-				&major, &minor) != 2) {
-		err("Invalid info request build number: %s\n", version_str);
-		cf_free(response);
-		return false;
-	}
-
-	cf_free(response);
+	uint32_t major = version_info.major;
+	uint32_t minor = version_info.minor;
 
 	ver("Connected to server version %u.%u", major, minor);
 
-	if (major < 4 || (major == 4 && minor < 9)) {
+	if (SERVER_VERSION_BEFORE(&version_info, 4, 9)) {
 		err("Aerospike Server version 4.9 or greater is required to run "
 				"asbackup, but version %" PRIu32 ".%" PRIu32 " is in use.",
 				major, minor);
 		return false;
 	}
 
-	if ((conf->mod_before != 0 || conf->mod_after != 0) && (major < 5 ||
-				(major == 5 && minor < 2))) {
+	if ((conf->mod_before != 0 || conf->mod_after != 0) &&
+			SERVER_VERSION_BEFORE(&version_info, 5, 2)) {
 		err("Aerospike Server version 5.2 or greater is required for "
 				"--modified-before and --modified-after, but version "
 				"%" PRIu32 ".%" PRIu32 " is in use",
@@ -1522,14 +1502,14 @@ check_server_version(backup_status_t* status, const backup_config_t* conf)
 		return false;
 	}
 
-	if (conf->set_list.size > 1 && (major < 5 || (major == 5 && minor < 2))) {
+	if (conf->set_list.size > 1 && SERVER_VERSION_BEFORE(&version_info, 5, 2)) {
 		err("Aerospike Server version 5.2 or greater is required for multi-set "
 				"backup, but version %" PRIu32 ".%" PRIu32 " is in use",
 				major, minor);
 		return false;
 	}
 
-	if (conf->ttl_zero && (major < 5 || (major == 5 && minor < 2))) {
+	if (conf->ttl_zero && SERVER_VERSION_BEFORE(&version_info, 5, 2)) {
 		err("Aerospike Server version 5.2 or greater is required for "
 				"--no-ttl-only, but version %" PRIu32 ".%" PRIu32 " is in use",
 				major, minor);
