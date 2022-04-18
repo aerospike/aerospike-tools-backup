@@ -192,6 +192,11 @@ restore_status_init(restore_status_t* status, const restore_config_t* conf)
 		goto cleanup5;
 	}
 
+	if (batch_uploader_init(&status->batch_uploader, conf->max_async_batches,
+				status->as, &version_info) != 0) {
+		goto cleanup5;
+	}
+
 	status->estimated_bytes = 0;
 	as_store_uint64(&status->total_bytes, 0);
 	as_store_uint64(&status->total_records, 0);
@@ -252,6 +257,8 @@ restore_status_destroy(restore_status_t* status)
 	aerospike_close(status->as, &ae);
 	aerospike_destroy(status->as);
 	cf_free(status->as);
+
+	batch_uploader_free(&status->batch_uploader);
 
 	pthread_mutex_destroy(&status->idx_udf_lock);
 	pthread_mutex_destroy(&status->stop_lock);

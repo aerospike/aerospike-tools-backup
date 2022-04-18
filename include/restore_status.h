@@ -28,6 +28,7 @@
 // Includes.
 //
 
+#include <batch_uploader.h>
 #include <restore_config.h>
 #include <utils.h>
 
@@ -45,6 +46,9 @@ typedef struct restore_status {
 
 	// The file format decoder to be used for reading data from a backup file.
 	backup_decoder_t decoder;
+
+	// The shared batch uploader that manages all async batch upload calls.
+	batch_uploader_t batch_uploader;
 
 	// The list of backup files to restore.
 	as_vector file_vec;

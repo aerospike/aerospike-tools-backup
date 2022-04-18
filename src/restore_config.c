@@ -133,6 +133,8 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 		{ "sleep-between-retries", required_argument, NULL, COMMAND_OPT_RETRY_DELAY },
 		// support the `--retry-delay` option until a major version bump.
 		{ "retry-delay", required_argument, NULL, COMMAND_OPT_RETRY_DELAY },
+		{ "max-async-batches", required_argument, NULL, COMMAND_OPT_MAX_ASYNC_BATCHES },
+		{ "batch-size", required_argument, NULL, COMMAND_OPT_BATCH_SIZE },
 
 		{ "s3-region", required_argument, NULL, COMMAND_OPT_S3_REGION },
 		{ "s3-profile", required_argument, NULL, COMMAND_OPT_S3_PROFILE },
@@ -496,6 +498,23 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 				return RESTORE_CONFIG_INIT_FAILURE;
 			}
 			conf->retry_delay = (uint32_t) tmp;
+			break;
+
+		case COMMAND_OPT_MAX_ASYNC_BATCHES:
+			if (!better_atoi(optarg, &tmp) || tmp > UINT_MAX) {
+				err("Invalid max-async-batches value %s", optarg);
+				return RESTORE_CONFIG_INIT_FAILURE;
+			}
+			conf->max_async_batches = (uint32_t) tmp;
+			break;
+
+		case COMMAND_OPT_BATCH_SIZE:
+			if (!better_atoi(optarg, &tmp) || tmp > UINT_MAX) {
+				err("Invalid batch-size value %s", optarg);
+				return RESTORE_CONFIG_INIT_FAILURE;
+			}
+			conf->batch_size = (uint32_t) tmp;
+			break;
 
 		case COMMAND_OPT_S3_REGION:
 			conf->s3_region = strdup(optarg);
@@ -652,6 +671,9 @@ restore_config_default(restore_config_t *conf)
 	conf->total_timeout = 0;
 	conf->max_retries = 0;
 	conf->retry_delay = 0;
+
+	conf->max_async_batches = DEFAULT_MAX_ASYNC_BATCHES;
+	conf->batch_size = DEFAULT_BATCH_SIZE;
 
 	memset(&conf->tls, 0, sizeof(as_config_tls));
 	conf->tls_name = NULL;
@@ -892,6 +914,17 @@ usage(const char *name)
 	fprintf(stderr, "      --sleep-between-retries <ms>\n");
 	fprintf(stderr, "                      The amount of time to sleep between retries of write transactions.\n");
 	fprintf(stderr, "                      Default is 0.\n");
+	fprintf(stderr, "      --max-async-batches <n>\n");
+	fprintf(stderr, "                      The max number of outstanding async record batch write calls at a time.\n");
+	fprintf(stderr, "                      For pre-6.0 servers, \"batches\" are only a logical grouping of\n");
+	fprintf(stderr, "                      records, and each record is uploaded individually. The true max\n");
+	fprintf(stderr, "                      number of async aerospike calls would then be\n");
+	fprintf(stderr, "                      <max-async-batches> * <batch-size>\n");
+	fprintf(stderr, "                      Default is 32.\n");
+	fprintf(stderr, "      --batch-size <n>\n");
+	fprintf(stderr, "                      The max allowed number of outstanding async batch write calls\n");
+	fprintf(stderr, "                      to make to aerospike at a time.\n");
+	fprintf(stderr, "                      Default is 128.\n");
 	fprintf(stderr, "      --s3-region <region>\n");
 	fprintf(stderr, "                      The S3 region that the bucket(s) exist in.\n");
 	fprintf(stderr, "      --s3-profile <profile_name>\n");

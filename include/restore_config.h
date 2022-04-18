@@ -58,6 +58,9 @@
 // each try.
 #define INITIAL_BACKOFF 10
 
+#define DEFAULT_MAX_ASYNC_BATCHES 32
+#define DEFAULT_BATCH_SIZE 128
+
 /*
  * The global restore configuration and stats shared by all restore threads and the counter thread.
  */
@@ -83,6 +86,12 @@ typedef struct restore_config {
 	uint32_t total_timeout;
 	uint32_t max_retries;
 	uint32_t retry_delay;
+
+	// Max number of outstanding async record batch write calls at a time.
+	uint32_t max_async_batches;
+	// The batch size to use for batch uploading, or the size of groups of
+	// records to simultaneously upload.
+	uint32_t batch_size;
 
 	// The region to use for S3.
 	char* s3_region;
