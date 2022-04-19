@@ -55,11 +55,12 @@ typedef struct record_uploader {
 	// The max size a batch can be, automatically flushing once it reaches this
 	// size.
 	uint32_t batch_size;
+	// Set when batch writes should be used (must be running server 6.0 or
+	// above)..
+	bool use_batch_writes;
 
-	// The batch records to place records in to be uploaded. This struct is used
-	// whether or not batch writes are available (the list of records is read
-	// from any submitted one-by-one if batch writes aren't available).
-	as_batch_records batch;
+	// as_vector of as_record's, used as a list of the keys/records to upload.
+	as_vector records;
 } record_uploader_t;
 
 
@@ -77,12 +78,12 @@ int record_uploader_init(record_uploader_t*, batch_uploader_t*,
 void record_uploader_free(record_uploader_t*);
 
 /*
- * Reserves a slot for the next record to upload, returning a pointer to the
- * as_batch_write_record containing the as_key/as_record to be populated.
+ * Reserves a slot for the next record to upload, transferring ownership of the
+ * record passed to it (i.e. it should not be freed by the caller).
  *
- * Returns NULL if an error occurred.
+ * Returns false if an error occurred.
  */
-as_batch_write_record* record_uploader_reserve(record_uploader_t*);
+bool record_uploader_put(record_uploader_t*, as_record* rec);
 
 /*
  * Flushes all records in the batch being constructed. This must be called

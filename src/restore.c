@@ -684,6 +684,9 @@ check_set(char *set, as_vector *set_vec)
 static void *
 restore_thread_func(void *cont)
 {
+	record_uploader_t record_uploader;
+	bool uploader_init = false;
+
 	ver("Entering restore thread");
 
 	cf_queue *job_queue = cont;
@@ -711,10 +714,20 @@ restore_thread_func(void *cont)
 			break;
 		}
 
+		if (!uploader_init) {
+			if (record_uploader_init(&record_uploader,
+						&args.status->batch_uploader, args.conf->batch_size) != 0) {
+				err("Failed to initialize record uploader");
+				break;
+			}
+			uploader_init = true;
+		}
+
 		uint32_t line_no;
 		per_thread_context_t ptc;
 		ptc.conf = args.conf;
 		ptc.status = args.status;
+		ptc.record_uploader = &record_uploader;
 		ptc.path = args.path;
 		ptc.shared_fd = args.shared_fd;
 		ptc.line_no = args.line_no != NULL ? args.line_no : &line_no;
@@ -889,6 +902,12 @@ restore_thread_func(void *cont)
 				} else if (rec.bins.size == 0 || !check_set(rec.key.set, ptc.set_vec)) {
 					as_incr_uint64(&ptc.status->skipped_records);
 				} else {
+					if (!record_uploader_put(&record_uploader, &rec)) {
+						stop();
+						break;
+					}
+
+					/*
 					useconds_t backoff = INITIAL_BACKOFF * 1000;
 					int32_t tries;
 
@@ -986,6 +1005,7 @@ restore_thread_func(void *cont)
 							break;
 						}
 					}
+					*/
 				}
 
 				as_incr_uint64(&ptc.status->total_records);

@@ -177,23 +177,22 @@ restore_status_init(restore_status_t* status, const restore_config_t* conf)
 		goto cleanup4;
 	}
 
-	server_version_t version_info;
-	if (get_server_version(status->as, &version_info) != 0) {
+	if (get_server_version(status->as, &status->version_info) != 0) {
 		goto cleanup5;
 	}
 
-	ver("Connected to server version %u.%u", version_info.major,
-			version_info.minor);
+	ver("Connected to server version %u.%u", status->version_info.major,
+			status->version_info.minor);
 
-	if (SERVER_VERSION_BEFORE(&version_info, 4, 9)) {
+	if (SERVER_VERSION_BEFORE(&status->version_info, 4, 9)) {
 		err("Aerospike Server version 4.9 or greater is required to run "
 				"asrestore, but version %" PRIu32 ".%" PRIu32 " is in use.",
-				version_info.major, version_info.minor);
+				status->version_info.major, status->version_info.minor);
 		goto cleanup5;
 	}
 
 	if (batch_uploader_init(&status->batch_uploader, conf->max_async_batches,
-				status->as, &version_info) != 0) {
+				status->as, &status->version_info) != 0) {
 		goto cleanup5;
 	}
 

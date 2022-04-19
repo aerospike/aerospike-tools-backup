@@ -41,8 +41,7 @@ record_uploader_init(record_uploader_t* uploader,
 {
 	uploader->batch_uploader = batch_uploader;
 	uploader->batch_size = batch_size;
-
-	as_batch_records_init(&uploader->batch, batch_size);
+	as_vector_init(&uploader->records, sizeof(as_record), batch_size);
 
 	return 0;
 }
@@ -50,38 +49,49 @@ record_uploader_init(record_uploader_t* uploader,
 void
 record_uploader_free(record_uploader_t* uploader)
 {
-	as_batch_records_destroy(&uploader->batch);
+	as_vector_destroy(&uploader->records);
 }
 
-as_batch_write_record*
-record_uploader_reserve(record_uploader_t* uploader)
+bool
+record_uploader_put(record_uploader_t* uploader, as_record* rec)
 {
-	if (uploader->batch.list.size == uploader->batch_size) {
+	if (uploader->records.size == uploader->batch_size) {
 		// upload the record batch and reset for the next batch of records
 		if (!record_uploader_flush(uploader)) {
-			return NULL;
+			return false;
 		}
 	}
 
-	return as_batch_write_reserve(&uploader->batch);
+	as_record* rec_ptr = (as_record*) as_vector_reserve(&uploader->records);
+	*rec_ptr = *rec;
+	// reset the reference count of the as_val
+	rec_ptr->_._.count = 1;
+	if (rec->key.valuep == &rec->key.value) {
+		rec_ptr->key.valuep = &rec_ptr->key.value;
+		// reset the reference count of the key, which we can choose any of the
+		// key types to do since the as_val fields alias one another
+		rec_ptr->key.value.integer._.count = 1;
+	}
+
+	return true;
 }
 
 bool
 record_uploader_flush(record_uploader_t* uploader)
 {
-	if (!batch_uploader_submit(uploader->batch_uploader, &uploader->batch)) {
+	if (!batch_uploader_submit(uploader->batch_uploader,
+				&uploader->records)) {
 		return false;
 	}
 
-	for (uint32_t i = 0; i < uploader->batch.list.size; i++) {
-		as_batch_base_record* record =
-			(as_batch_base_record*) as_vector_get(&uploader->batch.list, i);
+	for (uint32_t i = 0; i < uploader->records.size; i++) {
+		as_record* rec = (as_record*) as_vector_get(&uploader->records, i);
 
-		as_key_destroy(&record->key);
-		as_record_destroy(&record->record);
+		as_record_destroy(rec);
 	}
 
-	as_vector_clear(&uploader->batch.list);
+	as_vector_clear(&uploader->records);
+
 	return true;
 }
 

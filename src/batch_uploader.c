@@ -56,6 +56,8 @@ static void _release_async_slot(batch_uploader_t*);
 static void _key_put_submit_callback(as_error* ae, void* udata, as_event_loop*);
 static void _batch_submit_callback(as_error* ae, as_batch_records* records,
 		void* udata, as_event_loop*);
+static bool _submit_batch(batch_uploader_t*, as_vector* records);
+static bool _submit_key_recs(batch_uploader_t*, as_vector* records);
 
 
 //==========================================================
@@ -98,68 +100,14 @@ batch_uploader_await(batch_uploader_t* uploader)
 }
 
 bool
-batch_uploader_submit(batch_uploader_t* uploader, as_batch_records* records)
+batch_uploader_submit(batch_uploader_t* uploader, as_vector* records)
 {
-	as_error ae;
-	as_status status;
-
-	_reserve_async_slot(uploader);
-
-	// If we see the error flag set, abort this transaction and fail.
-	if (as_load_bool(&uploader->error)) {
-		_release_async_slot(uploader);
-		return false;
-	}
-
 	if (uploader->batch_enabled) {
-		status = aerospike_batch_write_async(uploader->as, &ae, NULL, records,
-				_batch_submit_callback, uploader, NULL);
-
-		if (status != AEROSPIKE_OK) {
-			err("Error while initiating aerospike_batch_write_async call - "
-					"code %d: %s at %s:%d",
-					ae.code, ae.message, ae.file, ae.line);
-			_release_async_slot(uploader);
-			return false;
-		}
+		return _submit_batch(uploader, records);
 	}
 	else {
-		uint32_t n_records = records->list.size;
-
-		record_batch_tracker_t* batch_tracker =
-			(record_batch_tracker_t*) cf_malloc(sizeof(record_batch_tracker_t));
-		batch_tracker->uploader = uploader;
-		batch_tracker->outstanding_calls = n_records;
-
-		for (uint32_t i = 0; i < n_records; i++) {
-			as_batch_record* batch_record =
-				(as_batch_record*) as_vector_get(&records->list, i);
-			as_key* key = &batch_record->base.key;
-			as_record* rec = &batch_record->base.record;
-
-			status = aerospike_key_put_async(uploader->as, &ae, NULL, key, rec,
-					_key_put_submit_callback, batch_tracker, NULL, NULL);
-			if (status != AEROSPIKE_OK) {
-				err("Error while initiating aerospike_key_put_async call - "
-						"code %d: %s at %s:%d",
-						ae.code, ae.message, ae.file, ae.line);
-
-				// Since there may have been some calls that succeeded before
-				// this one, decrement the number of outstanding calls by the
-				// number that failed to initialize (this one and all succeeding
-				// ones). If we happen to decrease this value to 0, free the
-				// batch_tracker and release our hold on an async batch slot.
-				if (as_aaf_uint64(&batch_tracker->outstanding_calls,
-							(uint64_t) -(n_records - i)) == 0) {
-					cf_free(batch_tracker);
-					_release_async_slot(uploader);
-				}
-
-				return false;
-			}
-		}
+		return _submit_key_recs(uploader, records);
 	}
-	return true;
 }
 
 
@@ -237,5 +185,118 @@ _batch_submit_callback(as_error* ae, as_batch_records* records, void* udata,
 	}
 
 	_release_async_slot(uploader);
+}
+
+static bool
+_submit_batch(batch_uploader_t* uploader, as_vector* records)
+{
+	as_error ae;
+	as_status status;
+
+	if (records->size == 0) {
+		return true;
+	}
+
+	_reserve_async_slot(uploader);
+
+	// If we see the error flag set, abort this transaction and fail.
+	if (as_load_bool(&uploader->error)) {
+		_release_async_slot(uploader);
+		return false;
+	}
+
+	as_batch_records batch;
+	as_batch_records_init(&batch, records->size);
+
+	as_operations* ops = cf_malloc(records->size * sizeof(as_operations));
+
+	for (uint32_t i = 0; i < records->size; i++) {
+		as_record* rec = (as_record*) as_vector_get(records, i);
+		as_batch_write_record* batch_write = as_batch_write_reserve(&batch);
+
+		batch_write->key = rec->key;
+
+		// write the record as a series of bin-ops on the key
+		as_operations* op = &ops[i];
+		as_operations_init(op, rec->bins.size);
+		for (uint32_t bin_idx = 0; bin_idx < rec->bins.size; bin_idx++) {
+			as_operations_add_write(op, rec->bins.entries[i].name,
+					&rec->bins.entries[i].value);
+		}
+
+		batch_write->ops = op;
+	}
+
+	status = aerospike_batch_write_async(uploader->as, &ae, NULL, &batch,
+			_batch_submit_callback, uploader, NULL);
+
+	// free everything before checking for errors
+	for (uint32_t i = 0; i < records->size; i++) {
+		as_operations_destroy(&ops[i]);
+	}
+	cf_free(ops);
+	// destroy the batch write list without destroying the keys written to it,
+	// as those were transient copies of existing keys
+	as_vector_destroy(&batch.list);
+
+	if (status != AEROSPIKE_OK) {
+		err("Error while initiating aerospike_batch_write_async call - "
+				"code %d: %s at %s:%d",
+				ae.code, ae.message, ae.file, ae.line);
+		_release_async_slot(uploader);
+		return false;
+	}
+
+	return true;
+}
+
+static bool
+_submit_key_recs(batch_uploader_t* uploader, as_vector* records)
+{
+	as_error ae;
+	as_status status;
+
+	_reserve_async_slot(uploader);
+
+	// If we see the error flag set, abort this transaction and fail.
+	if (as_load_bool(&uploader->error)) {
+		_release_async_slot(uploader);
+		return false;
+	}
+
+	uint32_t n_records = records->size;
+
+	record_batch_tracker_t* batch_tracker =
+		(record_batch_tracker_t*) cf_malloc(sizeof(record_batch_tracker_t));
+	batch_tracker->uploader = uploader;
+	batch_tracker->outstanding_calls = n_records;
+
+	for (uint32_t i = 0; i < n_records; i++) {
+		as_record* rec = (as_record*) as_vector_get(records, i);
+		as_key* key = &rec->key;
+
+		status = aerospike_key_put_async(uploader->as, &ae, NULL, key, rec,
+				_key_put_submit_callback, batch_tracker, NULL, NULL);
+		if (status != AEROSPIKE_OK) {
+			err("Error while initiating aerospike_key_put_async call - "
+					"code %d: %s at %s:%d",
+					ae.code, ae.message, ae.file, ae.line);
+
+			// Since there may have been some calls that succeeded before
+			// this one, decrement the number of outstanding calls by the
+			// number that failed to initialize (this one and all succeeding
+			// ones). If we happen to decrease this value to 0, free the
+			// batch_tracker and release our hold on an async batch slot.
+			if (as_aaf_uint64(&batch_tracker->outstanding_calls,
+						(uint64_t) -(n_records - i)) == 0) {
+				cf_free(batch_tracker);
+				_release_async_slot(uploader);
+			}
+
+			return false;
+		}
+	}
+
+	return true;
 }
 

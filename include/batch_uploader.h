@@ -94,5 +94,5 @@ void batch_uploader_await(batch_uploader_t*);
  * Fails and returns false if any number of outstanding async calls have failed
  * for any reason at any point.
  */
-bool batch_uploader_submit(batch_uploader_t*, as_batch_records* records);
+bool batch_uploader_submit(batch_uploader_t*, as_vector* records);
 

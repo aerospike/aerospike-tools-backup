@@ -46,6 +46,7 @@
 
 #include <encode.h>
 #include <io_proxy.h>
+#include <record_uploader.h>
 #include <restore_config.h>
 #include <restore_status.h>
 #include <utils.h>
@@ -81,6 +82,8 @@ typedef struct per_thread_context {
 	restore_config_t *conf;
 	// The global resture stats.
 	restore_status_t *status;
+	// The record uploader to be used for this job.
+	record_uploader_t* record_uploader;
 	// The backup file to be restored. Copied from restore_thread_args.path.
 	char *path;
 	// When restoring from a single file, the file descriptor of that file.
