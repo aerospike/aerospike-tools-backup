@@ -135,13 +135,13 @@ jobs:
     - name: Upload static zstd asbackup artifact
       uses: actions/upload-artifact@v2
       with: 
-        name: asbackup-static-${{ runner.os }}
+        name: asbackup-${{ runner.os }}-static
         path: main/static_bin/asbackup
         if-no-files-found: error
     - name: Upload static zstd asrestore artifact
       uses: actions/upload-artifact@v2
       with: 
-        name: asrestore-static-${{ runner.os }}
+        name: asrestore-${{ runner.os }}-static
         path: main/static_bin/asrestore
         if-no-files-found: error
   pre-release:
