@@ -54,7 +54,7 @@ jobs:
         repository: facebook/zstd
         submodules: recursive
         ref: v1.4.9
-        path: ztsd-1.4.9
+        path: zstd-1.4.9
     - name: Cache zstd
       id: cache-zstd
       uses: actions/cache@v2
