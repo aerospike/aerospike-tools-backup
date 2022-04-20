@@ -1,17 +1,31 @@
 name: Build:Main
 on:
   push:
-    branches: [ master, test-ready ]
+    branches: [ master, test-ready, mac_build ]
 jobs:
   build-libraries:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
     env:
       CLIENTREPO: ${GITHUB_WORKSPACE}/client
     steps:
     - name: install AWS requirements
       id: install-aws-requirements
       run: |
-        sudo apt install -y libcurl4-openssl-dev libssl-dev uuid-dev zlib1g-dev libpulse-dev
+        if [ "$RUNNER_OS" == "Linux" ]; then
+          sudo apt install -y libcurl4-openssl-dev libssl-dev uuid-dev zlib1g-dev libpulse-dev
+        elif [ "$RUNNER_OS" == "MacOS" ]; then
+          brew update
+          brew install openssl@1.1 readline
+          brew install cmake
+        else
+          echo "$RUNNER_OS not supported"
+          exit 1
+        fi
     - name: Cache AWS C++ sdk
       id: cache-aws-sdk-cpp
       uses: actions/cache@v2
@@ -108,25 +122,25 @@ jobs:
     - name: Upload asbackup artifact
       uses: actions/upload-artifact@v2
       with: 
-        name: asbackup
+        name: asbackup-${{ runner.os }}
         path: main/dyn_bin/asbackup
         if-no-files-found: error
     - name: Upload asrestore artifact
       uses: actions/upload-artifact@v2
       with: 
-        name: asrestore
+        name: asrestore-${{ runner.os }}
         path: main/dyn_bin/asrestore
         if-no-files-found: error
     - name: Upload static zstd asbackup artifact
       uses: actions/upload-artifact@v2
       with: 
-        name: asbackup-static
+        name: asbackup-static-${{ runner.os }}
         path: main/static_bin/asbackup
         if-no-files-found: error
     - name: Upload static zstd asrestore artifact
       uses: actions/upload-artifact@v2
       with: 
-        name: asrestore-static
+        name: asrestore-static-${{ runner.os }}
         path: main/static_bin/asrestore
         if-no-files-found: error
   pre-release:
