@@ -18,7 +18,7 @@ jobs:
       run: |
         if [ "$RUNNER_OS" == "Linux" ]; then
           sudo apt install -y libcurl4-openssl-dev libssl-dev uuid-dev zlib1g-dev libpulse-dev
-        elif [ "$RUNNER_OS" == "MacOS" ]; then
+        elif [ "$RUNNER_OS" == "macOS" ]; then
           brew update
           brew install openssl@1.1 readline
           brew install cmake
