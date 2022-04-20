@@ -61,11 +61,12 @@ jobs:
         cd aws-sdk-cpp/build
         sudo make install
     - name: Download zstd
-      uses: dsaltares/fetch-gh-release-asset@0.0.5
+      uses: actions/checkout@v2
       with:
-        repo: "facebook/zstd"
-        version: "tags/v1.4.9"
-        file: zstd-1.4.9.tar.gz
+        repository: facebook/zstd
+        submodules: recursive
+        ref: v1.4.9
+        path: ztsd-1.4.9
     - name: Cache zstd
       id: cache-zstd
       uses: actions/cache@v2
@@ -73,12 +74,12 @@ jobs:
         cache-name: zstd
       with:
         path: zstd-1.4.9
-        key: zstd-1.4.9-${{ runner.os }}
+        key: zstd-1.4.9-v2-${{ runner.os }}
     - name: Build zstd
       id: build-zstd
       if: steps.cache-zstd.outputs.cache-hit != 'true'
       run: |
-        tar xvfz zstd-1.4.9.tar.gz && cd zstd-1.4.9
+        cd zstd-1.4.9
         make
         #make test
     - name: install zstd
