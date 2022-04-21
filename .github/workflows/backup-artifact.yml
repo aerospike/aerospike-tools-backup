@@ -5,13 +5,12 @@ on:
 jobs:
   build-libraries:
     runs-on: ${{ matrix.os }}
-
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
-
+        os: [ubuntu-20.04, macos-10.15]
     env:
-      CLIENTREPO: ${GITHUB_WORKSPACE}/client
+      AWS_SDK_CPP_VERSION: 1.9.177
+      ZSTD_VERSION: 1.4.9
     steps:
     - name: install AWS requirements
       id: install-aws-requirements
@@ -19,9 +18,7 @@ jobs:
         if [ "$RUNNER_OS" == "Linux" ]; then
           sudo apt install -y libcurl4-openssl-dev libssl-dev uuid-dev zlib1g-dev libpulse-dev
         elif [ "$RUNNER_OS" == "macOS" ]; then
-          brew update
-          brew install openssl@1.1 readline
-          brew install cmake
+          brew install openssl@1.1 readline cmake
         else
           echo "$RUNNER_OS not supported"
           exit 1
@@ -33,14 +30,14 @@ jobs:
         cache-name: aws-sdk-cpp
       with:
         path: aws-sdk-cpp
-        key: aws-sdk-cpp-v2-${{ runner.os }}
+        key: aws-sdk-cpp-$AWS_SDK_CPP_VERSION-${{ runner.os }}
     - name: Download AWS C++ sdk
       uses: actions/checkout@v2
       if: steps.cache-aws-sdk-cpp.outputs.cache-hit != 'true'
       with:
         repository: aws/aws-sdk-cpp
         submodules: recursive
-        ref: 1.9.177
+        ref: $AWS_SDK_CPP_VERSION
         path: aws-sdk-cpp
     - name: Build AWS C++ sdk shared library
       if: steps.cache-aws-sdk-cpp.outputs.cache-hit != 'true'
@@ -65,42 +62,31 @@ jobs:
       with:
         repository: facebook/zstd
         submodules: recursive
-        ref: v1.4.9
-        path: zstd-1.4.9
+        ref: v$ZSTD_VERSION
+        path: zstd-$ZSTD_VERSION
     - name: Cache zstd
       id: cache-zstd
       uses: actions/cache@v2
       env:
         cache-name: zstd
       with:
-        path: zstd-1.4.9
-        key: zstd-1.4.9-v2-${{ runner.os }}
+        path: zstd-$ZSTD_VERSION
+        key: zstd-$ZSTD_VERSION-${{ runner.os }}
     - name: Build zstd
       id: build-zstd
       if: steps.cache-zstd.outputs.cache-hit != 'true'
       run: |
-        cd zstd-1.4.9
+        cd zstd-$ZSTD_VERSION
         make
-        #make test
     - name: install zstd
       run: |
-        cd zstd-1.4.9
+        cd zstd-$ZSTD_VERSION
         sudo make install
-    - name: Checkout c client
-      uses: actions/checkout@v2
-      with:
-        repository: aerospike/aerospike-client-c
-        submodules: recursive
-        ref: 6.0.0
-        path: client
     - name: Checkout asbackup
       uses: actions/checkout@v2
       with: 
         path: main
         submodules: recursive
-    - name: Build client lib
-      run: make
-      working-directory: client
     - name: Build asbackup
       run: |
         make
@@ -120,6 +106,16 @@ jobs:
         cp -r bin static_bin
         make clean
       working-directory: main
+    - name: Sanity test dynamic lib backup artifacts
+      run: |
+        ./asbackup -n test -d backupdir 2>&1 | grep "Failed to connect"
+        ./asrestore -n test -d backupdir 2>&1 | grep "Failed to connect"
+      working-directory: main/dyn_bin
+    - name: Sanity test static lib backup artifacts
+      run: |
+        ./asbackup -n test -d backupdir 2>&1 | grep "Failed to connect"
+        ./asrestore -n test -d backupdir 2>&1 | grep "Failed to connect"
+      working-directory: main/static_bin
     - name: Upload asbackup artifact
       uses: actions/upload-artifact@v2
       with: 

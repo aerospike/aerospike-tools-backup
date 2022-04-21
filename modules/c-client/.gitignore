@@ -1,0 +1,77 @@
+*.csproj.user
+bin
+obj
+target
+stage
+Version.java
+.cproject
+.project
+.classpath
+.DS_Store
+*.pyc
+modules/.*
+target/
+client_test-valgrind
+
+# Compiled source #
+###################
+*.com
+*.class
+*.exe
+*.o
+*.so
+*.suo
+*.pyc
+
+# Packages #
+############
+# it's better to unpack these files and commit the raw source
+# git has its own built in compression methods
+*.7z
+*.dmg
+*.gz
+*.iso
+*.jar
+*.rar
+*.tar
+*.zip
+*.tgz
+
+# Logs and databases #
+######################
+*.log
+*.sql
+*.sqlite
+
+# OS generated files #
+######################
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Icon?
+ehthumbs.db
+Thumbs.db
+
+# Mac OSX 
+xcuserdata
+*.xccheckout
+*.swp
+*~.nib
+
+# Security Credentials #
+########################
+*.pem
+
+# Windows
+*.suo
+*.user
+*.nupkg
+*.VC.db
+*.VC.VC.opendb
+.vs
+x64
+ipch
+packages
+packages/repositories.config

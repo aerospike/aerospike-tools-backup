@@ -1,0 +1,54 @@
+#!/bin/bash
+# Install libraries and header files.
+set -e
+
+if [ $# -ne 1 ]
+then
+  echo "Usage: install <target dir>"
+  exit 1
+fi
+
+targetDir=$1
+cd `dirname $0`/..
+
+platform=`./pkg/platform`
+
+if [ $? -ne 0 ]
+then
+  echo "Invalid platform."
+  exit 1
+fi
+
+if [ "$platform" = "mac" ]
+then
+  # Mac OS X does not have /usr or /opt, so use /usr/local instead.
+  installDir=/usr/local
+else
+  installDir=/usr
+fi
+
+if [ -n "$INSTALL_PREFIX" ]
+then
+  # Install dir might not require sudo, so do not enforce that requirement.
+  installDir=$INSTALL_PREFIX
+else
+  if [ $EUID -ne 0 ]
+  then
+    echo "This script requires root or sudo privileges."
+    exit 1
+  fi
+fi
+
+# Install header files.
+rm -rf $installDir/include/{aerospike,citrusleaf}
+mkdir -p $installDir/include
+mkdir -p $installDir/lib
+
+echo cp -r $targetDir/include/{aerospike,citrusleaf} $installDir/include
+cp -r $targetDir/include/{aerospike,citrusleaf} $installDir/include
+chmod -R g-w,o-w $installDir/include/{aerospike,citrusleaf}
+
+# Install libraries.
+echo cp $targetDir/lib/libaerospike.* $installDir/lib
+cp $targetDir/lib/libaerospike.* $installDir/lib
+chmod g-w,o-w $installDir/lib/libaerospike.*

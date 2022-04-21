@@ -9,9 +9,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      CLIENTREPO: ${GITHUB_WORKSPACE}/client
       ASREPO: ${{ github.workspace }}/server
       AWS_SDK_STATIC_PATH: /usr/local/lib
+      AWS_SDK_CPP_VERSION: 1.9.177
+      ZSTD_VERSION: 1.4.9
     steps:
     - name: install lcov
       id: install-lcov
@@ -28,14 +29,14 @@ jobs:
         cache-name: aws-sdk-cpp
       with:
         path: aws-sdk-cpp
-        key: aws-sdk-cpp-${{ runner.os }}
+        key: aws-sdk-cpp-$AWS_SDK_CPP_VERSION-${{ runner.os }}
     - name: Download AWS C++ sdk
       uses: actions/checkout@v2
       if: steps.cache-aws-sdk-cpp.outputs.cache-hit != 'true'
       with:
         repository: aws/aws-sdk-cpp
         submodules: recursive
-        ref: 1.9.177
+        ref: $AWS_SDK_CPP_VERSION
         path: aws-sdk-cpp
     - name: Build AWS C++ sdk
       if: steps.cache-aws-sdk-cpp.outputs.cache-hit != 'true'
@@ -53,26 +54,25 @@ jobs:
       with:
         repository: facebook/zstd
         submodules: recursive
-        ref: v1.4.9
-        path: zstd-1.4.9
+        ref: v$ZSTD_VERSION
+        path: zstd-$ZSTD_VERSION
     - name: Cache zstd
       id: cache-zstd
       uses: actions/cache@v2
       env:
         cache-name: zstd
       with:
-        path: zstd-1.4.9
-        key: zstd-1.4.9-v2-${{ runner.os }}
+        path: zstd-$ZSTD_VERSION
+        key: zstd-$ZSTD_VERSION-${{ runner.os }}
     - name: Build zstd
       id: build-zstd
       if: steps.cache-zstd.outputs.cache-hit != 'true'
       run: |
-        cd zstd-1.4.9
+        cd zstd-$ZSTD_VERSION
         make
-        #make test
     - name: install zstd
       run: |
-        cd zstd-1.4.9
+        cd zstd-$ZSTD_VERSION
         sudo make install
     - name: Download libcheck
       uses: dsaltares/fetch-gh-release-asset@0.0.5

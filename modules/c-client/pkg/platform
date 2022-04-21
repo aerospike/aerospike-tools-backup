@@ -1,0 +1,65 @@
+#!/bin/bash
+# Display current operating system.
+
+rel=`uname`
+
+if [ "$rel" = "Darwin" ]
+then
+  echo mac
+  exit 0
+fi
+
+if [ "$rel" != "Linux" ]
+then
+  echo "Unknown platform"
+  exit 1
+fi
+
+if [ -f /etc/os-release ]
+then
+  . /etc/os-release
+  
+  if [ "$ID" = "rhel" ] || [ "$ID" = "centos" ]
+  then
+    ID=el
+    ver=`echo $VERSION_ID | awk -F'.' '{print $1}'`
+    echo $ID$ver
+    exit 0
+  elif [ "$ID" = "fedora" ]
+  then
+    ID=fc
+  fi
+  echo $ID$VERSION_ID
+  exit 0
+elif [ -f /etc/redhat-release ]
+then
+  os=`cat /etc/redhat-release | awk '{print $1}'`
+
+  if [ "$os" = "Fedora" ]
+  then
+    prefix="fc"
+  else
+    prefix="el"
+  fi
+  ver=`cat /etc/redhat-release | awk '{for (i=1; i<NF; i++) {if ($i == "release") {print $(i+1); break;}}}' | awk -F'.' '{print $1}'`
+  echo $prefix$ver
+  exit 0
+elif [ -f /etc/issue ]
+then
+  os=`cat /etc/issue | awk '{print $1}'`
+
+  if [ "$os" = "Debian" ]
+  then
+    ver=`cat /etc/issue | tr -d '\n' | awk '{print $3}' | awk -F'.' '{print $1}'`
+    echo debian$ver
+    exit 0
+  elif [ "$os" = "Ubuntu" ]
+  then
+    ver=`cat /etc/issue | tr -d '\n' | awk '{print $2}' | awk -F'.' '{printf("%s.%s\n",$1,$2)}'`
+    echo ubuntu$ver
+    exit 0
+  fi
+fi
+
+echo "Unknown platform"
+exit 1    
