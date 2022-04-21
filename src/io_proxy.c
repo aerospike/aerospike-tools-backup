@@ -370,6 +370,11 @@ io_proxy_init_compression(io_proxy_t* io, compression_opt compress_mode)
 
 	if (io_proxy_is_writer(io)) {
 		io->cctx = ZSTD_createCCtx();
+
+		size_t res = ZSTD_CCtx_setParameter(io->cctx, ZSTD_c_compressionLevel, 3);
+		if (ZSTD_isError(res)) {
+			abort();
+		}
 	}
 	else {
 		io->dctx = ZSTD_createDCtx();
