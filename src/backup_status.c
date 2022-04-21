@@ -813,17 +813,18 @@ static bool
 parse_partition_range(char *str, as_partition_filter *range)
 {
 	char *p = strchr(str, '-');
-	uint64_t begin = 0;
-	uint64_t count = 1;
+	int64_t begin = 0;
+	int64_t count = 1;
 	bool rv = false;
 
 	if (p) {
 		*p++ = 0;
 	}
 
-	if (better_atoi(str, &begin) && begin < MAX_PARTITIONS) {	
+	if (better_atoi(str, &begin) && begin >= 0 && begin < MAX_PARTITIONS) {	
 		if (p) {
-			rv = better_atoi(p, &count) && (begin + count) <= MAX_PARTITIONS;
+			rv = better_atoi(p, &count) && count >= 0 &&
+				(begin + count) <= MAX_PARTITIONS;
 		}
 		else {
 			rv = true;
@@ -1062,7 +1063,7 @@ parse_node_list(char *node_list, node_spec **node_specs, uint32_t *n_node_specs)
 			goto cleanup2;
 		}
 
-		uint64_t tmp;
+		int64_t tmp;
 
 		if (family == AF_INET6) {
 			length = length + 1;
@@ -1092,7 +1093,7 @@ parse_node_list(char *node_list, node_spec **node_specs, uint32_t *n_node_specs)
 		memcpy((*node_specs)[i].addr_string, ip_addr, IP_ADDR_SIZE);
 		(*node_specs)[i].family = family;
 		memcpy(&(*node_specs)[i].ver, &ver, sizeof ver);
-		(*node_specs)[i].port = htons((in_port_t)tmp);
+		(*node_specs)[i].port = htons((in_port_t) tmp);
 	}
 
 	res = true;
@@ -1301,25 +1302,25 @@ static bool
 ns_count_callback(void *context_, const char *key, const char *value)
 {
 	ns_count_context *context = (ns_count_context *)context_;
-	uint64_t tmp;
+	int64_t tmp;
 
 	if (strcmp(key, "objects") == 0) {
-		if (!better_atoi(value, &tmp)) {
+		if (!better_atoi(value, &tmp) || tmp < 0) {
 			err("Invalid object count %s", value);
 			return false;
 		}
 
-		context->count = tmp;
+		context->count = (uint64_t) tmp;
 		return true;
 	}
 
 	if (strcmp(key, "repl-factor") == 0 || strcmp(key, "effective_replication_factor") == 0) {
-		if (!better_atoi(value, &tmp) || tmp == 0 || tmp > 100) {
+		if (!better_atoi(value, &tmp) || tmp <= 0 || tmp > 100) {
 			err("Invalid replication factor %s", value);
 			return false;
 		}
 
-		context->factor = (uint32_t)tmp;
+		context->factor = (uint32_t) tmp;
 		return true;
 	}
 
@@ -1354,7 +1355,7 @@ set_count_callback(void *context_, const char *key_, const char *value_)
 	split_string(info, ':', false, &info_vec);
 
 	bool match = true;
-	uint64_t count = 0;
+	int64_t count = 0;
 
 	for (uint32_t i = 0; i < info_vec.size; ++i) {
 		char *key = as_vector_get_ptr(&info_vec, i);
@@ -1379,14 +1380,14 @@ set_count_callback(void *context_, const char *key_, const char *value_)
 		}
 
 		if ((strcmp(key, "n_objects") == 0 || strcmp(key, "objects") == 0) &&
-				!better_atoi(value, &count)) {
+				(!better_atoi(value, &count) || count < 0)) {
 			err("Invalid object count %s", value);
 			goto cleanup1;
 		}
 	}
 
 	if (match) {
-		context->count += count;
+		context->count += (uint64_t) count;
 	}
 
 	res = true;

@@ -86,7 +86,8 @@ static bool queue_file(backup_job_context_t* bjc);
 static bool close_file(io_write_proxy_t *fd);
 static bool open_file(const char *file_path, const char *ns,
 		uint64_t disk_space, io_write_proxy_t *fd,
-		compression_opt c_opt, encryption_opt e_opt, encryption_key_t* pkey);
+		compression_opt c_opt, int32_t compression_level, encryption_opt e_opt,
+		encryption_key_t* pkey);
 static bool close_dir_file(backup_job_context_t *bjc);
 static bool open_dir_file(backup_job_context_t *bjc);
 static backup_state_t* load_backup_state(const char* state_file_path);
@@ -369,6 +370,11 @@ run_backup(backup_config_t* conf)
 
 			backup_args.shared_fd = file.io_proxy;
 			io_proxy_init_compression(backup_args.shared_fd, conf->compress_mode);
+			if (conf->compress_mode != IO_PROXY_COMPRESS_NONE &&
+					io_proxy_set_compression_level(backup_args.shared_fd,
+						conf->compression_level) != 0) {
+				goto cleanup3;
+			}
 			io_proxy_init_encryption(backup_args.shared_fd, conf->pkey,
 					conf->encrypt_mode);
 
@@ -431,7 +437,8 @@ run_backup(backup_config_t* conf)
 			backup_args.shared_fd = (io_write_proxy_t*) cf_malloc(sizeof(io_write_proxy_t));
 			if (!open_file(conf->output_file, conf->ns, est_backup_size,
 						backup_args.shared_fd, conf->compress_mode,
-						conf->encrypt_mode, conf->pkey)) {
+						conf->compression_level, conf->encrypt_mode,
+						conf->pkey)) {
 				err("Error while opening shared backup file \"%s\"",
 						conf->output_file);
 				goto cleanup3;
@@ -442,7 +449,8 @@ run_backup(backup_config_t* conf)
 		backup_args.shared_fd = (io_write_proxy_t*) cf_malloc(sizeof(io_write_proxy_t));
 
 		if (!open_file(NULL, conf->ns, 0, backup_args.shared_fd,
-					conf->compress_mode, conf->encrypt_mode, conf->pkey)) {
+					conf->compress_mode, conf->compression_level,
+					conf->encrypt_mode, conf->pkey)) {
 			err("Error while opening \"/dev/null\"");
 			cf_free(backup_args.shared_fd);
 			goto cleanup3;
@@ -470,6 +478,11 @@ run_backup(backup_config_t* conf)
 					*(backup_state_file_t*) as_vector_get(&loaded_backup_state->files, i);
 
 				io_proxy_init_compression(file.io_proxy, conf->compress_mode);
+				if (conf->compress_mode != IO_PROXY_COMPRESS_NONE &&
+						io_proxy_set_compression_level(file.io_proxy,
+							conf->compression_level) != 0) {
+					goto cleanup4;
+				}
 				io_proxy_init_encryption(file.io_proxy, conf->pkey, conf->encrypt_mode);
 
 				queued_backup_fd_t q = {
@@ -1056,7 +1069,7 @@ close_file(io_write_proxy_t *fd)
  */
 static bool
 open_file(const char *file_path, const char *ns, uint64_t disk_space,
-		io_write_proxy_t *fd, compression_opt c_opt,
+		io_write_proxy_t *fd, compression_opt c_opt, int32_t compression_level,
 		encryption_opt e_opt, encryption_key_t* pkey)
 {
 	const char* real_path;
@@ -1094,6 +1107,10 @@ open_file(const char *file_path, const char *ns, uint64_t disk_space,
 	ver("Initializing backup file %s", file_path);
 
 	io_proxy_init_compression(fd, c_opt);
+	if (c_opt != IO_PROXY_COMPRESS_NONE &&
+			io_proxy_set_compression_level(fd, compression_level) != 0) {
+		goto cleanup1;
+	}
 	io_proxy_init_encryption(fd, pkey, e_opt);
 
 	if (io_proxy_printf(fd, "Version " VERSION_3_1 "\n") < 0) {
@@ -1221,8 +1238,8 @@ open_dir_file(backup_job_context_t *bjc)
 
 		if (!open_file(file_path, bjc->conf->ns,
 					MIN(remaining_bytes, bjc->conf->file_limit), bjc->fd,
-					bjc->conf->compress_mode, bjc->conf->encrypt_mode,
-					bjc->conf->pkey)) {
+					bjc->conf->compress_mode, bjc->conf->compression_level,
+					bjc->conf->encrypt_mode, bjc->conf->pkey)) {
 			pthread_mutex_unlock(&bjc->status->dir_file_init_mutex);
 			cf_free(file_path);
 			return false;

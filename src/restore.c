@@ -494,10 +494,10 @@ open_file(const char *file_path, as_vector *ns_vec, io_read_proxy_t *fd,
 			if (strcmp(file_path, "-") == 0) {
 				*size = 0;
 			} else {
-				uint64_t tmp;
+				int64_t tmp;
 
-				if (!better_atoi(file_path + 2, &tmp) ||
-						tmp > (uint64_t)1024 * 1024 * 1024 * 1024 * 1024) {
+				if (!better_atoi(file_path + 2, &tmp) || tmp < 0 ||
+						(uint64_t) tmp > (uint64_t) 1024 * 1024 * 1024 * 1024 * 1024) {
 					err("Invalid stdin input size %s", file_path + 2);
 					return false;
 				}

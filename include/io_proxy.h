@@ -317,6 +317,15 @@ int io_proxy_init_encryption_file(io_proxy_t*, const char* pkey_file_path,
 int io_proxy_init_compression(io_proxy_t*, compression_opt comp_mode);
 
 /*
+ * Sets the compression level to use. May only be called on proxies opened in
+ * write mode with compression enabled (after the call to
+ * io_proxy_init_compression).
+ *
+ * Returns non-zero on error, 0 on success.
+ */
+int io_proxy_set_compression_level(io_proxy_t*, int32_t compression_level);
+
+/*
  * Closes the io_proxy and frees resources associated with it. If this returns
  * non-zero, then the io_proxy is still in a valid state and hasn't been closed.
  *

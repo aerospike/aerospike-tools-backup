@@ -224,6 +224,7 @@ typedef enum {
 	COMMAND_OPT_TOTAL_TIMEOUT,
 	COMMAND_OPT_MAX_RETRIES,
 	COMMAND_OPT_RETRY_DELAY,
+	COMMAND_OPT_COMPRESSION_LEVEL,
 	COMMAND_OPT_REMOVE_ARTIFACTS,
 	COMMAND_OPT_ESTIMATE_SAMPLES,
 	COMMAND_OPT_S3_REGION,
@@ -339,7 +340,7 @@ void safe_signal(pthread_cond_t *cond);
 double erfinv(double y);
 double confidence_z(double p, uint64_t n_records);
 char* dyn_sprintf(const char* format, ...) __attribute__ ((format (printf, 1, 2)));
-bool better_atoi(const char *string, uint64_t *val);
+bool better_atoi(const char *string, int64_t *val);
 bool parse_date_time(const char *string, int64_t *nanos);
 bool format_date_time(int64_t nanos, char *buffer, size_t size);
 bool timespec_has_not_happened(struct timespec* ts);

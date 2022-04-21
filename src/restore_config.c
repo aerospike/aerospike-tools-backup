@@ -146,7 +146,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 	restore_config_default(conf);
 
 	int32_t optcase;
-	uint64_t tmp;
+	int64_t tmp;
 
 	// Don't print error messages for the first two argument parsers
 	opterr = 0;
@@ -232,7 +232,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 				return RESTORE_CONFIG_INIT_FAILURE;
 			}
 
-			conf->port = (int32_t)tmp;
+			conf->port = (int32_t) tmp;
 			break;
 
 		case 'U':
@@ -318,7 +318,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 				return RESTORE_CONFIG_INIT_FAILURE;
 			}
 
-			conf->parallel = (uint32_t)tmp;
+			conf->parallel = (uint32_t) tmp;
 			break;
 
 		case 'v':
@@ -359,12 +359,12 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 			break;
 
 		case 'l':
-			if (! better_atoi(optarg, &tmp)) {
+			if (!better_atoi(optarg, &tmp) || tmp < 0 || tmp > INT32_MAX) {
 				err("Invalid extra-ttl value %s", optarg);
 				return RESTORE_CONFIG_INIT_FAILURE;
 			}
 
-			conf->extra_ttl = (int32_t)tmp;
+			conf->extra_ttl = (int32_t) tmp;
 			break;
 
 		case 'N':
@@ -460,16 +460,16 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 			break;
 
 		case 'T':
-			if (!better_atoi(optarg, &tmp)) {
+			if (!better_atoi(optarg, &tmp) || tmp < 0 || tmp > UINT32_MAX) {
 				err("Invalid timeout value %s", optarg);
 				return RESTORE_CONFIG_INIT_FAILURE;
 			}
 
-			conf->timeout = (uint32_t)tmp;
+			conf->timeout = (uint32_t) tmp;
 			break;
 
 		case COMMAND_OPT_SOCKET_TIMEOUT:
-			if (!better_atoi(optarg, &tmp) || tmp > UINT_MAX) {
+			if (!better_atoi(optarg, &tmp) || tmp < 0 || tmp > UINT32_MAX) {
 				err("Invalid socket timeout value %s", optarg);
 				return RESTORE_CONFIG_INIT_FAILURE;
 			}
@@ -477,7 +477,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 			break;
 
 		case COMMAND_OPT_TOTAL_TIMEOUT:
-			if (!better_atoi(optarg, &tmp) || tmp > UINT_MAX) {
+			if (!better_atoi(optarg, &tmp) || tmp < 0 || tmp > UINT32_MAX) {
 				err("Invalid total timeout value %s", optarg);
 				return RESTORE_CONFIG_INIT_FAILURE;
 			}
@@ -485,7 +485,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 			break;
 
 		case COMMAND_OPT_MAX_RETRIES:
-			if (!better_atoi(optarg, &tmp) || tmp > UINT_MAX) {
+			if (!better_atoi(optarg, &tmp) || tmp < 0 || tmp > UINT32_MAX) {
 				err("Invalid max retries value %s", optarg);
 				return RESTORE_CONFIG_INIT_FAILURE;
 			}
@@ -493,7 +493,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 			break;
 
 		case COMMAND_OPT_RETRY_DELAY:
-			if (!better_atoi(optarg, &tmp) || tmp > UINT_MAX) {
+			if (!better_atoi(optarg, &tmp) || tmp < 0 || tmp > UINT32_MAX) {
 				err("Invalid retry delay value %s", optarg);
 				return RESTORE_CONFIG_INIT_FAILURE;
 			}
@@ -501,7 +501,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 			break;
 
 		case COMMAND_OPT_MAX_ASYNC_BATCHES:
-			if (!better_atoi(optarg, &tmp) || tmp > UINT_MAX) {
+			if (!better_atoi(optarg, &tmp) || tmp < 0 || tmp > UINT32_MAX) {
 				err("Invalid max-async-batches value %s", optarg);
 				return RESTORE_CONFIG_INIT_FAILURE;
 			}
@@ -509,7 +509,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 			break;
 
 		case COMMAND_OPT_BATCH_SIZE:
-			if (!better_atoi(optarg, &tmp) || tmp > UINT_MAX) {
+			if (!better_atoi(optarg, &tmp) || tmp < 0 || tmp > UINT32_MAX) {
 				err("Invalid batch-size value %s", optarg);
 				return RESTORE_CONFIG_INIT_FAILURE;
 			}
@@ -529,7 +529,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 			break;
 
 		case COMMAND_OPT_S3_MAX_ASYNC_DOWNLOADS:
-			if (!better_atoi(optarg, &tmp) || tmp == 0 || tmp > UINT_MAX) {
+			if (!better_atoi(optarg, &tmp) || tmp <= 0 || tmp > UINT32_MAX) {
 				err("Invalid S3 max async downloads value %s", optarg);
 				return RESTORE_CONFIG_INIT_FAILURE;
 			}
@@ -607,21 +607,22 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 		char *item0 = as_vector_get_ptr(&nice_vec, 0);
 		char *item1 = as_vector_get_ptr(&nice_vec ,1);
 
-		if (!better_atoi(item0, &tmp) || tmp < 1) {
+		if (!better_atoi(item0, &tmp) || tmp < 1 ||
+					((uint64_t) tmp) > ULONG_MAX / (1024 * 1024)) {
 			err("Invalid bandwidth value %s", item0);
 			as_vector_destroy(&nice_vec);
 			return RESTORE_CONFIG_INIT_FAILURE;
 		}
 
-		conf->bandwidth = tmp * 1024 * 1024;
+		conf->bandwidth = ((uint64_t) tmp) * 1024 * 1024;
 
-		if (!better_atoi(item1, &tmp) || tmp < 1 || tmp > 1000000000) {
+		if (!better_atoi(item1, &tmp) || tmp < 1 || tmp > UINT32_MAX) {
 			err("Invalid TPS value %s", item1);
 			as_vector_destroy(&nice_vec);
 			return RESTORE_CONFIG_INIT_FAILURE;
 		}
 
-		conf->tps = (uint32_t)tmp;
+		conf->tps = (uint32_t) tmp;
 	}
 
 	return 0;

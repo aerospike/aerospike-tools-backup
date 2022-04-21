@@ -134,6 +134,8 @@ typedef struct backup_config {
 	int32_t parallel;
 	// The compression mode to be used (default is none)
 	compression_opt compress_mode;
+	// The compression level to use (or -1 if unspecified)
+	int32_t compression_level;
 	// The encryption mode to be used (default is none)
 	encryption_opt encrypt_mode;
 	// The encryption key given by the user

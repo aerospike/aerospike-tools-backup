@@ -104,6 +104,7 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 		{ "compact", no_argument, NULL, 'C' },
 		{ "parallel", required_argument, NULL, 'w' },
 		{ "compress", required_argument, NULL, 'z' },
+		{ "compression-level", required_argument, NULL, COMMAND_OPT_COMPRESSION_LEVEL },
 		{ "encrypt", required_argument, NULL, 'y' },
 		{ "encryption-key-file", required_argument, NULL, '1' },
 		{ "encryption-key-env", required_argument, NULL, '2' },
@@ -155,7 +156,7 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 	backup_config_default(conf);
 
 	int32_t opt;
-	uint64_t tmp;
+	int64_t tmp;
 
 	// Don't print error messages for the first two argument parsers
 	opterr = 0;
@@ -305,7 +306,7 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 				return BACKUP_CONFIG_INIT_FAILURE;
 			}
 
-			conf->file_limit = tmp * 1024 * 1024;
+			conf->file_limit = ((uint64_t) tmp) * 1024 * 1024;
 			break;
 
 		case 'r':
@@ -325,7 +326,7 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 			break;
 
 		case 'L':
-			if (!better_atoi(optarg, &tmp) || tmp > UINT_MAX) {
+			if (!better_atoi(optarg, &tmp) || tmp < 0 || tmp > UINT_MAX) {
 				err("Invalid records-per-second value %s", optarg);
 				return BACKUP_CONFIG_INIT_FAILURE;
 			}
@@ -359,6 +360,14 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 				err("Invalid compression type \"%s\"", optarg);
 				return BACKUP_CONFIG_INIT_FAILURE;
 			}
+			break;
+
+		case COMMAND_OPT_COMPRESSION_LEVEL:
+			if (!better_atoi(optarg, &tmp) || tmp < INT32_MIN || tmp > INT32_MAX) {
+				err("Invalid compression-level value %s", optarg);
+				return BACKUP_CONFIG_INIT_FAILURE;
+			}
+			conf->compression_level = (int32_t) tmp;
 			break;
 
 		case 'y':
@@ -413,12 +422,12 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 			break;
 
 		case 'M':
-			if (!better_atoi(optarg, &tmp)) {
+			if (!better_atoi(optarg, &tmp) || tmp < 0) {
 				err("Invalid max-records value %s", optarg);
 				return BACKUP_CONFIG_INIT_FAILURE;
 			}
 
-			conf->max_records = tmp;
+			conf->max_records = (uint64_t) tmp;
 			break;
 
 		case 'm':
@@ -431,12 +440,12 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 
 		case 'N':
 			if (!better_atoi(optarg, &tmp) || tmp < 1 ||
-					tmp > ULONG_MAX / (1024 * 1024)) {
+					((uint64_t) tmp) > ULONG_MAX / (1024 * 1024)) {
 				err("Invalid bandwidth value %s", optarg);
 				return BACKUP_CONFIG_INIT_FAILURE;
 			}
 
-			conf->bandwidth = tmp * 1024 * 1024;
+			conf->bandwidth = ((uint64_t) tmp) * 1024 * 1024;
 			break;
 
 		case 'R':
@@ -539,7 +548,7 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 			break;
 
 		case COMMAND_OPT_SOCKET_TIMEOUT:
-			if (!better_atoi(optarg, &tmp) || tmp > UINT_MAX) {
+			if (!better_atoi(optarg, &tmp) || tmp < 0 || tmp > UINT_MAX) {
 				err("Invalid socket timeout value %s", optarg);
 				return BACKUP_CONFIG_INIT_FAILURE;
 			}
@@ -547,7 +556,7 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 			break;
 
 		case COMMAND_OPT_TOTAL_TIMEOUT:
-			if (!better_atoi(optarg, &tmp) || tmp > UINT_MAX) {
+			if (!better_atoi(optarg, &tmp) || tmp < 0 || tmp > UINT_MAX) {
 				err("Invalid total timeout value %s", optarg);
 				return BACKUP_CONFIG_INIT_FAILURE;
 			}
@@ -555,7 +564,7 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 			break;
 
 		case COMMAND_OPT_MAX_RETRIES:
-			if (!better_atoi(optarg, &tmp) || tmp > UINT_MAX) {
+			if (!better_atoi(optarg, &tmp) || tmp < 0 || tmp > UINT_MAX) {
 				err("Invalid max retries value %s", optarg);
 				return BACKUP_CONFIG_INIT_FAILURE;
 			}
@@ -563,7 +572,7 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 			break;
 
 		case COMMAND_OPT_RETRY_DELAY:
-			if (!better_atoi(optarg, &tmp) || tmp > UINT_MAX) {
+			if (!better_atoi(optarg, &tmp) || tmp < 0 || tmp > UINT_MAX) {
 				err("Invalid retry delay value %s", optarg);
 				return BACKUP_CONFIG_INIT_FAILURE;
 			}
@@ -583,16 +592,16 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 			break;
 
 		case COMMAND_OPT_S3_MIN_PART_SIZE:
-			if (!better_atoi(optarg, &tmp) || tmp == 0 ||
-					tmp > ULONG_MAX / (1024 * 1024)) {
+			if (!better_atoi(optarg, &tmp) || tmp <= 0 ||
+					((uint64_t) tmp) > ULONG_MAX / (1024 * 1024)) {
 				err("Invalid S3 min part size value %s", optarg);
 				return BACKUP_CONFIG_INIT_FAILURE;
 			}
-			conf->s3_min_part_size = tmp * 1024 * 1024;
+			conf->s3_min_part_size = ((uint64_t) tmp) * 1024 * 1024;
 			break;
 
 		case COMMAND_OPT_S3_MAX_ASYNC_DOWNLOADS:
-			if (!better_atoi(optarg, &tmp) || tmp == 0 || tmp > UINT_MAX) {
+			if (!better_atoi(optarg, &tmp) || tmp <= 0 || tmp > UINT_MAX) {
 				err("Invalid S3 max async downloads value %s", optarg);
 				return BACKUP_CONFIG_INIT_FAILURE;
 			}
@@ -600,7 +609,7 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 			break;
 
 		case COMMAND_OPT_S3_MAX_ASYNC_UPLOADS:
-			if (!better_atoi(optarg, &tmp) || tmp == 0 || tmp > UINT_MAX) {
+			if (!better_atoi(optarg, &tmp) || tmp <= 0 || tmp > UINT_MAX) {
 				err("Invalid S3 max async uploads value %s", optarg);
 				return BACKUP_CONFIG_INIT_FAILURE;
 			}
@@ -639,6 +648,12 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 
 	if (conf->set_list.size > 1 && conf->filter_exp != NULL) {
 		err("Multi-set backup and filter-exp are mutually exclusive");
+		return BACKUP_CONFIG_INIT_FAILURE;
+	}
+
+	if (conf->compress_mode == IO_PROXY_COMPRESS_NONE &&
+			conf->compression_level != 0) {
+		err("Cannot set compression level without compression enabled");
 		return BACKUP_CONFIG_INIT_FAILURE;
 	}
 
@@ -776,6 +791,7 @@ backup_config_default(backup_config_t* conf)
 	conf->compact = false;
 	conf->parallel = 0;
 	conf->compress_mode = IO_PROXY_COMPRESS_NONE;
+	conf->compression_level = 0;
 	conf->encrypt_mode = IO_PROXY_ENCRYPT_NONE;
 	conf->pkey = NULL;
 	conf->machine = NULL;
@@ -935,6 +951,7 @@ backup_config_clone(backup_config_t* conf)
 	clone->compact = conf->compact;
 	clone->parallel = conf->parallel;
 	clone->compress_mode = conf->compress_mode;
+	clone->compression_level = conf->compression_level;
 	clone->encrypt_mode = conf->encrypt_mode;
 	if (conf->pkey != NULL) {
 		clone->pkey = cf_malloc(sizeof(encryption_key_t));

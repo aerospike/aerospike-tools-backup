@@ -540,15 +540,11 @@ dyn_sprintf(const char* format, ...)
  * @result        `true`, if successful.
  */
 bool
-better_atoi(const char *string, uint64_t *val)
+better_atoi(const char *string, int64_t *val)
 {
-	if (*string < '0' || *string > '9') {
-		return false;
-	}
-
 	char *end;
-	*val = strtoul(string, &end, 10);
-	return *end == 0;
+	*val = strtol(string, &end, 10);
+	return end != string && *end == '\0';
 }
 
 /*
