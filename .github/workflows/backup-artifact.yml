@@ -93,6 +93,11 @@ jobs:
         cp -r bin dyn_bin
         make clean
       working-directory: main
+    - name: Sanity test dynamic lib backup artifacts
+      run: |
+        ./asbackup -n test -d backupdir 2>&1 | grep "Failed to connect"
+        ./asrestore -n test -d backupdir 2>&1 | grep "Failed to connect"
+      working-directory: main/dyn_bin
     - name: Uninstall AWS C++ sdk shared library
       run: |
           sudo rm /usr/local/lib/libaws-cpp-*
@@ -106,11 +111,6 @@ jobs:
         cp -r bin static_bin
         make clean
       working-directory: main
-    - name: Sanity test dynamic lib backup artifacts
-      run: |
-        ./asbackup -n test -d backupdir 2>&1 | grep "Failed to connect"
-        ./asrestore -n test -d backupdir 2>&1 | grep "Failed to connect"
-      working-directory: main/dyn_bin
     - name: Sanity test static lib backup artifacts
       run: |
         ./asbackup -n test -d backupdir 2>&1 | grep "Failed to connect"
