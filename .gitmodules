@@ -1,3 +1,3 @@
-[submodule "modules/aerospike-client-c"]
-	path = modules/aerospike-client-c
+[submodule "modules/c-client"]
+	path = modules/c-client
 	url = https://github.com/aerospike/aerospike-client-c
