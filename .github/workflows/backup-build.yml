@@ -29,14 +29,14 @@ jobs:
         cache-name: aws-sdk-cpp
       with:
         path: aws-sdk-cpp
-        key: aws-sdk-cpp-$AWS_SDK_CPP_VERSION-${{ runner.os }}
+        key: aws-sdk-cpp-${{ env.AWS_SDK_CPP_VERSION }}-${{ runner.os }}
     - name: Download AWS C++ sdk
       uses: actions/checkout@v2
       if: steps.cache-aws-sdk-cpp.outputs.cache-hit != 'true'
       with:
         repository: aws/aws-sdk-cpp
         submodules: recursive
-        ref: $AWS_SDK_CPP_VERSION
+        ref: ${{ env.AWS_SDK_CPP_VERSION }}
         path: aws-sdk-cpp
     - name: Build AWS C++ sdk
       if: steps.cache-aws-sdk-cpp.outputs.cache-hit != 'true'
@@ -54,25 +54,25 @@ jobs:
       with:
         repository: facebook/zstd
         submodules: recursive
-        ref: v$ZSTD_VERSION
-        path: zstd-$ZSTD_VERSION
+        ref: v${{ env.ZSTD_VERSION }}
+        path: zstd-${{ env.ZSTD_VERSION }}
     - name: Cache zstd
       id: cache-zstd
       uses: actions/cache@v2
       env:
         cache-name: zstd
       with:
-        path: zstd-$ZSTD_VERSION
-        key: zstd-$ZSTD_VERSION-${{ runner.os }}
+        path: zstd-${{ env.ZSTD_VERSION }}
+        key: zstd-${{ env.ZSTD_VERSION }}-${{ runner.os }}
     - name: Build zstd
       id: build-zstd
       if: steps.cache-zstd.outputs.cache-hit != 'true'
       run: |
-        cd zstd-$ZSTD_VERSION
+        cd zstd-${{ env.ZSTD_VERSION }}
         make
     - name: install zstd
       run: |
-        cd zstd-$ZSTD_VERSION
+        cd zstd-${{ env.ZSTD_VERSION }}
         sudo make install
     - name: Download libcheck
       uses: dsaltares/fetch-gh-release-asset@0.0.5
