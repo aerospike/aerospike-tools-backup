@@ -96,7 +96,6 @@ jobs:
       working-directory: main
     - name: Sanity test dynamic lib backup artifacts
       run: |
-        ./asbackup -n test -d backupdir
         ./asbackup -n test -d backupdir 2>&1 | grep "Failed to connect"
         ./asrestore -n test -d backupdir 2>&1 | grep "Failed to connect"
       working-directory: main/dyn_bin
