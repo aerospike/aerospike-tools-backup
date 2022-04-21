@@ -1,7 +1,7 @@
 name: Build:Main
 on:
   push:
-    branches: [ master, test-ready, mac_build ]
+    branches: [ master, test-ready ]
 jobs:
   build-libraries:
     runs-on: ${{ matrix.os }}
