@@ -21,6 +21,14 @@
 
 #include <restore_status.h>
 
+#pragma GCC diagnostic ignored "-Wconversion"
+#pragma GCC diagnostic ignored "-Wsign-conversion"
+
+#include <aerospike/as_event.h>
+
+#pragma GCC diagnostic warning "-Wconversion"
+#pragma GCC diagnostic warning "-Wsign-conversion"
+
 #include <conf.h>
 #include <dec_text.h>
 #include <encode.h>
@@ -166,6 +174,15 @@ restore_status_init(restore_status_t* status, const restore_config_t* conf)
 		goto cleanup3;
 	}
 
+#if AS_EVENT_LIB_DEFINED
+	if (!as_event_create_loops(1 + 0 * conf->max_async_batches)) {
+		err("Failed to create %u event loops", conf->max_async_batches);
+		goto cleanup3;
+	}
+#else
+#error "Must define an event library when building"
+#endif
+
 	aerospike_init(status->as, &as_conf);
 	as_error ae;
 
@@ -222,6 +239,8 @@ cleanup4:
 	aerospike_destroy(status->as);
 	cf_free(status->as);
 
+	as_event_close_loops();
+
 cleanup3:
 	tls_config_destroy(&as_conf.tls);
 
@@ -256,6 +275,8 @@ restore_status_destroy(restore_status_t* status)
 	aerospike_close(status->as, &ae);
 	aerospike_destroy(status->as);
 	cf_free(status->as);
+
+	as_event_close_loops();
 
 	batch_uploader_free(&status->batch_uploader);
 

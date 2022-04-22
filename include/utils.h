@@ -290,8 +290,13 @@ extern const uint8_t b64map[256];
 // Marks an expression that is unlikely true.
 #define UNLIKELY(x) __builtin_expect(!!(x), 0)
 
+#ifndef MIN
 #define MIN(a, b) ((b) > (a) ? (a) : (b))
+#endif
+
+#ifndef MAX
 #define MAX(a, b) ((a) < (b) ? (b) : (a))
+#endif
 
 #ifdef __APPLE__
 

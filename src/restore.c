@@ -259,6 +259,10 @@ cleanup7:
 		}
 	}
 
+	if (!batch_uploader_await(&status.batch_uploader)) {
+		res = EXIT_FAILURE;
+	}
+
 	if (res == EXIT_SUCCESS && !conf.no_indexes &&
 			!restore_indexes(status.as, &status.index_vec, &status.set_vec,
 				&restore_args, conf.wait, conf.timeout)) {
@@ -1009,7 +1013,7 @@ restore_thread_func(void *cont)
 				}
 
 				as_incr_uint64(&ptc.status->total_records);
-				as_record_destroy(&rec);
+				//as_record_destroy(&rec);
 
 				if (ptc.conf->bandwidth > 0 && ptc.conf->tps > 0) {
 					safe_lock(&ptc.status->limit_mutex);
@@ -1042,6 +1046,10 @@ restore_thread_func(void *cont)
 			}
 			cf_free(ptc.fd);
 		}
+	}
+
+	if (!record_uploader_flush(&record_uploader)) {
+		res = (void *)EXIT_FAILURE;
 	}
 
 	if (res != (void *)EXIT_SUCCESS) {

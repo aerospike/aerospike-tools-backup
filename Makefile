@@ -47,6 +47,21 @@ CXXFLAGS := -std=c++14 $(DWARF) -O2 -flto -march=nocona -fno-common -fno-strict-
 		-D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_FORTIFY_SOURCE=2 -DMARCH_$(ARCH) \
 		-DTOOL_VERSION=\"$(VERSION)\"
 
+ifeq ($(EVENT_LIB),libev)
+  CFLAGS += -DAS_USE_LIBEV
+  CXXFLAGS += -DAS_USE_LIBEV
+endif
+
+ifeq ($(EVENT_LIB),libuv)
+  CFLAGS += -DAS_USE_LIBUV
+  CXXFLAGS += -DAS_USE_LIBUV
+endif
+
+ifeq ($(EVENT_LIB),libevent)
+  CFLAGS += -DAS_USE_LIBEVENT
+  CXXFLAGS += -DAS_USE_LIBEVENT
+endif
+
 LD := $(CC)
 LDFLAGS += $(CXXFLAGS)
 
@@ -133,6 +148,30 @@ ifeq ($(ZSTD_STATIC_PATH),)
   LIBRARIES += -lzstd
 else
   LIBRARIES += $(ZSTD_STATIC_PATH)/libzstd.a
+endif
+
+ifeq ($(EVENT_LIB),libev)
+  ifeq ($(LIBEV_STATIC_PATH),)
+    LIBRARIES += -lev
+  else
+    LIBRARIES += $(LIBEV_STATIC_PATH)/libev.a
+  endif
+endif
+
+ifeq ($(EVENT_LIB),libuv)
+  ifeq ($(LIBUV_STATIC_PATH),)
+    LIBRARIES += -luv
+  else
+    LIBRARIES += $(LIBUV_STATIC_PATH)/libuv.a
+  endif
+endif
+
+ifeq ($(EVENT_LIB),libevent)
+  ifeq ($(LIBEVENT_STATIC_PATH),)
+    LIBRARIES += -levent_core -levent_pthreads
+  else
+    LIBRARIES += $(LIBEVENT_STATIC_PATH)/libevent_core.a $(LIBEVENT_STATIC_PATH)/libevent_pthreads.a
+  endif
 endif
 
 

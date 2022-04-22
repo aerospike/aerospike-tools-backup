@@ -93,10 +93,11 @@ batch_uploader_free(batch_uploader_t* uploader)
 	pthread_cond_destroy(&uploader->async_cond);
 }
 
-void
+bool
 batch_uploader_await(batch_uploader_t* uploader)
 {
 	_await_async_calls(uploader);
+	return as_load_bool(&uploader->error);
 }
 
 bool
@@ -243,6 +244,7 @@ _submit_batch(batch_uploader_t* uploader, as_vector* records)
 		err("Error while initiating aerospike_batch_write_async call - "
 				"code %d: %s at %s:%d",
 				ae.code, ae.message, ae.file, ae.line);
+		as_store_bool(&uploader->error, true);
 		_release_async_slot(uploader);
 		return false;
 	}
@@ -281,6 +283,7 @@ _submit_key_recs(batch_uploader_t* uploader, as_vector* records)
 			err("Error while initiating aerospike_key_put_async call - "
 					"code %d: %s at %s:%d",
 					ae.code, ae.message, ae.file, ae.line);
+			as_store_bool(&uploader->error, true);
 
 			// Since there may have been some calls that succeeded before
 			// this one, decrement the number of outstanding calls by the

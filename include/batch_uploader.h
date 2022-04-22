@@ -84,8 +84,10 @@ void batch_uploader_free(batch_uploader_t*);
 
 /*
  * Blocks until all outstanding async batch calls have completed.
+ *
+ * Returns false if an error occurred on any of the transactions.
  */
-void batch_uploader_await(batch_uploader_t*);
+bool batch_uploader_await(batch_uploader_t*);
 
 /*
  * Submits a batch of records for uploading, blocking if max_async commands are
