@@ -1,0 +1,169 @@
+name: Build:Main
+on:
+  push:
+    branches: [ master, test-ready, mac_build ]
+jobs:
+  build-libraries:
+    runs-on: macos-10.15
+    env:
+      AWS_SDK_CPP_VERSION: 1.9.177
+      ZSTD_VERSION: 1.4.9
+      LD_LIBRARY_PATH: /usr/local/lib
+    steps:
+    - name: install AWS requirements
+      id: install-aws-requirements
+      run: |
+        if [ "$RUNNER_OS" == "Linux" ]; then
+          sudo apt install -y libcurl4-openssl-dev libssl-dev uuid-dev zlib1g-dev libpulse-dev
+        elif [ "$RUNNER_OS" == "macOS" ]; then
+          brew install openssl@1.1 readline cmake
+        else
+          echo "$RUNNER_OS not supported"
+          exit 1
+        fi
+    - name: Cache AWS C++ sdk
+      id: cache-aws-sdk-cpp
+      uses: actions/cache@v2
+      env:
+        cache-name: aws-sdk-cpp
+      with:
+        path: aws-sdk-cpp
+        key: aws-sdk-cpp-${{ env.AWS_SDK_CPP_VERSION }}-${{ runner.os }}
+    - name: Download AWS C++ sdk
+      uses: actions/checkout@v2
+      if: steps.cache-aws-sdk-cpp.outputs.cache-hit != 'true'
+      with:
+        repository: aws/aws-sdk-cpp
+        submodules: recursive
+        ref: ${{ env.AWS_SDK_CPP_VERSION }}
+        path: aws-sdk-cpp
+    - name: Build AWS C++ sdk shared library
+      if: steps.cache-aws-sdk-cpp.outputs.cache-hit != 'true'
+      run: |
+        mkdir aws-sdk-cpp/build
+        cd aws-sdk-cpp/build
+        cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=ON -DENABLE_TESTING=OFF -DCMAKE_PREFIX_PATH=/usr/local -DCMAKE_INSTALL_LIBDIR=lib
+        make
+    - name: Build AWS C++ sdk static library
+      if: steps.cache-aws-sdk-cpp.outputs.cache-hit != 'true'
+      run: |
+        mkdir aws-sdk-cpp/build_static
+        cd aws-sdk-cpp/build_static
+        cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_PREFIX_PATH=/usr/local -DCMAKE_INSTALL_LIBDIR=lib
+        make
+    - name: Install AWS C++ sdk shared library
+      run: |
+        cd aws-sdk-cpp/build
+        sudo make install
+    - name: Download zstd
+      uses: actions/checkout@v2
+      with:
+        repository: facebook/zstd
+        submodules: recursive
+        ref: v${{ env.ZSTD_VERSION }}
+        path: zstd-${{ env.ZSTD_VERSION }}
+    - name: Cache zstd
+      id: cache-zstd
+      uses: actions/cache@v2
+      env:
+        cache-name: zstd
+      with:
+        path: zstd-${{ env.ZSTD_VERSION }}
+        key: zstd-${{ env.ZSTD_VERSION }}-${{ runner.os }}
+    - name: Build zstd
+      id: build-zstd
+      if: steps.cache-zstd.outputs.cache-hit != 'true'
+      run: |
+        cd zstd-${{ env.ZSTD_VERSION }}
+        make
+    - name: install zstd
+      run: |
+        cd zstd-${{ env.ZSTD_VERSION }}
+        sudo make install
+    - name: Checkout asbackup
+      uses: actions/checkout@v2
+      with: 
+        path: main
+        submodules: recursive
+    - name: Build asbackup
+      run: |
+        make
+        cp -r bin dyn_bin
+        make clean
+      working-directory: main
+    - name: Sanity test dynamic lib backup artifacts
+      run: |
+        ./asbackup -n test -d backupdir 2>&1 | grep "Failed to connect"
+        ./asrestore -n test -d backupdir 2>&1 | grep "Failed to connect"
+      working-directory: main/dyn_bin
+    - name: Uninstall AWS C++ sdk shared library
+      run: |
+          sudo rm /usr/local/lib/libaws-cpp-*
+    - name: Install AWS C++ sdk static library
+      run: |
+        cd aws-sdk-cpp/build_static
+        sudo make install
+    - name: Build asbackup with static link to zstd and aws-sdk-cpp
+      run: |
+        make LINK_ZSTD_STATIC=1 AWS_SDK_STATIC_PATH=/usr/local/lib
+        cp -r bin static_bin
+        make clean
+      working-directory: main
+    - name: Sanity test static lib backup artifacts
+      run: |
+        ./asbackup -n test -d backupdir 2>&1 | grep "Failed to connect"
+        ./asrestore -n test -d backupdir 2>&1 | grep "Failed to connect"
+      working-directory: main/static_bin
+    - name: Upload asbackup artifact
+      uses: actions/upload-artifact@v2
+      with: 
+        name: asbackup-${{ runner.os }}
+        path: main/dyn_bin/asbackup
+        if-no-files-found: error
+    - name: Upload asrestore artifact
+      uses: actions/upload-artifact@v2
+      with: 
+        name: asrestore-${{ runner.os }}
+        path: main/dyn_bin/asrestore
+        if-no-files-found: error
+    - name: Upload static zstd asbackup artifact
+      uses: actions/upload-artifact@v2
+      with: 
+        name: asbackup-${{ runner.os }}-static
+        path: main/static_bin/asbackup
+        if-no-files-found: error
+    - name: Upload static zstd asrestore artifact
+      uses: actions/upload-artifact@v2
+      with: 
+        name: asrestore-${{ runner.os }}-static
+        path: main/static_bin/asrestore
+        if-no-files-found: error
+  pre-release:
+    needs: build-libraries
+    runs-on: ubuntu-latest
+
+    steps: 
+      # - name: Setup tmate session
+      #   uses: mxschmitt/action-tmate@v3.1
+
+      - name: Checkout asbackup
+        uses: actions/checkout@v2
+        with: 
+          submodules: recursive
+      - name: Get artifacts
+        uses: actions/download-artifact@v2
+        with: 
+          path: binaries/
+      - name: Create tarball
+        run: tar -czf binaries.tar.gz binaries
+      - name: Automatic Release
+        uses: marvinpinto/action-automatic-releases@latest
+        with:
+          repo_token: "${{ secrets.GITHUB_TOKEN }}"
+          automatic_release_tag: "latest"
+          prerelease: true
+          title: "Snapshot Build"
+          files: |
+            binaries.tar.gz
+            LICENSE.md
+            README.md

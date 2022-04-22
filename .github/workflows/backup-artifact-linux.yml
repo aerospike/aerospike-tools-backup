@@ -1,13 +1,10 @@
 name: Build:Main
 on:
   push:
-    branches: [ master, test-ready ]
+    branches: [ master, test-ready, mac_build ]
 jobs:
   build-libraries:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-20.04, macos-10.15]
+    runs-on: ubuntu-20.04
     env:
       AWS_SDK_CPP_VERSION: 1.9.177
       ZSTD_VERSION: 1.4.9
@@ -16,14 +13,7 @@ jobs:
     - name: install AWS requirements
       id: install-aws-requirements
       run: |
-        if [ "$RUNNER_OS" == "Linux" ]; then
-          sudo apt install -y libcurl4-openssl-dev libssl-dev uuid-dev zlib1g-dev libpulse-dev
-        elif [ "$RUNNER_OS" == "macOS" ]; then
-          brew install openssl@1.1 readline cmake
-        else
-          echo "$RUNNER_OS not supported"
-          exit 1
-        fi
+        sudo apt install -y libcurl4-openssl-dev libssl-dev uuid-dev zlib1g-dev libpulse-dev
     - name: Cache AWS C++ sdk
       id: cache-aws-sdk-cpp
       uses: actions/cache@v2
