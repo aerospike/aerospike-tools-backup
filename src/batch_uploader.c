@@ -53,10 +53,10 @@ typedef struct record_batch_tracker {
 static void _await_async_calls(batch_uploader_t*);
 static void _reserve_async_slot(batch_uploader_t*);
 static void _release_async_slot(batch_uploader_t*);
-static void _key_put_submit_callback(as_error* ae, void* udata, as_event_loop*);
 static void _batch_submit_callback(as_error* ae, as_batch_records* records,
 		void* udata, as_event_loop*);
 static bool _submit_batch(batch_uploader_t*, as_vector* records);
+static void _key_put_submit_callback(as_error* ae, void* udata, as_event_loop*);
 static bool _submit_key_recs(batch_uploader_t*, as_vector* records);
 
 
@@ -66,7 +66,7 @@ static bool _submit_key_recs(batch_uploader_t*, as_vector* records);
 
 int
 batch_uploader_init(batch_uploader_t* uploader, uint32_t max_async,
-		aerospike* as, server_version_t* version_info)
+		aerospike* as, const server_version_t* version_info)
 {
 	if (pthread_mutex_init(&uploader->async_lock, NULL) != 0) {
 		return -1;
@@ -80,7 +80,7 @@ batch_uploader_init(batch_uploader_t* uploader, uint32_t max_async,
 	uploader->as = as;
 	uploader->max_async = max_async;
 	uploader->error = false;
-	uploader->batch_enabled = !SERVER_VERSION_BEFORE(version_info, 6, 0);
+	uploader->batch_enabled = server_has_batch_writes(version_info);
 	uploader->async_calls = 0;
 
 	return 0;
@@ -148,26 +148,6 @@ _release_async_slot(batch_uploader_t* uploader)
 	pthread_mutex_unlock(&uploader->async_lock);
 
 	pthread_cond_broadcast(&uploader->async_cond);
-}
-
-static void
-_key_put_submit_callback(as_error* ae, void* udata, as_event_loop* event_loop)
-{
-	(void) event_loop;
-	record_batch_tracker_t* batch_tracker = (record_batch_tracker_t*) udata;
-	batch_uploader_t* uploader = batch_tracker->uploader;
-
-	if (ae != NULL) {
-		err("Error in aerospike_key_put_async call - "
-				"code %d: %s at %s:%d",
-				ae->code, ae->message, ae->file, ae->line);
-		as_store_bool(&uploader->error, true);
-	}
-
-	if (as_aaf_uint64(&batch_tracker->outstanding_calls, -1lu) == 0) {
-		cf_free(batch_tracker);
-		_release_async_slot(uploader);
-	}
 }
 
 static void
@@ -250,6 +230,26 @@ _submit_batch(batch_uploader_t* uploader, as_vector* records)
 	}
 
 	return true;
+}
+
+static void
+_key_put_submit_callback(as_error* ae, void* udata, as_event_loop* event_loop)
+{
+	(void) event_loop;
+	record_batch_tracker_t* batch_tracker = (record_batch_tracker_t*) udata;
+	batch_uploader_t* uploader = batch_tracker->uploader;
+
+	if (ae != NULL) {
+		err("Error in aerospike_key_put_async call - "
+				"code %d: %s at %s:%d",
+				ae->code, ae->message, ae->file, ae->line);
+		as_store_bool(&uploader->error, true);
+	}
+
+	if (as_aaf_uint64(&batch_tracker->outstanding_calls, -1lu) == 0) {
+		cf_free(batch_tracker);
+		_release_async_slot(uploader);
+	}
 }
 
 static bool

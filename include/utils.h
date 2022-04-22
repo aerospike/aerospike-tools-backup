@@ -389,6 +389,7 @@ encryption_key_t* parse_encryption_key_env(const char* env_var_name);
 // Gets the current server version via an info command, returning 0 on success
 // and nonzero on failure.
 int get_server_version(aerospike* as, server_version_t*);
+bool server_has_batch_writes(const server_version_t*);
 
 #ifdef __APPLE__
 char* strchrnul(const char* s, int c_in);

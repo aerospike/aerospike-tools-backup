@@ -169,3 +169,9 @@ void restore_config_destroy(restore_config_t* conf);
 bool restore_config_parse_list(const char *which, size_t size, char *list,
 		as_vector *vec);
 
+/*
+ * Returns true if restoring from the cloud (i.e. S3), otherwise restores from
+ * the local filesystem.
+ */
+bool restore_config_from_cloud(const restore_config_t* conf);
+

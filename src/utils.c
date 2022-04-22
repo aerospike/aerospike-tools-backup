@@ -1619,6 +1619,12 @@ get_server_version(aerospike* as, server_version_t* version_info)
 	return 0;
 }
 
+bool
+server_has_batch_writes(const server_version_t* version_info)
+{
+	return !SERVER_VERSION_BEFORE(version_info, 6, 0);
+}
+
 #ifdef __APPLE__
 
 char*

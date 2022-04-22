@@ -106,6 +106,9 @@ private:
 			conf.scheme = Aws::Http::Scheme::HTTP;
 		}
 
+		conf.maxConnections = std::max(s3_api.max_async_downloads,
+				s3_api.max_async_uploads);
+
 		s3_api.client = new Aws::S3::S3Client(conf,
 				Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Always,
 				false);

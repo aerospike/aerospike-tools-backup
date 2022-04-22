@@ -74,7 +74,7 @@ typedef struct batch_uploader {
  * async commands is max_async * batch_size).
  */
 int batch_uploader_init(batch_uploader_t*, uint32_t max_async, aerospike*,
-		server_version_t*);
+		const server_version_t*);
 
 /*
  * Frees the batch uploader, blocking until all outstanding async calls have

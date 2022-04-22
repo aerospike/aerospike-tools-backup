@@ -40,6 +40,8 @@
 // Forward Declarations.
 //
 
+static bool set_resource_limit(const restore_config_t* conf,
+		const server_version_t* version_info);
 static void add_default_tls_host(as_config *as_conf, const char* tls_name);
 
 
@@ -117,6 +119,7 @@ restore_status_init(restore_status_t* status, const restore_config_t* conf)
 
 	as_config as_conf;
 	as_config_init(&as_conf);
+	as_conf.async_max_conns_per_node = conf->max_async_batches * conf->batch_size;
 	as_conf.conn_timeout_ms = conf->timeout;
 	as_conf.use_services_alternate = conf->use_services_alternate;
 	tls_config_clone(&as_conf.tls, &conf->tls);
@@ -201,6 +204,10 @@ restore_status_init(restore_status_t* status, const restore_config_t* conf)
 	ver("Connected to server version %u.%u", status->version_info.major,
 			status->version_info.minor);
 
+	if (!set_resource_limit(conf, &status->version_info)) {
+		goto cleanup0;
+	}
+
 	if (SERVER_VERSION_BEFORE(&status->version_info, 4, 9)) {
 		err("Aerospike Server version 4.9 or greater is required to run "
 				"asrestore, but version %" PRIu32 ".%" PRIu32 " is in use.",
@@ -265,6 +272,7 @@ cleanup1:
 	as_vector_destroy(&status->bin_vec);
 	as_vector_destroy(&status->set_vec);
 
+cleanup0:
 	return false;
 }
 
@@ -349,6 +357,52 @@ restore_status_sleep_for(restore_status_t* status, uint64_t n_secs)
 //==========================================================
 // Local helpers.
 //
+
+static bool
+set_resource_limit(const restore_config_t* conf,
+		const server_version_t* version_info)
+{
+	struct rlimit l;
+	rlim_t max_open_files;
+	rlim_t max_async_client_sockets;
+
+	if (server_has_batch_writes(version_info)) {
+		max_async_client_sockets = (rlim_t) conf->max_async_batches;
+	}
+	else {
+		max_async_client_sockets = (rlim_t) (conf->max_async_batches * conf->batch_size);
+	}
+
+	if (restore_config_from_cloud(conf)) {
+		rlim_t max_s3_sockets = (rlim_t) conf->s3_max_async_downloads;
+		max_open_files = max_async_client_sockets + max_s3_sockets;
+	}
+	else {
+		rlim_t max_open_bup_files = (rlim_t) conf->parallel;
+		max_open_files = max_async_client_sockets + max_open_bup_files;
+	}
+
+	if (getrlimit(RLIMIT_NOFILE, &l) != 0) {
+		err_code("Failed to get file descriptor limit of process");
+		return false;
+	}
+
+	ver("Process file descriptor limit: %" PRIu64, l.rlim_cur);
+
+	if (l.rlim_cur < max_open_files) {
+		l.rlim_cur = max_open_files;
+		l.rlim_max = MAX(max_open_files, l.rlim_max);
+
+		if (setrlimit(RLIMIT_NOFILE, &l) != 0) {
+			fprintf(stderr, "Failed to set file destriptor limit of process: %s\n", strerror(errno));
+			return false;
+		}
+
+		ver("Changed file descriptor limit to %" PRIu64, max_open_files);
+	}
+
+	return true;
+}
 
 /*
  * Sets the tls name of all hosts which don't have a set tls name.

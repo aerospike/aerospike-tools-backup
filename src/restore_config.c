@@ -712,6 +712,12 @@ cleanup0:
 	return res;
 }
 
+bool
+restore_config_from_cloud(const restore_config_t* conf)
+{
+	return conf->s3_region != NULL || conf->s3_endpoint_override != NULL;
+}
+
 
 //==========================================================
 // Local helpers.

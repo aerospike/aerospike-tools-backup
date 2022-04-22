@@ -49,6 +49,12 @@ record_uploader_init(record_uploader_t* uploader,
 void
 record_uploader_free(record_uploader_t* uploader)
 {
+	for (uint32_t i = 0; i < uploader->records.size; i++) {
+		as_record* rec = (as_record*) as_vector_get(&uploader->records, i);
+
+		as_record_destroy(rec);
+	}
+
 	as_vector_destroy(&uploader->records);
 }
 

@@ -1048,7 +1048,8 @@ restore_thread_func(void *cont)
 		}
 	}
 
-	if (!record_uploader_flush(&record_uploader)) {
+	if (res != (void *)EXIT_FAILURE &&
+			!record_uploader_flush(&record_uploader)) {
 		res = (void *)EXIT_FAILURE;
 	}
 
