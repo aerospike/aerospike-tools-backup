@@ -20,6 +20,7 @@
 //
 
 #include <restore_status.h>
+#include <sys/resource.h>
 
 #pragma GCC diagnostic ignored "-Wconversion"
 #pragma GCC diagnostic ignored "-Wsign-conversion"

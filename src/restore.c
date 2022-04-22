@@ -1048,9 +1048,12 @@ restore_thread_func(void *cont)
 		}
 	}
 
-	if (res != (void *)EXIT_FAILURE &&
-			!record_uploader_flush(&record_uploader)) {
-		res = (void *)EXIT_FAILURE;
+	if (uploader_init) {
+		if (res != (void *)EXIT_FAILURE &&
+				!record_uploader_flush(&record_uploader)) {
+			res = (void *)EXIT_FAILURE;
+		}
+		record_uploader_free(&record_uploader);
 	}
 
 	if (res != (void *)EXIT_SUCCESS) {
@@ -1501,8 +1504,8 @@ restore_index(aerospike *as, index_param *index, as_vector *set_vec,
 			}
 
 			index->task.as = as;
-			memcpy(index->task.ns, index->ns, sizeof(as_namespace));
-			memcpy(index->task.name, index->name, sizeof(index->task.name));
+			strncpy(index->task.ns, index->ns, sizeof(as_namespace));
+			strncpy(index->task.name, index->name, sizeof(index->task.name));
 			index->task.done = true;
 			return true;
 

@@ -317,8 +317,17 @@ _submit_key_recs(batch_uploader_t* uploader, as_vector* records)
 				_release_async_slot(uploader);
 			}
 
+			for (; i < n_records; i++) {
+				as_record* rec = (as_record*) as_vector_get(records, i);
+				as_key_destroy(&rec->key);
+				as_record_destroy(rec);
+			}
+
 			return false;
 		}
+
+		as_key_destroy(key);
+		as_record_destroy(rec);
 	}
 
 	return true;
