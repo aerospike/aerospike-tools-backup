@@ -45,11 +45,19 @@ typedef struct record_batch_tracker {
 	uint64_t outstanding_calls;
 } record_batch_tracker_t;
 
+typedef struct batch_write_cb_args {
+	batch_uploader_t* uploader;
+	// ops array used to store all operations structs for a batch write call
+	// sequentially in memory.
+	as_operations* ops;
+} batch_write_cb_args_t;
+
 
 //==========================================================
 // Forward Declarations.
 //
 
+static void _free_batch_records(as_batch_records* batch, as_operations* ops);
 static void _await_async_calls(batch_uploader_t*);
 static void _reserve_async_slot(batch_uploader_t*);
 static void _release_async_slot(batch_uploader_t*);
@@ -117,6 +125,17 @@ batch_uploader_submit(batch_uploader_t* uploader, as_vector* records)
 //
 
 static void
+_free_batch_records(as_batch_records* batch, as_operations* ops)
+{
+	for (uint32_t i = 0; i < batch->list.size; i++) {
+		as_operations_destroy(&ops[i]);
+	}
+	cf_free(ops);
+
+	as_batch_records_destroy(batch);
+}
+
+static void
 _await_async_calls(batch_uploader_t* uploader)
 {
 	pthread_mutex_lock(&uploader->async_lock);
@@ -151,12 +170,12 @@ _release_async_slot(batch_uploader_t* uploader)
 }
 
 static void
-_batch_submit_callback(as_error* ae, as_batch_records* records, void* udata,
+_batch_submit_callback(as_error* ae, as_batch_records* batch, void* udata,
 		as_event_loop* event_loop)
 {
-	(void) records;
 	(void) event_loop;
-	batch_uploader_t* uploader = (batch_uploader_t*) udata;
+	batch_write_cb_args_t* args = (batch_write_cb_args_t*) udata;
+	batch_uploader_t* uploader = args->uploader;
 
 	if (ae != NULL) {
 		err("Error in aerospike_batch_write_async call - "
@@ -164,6 +183,8 @@ _batch_submit_callback(as_error* ae, as_batch_records* records, void* udata,
 				ae->code, ae->message, ae->file, ae->line);
 		as_store_bool(&uploader->error, true);
 	}
+
+	_free_batch_records(batch, args->ops);
 
 	_release_async_slot(uploader);
 }
@@ -186,45 +207,45 @@ _submit_batch(batch_uploader_t* uploader, as_vector* records)
 		return false;
 	}
 
-	as_batch_records batch;
-	as_batch_records_init(&batch, records->size);
+	as_batch_records* batch = as_batch_records_create(records->size);
 
 	as_operations* ops = cf_malloc(records->size * sizeof(as_operations));
 
 	for (uint32_t i = 0; i < records->size; i++) {
 		as_record* rec = (as_record*) as_vector_get(records, i);
-		as_batch_write_record* batch_write = as_batch_write_reserve(&batch);
+		as_batch_write_record* batch_write = as_batch_write_reserve(batch);
 
-		batch_write->key = rec->key;
+		if (!as_key_move(&batch_write->key, &rec->key)) {
+			_free_batch_records(batch, ops);
+		}
 
 		// write the record as a series of bin-ops on the key
 		as_operations* op = &ops[i];
 		as_operations_init(op, rec->bins.size);
 		for (uint32_t bin_idx = 0; bin_idx < rec->bins.size; bin_idx++) {
-			as_operations_add_write(op, rec->bins.entries[i].name,
-					&rec->bins.entries[i].value);
+			as_operations_add_write(op, rec->bins.entries[bin_idx].name,
+					&rec->bins.entries[bin_idx].value);
 		}
 
 		batch_write->ops = op;
 	}
 
-	status = aerospike_batch_write_async(uploader->as, &ae, NULL, &batch,
-			_batch_submit_callback, uploader, NULL);
+	batch_write_cb_args_t* args =
+		(batch_write_cb_args_t*) cf_malloc(sizeof(batch_write_cb_args_t*));
+	args->uploader = uploader;
+	args->ops = ops;
+
+	status = aerospike_batch_write_async(uploader->as, &ae, NULL, batch,
+			_batch_submit_callback, args, NULL);
 
 	// free everything before checking for errors
-	for (uint32_t i = 0; i < records->size; i++) {
-		as_operations_destroy(&ops[i]);
-	}
-	cf_free(ops);
-	// destroy the batch write list without destroying the keys written to it,
-	// as those were transient copies of existing keys
-	as_vector_destroy(&batch.list);
 
 	if (status != AEROSPIKE_OK) {
 		err("Error while initiating aerospike_batch_write_async call - "
 				"code %d: %s at %s:%d",
 				ae.code, ae.message, ae.file, ae.line);
 		as_store_bool(&uploader->error, true);
+		_free_batch_records(batch, ops);
 		_release_async_slot(uploader);
 		return false;
 	}

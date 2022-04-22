@@ -69,14 +69,9 @@ record_uploader_put(record_uploader_t* uploader, as_record* rec)
 	}
 
 	as_record* rec_ptr = (as_record*) as_vector_reserve(&uploader->records);
-	*rec_ptr = *rec;
-	// reset the reference count of the as_val
-	rec_ptr->_._.count = 1;
-	if (rec->key.valuep == &rec->key.value) {
-		rec_ptr->key.valuep = &rec_ptr->key.value;
-		// reset the reference count of the key, which we can choose any of the
-		// key types to do since the as_val fields alias one another
-		rec_ptr->key.value.integer._.count = 1;
+	if (!as_record_move(rec_ptr, rec)) {
+		err("Failed to move the contents of the as_record");
+		return false;
 	}
 
 	return true;
@@ -88,12 +83,6 @@ record_uploader_flush(record_uploader_t* uploader)
 	if (!batch_uploader_submit(uploader->batch_uploader,
 				&uploader->records)) {
 		return false;
-	}
-
-	for (uint32_t i = 0; i < uploader->records.size; i++) {
-		as_record* rec = (as_record*) as_vector_get(&uploader->records, i);
-
-		as_record_destroy(rec);
 	}
 
 	as_vector_clear(&uploader->records);

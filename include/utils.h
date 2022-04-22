@@ -391,6 +391,22 @@ encryption_key_t* parse_encryption_key_env(const char* env_var_name);
 int get_server_version(aerospike* as, server_version_t*);
 bool server_has_batch_writes(const server_version_t*);
 
+/*
+ * Moves the contents of a key from src to dst. src should not be freed after
+ * this operation, and its memory should be treated as uninitialized.
+ *
+ * Fails if the ref count of src is > 1, returning false.
+ */
+bool as_key_move(as_key* dst, as_key* src);
+
+/*
+ * Moves the contents of a record from src to dst. src should not be freed after
+ * this operation, and its memory should be treated as uninitialized.
+ *
+ * Fails if the ref count of src is > 1, returning false.
+ */
+bool as_record_move(as_record* dst, as_record* src);
+
 #ifdef __APPLE__
 char* strchrnul(const char* s, int c_in);
 #endif /* __APPLE__ */

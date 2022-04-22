@@ -1625,6 +1625,31 @@ server_has_batch_writes(const server_version_t* version_info)
 	return !SERVER_VERSION_BEFORE(version_info, 6, 0);
 }
 
+bool
+as_key_move(as_key* dst, as_key* src)
+{
+	*dst = *src;
+	if (src->valuep == &src->value) {
+		if (as_load_uint32(&src->value.integer._.count) > 1) {
+			return false;
+		}
+		dst->valuep = &dst->value;
+	}
+
+	return true;
+}
+
+bool
+as_record_move(as_record* dst, as_record* src)
+{
+	if (as_load_uint32(&src->_._.count) > 1) {
+		return false;
+	}
+
+	*dst = *src;
+	return as_key_move(&dst->key, &src->key);
+}
+
 #ifdef __APPLE__
 
 char*
