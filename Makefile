@@ -288,7 +288,7 @@ $(C_CLIENT_LIB):
 test: unit integration
 
 .PHONY: unit
-unit: $(DIR_TEST_BIN)/test | coverage-init
+unit: $(DIR_TEST_BIN)/test
 	@$<
 	@#valgrind --tool=memcheck --leak-check=full --track-origins=yes --show-leak-kinds=all $<
 
@@ -335,15 +335,15 @@ $(TEST_RESTORE): $(TEST_RESTORE_OBJ) $(TOML) $(C_CLIENT_LIB) | $(DIR_TEST_BIN)
 # Summary requires the lcov tool to be installed
 .PHONY: coverage
 coverage:
-	@echo
-	@lcov --capture --initial --directory $(DIR_TEST_BIN) --output-file $(DIR_TEST_BIN)/aerospike-tools-backup.info
-	@lcov --directory $(DIR_TEST_BIN) --capture --quiet --output-file $(DIR_TEST_BIN)/aerospike-tools-backup.info
-	@lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup.info --quiet --extract $(DIR_TEST_BIN)/aerospike-tools-backup.info '$(ROOT)/$(DIR_SRC)/*' '$(ROOT)/$(DIR_INC)/*'
+	@lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup-tests.info --directory $(DIR_TEST_BIN) --capture --quiet
+	@lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup.info -a $(DIR_TEST_BIN)/aerospike-tools-backup-baseline.info -a $(DIR_TEST_BIN)/aerospike-tools-backup-tests.info
+	@lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup.info --quiet --extract $(DIR_TEST_BIN)/aerospike-tools-backup.info '$(DIR_SRC)/*' '$(DIR_INC)/*'
 	@lcov --summary $(DIR_TEST_BIN)/aerospike-tools-backup.info
 
 .PHONY: coverage-init
 coverage-init: $(TEST_BINS)
 	@lcov --zerocounters --directory $(DIR_TEST_BIN)
+	@lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup-baseline.info --directory $(DIR_TEST_BIN) --capture --initial
 
 .PHONY: do-test
 do-test: | coverage-init
