@@ -407,6 +407,11 @@ bool as_key_move(as_key* dst, as_key* src);
  */
 bool as_record_move(as_record* dst, as_record* src);
 
+/*
+ * Swaps the contents of two vectors.
+ */
+void as_vector_swap(as_vector* v1, as_vector* v2);
+
 #ifdef __APPLE__
 char* strchrnul(const char* s, int c_in);
 #endif /* __APPLE__ */

@@ -47,6 +47,8 @@ typedef struct record_batch_tracker {
 
 typedef struct batch_write_cb_args {
 	batch_uploader_t* uploader;
+	// the vector of records uploaded in this batch write.
+	as_vector records;
 	// ops array used to store all operations structs for a batch write call
 	// sequentially in memory.
 	as_operations* ops;
@@ -176,6 +178,7 @@ _batch_submit_callback(as_error* ae, as_batch_records* batch, void* udata,
 	(void) event_loop;
 	batch_write_cb_args_t* args = (batch_write_cb_args_t*) udata;
 	batch_uploader_t* uploader = args->uploader;
+	as_vector* records = &args->records;
 
 	if (ae != NULL) {
 		err("Error in aerospike_batch_write_async call - "
@@ -185,6 +188,15 @@ _batch_submit_callback(as_error* ae, as_batch_records* batch, void* udata,
 	}
 
 	_free_batch_records(batch, args->ops);
+
+	// free everything before checking for errors
+	for (uint32_t i = 0; i < records->size; i++) {
+		as_record* rec = (as_record*) as_vector_get(records, i);
+		as_record_destroy(rec);
+	}
+	as_vector_destroy(records);
+
+	free(args);
 
 	_release_async_slot(uploader);
 }
@@ -224,27 +236,36 @@ _submit_batch(batch_uploader_t* uploader, as_vector* records)
 		as_operations_init(op, rec->bins.size);
 		for (uint32_t bin_idx = 0; bin_idx < rec->bins.size; bin_idx++) {
 			as_operations_add_write(op, rec->bins.entries[bin_idx].name,
-					&rec->bins.entries[bin_idx].value);
+					rec->bins.entries[bin_idx].valuep);
+			as_val_reserve(rec->bins.entries[bin_idx].valuep);
 		}
 
 		batch_write->ops = op;
 	}
 
 	batch_write_cb_args_t* args =
-		(batch_write_cb_args_t*) cf_malloc(sizeof(batch_write_cb_args_t*));
+		(batch_write_cb_args_t*) cf_malloc(sizeof(batch_write_cb_args_t));
 	args->uploader = uploader;
 	args->ops = ops;
 
+	// initialize args->records vector, then move the contents of records into
+	// it.
+	as_vector tmp_records;
+	as_vector_init(&args->records, records->item_size, records->size);
+	as_vector_swap(&args->records, records);
+
 	status = aerospike_batch_write_async(uploader->as, &ae, NULL, batch,
 			_batch_submit_callback, args, NULL);
-
-	// free everything before checking for errors
 
 	if (status != AEROSPIKE_OK) {
 		err("Error while initiating aerospike_batch_write_async call - "
 				"code %d: %s at %s:%d",
 				ae.code, ae.message, ae.file, ae.line);
 		as_store_bool(&uploader->error, true);
+
+		as_vector_swap(&args->records, records);
+		as_vector_destroy(&args->records);
+
 		_free_batch_records(batch, ops);
 		_release_async_slot(uploader);
 		return false;

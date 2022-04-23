@@ -825,7 +825,7 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 
 		} else if (! strcasecmp("s3-max-async-downloads", name)) {
 			status = config_int64(curtab, name, (void*)&i_val);
-			if (i_val > 0 & i_val <= UINT_MAX) {
+			if (i_val > 0 && i_val <= UINT_MAX) {
 				c->s3_max_async_downloads = (uint32_t) i_val;
 			} else {
 				status = false;
@@ -833,7 +833,7 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 
 		} else if (! strcasecmp("s3-max-async-uploads", name)) {
 			status = config_int64(curtab, name, (void*)&i_val);
-			if (i_val > 0 & i_val <= UINT_MAX) {
+			if (i_val > 0 && i_val <= UINT_MAX) {
 				c->s3_max_async_uploads = (uint32_t) i_val;
 			} else {
 				status = false;
@@ -1063,7 +1063,7 @@ config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance,
 
 		} else if (! strcasecmp("s3-max-async-downloads", name)) {
 			status = config_int64(curtab, name, (void*)&i_val);
-			if (i_val > 0 & i_val <= UINT_MAX) {
+			if (i_val > 0 && i_val <= UINT_MAX) {
 				c->s3_max_async_downloads = (uint32_t) i_val;
 			} else {
 				status = false;
