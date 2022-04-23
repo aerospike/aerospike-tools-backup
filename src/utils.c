@@ -1654,7 +1654,7 @@ void
 as_vector_swap(as_vector* v1, as_vector* v2)
 {
 	// copied from aerospike/as_vector.c
-#define FLAGS_CREATED 2
+#define FLAGS_CREATED 2u
 
 	void* list = v1->list;
 	uint32_t capacity = v1->capacity;
