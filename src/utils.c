@@ -1653,20 +1653,26 @@ as_record_move(as_record* dst, as_record* src)
 void
 as_vector_swap(as_vector* v1, as_vector* v2)
 {
+	// copied from aerospike/as_vector.c
+#define FLAGS_CREATED 2
+
 	void* list = v1->list;
 	uint32_t capacity = v1->capacity;
 	uint32_t size = v1->size;
 	uint32_t item_size = v1->item_size;
+	uint32_t flags = v1->flags & ~FLAGS_CREATED;
 
 	v1->list = v2->list;
 	v1->capacity = v2->capacity;
 	v1->size = v2->size;
 	v1->item_size = v2->item_size;
+	v1->flags = (v1->flags & FLAGS_CREATED) | (v2->flags & ~FLAGS_CREATED);
 
 	v2->list = list;
 	v2->capacity = capacity;
 	v2->size = size;
 	v2->item_size = item_size;
+	v2->flags = (v2->flags & FLAGS_CREATED) | flags;
 }
 
 #ifdef __APPLE__
