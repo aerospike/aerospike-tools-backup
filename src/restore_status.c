@@ -202,8 +202,11 @@ restore_status_init(restore_status_t* status, const restore_config_t* conf)
 		goto cleanup5;
 	}
 
-	ver("Connected to server version %u.%u", status->version_info.major,
-			status->version_info.minor);
+	ver("Connected to server version %u.%u.%u.%u",
+			status->version_info.major,
+			status->version_info.minor,
+			status->version_info.patch,
+			status->version_info.build_id);
 
 	if (!set_resource_limit(conf, &status->version_info)) {
 		goto cleanup0;

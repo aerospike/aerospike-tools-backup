@@ -1485,7 +1485,8 @@ check_server_version(backup_status_t* status, const backup_config_t* conf)
 	uint32_t major = version_info.major;
 	uint32_t minor = version_info.minor;
 
-	ver("Connected to server version %u.%u", major, minor);
+	ver("Connected to server version %u.%u.%u.%u", major, minor,
+			version_info.patch, version_info.build_id);
 
 	if (SERVER_VERSION_BEFORE(&version_info, 4, 9)) {
 		err("Aerospike Server version 4.9 or greater is required to run "
