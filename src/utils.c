@@ -1619,10 +1619,72 @@ get_server_version(aerospike* as, server_version_t* version_info)
 	return 0;
 }
 
+/*
+ * Checks for availability of batch writes. Returns false if an error occurred
+ * while checking.
+ */
 bool
-server_has_batch_writes(const server_version_t* version_info)
+server_has_batch_writes(aerospike* as, const server_version_t* version_info,
+		bool* batch_writes_enabled)
 {
-	return !SERVER_VERSION_BEFORE(version_info, 6, 0);
+	const char batch_idx_threads_param[] = "batch-index-threads";
+	char* info_res;
+	as_error ae;
+
+	if (SERVER_VERSION_BEFORE(version_info, 6, 0)) {
+		// batch writes not available
+		*batch_writes_enabled = false;
+		return true;
+	}
+
+	char info_str[] = "get-config:context=service";
+
+	as_policy_info policy;
+	as_policy_info_init(&policy);
+
+	if (aerospike_info_any(as, &ae, &policy, info_str, &info_res) != AEROSPIKE_OK) {
+		err("Failed to query server to check availability of batch writes\n");
+		return false;
+	}
+
+	char* batch_index_threads = strstr(info_res, batch_idx_threads_param);
+	if (batch_index_threads == NULL) {
+		err("Server info response to %s is missing %s parameter\n", info_str,
+				batch_idx_threads_param);
+		ver("Response: %s", info_res);
+
+		*batch_writes_enabled = false;
+	}
+	else {
+		// param_val should be in the format "=<n idx threads>[;<more params>]"
+		char* param_val = batch_index_threads +
+			(sizeof(batch_idx_threads_param) - 1);
+		if (param_val[0] != '=') {
+			err("Invalid info response format: expected '=' to follow %s",
+					batch_idx_threads_param);
+			cf_free(info_res);
+			return false;
+		}
+
+		char* endptr;
+		uint64_t n_batch_threads = strtoul(param_val + 1, &endptr, 10);
+		if (endptr == param_val + 1 || (*endptr != '\0' && *endptr != ';')) {
+			*endptr = '\0';
+			err("Invalid info response format: expected a number to follow "
+					"\"%s=\", but got \"%s\"",
+					batch_idx_threads_param, param_val + 1);
+			cf_free(info_res);
+			return false;
+		}
+
+		ver("Num batch index threads: %" PRIu64, n_batch_threads);
+
+		*batch_writes_enabled = (n_batch_threads > 0);
+	}
+
+	cf_free(info_res);
+
+	return true;
 }
 
 bool

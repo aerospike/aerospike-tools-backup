@@ -52,6 +52,9 @@ typedef struct restore_status {
 	// The shared batch uploader that manages all async batch upload calls.
 	batch_uploader_t batch_uploader;
 
+	// Set to true when batch writes can and should be used.
+	bool batch_writes_enabled;
+
 	// The list of backup files to restore.
 	as_vector file_vec;
 	// The (optional) source and (also optional) target namespace to be

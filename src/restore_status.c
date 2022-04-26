@@ -41,8 +41,9 @@
 // Forward Declarations.
 //
 
-static bool set_resource_limit(const restore_config_t* conf,
-		const server_version_t* version_info);
+static void _batch_complete_cb(batch_status_t*, void* restore_status_ptr);
+static bool set_resource_limit(const restore_config_t*,
+		bool batch_writes_enabled);
 static void add_default_tls_host(as_config *as_conf, const char* tls_name);
 
 
@@ -208,8 +209,13 @@ restore_status_init(restore_status_t* status, const restore_config_t* conf)
 			status->version_info.patch,
 			status->version_info.build_id);
 
-	if (!set_resource_limit(conf, &status->version_info)) {
-		goto cleanup0;
+	if (!server_has_batch_writes(status->as, &status->version_info,
+				&status->batch_writes_enabled)) {
+		goto cleanup5;
+	}
+
+	if (!set_resource_limit(conf, status->batch_writes_enabled)) {
+		goto cleanup5;
 	}
 
 	if (SERVER_VERSION_BEFORE(&status->version_info, 4, 9)) {
@@ -219,10 +225,13 @@ restore_status_init(restore_status_t* status, const restore_config_t* conf)
 		goto cleanup5;
 	}
 
-	if (batch_uploader_init(&status->batch_uploader, conf->max_async_batches,
-				status->as, &status->version_info) != 0) {
+	if (batch_uploader_init(&status->batch_uploader, status->as, conf,
+				status->batch_writes_enabled) != 0) {
 		goto cleanup5;
 	}
+
+	batch_uploader_set_callback(&status->batch_uploader, _batch_complete_cb,
+			status);
 
 	status->estimated_bytes = 0;
 	as_store_uint64(&status->total_bytes, 0);
@@ -276,7 +285,6 @@ cleanup1:
 	as_vector_destroy(&status->bin_vec);
 	as_vector_destroy(&status->set_vec);
 
-cleanup0:
 	return false;
 }
 
@@ -362,15 +370,38 @@ restore_status_sleep_for(restore_status_t* status, uint64_t n_secs)
 // Local helpers.
 //
 
+static void
+_batch_complete_cb(batch_status_t* batch_status, void* restore_status_ptr)
+{
+	restore_status_t* status = (restore_status_t*) restore_status_ptr;
+
+	/*fprintf(stderr, "finished guuy!\n"
+			"\tignored: %llu\n"
+			"\tinserted: %llu\n"
+			"\texisted: %llu\n"
+			"\tfresher: %llu\n",
+			batch_status->ignored_records,
+			batch_status->inserted_records,
+			batch_status->existed_records,
+			batch_status->fresher_records);*/
+	as_add_uint64(&status->ignored_records,
+			as_load_uint64(&batch_status->ignored_records));
+	as_add_uint64(&status->inserted_records,
+			as_load_uint64(&batch_status->inserted_records));
+	as_add_uint64(&status->existed_records,
+			as_load_uint64(&batch_status->existed_records));
+	as_add_uint64(&status->fresher_records,
+			as_load_uint64(&batch_status->fresher_records));
+}
+
 static bool
-set_resource_limit(const restore_config_t* conf,
-		const server_version_t* version_info)
+set_resource_limit(const restore_config_t* conf, bool batch_writes_enabled)
 {
 	struct rlimit l;
 	rlim_t max_open_files;
 	rlim_t max_async_client_sockets;
 
-	if (server_has_batch_writes(version_info)) {
+	if (batch_writes_enabled) {
 		max_async_client_sockets = (rlim_t) conf->max_async_batches;
 	}
 	else {
