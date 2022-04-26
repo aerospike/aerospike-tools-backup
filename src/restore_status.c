@@ -209,7 +209,10 @@ restore_status_init(restore_status_t* status, const restore_config_t* conf)
 			status->version_info.patch,
 			status->version_info.build_id);
 
-	if (!server_has_batch_writes(status->as, &status->version_info,
+	if (conf->disable_batch_writes) {
+		status->batch_writes_enabled = false;
+	}
+	else if (!server_has_batch_writes(status->as, &status->version_info,
 				&status->batch_writes_enabled)) {
 		goto cleanup5;
 	}

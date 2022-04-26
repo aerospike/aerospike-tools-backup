@@ -133,6 +133,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 		{ "sleep-between-retries", required_argument, NULL, COMMAND_OPT_RETRY_DELAY },
 		// support the `--retry-delay` option until a major version bump.
 		{ "retry-delay", required_argument, NULL, COMMAND_OPT_RETRY_DELAY },
+		{ "disable-batch-writes", no_argument, NULL, COMMAND_OPT_DISABLE_BATCH_WRITES },
 		{ "max-async-batches", required_argument, NULL, COMMAND_OPT_MAX_ASYNC_BATCHES },
 		{ "batch-size", required_argument, NULL, COMMAND_OPT_BATCH_SIZE },
 
@@ -500,6 +501,10 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 			conf->retry_delay = (uint32_t) tmp;
 			break;
 
+		case COMMAND_OPT_DISABLE_BATCH_WRITES:
+			conf->disable_batch_writes = true;
+			break;
+
 		case COMMAND_OPT_MAX_ASYNC_BATCHES:
 			if (!better_atoi(optarg, &tmp) || tmp < 0 || tmp > UINT32_MAX) {
 				err("Invalid max-async-batches value %s", optarg);
@@ -673,6 +678,7 @@ restore_config_default(restore_config_t *conf)
 	conf->max_retries = 0;
 	conf->retry_delay = 0;
 
+	conf->disable_batch_writes = false;
 	conf->max_async_batches = DEFAULT_MAX_ASYNC_BATCHES;
 	conf->batch_size = DEFAULT_BATCH_SIZE;
 
@@ -921,6 +927,12 @@ usage(const char *name)
 	fprintf(stderr, "      --sleep-between-retries <ms>\n");
 	fprintf(stderr, "                      The amount of time to sleep between retries of write transactions.\n");
 	fprintf(stderr, "                      Default is 0.\n");
+	fprintf(stderr, "      --disable-batch-writes\n");
+	fprintf(stderr, "                      Disables the use of batch writes when restoring records to the\n");
+	fprintf(stderr, "                      Aerospike cluster. By default, the cluster is checked for batch\n");
+	fprintf(stderr, "                      write support, so only set this flag if you explicitly don't want\n");
+	fprintf(stderr, "                      batch writes to be used or asrestore is failing to recognize that\n");
+	fprintf(stderr, "                      batch writes are disabled and is failing to work because of it.\n");
 	fprintf(stderr, "      --max-async-batches <n>\n");
 	fprintf(stderr, "                      The max number of outstanding async record batch write calls at a time.\n");
 	fprintf(stderr, "                      For pre-6.0 servers, \"batches\" are only a logical grouping of\n");

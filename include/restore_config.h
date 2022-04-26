@@ -87,6 +87,9 @@ typedef struct restore_config {
 	uint32_t max_retries;
 	uint32_t retry_delay;
 
+	// When set, don't use batch writes.
+	bool disable_batch_writes;
+
 	// Max number of outstanding async record batch write calls at a time.
 	uint32_t max_async_batches;
 	// The batch size to use for batch uploading, or the size of groups of
