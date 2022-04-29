@@ -134,25 +134,25 @@ jobs:
     - name: Upload asbackup artifact
       uses: actions/upload-artifact@v2
       with: 
-        name: asbackup-${{ runner.os }}
+        name: ${{ steps.system-info.outputs.platform }}-${{ runner.arch }}-${{ runner.os }}-${{ steps.system-info.outputs.release }}-asbackup
         path: ${{ steps.asbackup-wd.outputs.value }}/dyn_bin/asbackup
         if-no-files-found: error
     - name: Upload asrestore artifact
       uses: actions/upload-artifact@v2
       with: 
-        name: asrestore-${{ runner.os }}
+        name: ${{ steps.system-info.outputs.platform }}-${{ runner.arch }}-${{ runner.os }}-${{ steps.system-info.outputs.release }}-asrestore
         path: ${{ steps.asbackup-wd.outputs.value }}/dyn_bin/asrestore
         if-no-files-found: error
     - name: Upload static zstd asbackup artifact
       uses: actions/upload-artifact@v2
       with: 
-        name: asbackup-${{ runner.os }}-static
+        name: ${{ steps.system-info.outputs.platform }}-${{ runner.arch }}-${{ runner.os }}-${{ steps.system-info.outputs.release }}-asbackup-static
         path: ${{ steps.asbackup-wd.outputs.value }}/static_bin/asbackup
         if-no-files-found: error
     - name: Upload static zstd asrestore artifact
       uses: actions/upload-artifact@v2
       with: 
-        name: asrestore-${{ runner.os }}-static
+        name: ${{ steps.system-info.outputs.platform }}-${{ runner.arch }}-${{ runner.os }}-${{ steps.system-info.outputs.release }}-asrestore-static
         path: ${{ steps.asbackup-wd.outputs.value }}/static_bin/asrestore
         if-no-files-found: error
   bundle-binaries:
