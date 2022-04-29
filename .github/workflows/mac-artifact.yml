@@ -143,13 +143,13 @@ jobs:
         name: ${{ steps.system-info.outputs.platform }}-${{ runner.arch }}-${{ runner.os }}-${{ steps.system-info.outputs.release }}-asrestore
         path: ${{ steps.asbackup-wd.outputs.value }}/dyn_bin/asrestore
         if-no-files-found: error
-    - name: Upload static zstd asbackup artifact
+    - name: Upload static asbackup artifact
       uses: actions/upload-artifact@v2
       with: 
         name: ${{ steps.system-info.outputs.platform }}-${{ runner.arch }}-${{ runner.os }}-${{ steps.system-info.outputs.release }}-asbackup-static
         path: ${{ steps.asbackup-wd.outputs.value }}/static_bin/asbackup
         if-no-files-found: error
-    - name: Upload static zstd asrestore artifact
+    - name: Upload static asrestore artifact
       uses: actions/upload-artifact@v2
       with: 
         name: ${{ steps.system-info.outputs.platform }}-${{ runner.arch }}-${{ runner.os }}-${{ steps.system-info.outputs.release }}-asrestore-static
