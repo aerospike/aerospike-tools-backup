@@ -170,5 +170,5 @@ jobs:
       - uses: actions/upload-artifact@v3
         with:
           name: binaries
-          path: target
+          path: binaries
           if-no-files-found: error
