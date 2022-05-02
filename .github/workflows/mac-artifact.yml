@@ -122,7 +122,7 @@ jobs:
       working-directory: aws-sdk-cpp-${{ env.AWS_SDK_CPP_VERSION }}/build_static
     - name: Build asbackup with static link to zstd and aws-sdk-cpp
       run: |
-        make LINK_ZSTD_STATIC=1 AWS_SDK_STATIC_PATH=/usr/local/lib
+        make ZSTD_STATIC_PATH=/usr/local/lib AWS_SDK_STATIC_PATH=/usr/local/lib
         cp -r bin static_bin
         make clean
       working-directory: ${{ steps.asbackup-wd.outputs.value }}
