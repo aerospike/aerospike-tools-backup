@@ -52,6 +52,7 @@ jobs:
         submodules: recursive
         ref: ${{ env.AWS_SDK_CPP_VERSION }}
         path: aws-sdk-cpp-${{ env.AWS_SDK_CPP_VERSION }}
+        fetch-depth: 0 # fetch the entire commit history for all branches
     - name: Build AWS C++ sdk shared library
       if: steps.cache-aws-sdk-cpp.outputs.cache-hit != 'true'
       run: |
