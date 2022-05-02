@@ -974,7 +974,7 @@ usage(const char *name)
 	fprintf(stderr, "                       - Info\n");
 	fprintf(stderr, "                       - Debug\n");
 	fprintf(stderr, "                       - Trace\n");
-	fprintf(stderr, "                      The default is Warn.\n\n");
+	fprintf(stderr, "                      The default is Fatal.\n\n");
 
 	fprintf(stderr, "\n\n");
 	fprintf(stderr, "Default configuration files are read from the following files in the given order:\n");

@@ -169,10 +169,10 @@ private:
 		inf("Initializing S3 API");
 
 		s3_api.options.loggingOptions.logLevel = s3_api.logLevel;
-		s3_api.options.loggingOptions.logger_create_fn = []() {
+		s3_api.options.loggingOptions.logger_create_fn = [&s3_api]() {
 			return Aws::MakeShared<AsbackupLogger>(
 					"AsbackupLogger",
-					Aws::Utils::Logging::LogLevel::Warn);
+					s3_api.logLevel);
 		};
 		Aws::InitAPI(s3_api.options);
 

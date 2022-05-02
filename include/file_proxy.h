@@ -61,7 +61,7 @@ typedef struct backup_state backup_state_t;
 #define S3_DEFAULT_MAX_ASYNC_UPLOADS 16
 #define S3_DEFAULT_MAX_ASYNC_DOWNLOADS 32
 
-#define S3_DEFAULT_LOG_LEVEL ((s3_log_level_t) Warn)
+#define S3_DEFAULT_LOG_LEVEL ((s3_log_level_t) Fatal)
 
 /*
  * Defines where the file is stored, either locally or in the cloud.
