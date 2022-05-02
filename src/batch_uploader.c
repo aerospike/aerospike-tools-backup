@@ -39,7 +39,7 @@
 
 /*
  * Struct used to track the progress of async record writes when batch writes
- * aren't available.
+ * aren't being used.
  */
 typedef struct record_batch_tracker {
 	batch_uploader_t* uploader;
@@ -50,6 +50,9 @@ typedef struct record_batch_tracker {
 	batch_status_t status;
 } record_batch_tracker_t;
 
+/*
+ * The arguments struct to be passed to the batch_submit complete callback
+ */
 typedef struct batch_write_cb_args {
 	batch_uploader_t* uploader;
 	// the vector of records uploaded in this batch write.
