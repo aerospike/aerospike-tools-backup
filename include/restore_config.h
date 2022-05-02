@@ -104,6 +104,8 @@ typedef struct restore_config {
 	char* s3_endpoint_override;
 	// Max simultaneous download requests from S3 allowed at a time.
 	uint32_t s3_max_async_downloads;
+	// Logging level of the AWS S3 C+ SDK.
+	s3_log_level_t s3_log_level;
 
 	as_config_tls tls;
 	char* tls_name;

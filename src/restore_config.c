@@ -141,6 +141,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 		{ "s3-profile", required_argument, NULL, COMMAND_OPT_S3_PROFILE },
 		{ "s3-endpoint-override", required_argument, NULL, COMMAND_OPT_S3_ENDPOINT_OVERRIDE },
 		{ "s3-max-async-downloads", required_argument, NULL, COMMAND_OPT_S3_MAX_ASYNC_DOWNLOADS },
+		{ "s3-log-level", required_argument, NULL, COMMAND_OPT_S3_LOG_LEVEL },
 		{ NULL, 0, NULL, 0 }
 	};
 
@@ -148,6 +149,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 
 	int32_t optcase;
 	int64_t tmp;
+	s3_log_level_t s3_log_level;
 
 	// Don't print error messages for the first two argument parsers
 	opterr = 0;
@@ -541,6 +543,14 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 			conf->s3_max_async_downloads = (uint32_t) tmp;
 			break;
 
+		case COMMAND_OPT_S3_LOG_LEVEL:
+			if (!s3_parse_log_level(optarg, &s3_log_level)) {
+				err("Invalid S3 log level \"%s\"", optarg);
+				return RESTORE_CONFIG_INIT_FAILURE;
+			}
+			conf->s3_log_level = s3_log_level;
+			break;
+
 		case CONFIG_FILE_OPT_FILE:
 		case CONFIG_FILE_OPT_INSTANCE:
 		case CONFIG_FILE_OPT_NO_CONFIG_FILE:
@@ -592,6 +602,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 	}
 
 	s3_set_max_async_downloads(conf->s3_max_async_downloads);
+	s3_set_log_level(conf->s3_log_level);
 
 	if (conf->nice_list != NULL) {
 		as_vector nice_vec;
@@ -647,6 +658,7 @@ restore_config_default(restore_config_t *conf)
 	conf->s3_profile = NULL;
 	conf->s3_endpoint_override = NULL;
 	conf->s3_max_async_downloads = S3_DEFAULT_MAX_ASYNC_DOWNLOADS;
+	conf->s3_log_level = S3_DEFAULT_LOG_LEVEL;
 
 	conf->parallel = DEFAULT_THREADS;
 	conf->nice_list = NULL;
@@ -951,7 +963,18 @@ usage(const char *name)
 	fprintf(stderr, "      --s3-endpoint-override <url>\n");
 	fprintf(stderr, "                      An alternate url endpoint to send S3 API calls to.\n");
 	fprintf(stderr, "      --s3-max-async-downloads <n>\n");
-	fprintf(stderr, "                      The maximum number of simultaneous download requests from S3.\n\n");
+	fprintf(stderr, "                      The maximum number of simultaneous download requests from S3.\n");
+	fprintf(stderr, "      --s3-log-level <n>\n");
+	fprintf(stderr, "                      The log level of the AWS S3 C++ SDK. The possible levels are,\n");
+	fprintf(stderr, "                      from least to most granular:\n");
+	fprintf(stderr, "                       - Off\n");
+	fprintf(stderr, "                       - Fatal\n");
+	fprintf(stderr, "                       - Error\n");
+	fprintf(stderr, "                       - Warn\n");
+	fprintf(stderr, "                       - Info\n");
+	fprintf(stderr, "                       - Debug\n");
+	fprintf(stderr, "                       - Trace\n");
+	fprintf(stderr, "                      The default is Warn.\n\n");
 
 	fprintf(stderr, "\n\n");
 	fprintf(stderr, "Default configuration files are read from the following files in the given order:\n");

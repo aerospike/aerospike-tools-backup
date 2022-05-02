@@ -69,13 +69,77 @@ const uint8_t b64map[256] = {
 //
 
 static pid_t thread_id(void);
-static void log_line(const char *tag, const char *prefix, const char *format,
-		va_list args, bool error);
 
 
 //==========================================================
 // Public API.
 //
+
+/*
+ * Central log function. Writes a single log message.
+ *
+ * @param tag     The severity tag.
+ * @param prefix  A prefix to be prepended to the log message.
+ * @param format  The format string for the log message.
+ * @param args    The arguments for the log message, according to the format string.
+ * @param error   Indicates that errno information is to be added to the log message.
+ */
+void
+log_line(const char *tag, const char *prefix, const char *format, va_list args, bool error)
+{
+	char buffer[10000];
+	time_t now;
+	struct tm now_tm;
+
+	if ((now = time(NULL)) == (time_t)-1) {
+		fprintf(stderr, "Error while getting current time, error %d, %s\n", errno, strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+
+	if (gmtime_r(&now, &now_tm) == NULL) {
+		fprintf(stderr, "Error while calculating GMT, error %d, %s\n", errno, strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+
+	size_t index = 0;
+	size_t length = strftime(buffer + index, sizeof(buffer) - 1, "%Y-%m-%d %H:%M:%S %Z ", &now_tm);
+
+	if (length == 0) {
+		fprintf(stderr, "Error while converting time to string, error %d, %s\n", errno,
+				strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+
+	index += length;
+	length = (size_t) snprintf(buffer + index, sizeof(buffer) - index - 1,
+			"[%s] [%5d] %s", tag,
+			(int32_t) (thread_id() % 100000), prefix);
+	index += length;
+
+	length = (size_t) vsnprintf(buffer + index, sizeof(buffer) - index - 1,
+			format, args);
+	index += length;
+
+	if (index >= sizeof(buffer) - 1) {
+		fprintf(stderr, "Buffer overflow while creating log message\n");
+		exit(EXIT_FAILURE);
+	}
+
+	if (error) {
+		length = (size_t)snprintf(buffer + index, sizeof(buffer) - index - 1,
+				" (error %d: %s)",
+				errno, strerror(errno));
+		index += length;
+
+		if (index >= sizeof(buffer) - 1) {
+			fprintf(stderr, "Buffer overflow while creating log message\n");
+			exit(EXIT_FAILURE);
+		}
+	}
+
+	buffer[index] = '\n';
+	fwrite(buffer, 1, index + 1, stderr);
+}
 
 /*
  * Logs a debug message.
@@ -1771,74 +1835,6 @@ thread_id(void)
 	pthread_threadid_np(NULL, &tid);
 	return (pid_t)tid;
 #endif
-}
-
-/*
- * Central log function. Writes a single log message.
- *
- * @param tag     The severity tag.
- * @param prefix  A prefix to be prepended to the log message.
- * @param format  The format string for the log message.
- * @param args    The arguments for the log message, according to the format string.
- * @param error   Indicates that errno information is to be added to the log message.
- */
-static void
-log_line(const char *tag, const char *prefix, const char *format, va_list args, bool error)
-{
-	char buffer[10000];
-	time_t now;
-	struct tm now_tm;
-
-	if ((now = time(NULL)) == (time_t)-1) {
-		fprintf(stderr, "Error while getting current time, error %d, %s\n", errno, strerror(errno));
-		exit(EXIT_FAILURE);
-	}
-
-	if (gmtime_r(&now, &now_tm) == NULL) {
-		fprintf(stderr, "Error while calculating GMT, error %d, %s\n", errno, strerror(errno));
-		exit(EXIT_FAILURE);
-	}
-
-	size_t index = 0;
-	size_t length = strftime(buffer + index, sizeof buffer, "%Y-%m-%d %H:%M:%S %Z ", &now_tm);
-
-	if (length == 0) {
-		fprintf(stderr, "Error while converting time to string, error %d, %s\n", errno,
-				strerror(errno));
-		exit(EXIT_FAILURE);
-	}
-
-	index += length;
-	length = (size_t)snprintf(buffer + index, sizeof buffer - index, "[%s] [%5d] %s", tag,
-			(int32_t)(thread_id() % 100000), prefix);
-	index += length;
-
-	length = (size_t)vsnprintf(buffer + index, sizeof buffer - index, format, args);
-	index += length;
-
-	if (index >= sizeof buffer) {
-		fprintf(stderr, "Buffer overflow while creating log message\n");
-		exit(EXIT_FAILURE);
-	}
-
-	if (error) {
-		length = (size_t)snprintf(buffer + index, sizeof buffer - index, " (error %d: %s)", errno,
-				strerror(errno));
-		index += length;
-
-		if (index >= sizeof buffer) {
-			fprintf(stderr, "Buffer overflow while creating log message\n");
-			exit(EXIT_FAILURE);
-		}
-	}
-
-	if (index >= sizeof buffer) {
-		fprintf(stderr, "Buffer overflow while creating log message\n");
-		exit(EXIT_FAILURE);
-	}
-
-	buffer[index] = 0;
-	fprintf(stderr, "%s\n", buffer);
 }
 
 as_exp*

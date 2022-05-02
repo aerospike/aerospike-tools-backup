@@ -33,19 +33,20 @@
 /*
  * Defined in file_proxy_s3.cc
  */
-off_t s3_get_file_size(const char* bucket, const char* key);
-bool s3_delete_object(const char* bucket, const char* key);
-bool s3_delete_directory(const char* bucket, const char* prefix);
+extern void file_proxy_s3_shutdown();
 
-bool s3_prepare_output_file(const backup_config_t* conf, const char* bucket,
-		const char* key);
+extern off_t s3_get_file_size(const char* bucket, const char* key);
+extern bool s3_delete_object(const char* bucket, const char* key);
+extern bool s3_delete_directory(const char* bucket, const char* prefix);
+
+extern bool s3_prepare_output_file(const backup_config_t* conf,
+		const char* bucket, const char* key);
 extern bool s3_scan_directory(const backup_config_t* conf,
 		const backup_status_t* status, backup_state_t* backup_state,
 		const char* bucket, const char* key);
 extern bool s3_get_backup_files(const char* bucket, const char* key,
 		as_vector* file_vec);
 
-extern void file_proxy_s3_shutdown();
 extern int file_proxy_s3_write_init(file_proxy_t*, const char* bucket, const char* key,
 		uint64_t max_file_size);
 extern int file_proxy_s3_read_init(file_proxy_t*, const char* bucket, const char* key);

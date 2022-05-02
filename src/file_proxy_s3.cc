@@ -21,14 +21,16 @@
 //
 
 #include <condition_variable>
+#include <cstdarg>
 #include <cstdio>
-#include <memory>
 #include <deque>
+#include <memory>
 
 #pragma GCC diagnostic ignored "-Wsign-conversion"
 
 #include <aws/core/Aws.h>
 #include <aws/core/utils/HashingUtils.h>
+#include <aws/core/utils/logging/ConsoleLogSystem.h>
 #include <aws/s3/S3Client.h>
 #include <aws/s3/model/AbortMultipartUploadRequest.h>
 #include <aws/s3/model/CreateMultipartUploadRequest.h>
@@ -59,6 +61,85 @@ extern "C" {
 // forward declarations
 class GroupDownloadManager;
 
+class AsbackupLogger : public Aws::Utils::Logging::LogSystemInterface {
+private:
+	static const char* GetLogCategory(Aws::Utils::Logging::LogLevel logLevel) {
+		switch(logLevel)
+		{
+			case Aws::Utils::Logging::LogLevel::Error:
+				return "AWS ERROR";
+
+			case Aws::Utils::Logging::LogLevel::Fatal:
+				return "AWS FATAL";
+
+			case Aws::Utils::Logging::LogLevel::Warn:
+				return "AWS WARN ";
+
+			case Aws::Utils::Logging::LogLevel::Info:
+				return "AWS INFO ";
+
+			case Aws::Utils::Logging::LogLevel::Debug:
+				return "AWS DEBUG";
+
+			case Aws::Utils::Logging::LogLevel::Trace:
+				return "AWS TRACE";
+
+			default:
+				return "AWS UNKOWN";
+		}
+	}
+
+public:
+
+	AsbackupLogger(Aws::Utils::Logging::LogLevel logLevel) : m_logLevel(logLevel) {}
+
+	virtual ~AsbackupLogger() {}
+
+	/**
+	 * Gets the currently configured log level.
+	 */
+	virtual Aws::Utils::Logging::LogLevel GetLogLevel(void) const override {
+		return m_logLevel.load();
+	}
+
+	/**
+	 * Set a new log level. This has the immediate effect of changing the log output to the new level.
+	 */
+	void SetLogLevel(Aws::Utils::Logging::LogLevel logLevel) {
+		m_logLevel.store(logLevel);
+	}
+
+	void Flush() override {
+		fflush(stderr);
+	}
+
+	/*
+	 * Does a printf style output to ProcessFormattedStatement. Don't use this, it's unsafe. See LogStream
+	 */
+	virtual void Log(Aws::Utils::Logging::LogLevel logLevel,
+			const char* tag, const char* formatStr, ...) override {
+		std::va_list args;
+		va_start(args, formatStr);
+
+		Aws::StringStream ss;
+		ss << "[" << tag << "] ";
+		log_line(GetLogCategory(logLevel), ss.str().c_str(), formatStr, args, false);
+		va_end(args);
+	}
+
+	/*
+	 * Writes the stream to ProcessFormattedStatement.
+	 */
+	virtual void LogStream(Aws::Utils::Logging::LogLevel logLevel,
+			const char* tag, const Aws::OStringStream &messageStream) override {
+		Log(logLevel, tag, "%s", messageStream.str().c_str());
+		//ProcessFormattedStatement(CreateLogPrefixLine(logLevel, tag) + message_stream.str() + "\n");
+	}
+
+private:
+	std::atomic<Aws::Utils::Logging::LogLevel> m_logLevel;
+};
+
 class S3API {
 private:
 	std::once_flag init_once;
@@ -68,6 +149,8 @@ private:
 	std::string region;
 	std::string profile;
 	std::string endpoint;
+	Aws::Utils::Logging::LogLevel logLevel;
+
 	Aws::S3::S3Client* client;
 
 	// must be initialized with SetMaxAsync... methods
@@ -85,7 +168,12 @@ private:
 	static void _init_api(S3API& s3_api) {
 		inf("Initializing S3 API");
 
-		s3_api.options.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Off;
+		s3_api.options.loggingOptions.logLevel = s3_api.logLevel;
+		s3_api.options.loggingOptions.logger_create_fn = []() {
+			return Aws::MakeShared<AsbackupLogger>(
+					"AsbackupLogger",
+					Aws::Utils::Logging::LogLevel::Warn);
+		};
 		Aws::InitAPI(s3_api.options);
 
 		Aws::Client::ClientConfiguration conf;
@@ -143,7 +231,8 @@ private:
 
 public:
 
-	S3API() : initialized(false), client(nullptr), async_uploads(0) {}
+	S3API() : initialized(false), logLevel(Aws::Utils::Logging::LogLevel::Off),
+			  client(nullptr), async_uploads(0) {}
 
 	bool TryInitialize() {
 		std::call_once(init_once, _init_api, std::ref(*this));
@@ -195,6 +284,16 @@ public:
 		}
 		else {
 			this->endpoint = endpoint;
+		}
+		return *this;
+	}
+
+	S3API& SetLogLevel(Aws::Utils::Logging::LogLevel logLevel) {
+		if (IsInitialized()) {
+			err("Cannot set log level after initializing S3 API");
+		}
+		else {
+			this->logLevel = logLevel;
 		}
 		return *this;
 	}
@@ -1511,8 +1610,7 @@ public:
 
 extern "C" {
 
-void s3_set_region(const char* region);
-void s3_set_endpoint(const char* endpoint);
+void file_proxy_s3_shutdown();
 
 off_t s3_get_file_size(const char* bucket, const char* key);
 bool s3_delete_object(const char* bucket, const char* key);
@@ -1526,7 +1624,6 @@ bool s3_scan_directory(const backup_config_t* conf,
 bool s3_get_backup_files(const char* bucket, const char* key,
 		as_vector* file_vec);
 
-void file_proxy_s3_shutdown();
 extern int file_proxy_s3_write_init(file_proxy_t*, const char* bucket, const char* key,
 		uint64_t max_file_size);
 extern int file_proxy_s3_read_init(file_proxy_t*, const char* bucket, const char* key);
@@ -1559,6 +1656,41 @@ static uint64_t _calc_part_size(uint64_t max_file_size);
 //==========================================================
 // Public API.
 //
+
+bool
+s3_parse_log_level(const char* log_level_str, s3_log_level_t* log_level)
+{
+	if (strcasecmp(log_level_str, "off") == 0) {
+		*log_level = Off;
+		return true;
+	}
+	if (strcasecmp(log_level_str, "fatal") == 0) {
+		*log_level = Fatal;
+		return true;
+	}
+	if (strcasecmp(log_level_str, "error") == 0) {
+		*log_level = Error;
+		return true;
+	}
+	if (strcasecmp(log_level_str, "warn") == 0) {
+		*log_level = Warn;
+		return true;
+	}
+	if (strcasecmp(log_level_str, "info") == 0) {
+		*log_level = Info;
+		return true;
+	}
+	if (strcasecmp(log_level_str, "debug") == 0) {
+		*log_level = Debug;
+		return true;
+	}
+	if (strcasecmp(log_level_str, "trace") == 0) {
+		*log_level = Trace;
+		return true;
+	}
+
+	return false;
+}
 
 /*
  * Closes the S3 API. Must be called just before the program exits.
@@ -1597,6 +1729,41 @@ void
 s3_set_max_async_uploads(uint32_t max_async_uploads)
 {
 	g_api.SetMaxAsyncUploads(max_async_uploads);
+}
+
+void
+s3_set_log_level(s3_log_level_t log_level)
+{
+	Aws::Utils::Logging::LogLevel s3_log_level;
+
+	switch (log_level) {
+		case Off:
+			s3_log_level = Aws::Utils::Logging::LogLevel::Off;
+			break;
+		case Fatal:
+			s3_log_level = Aws::Utils::Logging::LogLevel::Fatal;
+			break;
+		case Error:
+			s3_log_level = Aws::Utils::Logging::LogLevel::Error;
+			break;
+		case Warn:
+			s3_log_level = Aws::Utils::Logging::LogLevel::Warn;
+			break;
+		case Info:
+			s3_log_level = Aws::Utils::Logging::LogLevel::Info;
+			break;
+		case Debug:
+			s3_log_level = Aws::Utils::Logging::LogLevel::Debug;
+			break;
+		case Trace:
+			s3_log_level = Aws::Utils::Logging::LogLevel::Trace;
+			break;
+		default:
+			err("Unknown log level %d", (int32_t) log_level);
+			break;
+	}
+
+	g_api.SetLogLevel(s3_log_level);
 }
 
 void

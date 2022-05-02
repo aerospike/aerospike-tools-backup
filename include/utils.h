@@ -233,6 +233,7 @@ typedef enum {
 	COMMAND_OPT_S3_MIN_PART_SIZE,
 	COMMAND_OPT_S3_MAX_ASYNC_DOWNLOADS,
 	COMMAND_OPT_S3_MAX_ASYNC_UPLOADS,
+	COMMAND_OPT_S3_LOG_LEVEL,
 	COMMAND_OPT_DISABLE_BATCH_WRITES,
 	COMMAND_OPT_MAX_ASYNC_BATCHES,
 	COMMAND_OPT_BATCH_SIZE
@@ -325,6 +326,8 @@ extern const uint8_t b64map[256];
 		} \
 	} while(0)
 
+void log_line(const char *tag, const char *prefix, const char *format,
+		va_list args, bool error);
 void _ver_fn(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
 void inf(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
 void err(const char *format, ...) __attribute__ ((format (printf, 1, 2)));

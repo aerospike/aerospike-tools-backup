@@ -150,6 +150,7 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 		{ "s3-min-part-size", required_argument, NULL, COMMAND_OPT_S3_MIN_PART_SIZE },
 		{ "s3-max-async-downloads", required_argument, NULL, COMMAND_OPT_S3_MAX_ASYNC_DOWNLOADS },
 		{ "s3-max-async-uploads", required_argument, NULL, COMMAND_OPT_S3_MAX_ASYNC_UPLOADS },
+		{ "s3-log-level", required_argument, NULL, COMMAND_OPT_S3_LOG_LEVEL },
 		{ NULL, 0, NULL, 0 }
 	};
 
@@ -157,6 +158,7 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 
 	int32_t opt;
 	int64_t tmp;
+	s3_log_level_t s3_log_level;
 
 	// Don't print error messages for the first two argument parsers
 	opterr = 0;
@@ -616,6 +618,14 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 			conf->s3_max_async_uploads = (uint32_t) tmp;
 			break;
 
+		case COMMAND_OPT_S3_LOG_LEVEL:
+			if (!s3_parse_log_level(optarg, &s3_log_level)) {
+				err("Invalid S3 log level \"%s\"", optarg);
+				return BACKUP_CONFIG_INIT_FAILURE;
+			}
+			conf->s3_log_level = s3_log_level;
+			break;
+
 		case CONFIG_FILE_OPT_FILE:
 		case CONFIG_FILE_OPT_INSTANCE:
 		case CONFIG_FILE_OPT_NO_CONFIG_FILE:
@@ -731,6 +741,7 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 
 	s3_set_max_async_downloads(conf->s3_max_async_downloads);
 	s3_set_max_async_uploads(conf->s3_max_async_uploads);
+	s3_set_log_level(conf->s3_log_level);
 
 	if (conf->estimate) {
 		if (conf->filter_exp != NULL || conf->node_list != NULL ||
@@ -765,6 +776,7 @@ backup_config_default(backup_config_t* conf)
 	conf->s3_min_part_size = 0;
 	conf->s3_max_async_downloads = S3_DEFAULT_MAX_ASYNC_DOWNLOADS;
 	conf->s3_max_async_uploads = S3_DEFAULT_MAX_ASYNC_UPLOADS;
+	conf->s3_log_level = S3_DEFAULT_LOG_LEVEL;
 
 	memset(conf->ns, 0, sizeof(as_namespace));
 	conf->no_bins = false;
@@ -924,6 +936,7 @@ backup_config_clone(backup_config_t* conf)
 	clone->s3_min_part_size = conf->s3_min_part_size;
 	clone->s3_max_async_downloads = conf->s3_max_async_downloads;
 	clone->s3_max_async_uploads = conf->s3_max_async_uploads;
+	clone->s3_log_level = conf->s3_log_level;
 	memcpy(clone->ns, conf->ns, sizeof(as_namespace));
 	clone->no_bins = conf->no_bins;
 	clone->state_file = safe_strdup(conf->state_file);
@@ -1284,7 +1297,18 @@ usage(const char *name)
 	fprintf(stderr, "                      The default is 32.\n");
 	fprintf(stderr, "      --s3-max-async-uploads <n>\n");
 	fprintf(stderr, "                      The maximum number of simultaneous upload requests from S3.\n");
-	fprintf(stderr, "                      The default is 16.\n\n");
+	fprintf(stderr, "                      The default is 16.\n");
+	fprintf(stderr, "      --s3-log-level <n>\n");
+	fprintf(stderr, "                      The log level of the AWS S3 C++ SDK. The possible levels are,\n");
+	fprintf(stderr, "                      from least to most granular:\n");
+	fprintf(stderr, "                       - Off\n");
+	fprintf(stderr, "                       - Fatal\n");
+	fprintf(stderr, "                       - Error\n");
+	fprintf(stderr, "                       - Warn\n");
+	fprintf(stderr, "                       - Info\n");
+	fprintf(stderr, "                       - Debug\n");
+	fprintf(stderr, "                       - Trace\n");
+	fprintf(stderr, "                      The default is Warn.\n\n");
 
 	fprintf(stderr, "\n\n");
 	fprintf(stderr, "Default configuration files are read from the following files in the given order:\n");
