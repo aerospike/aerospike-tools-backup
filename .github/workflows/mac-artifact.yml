@@ -127,6 +127,7 @@ jobs:
       if: steps.cache-asbackup.outputs.cache-hit != 'true'
       run: |
         make
+        mkdir -p binaries
         cp -r bin binaries/dyn_bin
         make clean
       working-directory: ${{ steps.asbackup-wd.outputs.value }}
@@ -147,6 +148,7 @@ jobs:
       if: steps.cache-asbackup.outputs.cache-hit != 'true'
       run: |
         make ZSTD_STATIC_PATH=/usr/local/lib AWS_SDK_STATIC_PATH=/usr/local/lib
+        mkdir -p binaries
         cp -r bin binaries/static_bin
         make clean
       working-directory: ${{ steps.asbackup-wd.outputs.value }}
