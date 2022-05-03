@@ -32,11 +32,6 @@ jobs:
         if_false: asbackup
     - uses: kenchan0130/actions-system-info@master
       id: system-info
-    - name: Get SHA
-      working-directory: ${{ steps.asbackup-wd.outputs.value }}
-      id: sha
-      run: |
-        echo "::set-output name=sha::$(git rev-parse head)"
     - name: install AWS requirements
       id: install-aws-requirements
       run: |
@@ -100,16 +95,6 @@ jobs:
       run: |
         sudo make install
       working-directory: zstd-${{ env.ZSTD_VERSION }}
-    - name: Cache asbackup build
-      id: cache-asbackup
-      uses: actions/cache@v2
-      env:
-        cache-name: cache-asbackup
-        cache-index: "1"
-      with:
-        path: |
-          ${{ steps.asbackup-wd.outputs.value }}/binaries
-        key: ${{ env.cache-name }}-${{ env.cache-index }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.system-info.outputs.release }}-${{ env.AWS_SDK_CPP_VERSION }}-${{ env.ZSTD_VERSION }}-${{ steps.sha.outputs.sha }}
     - name: Checkout asbackup
       # this will checkout the whole tools repo when run from aerospike-tools, but we will
       # just cd into the correct directory calculated from asbackup-wd
@@ -123,6 +108,21 @@ jobs:
       working-directory: ${{ steps.asbackup-wd.outputs.value }}
       run: |
         git describe --tags --always
+    - name: Get SHA
+      working-directory: ${{ steps.asbackup-wd.outputs.value }}
+      id: sha
+      run: |
+        echo "::set-output name=sha::$(git rev-parse head)"
+    - name: Cache asbackup build
+      id: cache-asbackup
+      uses: actions/cache@v2
+      env:
+        cache-name: cache-asbackup
+        cache-index: "1"
+      with:
+        path: |
+          ${{ steps.asbackup-wd.outputs.value }}/binaries
+        key: ${{ env.cache-name }}-${{ env.cache-index }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.system-info.outputs.release }}-${{ env.AWS_SDK_CPP_VERSION }}-${{ env.ZSTD_VERSION }}-${{ steps.sha.outputs.sha }}
     - name: Build asbackup
       if: steps.cache-asbackup.outputs.cache-hit != 'true'
       run: |
