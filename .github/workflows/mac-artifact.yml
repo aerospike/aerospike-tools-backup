@@ -104,7 +104,7 @@ jobs:
         submodules: recursive
         fetch-depth: 0 # fetch the entire commit history for all branches
     - name: Print version
-      working-directory: ${{ steps.checkout-dir.outputs.value }}
+      working-directory: ${{ steps.asbackup-wd.outputs.value }}
       run: |
         git describe --tags --always
     - name: Build asbackup
