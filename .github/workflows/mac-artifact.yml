@@ -32,6 +32,11 @@ jobs:
         if_false: asbackup
     - uses: kenchan0130/actions-system-info@master
       id: system-info
+    - name: Get SHA
+      working-directory: ${{ steps.asbackup-wd.outputs.value }}
+      id: sha
+      run: |
+        echo "::set-output name=sha::$(git rev-parse head)"
     - name: install AWS requirements
       id: install-aws-requirements
       run: |
@@ -95,10 +100,21 @@ jobs:
       run: |
         sudo make install
       working-directory: zstd-${{ env.ZSTD_VERSION }}
+    - name: Cache asbackup build
+      id: cache-asbackup
+      uses: actions/cache@v2
+      env:
+        cache-name: cache-asbackup
+        cache-index: "1"
+      with:
+        path: |
+          ${{ steps.asbackup-wd.outputs.value }}/binaries
+        key: ${{ env.cache-name }}-${{ env.cache-index }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.system-info.outputs.release }}-${{ env.AWS_SDK_CPP_VERSION }}-${{ env.ZSTD_VERSION }}-${{ steps.sha.outputs.sha }}
     - name: Checkout asbackup
       # this will checkout the whole tools repo when run from aerospike-tools, but we will
       # just cd into the correct directory calculated from asbackup-wd
       uses: actions/checkout@v2
+      if: steps.cache-asbackup.outputs.cache-hit != 'true'
       with: 
         path: ${{ steps.checkout-dir.outputs.value }}
         submodules: recursive
@@ -108,57 +124,60 @@ jobs:
       run: |
         git describe --tags --always
     - name: Build asbackup
+      if: steps.cache-asbackup.outputs.cache-hit != 'true'
       run: |
         make
-        cp -r bin dyn_bin
+        cp -r bin binaries/dyn_bin
         make clean
       working-directory: ${{ steps.asbackup-wd.outputs.value }}
     - name: Sanity test dynamic lib backup artifacts
       run: |
         ./asbackup -n test -d backupdir 2>&1 | grep "Failed to connect"
         ./asrestore -n test -d backupdir 2>&1 | grep "Failed to connect"
-      working-directory:  ${{ steps.asbackup-wd.outputs.value }}/dyn_bin
+      working-directory:  ${{ steps.asbackup-wd.outputs.value }}/binaries/dyn_bin
     - name: Uninstall AWS C++ sdk shared library
       run: |
           sudo rm /usr/local/lib/libaws-cpp-*
     - name: Install AWS C++ sdk static library
+      if: steps.cache-asbackup.outputs.cache-hit != 'true'
       run: |
         sudo make install
       working-directory: aws-sdk-cpp-${{ env.AWS_SDK_CPP_VERSION }}/build_static
     - name: Build asbackup with static link to zstd and aws-sdk-cpp
+      if: steps.cache-asbackup.outputs.cache-hit != 'true'
       run: |
         make ZSTD_STATIC_PATH=/usr/local/lib AWS_SDK_STATIC_PATH=/usr/local/lib
-        cp -r bin static_bin
+        cp -r bin binaries/static_bin
         make clean
       working-directory: ${{ steps.asbackup-wd.outputs.value }}
     - name: Sanity test static lib backup artifacts
       run: |
         ./asbackup -n test -d backupdir 2>&1 | grep "Failed to connect"
         ./asrestore -n test -d backupdir 2>&1 | grep "Failed to connect"
-      working-directory:  ${{ steps.asbackup-wd.outputs.value }}/static_bin
+      working-directory:  ${{ steps.asbackup-wd.outputs.value }}/binaries/static_bin
     - name: Upload asbackup artifact
       uses: actions/upload-artifact@v2
       with: 
         name: ${{ steps.system-info.outputs.platform }}-${{ runner.arch }}-${{ runner.os }}-${{ steps.system-info.outputs.release }}-asbackup
-        path: ${{ steps.asbackup-wd.outputs.value }}/dyn_bin/asbackup
+        path: ${{ steps.asbackup-wd.outputs.value }}/binaries/dyn_bin/asbackup
         if-no-files-found: error
     - name: Upload asrestore artifact
       uses: actions/upload-artifact@v2
       with: 
         name: ${{ steps.system-info.outputs.platform }}-${{ runner.arch }}-${{ runner.os }}-${{ steps.system-info.outputs.release }}-asrestore
-        path: ${{ steps.asbackup-wd.outputs.value }}/dyn_bin/asrestore
+        path: ${{ steps.asbackup-wd.outputs.value }}/binaries/dyn_bin/asrestore
         if-no-files-found: error
     - name: Upload static asbackup artifact
       uses: actions/upload-artifact@v2
       with: 
         name: ${{ steps.system-info.outputs.platform }}-${{ runner.arch }}-${{ runner.os }}-${{ steps.system-info.outputs.release }}-asbackup-static
-        path: ${{ steps.asbackup-wd.outputs.value }}/static_bin/asbackup
+        path: ${{ steps.asbackup-wd.outputs.value }}/binaries/static_bin/asbackup
         if-no-files-found: error
     - name: Upload static asrestore artifact
       uses: actions/upload-artifact@v2
       with: 
         name: ${{ steps.system-info.outputs.platform }}-${{ runner.arch }}-${{ runner.os }}-${{ steps.system-info.outputs.release }}-asrestore-static
-        path: ${{ steps.asbackup-wd.outputs.value }}/static_bin/asrestore
+        path: ${{ steps.asbackup-wd.outputs.value }}/binaries/static_bin/asrestore
         if-no-files-found: error
   bundle-binaries:
     needs: build
