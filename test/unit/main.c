@@ -26,10 +26,11 @@ main(void)
 	SRunner* sr;
 
 	sr = srunner_create(backup_conf_suite());
-	//srunner_add_suite(sr, backup_state_suite());
-    srunner_add_suite(sr, restore_conf_suite());
-    srunner_add_suite(sr, file_proxy_suite());
-    srunner_add_suite(sr, io_proxy_suite());
+	srunner_add_suite(sr, backup_state_suite());
+	srunner_add_suite(sr, restore_conf_suite());
+	srunner_add_suite(sr, file_proxy_suite());
+	srunner_add_suite(sr, io_proxy_suite());
+	srunner_add_suite(sr, priority_queue_suite());
 
 	srunner_set_fork_status(sr, CK_NOFORK);
 

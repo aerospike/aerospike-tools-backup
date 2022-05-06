@@ -47,21 +47,6 @@ CXXFLAGS := -std=c++14 $(DWARF) -O2 -flto -march=nocona -fno-common -fno-strict-
 		-D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_FORTIFY_SOURCE=2 -DMARCH_$(ARCH) \
 		-DTOOL_VERSION=\"$(VERSION)\"
 
-ifeq ($(EVENT_LIB),libev)
-  CFLAGS += -DAS_USE_LIBEV
-  CXXFLAGS += -DAS_USE_LIBEV
-endif
-
-ifeq ($(EVENT_LIB),libuv)
-  CFLAGS += -DAS_USE_LIBUV
-  CXXFLAGS += -DAS_USE_LIBUV
-endif
-
-ifeq ($(EVENT_LIB),libevent)
-  CFLAGS += -DAS_USE_LIBEVENT
-  CXXFLAGS += -DAS_USE_LIBEVENT
-endif
-
 LD := $(CC)
 LDFLAGS += $(CXXFLAGS)
 
@@ -80,6 +65,27 @@ TEST_CXXFLAGS := -std=c++14 $(DWARF) -g -O2 -march=nocona -fno-common -fno-stric
 		-D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_FORTIFY_SOURCE=2 -DMARCH_$(ARCH) \
 		-DTOOL_VERSION=\"$(VERSION)\"
 TEST_LDFLAGS := $(LDFLAGS) -fprofile-arcs -coverage -lcheck
+
+ifeq ($(EVENT_LIB),libev)
+  CFLAGS += -DAS_USE_LIBEV
+  CXXFLAGS += -DAS_USE_LIBEV
+  TEST_CFLAGS += -DAS_USE_LIBEV
+  TEST_CXXFLAGS += -DAS_USE_LIBEV
+endif
+
+ifeq ($(EVENT_LIB),libuv)
+  CFLAGS += -DAS_USE_LIBUV
+  CXXFLAGS += -DAS_USE_LIBUV
+  TEST_CFLAGS += -DAS_USE_LIBUV
+  TEST_CXXFLAGS += -DAS_USE_LIBUV
+endif
+
+ifeq ($(EVENT_LIB),libevent)
+  CFLAGS += -DAS_USE_LIBEVENT
+  CXXFLAGS += -DAS_USE_LIBEVENT
+  TEST_CFLAGS += -DAS_USE_LIBEVENT
+  TEST_CXXFLAGS += -DAS_USE_LIBEVENT
+endif
 
 DIR_INC := include
 DIR_SRC := src

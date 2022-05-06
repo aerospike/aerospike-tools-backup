@@ -815,6 +815,7 @@ save_backup_state:
 				// to have been created after all scans completed
 				if (backup_state_save(backup_state) != 0) {
 					err("Failed to save backup state, aborting backup");
+					backup_state = BACKUP_STATE_ABORTED;
 				}
 				else {
 					inf("Backup was interrupted, to resume, run backup with "
