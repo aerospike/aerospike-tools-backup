@@ -21,14 +21,16 @@
 //
 
 #include <condition_variable>
+#include <cstdarg>
 #include <cstdio>
-#include <memory>
 #include <deque>
+#include <memory>
 
 #pragma GCC diagnostic ignored "-Wsign-conversion"
 
 #include <aws/core/Aws.h>
 #include <aws/core/utils/HashingUtils.h>
+#include <aws/core/utils/logging/ConsoleLogSystem.h>
 #include <aws/s3/S3Client.h>
 #include <aws/s3/model/AbortMultipartUploadRequest.h>
 #include <aws/s3/model/CreateMultipartUploadRequest.h>
@@ -59,6 +61,85 @@ extern "C" {
 // forward declarations
 class GroupDownloadManager;
 
+class AsbackupLogger : public Aws::Utils::Logging::LogSystemInterface {
+private:
+	static const char* GetLogCategory(Aws::Utils::Logging::LogLevel logLevel) {
+		switch(logLevel)
+		{
+			case Aws::Utils::Logging::LogLevel::Error:
+				return "AWS ERROR";
+
+			case Aws::Utils::Logging::LogLevel::Fatal:
+				return "AWS FATAL";
+
+			case Aws::Utils::Logging::LogLevel::Warn:
+				return "AWS WARN ";
+
+			case Aws::Utils::Logging::LogLevel::Info:
+				return "AWS INFO ";
+
+			case Aws::Utils::Logging::LogLevel::Debug:
+				return "AWS DEBUG";
+
+			case Aws::Utils::Logging::LogLevel::Trace:
+				return "AWS TRACE";
+
+			default:
+				return "AWS UNKOWN";
+		}
+	}
+
+public:
+
+	AsbackupLogger(Aws::Utils::Logging::LogLevel logLevel) : m_logLevel(logLevel) {}
+
+	virtual ~AsbackupLogger() {}
+
+	/**
+	 * Gets the currently configured log level.
+	 */
+	virtual Aws::Utils::Logging::LogLevel GetLogLevel(void) const override {
+		return m_logLevel.load();
+	}
+
+	/**
+	 * Set a new log level. This has the immediate effect of changing the log output to the new level.
+	 */
+	void SetLogLevel(Aws::Utils::Logging::LogLevel logLevel) {
+		m_logLevel.store(logLevel);
+	}
+
+	void Flush() override {
+		fflush(stderr);
+	}
+
+	/*
+	 * Does a printf style output to ProcessFormattedStatement. Don't use this, it's unsafe. See LogStream
+	 */
+	virtual void Log(Aws::Utils::Logging::LogLevel logLevel,
+			const char* tag, const char* formatStr, ...) override {
+		std::va_list args;
+		va_start(args, formatStr);
+
+		Aws::StringStream ss;
+		ss << "[" << tag << "] ";
+		log_line(GetLogCategory(logLevel), ss.str().c_str(), formatStr, args, false);
+		va_end(args);
+	}
+
+	/*
+	 * Writes the stream to ProcessFormattedStatement.
+	 */
+	virtual void LogStream(Aws::Utils::Logging::LogLevel logLevel,
+			const char* tag, const Aws::OStringStream &messageStream) override {
+		Log(logLevel, tag, "%s", messageStream.str().c_str());
+		//ProcessFormattedStatement(CreateLogPrefixLine(logLevel, tag) + message_stream.str() + "\n");
+	}
+
+private:
+	std::atomic<Aws::Utils::Logging::LogLevel> m_logLevel;
+};
+
 class S3API {
 private:
 	std::once_flag init_once;
@@ -85,7 +166,12 @@ private:
 	static void _init_api(S3API& s3_api) {
 		inf("Initializing S3 API");
 
-		s3_api.options.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Off;
+		s3_api.options.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Info;
+		s3_api.options.loggingOptions.logger_create_fn = []() {
+			return Aws::MakeShared<AsbackupLogger>(
+					"AsbackupLogger",
+					Aws::Utils::Logging::LogLevel::Info);
+		};
 		Aws::InitAPI(s3_api.options);
 
 		Aws::Client::ClientConfiguration conf;
