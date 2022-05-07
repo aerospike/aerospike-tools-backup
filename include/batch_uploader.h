@@ -36,7 +36,9 @@
 #pragma GCC diagnostic warning "-Wconversion"
 #pragma GCC diagnostic warning "-Wsign-conversion"
 
+#include <priority_queue.h>
 #include <restore_config.h>
+#include <retry_strategy.h>
 #include <utils.h>
 
 
@@ -46,6 +48,15 @@
 
 // forward declare, as we can't include it in this file.
 typedef struct restore_status restore_status_t;
+
+typedef struct record_list_el {
+	as_record record;
+	bool should_retry;
+} record_list_el_t;
+
+typedef struct record_list {
+	as_vector records;
+} record_list_t;
 
 /*
  * The struct to keep track of the status of a batch upload, both for multiple
@@ -94,10 +105,17 @@ typedef struct batch_uploader {
 	// The current number of oustanding record batches.
 	uint64_t async_calls;
 
+	// Lock/condition variable pair used to access all shared resources in the
+	// batch_uploader struct.
 	pthread_mutex_t async_lock;
 	pthread_cond_t async_cond;
 
 	const restore_config_t* conf;
+
+	// The retry strategy to be used by failed transactions.
+	retry_strategy_t retry_strategy;
+	// Queue to place transactions that are delaying before retrying.
+	priority_queue_t retry_queue;
 
 	union {
 		// only one of the two will be used, depending on whether batch_enabled
@@ -121,6 +139,43 @@ typedef struct batch_uploader {
 //==========================================================
 // Public API.
 //
+
+/*
+ * Initializes a record list struct given the initial capacity of records (will
+ * resize beyond the initial capacity if necessary).
+ */
+void record_list_init(record_list_t*, uint32_t capacity);
+
+void record_list_free(record_list_t*);
+
+/*
+ * Swaps the contents of two record_list's.
+ */
+void record_list_swap(record_list_t* a, record_list_t* b);
+
+/*
+ * Returns the number of records in the record list.
+ */
+uint32_t record_list_size(record_list_t*);
+
+/*
+ * Clears the contents of a record list without freeing any of the records
+ * contained in it.
+ */
+void record_list_clear(record_list_t*);
+
+/*
+ * Inserts a record into the record list, transferring ownership of the record
+ * to the record list.
+ *
+ * Returns false if inserting the record failed for any reason.
+ */
+bool record_list_append(record_list_t*, as_record* record);
+
+/*
+ * Returns a pointer to the record_list_el struct at the given index.
+ */
+record_list_el_t* record_list_get(record_list_t*, uint32_t idx);
 
 /*
  * Initializes the batch_status_t struct to its default values.
@@ -162,7 +217,8 @@ bool batch_uploader_await(batch_uploader_t*);
  * still outstanding until this batch is able to be submitted for upload.
  *
  * Fails and returns false if any number of outstanding async calls have failed
- * for any reason at any point.
+ * for any reason at any point. If false is returned, records will not have been
+ * modified.
  */
-bool batch_uploader_submit(batch_uploader_t*, as_vector* records);
+bool batch_uploader_submit(batch_uploader_t*, record_list_t* records);
 

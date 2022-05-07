@@ -41,7 +41,7 @@ record_uploader_init(record_uploader_t* uploader,
 {
 	uploader->batch_uploader = batch_uploader;
 	uploader->batch_size = batch_size;
-	as_vector_init(&uploader->records, sizeof(as_record), batch_size);
+	record_list_init(&uploader->records, batch_size);
 
 	return 0;
 }
@@ -49,31 +49,20 @@ record_uploader_init(record_uploader_t* uploader,
 void
 record_uploader_free(record_uploader_t* uploader)
 {
-	for (uint32_t i = 0; i < uploader->records.size; i++) {
-		as_record* rec = (as_record*) as_vector_get(&uploader->records, i);
-		as_record_destroy(rec);
-	}
-
-	as_vector_destroy(&uploader->records);
+	record_list_free(&uploader->records);
 }
 
 bool
 record_uploader_put(record_uploader_t* uploader, as_record* rec)
 {
-	if (uploader->records.size == uploader->batch_size) {
+	if (record_list_size(&uploader->records) == uploader->batch_size) {
 		// upload the record batch and reset for the next batch of records
 		if (!record_uploader_flush(uploader)) {
 			return false;
 		}
 	}
 
-	as_record* rec_ptr = (as_record*) as_vector_reserve(&uploader->records);
-	if (!as_record_move(rec_ptr, rec)) {
-		err("Failed to move the contents of the as_record");
-		return false;
-	}
-
-	return true;
+	return record_list_append(&uploader->records, rec);
 }
 
 bool
@@ -84,7 +73,7 @@ record_uploader_flush(record_uploader_t* uploader)
 		return false;
 	}
 
-	as_vector_clear(&uploader->records);
+	record_list_clear(&uploader->records);
 
 	return true;
 }

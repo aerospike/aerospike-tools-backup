@@ -56,11 +56,11 @@ typedef struct record_uploader {
 	// size.
 	uint32_t batch_size;
 	// Set when batch writes should be used (must be running server 6.0 or
-	// above)..
+	// above).
 	bool use_batch_writes;
 
-	// as_vector of as_record's, used as a list of the keys/records to upload.
-	as_vector records;
+	// list of as_record's to upload.
+	record_list_t records;
 } record_uploader_t;
 
 
