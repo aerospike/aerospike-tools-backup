@@ -99,6 +99,8 @@ static void _init_key_put_policy(batch_uploader_t*);
 
 static uint64_t _queue_priority(const batch_uploader_t* uploader,
 		struct timespec* expiration_time);
+static void _queue_priority_to_timespec(const batch_uploader_t* uploader,
+		uint64_t priority, struct timespec* ts);
 static bool _queue_batch_transaction(batch_uploader_t*,
 		batch_tracker_t* tracker, uint64_t delay);
 static bool _queue_key_rec_transactions(batch_uploader_t*,
@@ -386,6 +388,17 @@ _queue_priority(const batch_uploader_t* uploader,
 	// We want highest priority transactions to be the ones that will time out
 	// the soonest, so make the priority the additive inverse of us_since_start.
 	return ~us_since_start;
+}
+
+/*
+ * Converts a queue priority value back to a timespec, populating "ts".
+ */
+static void
+_queue_priority_to_timespec(const batch_uploader_t* uploader, uint64_t priority,
+		struct timespec* ts)
+{
+	*ts = uploader->start_time;
+	timespec_add_us(ts, ~priority);
 }
 
 /*
