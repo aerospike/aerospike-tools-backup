@@ -352,6 +352,10 @@ char* dyn_sprintf(const char* format, ...) __attribute__ ((format (printf, 1, 2)
 bool better_atoi(const char *string, int64_t *val);
 bool parse_date_time(const char *string, int64_t *nanos);
 bool format_date_time(int64_t nanos, char *buffer, size_t size);
+void get_current_time(struct timespec* now);
+void timespec_add_us(struct timespec* ts, uint64_t us);
+uint64_t timespec_diff(const struct timespec* from,
+		const struct timespec* until);
 bool timespec_has_not_happened(struct timespec* ts);
 esc_res escape_space(const char *source, char *dest);
 esc_res unescape_space(const char *source, char *dest);

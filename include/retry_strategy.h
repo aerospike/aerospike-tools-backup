@@ -66,5 +66,5 @@ void retry_status_init(retry_status_t*);
  * Calculates the delay before retrying this transaction again, or -1 if the
  * transaction shouldn't retry any more and should fail.
  */
-int64_t retry_status_get_delay(retry_status_t*, const retry_strategy_t*);
+int64_t retry_status_next_delay(retry_status_t*, const retry_strategy_t*);
 

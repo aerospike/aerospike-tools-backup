@@ -724,22 +724,58 @@ format_date_time(int64_t nanos, char *buffer, size_t size)
 }
 
 /*
+ * Get the current time using the clock used for timed waits in libpthread.
+ */
+void
+get_current_time(struct timespec* now)
+{
+#ifdef __APPLE__
+	// MacOS uses gettimeofday instead of the monotonic clock for timed waits on
+	// mutexes
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	TIMEVAL_TO_TIMESPEC(&tv, now);
+#else
+	clock_gettime(CLOCK_MONOTONIC, now);
+#endif /* __APPLE__ */
+}
+
+/*
+ * Adds "us" microseconds to the timespec "ts".
+ *
+ * "us" can't be too large (> (ULONG_MAX - 999999999) / 1000), otherwise integer
+ * overflow will occur in the tv_nsec field. But this number is very large
+ * (18446744072709551), amounting to about ~584 years, so assume this won't
+ * happen.
+ */
+void
+timespec_add_us(struct timespec* ts, uint64_t us)
+{
+	ts->tv_nsec += 1000 * us;
+	ts->tv_sec += ts->tv_nsec / 1000000000;
+	ts->tv_nsec = ts->tv_nsec % 1000000000;
+}
+
+/*
+ * Returns the number of microseconds from timespec "from" until timespec
+ * "until".
+ */
+uint64_t
+timespec_diff(const struct timespec* from, const struct timespec* until)
+{
+	uint64_t n_secs = (uint64_t) (until->tv_sec - from->tv_sec);
+	uint64_t n_nsecs = (uint64_t) (until->tv_nsec - from->tv_nsec);
+	return n_secs * 1000000 + n_nsecs / 1000;
+}
+
+/*
  * returns true if the given timespec is in the future
  */
 bool
 timespec_has_not_happened(struct timespec* ts)
 {
-#ifdef __APPLE__
-	// MacOS uses gettimeofday instead of the monotonic clock for timed waits on
-	// mutexes
 	struct timespec now;
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-	TIMEVAL_TO_TIMESPEC(&tv, &now);
-#else
-	struct timespec now;
-	clock_gettime(CLOCK_MONOTONIC, &now);
-#endif /* __APPLE__ */
+	get_current_time(&now);
 
 	return now.tv_sec < ts->tv_sec ||
 		(now.tv_sec == ts->tv_sec && now.tv_nsec < ts->tv_nsec);

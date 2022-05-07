@@ -41,7 +41,7 @@ retry_status_init(retry_status_t* status)
 }
 
 int64_t
-retry_status_get_delay(retry_status_t* status, const retry_strategy_t* strategy)
+retry_status_next_delay(retry_status_t* status, const retry_strategy_t* strategy)
 {
 	if (status->attempts >= strategy->max_retries) {
 		return -1;

@@ -116,6 +116,8 @@ typedef struct batch_uploader {
 	retry_strategy_t retry_strategy;
 	// Queue to place transactions that are delaying before retrying.
 	priority_queue_t retry_queue;
+	// The clock time measured at the initialization of this batch uploader.
+	struct timespec start_time;
 
 	union {
 		// only one of the two will be used, depending on whether batch_enabled
