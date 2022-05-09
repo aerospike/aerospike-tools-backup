@@ -43,7 +43,7 @@
 typedef struct batch_tracker {
 	batch_uploader_t* uploader;
 	// the vector of records uploaded in this batch write.
-	record_list_t records;
+	as_vector records;
 	// the as_batch_records struct used in the batch write call.
 	as_batch_records* batch;
 	// ops array used to store all operations structs for a batch write call
@@ -55,13 +55,24 @@ typedef struct batch_tracker {
 } batch_tracker_t;
 
 /*
+ * Struct used to track the progress of a single async record write.
+ */
+typedef struct key_put_info {
+	// the tracker tracking the progress of the batch of records this
+	// transaction is a part of.
+	struct record_batch_tracker* tracker;
+	// set to true by the callback if the key_put failed and should be retried.
+	bool should_retry;
+} key_put_info_t;
+
+/*
  * Struct used to track the progress of async record writes when batch writes
  * aren't being used.
  */
 typedef struct record_batch_tracker {
 	batch_uploader_t* uploader;
 	// the vector of records uploaded in this batch write.
-	record_list_t records;
+	as_vector records;
 	// tracker for the current number of oustanding async aerospike_key_put_async calls
 	uint64_t outstanding_calls;
 	// set if any sub transaction failed in a retriable manner.
@@ -72,6 +83,10 @@ typedef struct record_batch_tracker {
 	// the retry_status struct that handles the retry delay logic for this
 	// transaction.
 	retry_status_t retry_status;
+
+	// list of batch_size key_put_info structs to be used by the key_put
+	// transactions, avoiding the need for dynamic memory allocation.
+	key_put_info_t key_infos[];
 } record_batch_tracker_t;
 
 typedef enum {
@@ -86,25 +101,28 @@ typedef enum {
 //
 
 static batch_tracker_t* _batch_tracker_alloc(batch_uploader_t* uploader,
-		as_batch_records* batch, as_operations* ops, record_list_t* records);
+		as_batch_records* batch, as_operations* ops, as_vector* records);
 static void _batch_tracker_destroy(batch_tracker_t*);
 
 static record_batch_tracker_t* _record_batch_tracker_alloc(
-		batch_uploader_t* uploader, record_list_t* records);
+		batch_uploader_t* uploader, as_vector* records);
 static void _record_batch_tracker_destroy(record_batch_tracker_t*);
+static void _record_batch_tracker_reset(record_batch_tracker_t* tracker);
 
 static void _init_policy(batch_uploader_t*);
 static void _init_batch_write_policy(batch_uploader_t*);
 static void _init_key_put_policy(batch_uploader_t*);
 
-static uint64_t _queue_priority(const batch_uploader_t* uploader,
+static uint64_t _queue_priority(const batch_uploader_t*,
 		struct timespec* expiration_time);
-static void _queue_priority_to_timespec(const batch_uploader_t* uploader,
-		uint64_t priority, struct timespec* ts);
+static struct timespec _queue_priority_to_timespec(const batch_uploader_t*,
+		uint64_t priority);
 static bool _queue_batch_transaction(batch_uploader_t*,
 		batch_tracker_t* tracker, uint64_t delay);
 static bool _queue_key_rec_transactions(batch_uploader_t*,
 		record_batch_tracker_t* tracker, uint64_t delay);
+static struct timespec _queue_lowest_timeout(const batch_uploader_t*);
+static bool _queue_submit_if_timeout(batch_uploader_t*);
 
 static write_result_t _categorize_write_result(as_error* ae,
 		const restore_config_t* conf);
@@ -118,70 +136,16 @@ static void _batch_submit_callback(as_error* ae, as_batch_records* records,
 		void* udata, as_event_loop*);
 static bool _do_batch_write(batch_uploader_t* uploader,
 		batch_tracker_t* tracker);
-static bool _submit_batch(batch_uploader_t*, record_list_t* records);
+static bool _submit_batch(batch_uploader_t*, as_vector* records);
 static void _key_put_submit_callback(as_error* ae, void* udata, as_event_loop*);
 static void _do_key_recs_write(batch_uploader_t* uploader,
 		record_batch_tracker_t* tracker);
-static bool _submit_key_recs(batch_uploader_t*, record_list_t* records);
+static bool _submit_key_recs(batch_uploader_t*, as_vector* records);
 
 
 //==========================================================
 // Public API.
 //
-
-void
-record_list_init(record_list_t* record_list, uint32_t capacity)
-{
-	as_vector_init(&record_list->records, sizeof(record_list_el_t), capacity);
-}
-
-void
-record_list_free(record_list_t* record_list)
-{
-	for (uint32_t i = 0; i < record_list->records.size; i++) {
-		as_record* rec = (as_record*) as_vector_get(&record_list->records, i);
-		as_key_destroy(&rec->key);
-		as_record_destroy(rec);
-	}
-
-	as_vector_destroy(&record_list->records);
-}
-
-void
-record_list_swap(record_list_t* a, record_list_t* b)
-{
-	as_vector_swap(&a->records, &b->records);
-}
-
-uint32_t
-record_list_size(record_list_t* records)
-{
-	return records->records.size;
-}
-
-void
-record_list_clear(record_list_t* records)
-{
-	as_vector_clear(&records->records);
-}
-
-bool
-record_list_append(record_list_t* record_list, as_record* record)
-{
-	as_record* rec_ptr = (as_record*) as_vector_reserve(&record_list->records);
-	if (!as_record_move(rec_ptr, record)) {
-		err("Failed to move the contents of the as_record");
-		return false;
-	}
-
-	return true;
-}
-
-record_list_el_t*
-record_list_get(record_list_t* record_list, uint32_t idx)
-{
-	return (record_list_el_t*) as_vector_get(&record_list->records, idx);
-}
 
 void
 batch_status_init(batch_status_t* status)
@@ -250,7 +214,7 @@ batch_uploader_await(batch_uploader_t* uploader)
 }
 
 bool
-batch_uploader_submit(batch_uploader_t* uploader, record_list_t* records)
+batch_uploader_submit(batch_uploader_t* uploader, as_vector* records)
 {
 	if (uploader->batch_enabled) {
 		return _submit_batch(uploader, records);
@@ -267,7 +231,7 @@ batch_uploader_submit(batch_uploader_t* uploader, record_list_t* records)
 
 static batch_tracker_t*
 _batch_tracker_alloc(batch_uploader_t* uploader, as_batch_records* batch,
-		as_operations* ops, record_list_t* records)
+		as_operations* ops, as_vector* records)
 {
 	batch_tracker_t* tracker =
 		(batch_tracker_t*) cf_malloc(sizeof(batch_tracker_t));
@@ -277,8 +241,8 @@ _batch_tracker_alloc(batch_uploader_t* uploader, as_batch_records* batch,
 	retry_status_init(&tracker->retry_status);
 
 	// initialize args->records, then move the contents of records into it.
-	record_list_init(&tracker->records, record_list_size(records));
-	record_list_swap(&tracker->records, records);
+	as_vector_init(&tracker->records, records->item_size, records->size);
+	as_vector_swap(&tracker->records, records);
 
 	return tracker;
 }
@@ -286,24 +250,35 @@ _batch_tracker_alloc(batch_uploader_t* uploader, as_batch_records* batch,
 static void
 _batch_tracker_destroy(batch_tracker_t* tracker)
 {
-	record_list_free(&tracker->records);
+	as_vector_destroy(&tracker->records);
 	_free_batch_records(tracker->batch, tracker->ops);
 	cf_free(tracker);
 }
 
 static record_batch_tracker_t*
-_record_batch_tracker_alloc(batch_uploader_t* uploader, record_list_t* records)
+_record_batch_tracker_alloc(batch_uploader_t* uploader, as_vector* records)
 {
+	uint32_t n_records = records->size;
+
 	record_batch_tracker_t* tracker =
-		(record_batch_tracker_t*) cf_malloc(sizeof(record_batch_tracker_t));
+		(record_batch_tracker_t*) cf_malloc(sizeof(record_batch_tracker_t) +
+				n_records * sizeof(key_put_info_t));
 	tracker->uploader = uploader;
-	tracker->outstanding_calls = record_list_size(records);
+	tracker->outstanding_calls = n_records;
+	tracker->should_retry = false;
 	batch_status_init(&tracker->status);
 	retry_status_init(&tracker->retry_status);
 
 	// initialize args->records, then move the contents of records into it.
-	record_list_init(&tracker->records, record_list_size(records));
-	record_list_swap(&tracker->records, records);
+	as_vector_init(&tracker->records, records->item_size, n_records);
+	as_vector_swap(&tracker->records, records);
+
+	// initialize the key_put_info structs
+	for (uint32_t i = 0; i < n_records; i++) {
+		tracker->key_infos[i].tracker = tracker;
+		// initialize to true on first pass so all transactions are triggered
+		tracker->key_infos[i].should_retry = true;
+	}
 
 	return tracker;
 }
@@ -311,8 +286,18 @@ _record_batch_tracker_alloc(batch_uploader_t* uploader, record_list_t* records)
 static void
 _record_batch_tracker_destroy(record_batch_tracker_t* tracker)
 {
-	record_list_free(&tracker->records);
+	as_vector_destroy(&tracker->records);
 	cf_free(tracker);
+}
+
+/*
+ * Resets the fields of the record batch tracker before retry.
+ */
+static void
+_record_batch_tracker_reset(record_batch_tracker_t* tracker)
+{
+	as_store_bool(&tracker->should_retry, false);
+	as_store_uint64(&tracker->outstanding_calls, tracker->records.size);
 }
 
 static void
@@ -393,12 +378,12 @@ _queue_priority(const batch_uploader_t* uploader,
 /*
  * Converts a queue priority value back to a timespec, populating "ts".
  */
-static void
-_queue_priority_to_timespec(const batch_uploader_t* uploader, uint64_t priority,
-		struct timespec* ts)
+static struct timespec
+_queue_priority_to_timespec(const batch_uploader_t* uploader, uint64_t priority)
 {
-	*ts = uploader->start_time;
-	timespec_add_us(ts, ~priority);
+	struct timespec ts = uploader->start_time;
+	timespec_add_us(&ts, ~priority);
+	return ts;
 }
 
 /*
@@ -412,8 +397,16 @@ _queue_batch_transaction(batch_uploader_t* uploader, batch_tracker_t* tracker,
 	get_current_time(&exp_time);
 	timespec_add_us(&exp_time, delay);
 
-	return priority_queue_push(&uploader->retry_queue, tracker,
-			_queue_priority(uploader, &exp_time));
+	pthread_mutex_lock(&uploader->async_lock);
+	if (!priority_queue_push(&uploader->retry_queue, tracker,
+			_queue_priority(uploader, &exp_time))) {
+		pthread_mutex_unlock(&uploader->async_lock);
+		return false;
+	}
+	pthread_mutex_unlock(&uploader->async_lock);
+
+	pthread_cond_signal(&uploader->async_cond);
+	return true;
 }
 
 /*
@@ -427,8 +420,68 @@ _queue_key_rec_transactions(batch_uploader_t* uploader,
 	get_current_time(&exp_time);
 	timespec_add_us(&exp_time, delay);
 
-	return priority_queue_push(&uploader->retry_queue, tracker,
-			_queue_priority(uploader, &exp_time));
+	pthread_mutex_lock(&uploader->async_lock);
+	if (!priority_queue_push(&uploader->retry_queue, tracker,
+			_queue_priority(uploader, &exp_time))) {
+		pthread_mutex_unlock(&uploader->async_lock);
+		return false;
+	}
+	pthread_mutex_unlock(&uploader->async_lock);
+
+	pthread_cond_signal(&uploader->async_cond);
+	return true;
+}
+
+/*
+ * Returns the timeout time of the soonest-expiring queued transaction for
+ * retrying.
+ *
+ * This method has undefined behavior if the retry queue is empty.
+ */
+static struct timespec
+_queue_lowest_timeout(const batch_uploader_t* uploader)
+{
+	pq_entry_t top_entry = priority_queue_peek(&uploader->retry_queue);
+	return _queue_priority_to_timespec(uploader, top_entry.priority);
+}
+
+/*
+ * Submits a single transaction from the retry queue, if any have timed out.
+ *
+ * Returns false if an error occurred.
+ */
+static bool
+_queue_submit_if_timeout(batch_uploader_t* uploader)
+{
+	if (priority_queue_size(&uploader->retry_queue) == 0) {
+		return true;
+	}
+
+	struct timespec now;
+	get_current_time(&now);
+	uint64_t now_priority = _queue_priority(uploader, &now);
+
+	pq_entry_t pq_entry = priority_queue_peek(&uploader->retry_queue);
+	if (pq_entry.priority > now_priority) {
+		printf("retrying transaction\n");
+		priority_queue_pop(&uploader->retry_queue);
+
+		// The soonest-expiring queued transaction has timed out, execute that
+		// now.
+		if (uploader->batch_enabled) {
+			batch_tracker_t* tracker = (batch_tracker_t*) pq_entry.udata;
+			if (!_do_batch_write(uploader, tracker)) {
+				return false;
+			}
+		}
+		else {
+			record_batch_tracker_t* tracker =
+				(record_batch_tracker_t*) pq_entry.udata;
+			_do_key_recs_write(uploader, tracker);
+		}
+	}
+
+	return true;
 }
 
 /*
@@ -551,9 +604,38 @@ _free_batch_records(as_batch_records* batch, as_operations* ops)
 static void
 _await_async_calls(batch_uploader_t* uploader)
 {
+	struct timespec timeout;
+
 	pthread_mutex_lock(&uploader->async_lock);
 	while (as_load_uint64(&uploader->async_calls) != 0) {
-		safe_wait(&uploader->async_cond, &uploader->async_lock);
+		if (priority_queue_size(&uploader->retry_queue) > 0) {
+			timeout = _queue_lowest_timeout(uploader);
+
+			struct timespec n;
+			get_current_time(&n);
+			uint64_t diff = timespec_diff(&n, &timeout);
+			if (n.tv_sec > timeout.tv_sec || (n.tv_sec == timeout.tv_sec && n.tv_nsec > timeout.tv_nsec)) {
+				printf("Waiting 0s\n");
+			}
+			else {
+				printf("Waiting %f s for next timeout\n", (double) diff / 1000000.);
+			}
+		}
+		else {
+			// wait for at most one second if no transactions are queued.
+			get_current_time(&timeout);
+			timeout.tv_sec += 1lu;
+		}
+
+		int res = pthread_cond_timedwait(&uploader->async_cond,
+				&uploader->async_lock, &timeout);
+		if (res != 0 && res != ETIMEDOUT) {
+			err_code("Error while waiting for condition");
+			exit(EXIT_FAILURE);
+		}
+
+		// Try submitting a timed out transaction if one exists.
+		_queue_submit_if_timeout(uploader);
 	}
 	pthread_mutex_unlock(&uploader->async_lock);
 }
@@ -561,12 +643,40 @@ _await_async_calls(batch_uploader_t* uploader)
 static void
 _reserve_async_slot(batch_uploader_t* uploader)
 {
+	struct timespec timeout;
 	uint64_t max_async = (uint64_t) uploader->max_async;
 
 	pthread_mutex_lock(&uploader->async_lock);
-	while (as_load_uint64(&uploader->async_calls) == max_async) {
-		safe_wait(&uploader->async_cond, &uploader->async_lock);
+	if (as_load_uint64(&uploader->async_calls) == max_async) {
+
+		for (;;) {
+			if (priority_queue_size(&uploader->retry_queue) > 0) {
+				timeout = _queue_lowest_timeout(uploader);
+			}
+			else {
+				// wait for at most one second if no transactions are queued.
+				get_current_time(&timeout);
+				timeout.tv_sec += 1lu;
+			}
+
+			int res = pthread_cond_timedwait(&uploader->async_cond,
+					&uploader->async_lock, &timeout);
+			if (res != 0 && res != ETIMEDOUT) {
+				err_code("Error while waiting for condition");
+				exit(EXIT_FAILURE);
+			}
+
+			if (as_load_uint64(&uploader->async_calls) != max_async) {
+				break;
+			}
+
+			// Try submitting a timed out transaction if one exists.
+			_queue_submit_if_timeout(uploader);
+		}
 	}
+
+	// Try submitting a timed out transaction if one exists.
+	_queue_submit_if_timeout(uploader);
 
 	uploader->async_calls++;
 	pthread_mutex_unlock(&uploader->async_lock);
@@ -590,7 +700,7 @@ _batch_submit_callback(as_error* ae, as_batch_records* batch, void* udata,
 	int64_t delay;
 	batch_tracker_t* tracker = (batch_tracker_t*) udata;
 	batch_uploader_t* uploader = tracker->uploader;
-	record_list_t* records = &tracker->records;
+	as_vector* records = &tracker->records;
 
 	// this shouldn't have changed, but just to be safe.
 	tracker->batch = batch;
@@ -618,27 +728,28 @@ _batch_submit_callback(as_error* ae, as_batch_records* batch, void* udata,
 				}
 				// If queueing the transaction failed, fall through to free the
 				// tracker.
-				as_store_bool(&uploader->error, true);
-				status.has_error = true;
 			}
-			else if (delay == 0 && _do_batch_write(uploader, tracker)) {
-				// Don't mark the outstanding transaction as complete.
-				return;
-			}
-			else {
-				if (delay == -1) {
-					err("Max batch-write retries exceeded (%" PRIu32 ")",
-							tracker->retry_status.attempts);
+			else if (delay == 0) {
+				if (_do_batch_write(uploader, tracker)) {
+					// Don't mark the outstanding transaction as complete.
+					return;
 				}
-				as_store_bool(&uploader->error, true);
-				status.has_error = true;
+				// If queueing the transaction failed, fall through to free the
+				// tracker.
 			}
+			else { // delay == -1
+				err("Max batch-write retries exceeded (%" PRIu32 ")",
+						tracker->retry_status.attempts);
+			}
+
+			as_store_bool(&uploader->error, true);
+			status.has_error = true;
 			break;
 
 		case WRITE_RESULT_OK:
 			// go through records and accumulate record statuses into the status
 			// struct.
-			for (uint32_t i = 0; i < record_list_size(records); i++) {
+			for (uint32_t i = 0; i < records->size; i++) {
 				as_batch_write_record* batch_write =
 					(as_batch_write_record*) as_vector_get(&batch->list, i);
 				if (!_batch_status_submit(&status, batch_write->result,
@@ -680,9 +791,9 @@ _do_batch_write(batch_uploader_t* uploader, batch_tracker_t* tracker)
 }
 
 static bool
-_submit_batch(batch_uploader_t* uploader, record_list_t* records)
+_submit_batch(batch_uploader_t* uploader, as_vector* records)
 {
-	uint32_t n_records = record_list_size(records);
+	uint32_t n_records = records->size;
 
 	if (n_records == 0) {
 		return true;
@@ -701,8 +812,7 @@ _submit_batch(batch_uploader_t* uploader, record_list_t* records)
 	as_operations* ops = cf_malloc(n_records * sizeof(as_operations));
 
 	for (uint32_t i = 0; i < n_records; i++) {
-		record_list_el_t* el = record_list_get(records, i);
-		as_record* rec = &el->record;
+		as_record* rec = (as_record*) as_vector_get(records, i);
 
 		as_batch_write_record* batch_write = as_batch_write_reserve(batch);
 		batch_write->policy = &uploader->batch_write_policy;
@@ -731,7 +841,7 @@ _submit_batch(batch_uploader_t* uploader, record_list_t* records)
 
 	if (!_do_batch_write(uploader, tracker)) {
 		// put records back and destroy the one made in this method.
-		record_list_swap(&tracker->records, records);
+		as_vector_swap(&tracker->records, records);
 		_batch_tracker_destroy(tracker);
 		_release_async_slot(uploader);
 
@@ -745,9 +855,8 @@ static void
 _key_put_submit_callback(as_error* ae, void* udata, as_event_loop* event_loop)
 {
 	(void) event_loop;
-	uint64_t record_idx;
-	record_list_el_t* el;
-	record_batch_tracker_t* tracker = (record_batch_tracker_t*) udata;
+	key_put_info_t* key_info = (key_put_info_t*) udata;
+	record_batch_tracker_t* tracker = key_info->tracker;
 	batch_uploader_t* uploader = tracker->uploader;
 
 	switch (_categorize_write_result(ae, uploader->conf)) {
@@ -760,10 +869,6 @@ _key_put_submit_callback(as_error* ae, void* udata, as_event_loop* event_loop)
 			break;
 
 		case WRITE_RESULT_RETRY:
-			// FIXME pass idx to this method
-			el = record_list_get(&tracker->records, -1);
-			el->should_retry = true;
-
 			as_store_bool(&tracker->should_retry, true);
 			break;
 
@@ -774,13 +879,23 @@ _key_put_submit_callback(as_error* ae, void* udata, as_event_loop* event_loop)
 				as_store_bool(&uploader->error, true);
 				as_store_bool(&tracker->status.has_error, true);
 			}
+			else {
+				// now that the transaction has completely succeeded, we can
+				// disable retries on it.
+				as_store_bool(&key_info->should_retry, false);
+			}
 			break;
 	}
 
 	if (as_aaf_uint64(&tracker->outstanding_calls, -1lu) == 0) {
-		if (as_load_bool(&tracker->should_retry)) {
+		if (!as_load_bool(&tracker->status.has_error) &&
+				as_load_bool(&tracker->should_retry)) {
+
+			_record_batch_tracker_reset(tracker);
+
 			int64_t delay = retry_status_next_delay(&tracker->retry_status,
 					&uploader->retry_strategy);
+			printf("retrying, waiting %lld us\n", delay);
 			if (delay > 0) {
 				if (_queue_key_rec_transactions(uploader, tracker,
 							(uint64_t) delay)) {
@@ -789,22 +904,19 @@ _key_put_submit_callback(as_error* ae, void* udata, as_event_loop* event_loop)
 				}
 				// If queueing the transaction failed, fall through to free the
 				// tracker.
-				as_store_bool(&uploader->error, true);
-				as_store_bool(&tracker->status.has_error, true);
 			}
 			else if (delay == 0) {
 				_do_key_recs_write(uploader, tracker);
 				// Don't mark the outstanding transaction as complete.
 				return;
 			}
-			else {
-				if (delay == -1) {
-					err("Max key-put retries exceeded (%" PRIu32 ")",
-							tracker->retry_status.attempts);
-				}
-				as_store_bool(&uploader->error, true);
-				as_store_bool(&tracker->status.has_error, true);
+			else { // delay == -1
+				err("Max key-put retries exceeded (%" PRIu32 ")",
+						tracker->retry_status.attempts);
 			}
+
+			as_store_bool(&uploader->error, true);
+			as_store_bool(&tracker->status.has_error, true);
 		}
 
 		// since this is the last record, we can make the upload_batch callback.
@@ -829,31 +941,49 @@ _do_key_recs_write(batch_uploader_t* uploader, record_batch_tracker_t* tracker)
 	as_error ae;
 	as_status status;
 
-	record_list_t* records = &tracker->records;
-	uint32_t n_records = record_list_size(records);
+	as_vector* records = &tracker->records;
+	uint32_t n_records = records->size;
 
 	for (uint32_t i = 0; i < n_records; i++) {
-		record_list_el_t* el = record_list_get(records, i);
-		as_record* rec = &el->record;
+		as_record* rec = (as_record*) as_vector_get(records, i);
 		as_key* key = &rec->key;
 
-		status = aerospike_key_put_async(uploader->as, &ae,
-				&uploader->key_put_policy, key, rec, _key_put_submit_callback,
-				tracker, NULL, NULL);
-		if (status != AEROSPIKE_OK) {
-			err("Error while initiating aerospike_key_put_async call - "
-					"code %d: %s at %s:%d",
-					ae.code, ae.message, ae.file, ae.line);
-			as_store_bool(&uploader->error, true);
-			as_store_bool(&tracker->status.has_error, true);
+		key_put_info_t* key_info = &tracker->key_infos[i];
 
-			// Since there may have been some calls that succeeded before
-			// this one, decrement the number of outstanding calls by the
-			// number that failed to initialize (this one and all succeeding
-			// ones). If we happen to decrease this value to 0, free the
-			// tracker and release our hold on an async batch slot.
-			if (as_aaf_uint64(&tracker->outstanding_calls,
-						(uint64_t) -(n_records - i)) == 0) {
+		if (as_load_bool(&key_info->should_retry)) {
+			status = aerospike_key_put_async(uploader->as, &ae,
+					&uploader->key_put_policy, key, rec, _key_put_submit_callback,
+					key_info, NULL, NULL);
+
+			if (status != AEROSPIKE_OK) {
+				err("Error while initiating aerospike_key_put_async call - "
+						"code %d: %s at %s:%d",
+						ae.code, ae.message, ae.file, ae.line);
+				as_store_bool(&uploader->error, true);
+				as_store_bool(&tracker->status.has_error, true);
+
+				// Since there may have been some calls that succeeded before
+				// this one, decrement the number of outstanding calls by the
+				// number that failed to initialize (this one and all succeeding
+				// ones). If we happen to decrease this value to 0, free the
+				// tracker and release our hold on an async batch slot.
+				if (as_aaf_uint64(&tracker->outstanding_calls,
+							(uint64_t) -(n_records - i)) == 0) {
+					// if this is the last record, we can make the upload_batch
+					// callback.
+					if (uploader->upload_cb != NULL) {
+						uploader->upload_cb(&tracker->status, uploader->udata);
+					}
+
+					_record_batch_tracker_destroy(tracker);
+					_release_async_slot(uploader);
+				}
+
+				return;
+			}
+		}
+		else {
+			if (as_aaf_uint64(&tracker->outstanding_calls, -1lu) == 0) {
 				// if this is the last record, we can make the upload_batch
 				// callback.
 				if (uploader->upload_cb != NULL) {
@@ -863,14 +993,12 @@ _do_key_recs_write(batch_uploader_t* uploader, record_batch_tracker_t* tracker)
 				_record_batch_tracker_destroy(tracker);
 				_release_async_slot(uploader);
 			}
-
-			return;
 		}
 	}
 }
 
 static bool
-_submit_key_recs(batch_uploader_t* uploader, record_list_t* records)
+_submit_key_recs(batch_uploader_t* uploader, as_vector* records)
 {
 	_reserve_async_slot(uploader);
 

@@ -50,6 +50,12 @@ priority_queue_free(priority_queue_t* pq)
 	cf_free(pq->buffer);
 }
 
+uint64_t
+priority_queue_size(const priority_queue_t* pq)
+{
+	return pq->size;
+}
+
 bool
 priority_queue_push(priority_queue_t* pq, void* udata, uint64_t priority)
 {
@@ -122,14 +128,9 @@ priority_queue_pop(priority_queue_t* pq)
 	return el;
 }
 
-void*
-priority_queue_peek(priority_queue_t* pq)
+pq_entry_t
+priority_queue_peek(const priority_queue_t* pq)
 {
-	if (pq->size == 0) {
-		return NULL;
-	}
-	else {
-		return pq->buffer[0].udata;
-	}
+	return pq->buffer[0];
 }
 

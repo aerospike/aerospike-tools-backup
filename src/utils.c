@@ -764,8 +764,8 @@ uint64_t
 timespec_diff(const struct timespec* from, const struct timespec* until)
 {
 	uint64_t n_secs = (uint64_t) (until->tv_sec - from->tv_sec);
-	uint64_t n_nsecs = (uint64_t) (until->tv_nsec - from->tv_nsec);
-	return n_secs * 1000000 + n_nsecs / 1000;
+	uint64_t n_nsecs = (uint64_t) (1000000000 + until->tv_nsec - from->tv_nsec);
+	return n_secs * 1000000 + n_nsecs / 1000 - 1000000;
 }
 
 /*

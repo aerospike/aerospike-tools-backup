@@ -49,15 +49,6 @@
 // forward declare, as we can't include it in this file.
 typedef struct restore_status restore_status_t;
 
-typedef struct record_list_el {
-	as_record record;
-	bool should_retry;
-} record_list_el_t;
-
-typedef struct record_list {
-	as_vector records;
-} record_list_t;
-
 /*
  * The struct to keep track of the status of a batch upload, both for multiple
  * key-put uploads and for batch-write uploads.
@@ -143,43 +134,6 @@ typedef struct batch_uploader {
 //
 
 /*
- * Initializes a record list struct given the initial capacity of records (will
- * resize beyond the initial capacity if necessary).
- */
-void record_list_init(record_list_t*, uint32_t capacity);
-
-void record_list_free(record_list_t*);
-
-/*
- * Swaps the contents of two record_list's.
- */
-void record_list_swap(record_list_t* a, record_list_t* b);
-
-/*
- * Returns the number of records in the record list.
- */
-uint32_t record_list_size(record_list_t*);
-
-/*
- * Clears the contents of a record list without freeing any of the records
- * contained in it.
- */
-void record_list_clear(record_list_t*);
-
-/*
- * Inserts a record into the record list, transferring ownership of the record
- * to the record list.
- *
- * Returns false if inserting the record failed for any reason.
- */
-bool record_list_append(record_list_t*, as_record* record);
-
-/*
- * Returns a pointer to the record_list_el struct at the given index.
- */
-record_list_el_t* record_list_get(record_list_t*, uint32_t idx);
-
-/*
  * Initializes the batch_status_t struct to its default values.
  */
 void batch_status_init(batch_status_t*);
@@ -222,5 +176,5 @@ bool batch_uploader_await(batch_uploader_t*);
  * for any reason at any point. If false is returned, records will not have been
  * modified.
  */
-bool batch_uploader_submit(batch_uploader_t*, record_list_t* records);
+bool batch_uploader_submit(batch_uploader_t*, as_vector* records);
 

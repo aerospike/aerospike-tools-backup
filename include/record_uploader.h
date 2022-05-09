@@ -60,7 +60,7 @@ typedef struct record_uploader {
 	bool use_batch_writes;
 
 	// list of as_record's to upload.
-	record_list_t records;
+	as_vector records;
 } record_uploader_t;
 
 

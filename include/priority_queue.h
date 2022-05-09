@@ -63,6 +63,11 @@ int priority_queue_init(priority_queue_t*, uint64_t capacity);
 void priority_queue_free(priority_queue_t*);
 
 /*
+ * Return the number of entries in the priority queue.
+ */
+uint64_t priority_queue_size(const priority_queue_t*);
+
+/*
  * Pushes an item to the priority queue with given priority.
  *
  * Returns false if the item couldn't be pushed.
@@ -75,8 +80,10 @@ bool priority_queue_push(priority_queue_t*, void* udata, uint64_t priority);
 void* priority_queue_pop(priority_queue_t*);
 
 /*
- * Returns a pointer to the highest priority item without removing it from the
- * queue.
+ * Returns a pointer to the highest priority item entry without removing it from
+ * the queue.
+ *
+ * This method has undefined behavior if the queue is empty.
  */
-void* priority_queue_peek(priority_queue_t*);
+pq_entry_t priority_queue_peek(const priority_queue_t*);
 

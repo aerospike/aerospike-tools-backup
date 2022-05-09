@@ -55,15 +55,15 @@ do_insert_inc_prio(uint64_t capacity)
 	}
 
 	for (uint64_t i = 0; i < capacity; i++) {
-		void* peek_res = priority_queue_peek(&pq);
+		pq_entry_t peek_res = priority_queue_peek(&pq);
 		void* res = priority_queue_pop(&pq);
 
-		ck_assert_ptr_eq(res, peek_res);
+		ck_assert_ptr_eq(peek_res.udata, res);
+		ck_assert_int_eq(peek_res.priority, capacity - i - 1);
 
 		ck_assert_ptr_eq(res, (void*) (capacity - i));
 	}
 
-	ck_assert_ptr_eq(priority_queue_peek(&pq), NULL);
 	ck_assert_ptr_eq(priority_queue_pop(&pq), NULL);
 
 	priority_queue_free(&pq);
@@ -114,15 +114,15 @@ do_insert_rand_prio(uint64_t capacity)
 	}
 
 	for (uint64_t i = 0; i < capacity; i++) {
-		void* peek_res = priority_queue_peek(&pq);
+		pq_entry_t peek_res = priority_queue_peek(&pq);
 		void* res = priority_queue_pop(&pq);
 
-		ck_assert_ptr_eq(res, peek_res);
+		ck_assert_ptr_eq(peek_res.udata, res);
+		ck_assert_int_eq(peek_res.priority, capacity - i - 1);
 
 		ck_assert_ptr_eq(res, (void*) (capacity - i));
 	}
 
-	ck_assert_ptr_eq(priority_queue_peek(&pq), NULL);
 	ck_assert_ptr_eq(priority_queue_pop(&pq), NULL);
 
 	priority_queue_free(&pq);
