@@ -172,6 +172,7 @@ private:
 					"AsbackupLogger",
 					Aws::Utils::Logging::LogLevel::Info);
 		};
+		s3_api.options.httpOptions.installSigPipeHandler = true;
 		Aws::InitAPI(s3_api.options);
 
 		Aws::Client::ClientConfiguration conf;
