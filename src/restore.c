@@ -679,11 +679,6 @@ restore_thread_func(void *cont)
 		ptc.bin_vec = &args.status->bin_vec;
 		ptc.set_vec = &args.status->set_vec;
 		ptc.legacy = args.legacy;
-		/*ptc.stat_records = 0;
-		ptc.read_time = 0;
-		ptc.store_time = 0;
-		ptc.read_ema = 0;
-		ptc.store_ema = 0;*/
 
 		// restoring from a single backup file: use the provided shared file descriptor
 		if (ptc.conf->input_file != NULL) {
@@ -702,28 +697,6 @@ restore_thread_func(void *cont)
 				err("Error while opening backup file");
 				break;
 			}
-		}
-
-		as_policy_write policy;
-		as_policy_write_init(&policy);
-		policy.base.socket_timeout = ptc.conf->socket_timeout;
-		policy.base.total_timeout = ptc.conf->total_timeout > 0 ?
-			ptc.conf->total_timeout : ptc.conf->timeout;
-
-		bool flag_ignore_rec_error = false;
-
-		if (ptc.conf->replace) {
-			policy.exists = AS_POLICY_EXISTS_CREATE_OR_REPLACE;
-		} else if (ptc.conf->unique) {
-			policy.exists = AS_POLICY_EXISTS_CREATE;
-		}
-
-		if (ptc.conf->ignore_rec_error) {
-			flag_ignore_rec_error = true;
-		}
-
-		if (!ptc.conf->no_generation) {
-			policy.gen = AS_POLICY_GEN_GT;
 		}
 
 		while (true) {

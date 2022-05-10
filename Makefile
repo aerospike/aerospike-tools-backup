@@ -330,7 +330,7 @@ unit: $(DIR_TEST_BIN)/test | coverage-init
 .PHONY: integration
 integration: $(TEST_INTEGRATION_TESTS)
 
-run_%: $(TEST_BINS) FORCE
+run_%: $(TEST_BINS) FORCE | coverage-init
 	@./tests.sh $(DIR_ENV) $(patsubst run_%,$(DIR_INTEGRATION_TEST)/%.py,$@)
 
 FORCE:

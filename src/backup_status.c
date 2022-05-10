@@ -1315,12 +1315,16 @@ ns_count_callback(void *context_, const char *key, const char *value)
 	}
 
 	if (strcmp(key, "repl-factor") == 0 || strcmp(key, "effective_replication_factor") == 0) {
-		if (!better_atoi(value, &tmp) || tmp <= 0 || tmp > 100) {
+		if (!better_atoi(value, &tmp) || tmp < 0 || tmp > 100) {
 			err("Invalid replication factor %s", value);
 			return false;
 		}
 
-		context->factor = (uint32_t) tmp;
+		// It's possible for some nodes to have effective replication factor 0
+		// if they are in the cluster but not the roster. Ignore these.
+		if (tmp != 0) {
+			context->factor = (uint32_t) tmp;
+		}
 		return true;
 	}
 

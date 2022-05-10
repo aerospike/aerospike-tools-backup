@@ -218,7 +218,7 @@ bool
 batch_uploader_await(batch_uploader_t* uploader)
 {
 	_await_async_calls(uploader);
-	return as_load_bool(&uploader->error);
+	return !as_load_bool(&uploader->error);
 }
 
 bool
@@ -329,6 +329,10 @@ _init_batch_write_policy(batch_uploader_t* uploader)
 	as_policy_batch_init(batch_policy);
 	as_policy_batch_write_init(batch_write_policy);
 
+	batch_policy->base.socket_timeout = uploader->conf->socket_timeout;
+	batch_policy->base.total_timeout = uploader->conf->total_timeout > 0 ?
+		uploader->conf->total_timeout : uploader->conf->timeout;
+
 	if (conf->no_generation) {
 		batch_write_policy->gen = AS_POLICY_GEN_IGNORE;
 	}
@@ -353,6 +357,10 @@ _init_key_put_policy(batch_uploader_t* uploader)
 	const restore_config_t* conf = uploader->conf;
 	as_policy_write* policy = &uploader->key_put_policy;
 	as_policy_write_init(policy);
+
+	policy->base.socket_timeout = uploader->conf->socket_timeout;
+	policy->base.total_timeout = uploader->conf->total_timeout > 0 ?
+		uploader->conf->total_timeout : uploader->conf->timeout;
 
 	if (conf->no_generation) {
 		policy->gen = AS_POLICY_GEN_IGNORE;
@@ -409,6 +417,7 @@ _queue_batch_transaction(batch_uploader_t* uploader, batch_tracker_t* tracker,
 	if (!priority_queue_push(&uploader->retry_queue, tracker,
 			_queue_priority(uploader, &exp_time))) {
 		pthread_mutex_unlock(&uploader->async_lock);
+		err("Failed to queue batch transaction for later execution");
 		return false;
 	}
 	pthread_mutex_unlock(&uploader->async_lock);
@@ -432,6 +441,7 @@ _queue_key_rec_transactions(batch_uploader_t* uploader,
 	if (!priority_queue_push(&uploader->retry_queue, tracker,
 			_queue_priority(uploader, &exp_time))) {
 		pthread_mutex_unlock(&uploader->async_lock);
+		err("Failed to queue write transactions for later execution");
 		return false;
 	}
 	pthread_mutex_unlock(&uploader->async_lock);
