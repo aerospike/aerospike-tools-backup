@@ -119,8 +119,12 @@ typedef struct batch_uploader {
 		struct {
 			as_policy_batch batch_policy;
 			as_policy_batch_write batch_write_policy;
+			as_policy_batch_write batch_write_policy_key_send;
 		};
-		as_policy_write key_put_policy;
+		struct {
+			as_policy_write key_put_policy;
+			as_policy_write key_put_policy_key_send;
+		};
 	};
 
 	/*

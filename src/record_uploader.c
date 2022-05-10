@@ -62,8 +62,8 @@ record_uploader_put(record_uploader_t* uploader, as_record* rec)
 		}
 	}
 
-	as_vector_append(&uploader->records, rec);
-	return true;
+	as_record* rec_slot = as_vector_reserve(&uploader->records);
+	return as_record_move(rec_slot, rec);
 }
 
 bool

@@ -111,7 +111,11 @@ static void _record_batch_tracker_reset(record_batch_tracker_t* tracker);
 
 static void _init_policy(batch_uploader_t*);
 static void _init_batch_write_policy(batch_uploader_t*);
+static const as_policy_batch_write* _get_batch_write_policy(
+		const batch_uploader_t*, bool key_send);
 static void _init_key_put_policy(batch_uploader_t*);
+static const as_policy_write* _get_key_put_policy(const batch_uploader_t*,
+		bool key_send);
 
 static uint64_t _queue_priority(const batch_uploader_t*,
 		struct timespec* expiration_time);
@@ -332,6 +336,7 @@ _init_batch_write_policy(batch_uploader_t* uploader)
 	batch_policy->base.socket_timeout = uploader->conf->socket_timeout;
 	batch_policy->base.total_timeout = uploader->conf->total_timeout > 0 ?
 		uploader->conf->total_timeout : uploader->conf->timeout;
+	batch_write_policy->key = AS_POLICY_KEY_DIGEST;
 
 	if (conf->no_generation) {
 		batch_write_policy->gen = AS_POLICY_GEN_IGNORE;
@@ -349,6 +354,16 @@ _init_batch_write_policy(batch_uploader_t* uploader)
 	else {
 		batch_write_policy->exists = AS_POLICY_EXISTS_IGNORE;
 	}
+
+	uploader->batch_write_policy_key_send = *batch_write_policy;
+	uploader->batch_write_policy_key_send.key = AS_POLICY_KEY_SEND;
+}
+
+static const as_policy_batch_write*
+_get_batch_write_policy(const batch_uploader_t* uploader, bool key_send)
+{
+	return key_send ? &uploader->batch_write_policy_key_send :
+		&uploader->batch_write_policy;
 }
 
 static void
@@ -361,6 +376,7 @@ _init_key_put_policy(batch_uploader_t* uploader)
 	policy->base.socket_timeout = uploader->conf->socket_timeout;
 	policy->base.total_timeout = uploader->conf->total_timeout > 0 ?
 		uploader->conf->total_timeout : uploader->conf->timeout;
+	policy->key = AS_POLICY_KEY_DIGEST;
 
 	if (conf->no_generation) {
 		policy->gen = AS_POLICY_GEN_IGNORE;
@@ -378,6 +394,16 @@ _init_key_put_policy(batch_uploader_t* uploader)
 	else {
 		policy->exists = AS_POLICY_EXISTS_IGNORE;
 	}
+
+	uploader->key_put_policy_key_send = *policy;
+	uploader->key_put_policy_key_send.key = AS_POLICY_KEY_SEND;
+}
+
+static const as_policy_write*
+_get_key_put_policy(const batch_uploader_t* uploader, bool key_send)
+{
+	return key_send ? &uploader->key_put_policy_key_send :
+		&uploader->key_put_policy;
 }
 
 static uint64_t
@@ -823,7 +849,8 @@ _submit_batch(batch_uploader_t* uploader, as_vector* records)
 		as_record* rec = (as_record*) as_vector_get(records, i);
 
 		as_batch_write_record* batch_write = as_batch_write_reserve(batch);
-		batch_write->policy = &uploader->batch_write_policy;
+		batch_write->policy = _get_batch_write_policy(uploader,
+				rec->key.valuep != NULL);
 
 		if (!as_key_move(&batch_write->key, &rec->key)) {
 			_free_batch_records(batch, ops);
@@ -959,9 +986,12 @@ _do_key_recs_write(batch_uploader_t* uploader, record_batch_tracker_t* tracker)
 		key_put_info_t* key_info = &tracker->key_infos[i];
 
 		if (as_load_bool(&key_info->should_retry)) {
-			status = aerospike_key_put_async(uploader->as, &ae,
-					&uploader->key_put_policy, key, rec, _key_put_submit_callback,
-					key_info, NULL, NULL);
+			const as_policy_write* policy = _get_key_put_policy(uploader,
+					key->valuep != NULL);
+			printf("PUTTING: %s\n", as_val_val_tostring(key->valuep));
+
+			status = aerospike_key_put_async(uploader->as, &ae, policy, key,
+					rec, _key_put_submit_callback, key_info, NULL, NULL);
 
 			if (status != AEROSPIKE_OK) {
 				err("Error while initiating aerospike_key_put_async call - "
