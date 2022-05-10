@@ -183,7 +183,8 @@ batch_uploader_init(batch_uploader_t* uploader, aerospike* as,
 	uploader->conf = conf;
 	get_current_time(&uploader->start_time);
 	// Default to 150ms and 5 retries max
-	retry_strategy_init(&uploader->retry_strategy, 150000, 5);
+	retry_strategy_init(&uploader->retry_strategy, conf->retry_scale_factor,
+			conf->max_retries);
 	uploader->upload_cb = NULL;
 
 	_init_policy(uploader);

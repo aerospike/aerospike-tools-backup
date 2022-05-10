@@ -80,11 +80,15 @@ typedef struct restore_config {
 	bool wait;
 	// timeout for Aerospike commands.
 	uint32_t timeout;
+	// The max number of times a write transaction will be retried.
+	uint64_t max_retries;
+	// The scale factor in exponential backoff in microseconds.
+	uint64_t retry_scale_factor;
 
 	// C client socket timeout/retry policies.
 	uint32_t socket_timeout;
 	uint32_t total_timeout;
-	uint32_t max_retries;
+	// this option has been replaced by retry-scale-factor
 	uint32_t retry_delay;
 
 	// When set, don't use batch writes.

@@ -709,8 +709,6 @@ restore_thread_func(void *cont)
 		policy.base.socket_timeout = ptc.conf->socket_timeout;
 		policy.base.total_timeout = ptc.conf->total_timeout > 0 ?
 			ptc.conf->total_timeout : ptc.conf->timeout;
-		policy.base.max_retries = ptc.conf->max_retries;
-		policy.base.sleep_between_retries = ptc.conf->retry_delay;
 
 		bool flag_ignore_rec_error = false;
 

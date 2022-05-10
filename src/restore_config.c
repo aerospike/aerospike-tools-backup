@@ -130,6 +130,8 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 		{ "socket-timeout", required_argument, NULL, COMMAND_OPT_SOCKET_TIMEOUT },
 		{ "total-timeout", required_argument, NULL, COMMAND_OPT_TOTAL_TIMEOUT },
 		{ "max-retries", required_argument, NULL, COMMAND_OPT_MAX_RETRIES },
+		{ "retry-scale-factor", required_argument, NULL, COMMAND_OPT_RETRY_SCALE_FACTOR },
+		// support the `--sleep-between-retries` option until a major version bump.
 		{ "sleep-between-retries", required_argument, NULL, COMMAND_OPT_RETRY_DELAY },
 		// support the `--retry-delay` option until a major version bump.
 		{ "retry-delay", required_argument, NULL, COMMAND_OPT_RETRY_DELAY },
@@ -488,19 +490,25 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 			break;
 
 		case COMMAND_OPT_MAX_RETRIES:
-			if (!better_atoi(optarg, &tmp) || tmp < 0 || tmp > UINT32_MAX) {
+			if (!better_atoi(optarg, &tmp) || tmp < 0) {
 				err("Invalid max retries value %s", optarg);
 				return RESTORE_CONFIG_INIT_FAILURE;
 			}
-			conf->max_retries = (uint32_t) tmp;
+			conf->max_retries = (uint64_t) tmp;
 			break;
 
 		case COMMAND_OPT_RETRY_DELAY:
-			if (!better_atoi(optarg, &tmp) || tmp < 0 || tmp > UINT32_MAX) {
+			inf("Warning: `--sleep-between-retries` is deprecated and has no "
+					"effect, use `--retry-scale-factor` to configure the amount "
+					"to back off when retrying transactions.");
+			break;
+
+		case COMMAND_OPT_RETRY_SCALE_FACTOR:
+			if (!better_atoi(optarg, &tmp) || tmp < 0) {
 				err("Invalid retry delay value %s", optarg);
 				return RESTORE_CONFIG_INIT_FAILURE;
 			}
-			conf->retry_delay = (uint32_t) tmp;
+			conf->retry_scale_factor = (uint64_t) tmp;
 			break;
 
 		case COMMAND_OPT_DISABLE_BATCH_WRITES:
@@ -684,11 +692,11 @@ restore_config_default(restore_config_t *conf)
 	conf->bandwidth = 0;
 	conf->tps = 0;
 	conf->timeout = TIMEOUT;
+	conf->max_retries = 5;
+	conf->retry_scale_factor = 150000;
 
 	conf->socket_timeout = 10 * 1000;
 	conf->total_timeout = 0;
-	conf->max_retries = 0;
-	conf->retry_delay = 0;
 
 	conf->disable_batch_writes = false;
 	conf->max_async_batches = DEFAULT_MAX_ASYNC_BATCHES;
@@ -1006,10 +1014,11 @@ usage(const char *name)
 	fprintf(stderr, "                      Default is 0, i.e. no timeout.\n");
 	fprintf(stderr, "      --max-retries <n>\n");
 	fprintf(stderr, "                      Maximum number of retries before aborting the current write transaction.\n");
-	fprintf(stderr, "                      The default is 0.\n");
-	fprintf(stderr, "      --sleep-between-retries <ms>\n");
-	fprintf(stderr, "                      The amount of time to sleep between retries of write transactions.\n");
-	fprintf(stderr, "                      Default is 0.\n");
+	fprintf(stderr, "                      The default is 5.\n");
+	fprintf(stderr, "      --retry-scale-factor <us>\n");
+	fprintf(stderr, "                      The scale factor to use in the exponential backoff retry\n");
+	fprintf(stderr, "                      strategy, in microseconds.\n");
+	fprintf(stderr, "                      Default is 150000 us (150 ms).\n");
 	fprintf(stderr, "      --disable-batch-writes\n");
 	fprintf(stderr, "                      Disables the use of batch writes when restoring records to the\n");
 	fprintf(stderr, "                      Aerospike cluster. By default, the cluster is checked for batch\n");
