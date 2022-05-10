@@ -228,6 +228,10 @@ batch_uploader_await(batch_uploader_t* uploader)
 bool
 batch_uploader_submit(batch_uploader_t* uploader, as_vector* records)
 {
+	if (records->size == 0) {
+		return true;
+	}
+
 	if (uploader->batch_enabled) {
 		return _submit_batch(uploader, records);
 	}
@@ -988,7 +992,6 @@ _do_key_recs_write(batch_uploader_t* uploader, record_batch_tracker_t* tracker)
 		if (as_load_bool(&key_info->should_retry)) {
 			const as_policy_write* policy = _get_key_put_policy(uploader,
 					key->valuep != NULL);
-			printf("PUTTING: %s\n", as_val_val_tostring(key->valuep));
 
 			status = aerospike_key_put_async(uploader->as, &ae, policy, key,
 					rec, _key_put_submit_callback, key_info, NULL, NULL);
