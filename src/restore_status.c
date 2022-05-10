@@ -245,7 +245,6 @@ restore_status_init(restore_status_t* status, const restore_config_t* conf)
 	as_store_uint64(&status->inserted_records, 0);
 	as_store_uint64(&status->existed_records, 0);
 	as_store_uint64(&status->fresher_records, 0);
-	as_store_uint64(&status->backoff_count, 0);
 	as_store_uint32(&status->index_count, 0);
 	as_store_uint32(&status->skipped_indexes, 0);
 	as_store_uint32(&status->matched_indexes, 0);

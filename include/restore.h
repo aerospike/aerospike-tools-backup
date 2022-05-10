@@ -107,16 +107,6 @@ typedef struct per_thread_context {
 	bool legacy;
 	// The total number of bytes read from the current file
 	uint64_t byte_count_file;
-	// The number of records for which we have collected timing stats.
-	uint64_t stat_records;
-	// The time spent on reading records on this thread.
-	cf_clock read_time;
-	// The time spent on storing records on this thread.
-	cf_clock store_time;
-	// The exponential moving average of read latencies.
-	uint32_t read_ema;
-	// The exponential moving average of store latencies.
-	uint32_t store_ema;
 } per_thread_context_t;
 
 /*

@@ -698,6 +698,77 @@ restore_config_default(restore_config_t *conf)
 	conf->tls_name = NULL;
 }
 
+void
+restore_config_destroy(restore_config_t *conf)
+{
+	if (conf->host != NULL) {
+		cf_free(conf->host);
+	}
+
+	if (conf->user != NULL) {
+		cf_free(conf->user);
+	}
+
+	if (conf->password != NULL) {
+		cf_free(conf->password);
+	}
+
+	if (conf->auth_mode != NULL) {
+		cf_free(conf->auth_mode);
+	}
+
+	if (conf->s3_region != NULL) {
+		cf_free(conf->s3_region);
+	}
+
+	if (conf->s3_profile != NULL) {
+		cf_free(conf->s3_profile);
+	}
+
+	if (conf->s3_endpoint_override != NULL) {
+		cf_free(conf->s3_endpoint_override);
+	}
+
+	if (conf->nice_list != NULL) {
+		cf_free(conf->nice_list);
+	}
+
+	if (conf->ns_list != NULL) {
+		cf_free(conf->ns_list);
+	}
+
+	if (conf->directory != NULL) {
+		cf_free(conf->directory);
+	}
+
+	if (conf->input_file != NULL) {
+		cf_free(conf->input_file);
+	}
+
+	if (conf->machine != NULL) {
+		cf_free(conf->machine);
+	}
+
+	if (conf->bin_list != NULL) {
+		cf_free(conf->bin_list);
+	}
+
+	if (conf->set_list != NULL) {
+		cf_free(conf->set_list);
+	}
+
+	if (conf->pkey != NULL) {
+		encryption_key_free(conf->pkey);
+		cf_free(conf->pkey);
+	}
+
+	if (conf->tls_name != NULL) {
+		cf_free(conf->tls_name);
+	}
+
+	tls_config_destroy(&conf->tls);
+}
+
 bool
 restore_config_parse_list(const char *which, size_t size, char *list, as_vector *vec)
 {

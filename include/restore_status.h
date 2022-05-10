@@ -95,8 +95,6 @@ typedef struct restore_status {
 	// The number of records dropped because the database already contained the
 	// records with a higher generation count.
 	uint64_t fresher_records;
-	// How often we backed off due to server overload.
-	uint64_t backoff_count;
 	// The current limit for total_bytes for throttling. This is periodically
 	// increased by the counter thread to raise the limit according to the
 	// bandwidth limit.

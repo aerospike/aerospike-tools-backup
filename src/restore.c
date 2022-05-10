@@ -44,6 +44,7 @@ static restore_status_t* g_status;
 static bool has_stopped(void);
 static void stop(void);
 static int update_file_pos(per_thread_context_t* ptc);
+static int update_shared_file_pos(per_thread_context_t* ptc);
 static bool close_file(io_read_proxy_t *fd);
 static bool open_file(const char *file_path, as_vector *ns_vec, io_read_proxy_t *fd,
 		bool *legacy, uint32_t *line_no, bool *first_file, off_t *size,
@@ -62,8 +63,8 @@ static bool restore_indexes(aerospike *as, as_vector *index_vec, as_vector *set_
 static bool restore_udf(aerospike *as, udf_param *udf, uint32_t timeout);
 static bool wait_udf(aerospike *as, udf_param *udf, uint32_t timeout);
 static void sig_hand(int32_t sig);
-static void print_stat(per_thread_context_t *ptc, cf_clock *prev_log,
-		uint64_t *prev_records,	cf_clock *now, cf_clock *store_time, cf_clock *read_time);
+//static void print_stat(per_thread_context_t *ptc, cf_clock *prev_log,
+//		uint64_t *prev_records,	cf_clock *now, cf_clock *store_time, cf_clock *read_time);
 
 
 //==========================================================
@@ -253,8 +254,6 @@ cleanup7:
 		}
 
 		if (thread_res != (void *)EXIT_SUCCESS) {
-			ver("Restore thread failed");
-
 			res = EXIT_FAILURE;
 		}
 	}
@@ -324,77 +323,6 @@ cleanup1:
 	return res;
 }
 
-void
-restore_config_destroy(restore_config_t *conf)
-{
-	if (conf->host != NULL) {
-		cf_free(conf->host);
-	}
-
-	if (conf->user != NULL) {
-		cf_free(conf->user);
-	}
-
-	if (conf->password != NULL) {
-		cf_free(conf->password);
-	}
-
-	if (conf->auth_mode != NULL) {
-		cf_free(conf->auth_mode);
-	}
-
-	if (conf->s3_region != NULL) {
-		cf_free(conf->s3_region);
-	}
-
-	if (conf->s3_profile != NULL) {
-		cf_free(conf->s3_profile);
-	}
-
-	if (conf->s3_endpoint_override != NULL) {
-		cf_free(conf->s3_endpoint_override);
-	}
-
-	if (conf->nice_list != NULL) {
-		cf_free(conf->nice_list);
-	}
-
-	if (conf->ns_list != NULL) {
-		cf_free(conf->ns_list);
-	}
-
-	if (conf->directory != NULL) {
-		cf_free(conf->directory);
-	}
-
-	if (conf->input_file != NULL) {
-		cf_free(conf->input_file);
-	}
-
-	if (conf->machine != NULL) {
-		cf_free(conf->machine);
-	}
-
-	if (conf->bin_list != NULL) {
-		cf_free(conf->bin_list);
-	}
-
-	if (conf->set_list != NULL) {
-		cf_free(conf->set_list);
-	}
-
-	if (conf->pkey != NULL) {
-		encryption_key_free(conf->pkey);
-		cf_free(conf->pkey);
-	}
-
-	if (conf->tls_name != NULL) {
-		cf_free(conf->tls_name);
-	}
-
-	tls_config_destroy(&conf->tls);
-}
-
 
 //==========================================================
 // Local helpers.
@@ -434,6 +362,24 @@ update_file_pos(per_thread_context_t* ptc)
 
 	ptc->byte_count_file = (uint64_t) pos;
 	as_add_uint64(&ptc->status->total_bytes, diff);
+
+	return 0;
+}
+
+/*
+ * To be called after reading from the shared file proxy while holding the file
+ * read lock.
+ */
+static int
+update_shared_file_pos(per_thread_context_t* ptc)
+{
+	int64_t pos = io_write_proxy_bytes_written(ptc->fd);
+	if (pos < 0) {
+		err("Failed to get the file position");
+		return -1;
+	}
+
+	as_store_uint64(&ptc->status->total_bytes, (uint64_t) pos);
 
 	return 0;
 }
@@ -691,15 +637,11 @@ restore_thread_func(void *cont)
 	record_uploader_t record_uploader;
 	bool uploader_init = false;
 
-	ver("Entering restore thread");
-
 	cf_queue *job_queue = cont;
 	void *res = (void *)EXIT_FAILURE;
 
 	while (true) {
 		if (has_stopped()) {
-			ver("Restore thread detected failure");
-
 			break;
 		}
 
@@ -707,8 +649,6 @@ restore_thread_func(void *cont)
 		int32_t q_res = cf_queue_pop(job_queue, &args, CF_QUEUE_NOWAIT);
 
 		if (q_res == CF_QUEUE_EMPTY) {
-			ver("Job queue is empty");
-
 			res = (void *)EXIT_SUCCESS;
 			break;
 		}
@@ -739,16 +679,14 @@ restore_thread_func(void *cont)
 		ptc.bin_vec = &args.status->bin_vec;
 		ptc.set_vec = &args.status->set_vec;
 		ptc.legacy = args.legacy;
-		ptc.stat_records = 0;
+		/*ptc.stat_records = 0;
 		ptc.read_time = 0;
 		ptc.store_time = 0;
 		ptc.read_ema = 0;
-		ptc.store_ema = 0;
+		ptc.store_ema = 0;*/
 
 		// restoring from a single backup file: use the provided shared file descriptor
 		if (ptc.conf->input_file != NULL) {
-			ver("Using shared file descriptor");
-
 			ptc.fd = ptc.shared_fd;
 		}
 		// restoring from a directory: open the backup file with the given path
@@ -778,14 +716,8 @@ restore_thread_func(void *cont)
 
 		if (ptc.conf->replace) {
 			policy.exists = AS_POLICY_EXISTS_CREATE_OR_REPLACE;
-
-			ver("Existence policy is create or replace");
 		} else if (ptc.conf->unique) {
 			policy.exists = AS_POLICY_EXISTS_CREATE;
-
-			ver("Existence policy is create");
-		} else {
-			ver("Existence policy is default");
 		}
 
 		if (ptc.conf->ignore_rec_error) {
@@ -794,14 +726,7 @@ restore_thread_func(void *cont)
 
 		if (!ptc.conf->no_generation) {
 			policy.gen = AS_POLICY_GEN_GT;
-
-			ver("Generation policy is greater-than");
-		} else {
-			ver("Generation policy is default");
 		}
-
-		cf_clock prev_log = 0;
-		uint64_t prev_records = 0;
 
 		while (true) {
 			as_record rec;
@@ -825,11 +750,9 @@ restore_thread_func(void *cont)
 				break;
 			}
 
-			cf_clock read_start = as_load_bool(&g_verbose) ? cf_getus() : 0;
 			decoder_status res = ptc.status->decoder.parse(ptc.fd, ptc.legacy,
 					ptc.ns_vec, ptc.bin_vec, ptc.line_no, &rec,
 					ptc.conf->extra_ttl, &expired, &index, &udf);
-			cf_clock read_time = as_load_bool(&g_verbose) ? cf_getus() - read_start : 0;
 
 			// set the stop flag inside the critical section; see check above
 			if (res == DECODER_ERROR) {
@@ -837,16 +760,25 @@ restore_thread_func(void *cont)
 			}
 
 			if (ptc.conf->input_file != NULL) {
+				if (update_shared_file_pos(&ptc) < 0) {
+					err("Error while restoring backup file %s (line %u)",
+							ptc.path, *ptc.line_no);
+					stop();
+				}
+
 				safe_unlock(&ptc.status->file_read_mutex);
 			}
 			// only update the file pos in dir mode
 			else if (update_file_pos(&ptc) < 0) {
-				err("Error while restoring backup file %s (line %u)", ptc.path, *ptc.line_no);
+				err("Error while restoring backup file %s (line %u)", ptc.path,
+						*ptc.line_no);
 				stop();
 			}
 
 			if (res == DECODER_EOF) {
-				ver("End of backup file reached");
+				if (ptc.conf->input_file == NULL) {
+					ver("End of backup file reached");
+				}
 
 				break;
 			}
@@ -903,117 +835,18 @@ restore_thread_func(void *cont)
 
 				if (expired) {
 					as_incr_uint64(&ptc.status->expired_records);
+					as_record_destroy(&rec);
 				} else if (rec.bins.size == 0 || !check_set(rec.key.set, ptc.set_vec)) {
 					as_incr_uint64(&ptc.status->skipped_records);
+					as_record_destroy(&rec);
 				} else {
 					if (!record_uploader_put(&record_uploader, &rec)) {
 						stop();
 						break;
 					}
-
-					/*
-					useconds_t backoff = INITIAL_BACKOFF * 1000;
-					int32_t tries;
-
-					for (tries = 0; tries < MAX_TRIES && !restore_status_has_stopped(ptc.status); ++tries) {
-						as_error ae;
-						policy.key = rec.key.valuep != NULL ? AS_POLICY_KEY_SEND :
-								AS_POLICY_KEY_DIGEST;
-						cf_clock store_start = as_load_bool(&g_verbose) ? cf_getus() : 0;
-						as_status put = aerospike_key_put(ptc.status->as, &ae, &policy, &rec.key,
-								&rec);
-						cf_clock now = as_load_bool(&g_verbose) ? cf_getus() : 0;
-						cf_clock store_time = now - store_start;
-
-						bool do_retry = false;
-
-						switch (put) {
-							// System level permanent errors. No point in 
-							// continuing. Fail immediately. The list
-							// is by no means complete, all missed cases would
-							// fall into default and go through n_retries cycle
-							// and eventually fail.
-							case AEROSPIKE_ERR_SERVER_FULL:
-							case AEROSPIKE_ROLE_VIOLATION:
-								err("Error while storing record - code %d: %s at %s:%d",
-										ae.code, ae.message, ae.file, ae.line);
-								stop();
-								break;
-
-							// Record specific error either ignored or restore
-							// is aborted. retry is meaningless
-							case AEROSPIKE_ERR_RECORD_TOO_BIG:
-							case AEROSPIKE_ERR_RECORD_KEY_MISMATCH:
-							case AEROSPIKE_ERR_BIN_NAME:
-							case AEROSPIKE_ERR_ALWAYS_FORBIDDEN:
-								ver("Error while storing record - code %d: %s at %s:%d",
-										ae.code, ae.message, ae.file, ae.line);
-								as_incr_uint64(&ptc.status->ignored_records);
-
-								if (! flag_ignore_rec_error) {
-									stop();
-									err("Error while storing record - code %d: %s at %s:%d", ae.code, ae.message, ae.file, ae.line);
-									err("Encountered error while restoring. Skipping retries and aborting!!");
-								}
-								break;
-
-							// Conditional error based on input config. No
-							// retries.
-							case AEROSPIKE_ERR_RECORD_GENERATION:
-								as_incr_uint64(&ptc.status->fresher_records);
-								break;
-
-							case AEROSPIKE_ERR_RECORD_EXISTS:
-								as_incr_uint64(&ptc.status->existed_records);
-								break;
-
-							case AEROSPIKE_OK:
-								print_stat(&ptc, &prev_log, &prev_records,
-										&now, &store_time, &read_time);
-								as_incr_uint64(&ptc.status->inserted_records);
-								break;
-
-							// All other cases attempt retry.
-							default: 
-
-								if (tries == MAX_TRIES - 1) {
-									err("Error while storing record - code %d: %s at %s:%d",
-											ae.code, ae.message, ae.file, ae.line);
-									err("Encountered too many errors while restoring. Aborting!!");
-									stop();
-									break;
-								}
-
-								do_retry = true;
-
-								ver("Error while storing record - code %d: %s at %s:%d",
-										ae.code, ae.message, ae.file,
-										ae.line);
-
-								
-								// DEVICE_OVERLOAD error always retry with
-								// backoff and sleep.
-								if (put == AEROSPIKE_ERR_DEVICE_OVERLOAD) {
-									usleep(backoff);
-									backoff *= 2;
-									as_incr_uint64(&ptc.status->backoff_count);
-								} else {
-									backoff = INITIAL_BACKOFF * 1000;
-									restore_status_sleep_for(ptc.status, 1);
-								}
-								break;
-
-						}
-
-						if (!do_retry) {
-							break;
-						}
-					}
-					*/
 				}
 
 				as_incr_uint64(&ptc.status->total_records);
-				//as_record_destroy(&rec);
 
 				if (ptc.conf->bandwidth > 0 && ptc.conf->tps > 0) {
 					safe_lock(&ptc.status->limit_mutex);
@@ -1033,8 +866,6 @@ restore_thread_func(void *cont)
 
 		// restoring from a single backup file: do nothing
 		if (ptc.conf->input_file != NULL) {
-			ver("Not closing shared file descriptor");
-
 			ptc.fd = NULL;
 		}
 		// restoring from a directory: close the backup file
@@ -1057,12 +888,8 @@ restore_thread_func(void *cont)
 	}
 
 	if (res != (void *)EXIT_SUCCESS) {
-		ver("Indicating failure to other threads");
-
 		stop();
 	}
-
-	ver("Leaving restore thread");
 
 	return res;
 }
@@ -1079,8 +906,6 @@ restore_thread_func(void *cont)
 static void *
 counter_thread_func(void *cont)
 {
-	ver("Entering counter thread");
-
 	counter_thread_args *args = (counter_thread_args *)cont;
 	restore_config_t *conf = args->conf;
 	restore_status_t *status = args->status;
@@ -1098,7 +923,7 @@ counter_thread_func(void *cont)
 		bool last_iter = restore_status_has_stopped(status);
 
 		cf_clock now_ms = cf_getms();
-		uint32_t ms = (uint32_t)(now_ms - prev_ms);
+		uint32_t ms = (uint32_t) (now_ms - prev_ms);
 		prev_ms = now_ms;
 
 		uint64_t now_bytes = as_load_uint64(&status->total_bytes);
@@ -1110,7 +935,7 @@ counter_thread_func(void *cont)
 		uint64_t inserted_records = as_load_uint64(&status->inserted_records);
 		uint64_t existed_records = as_load_uint64(&status->existed_records);
 		uint64_t fresher_records = as_load_uint64(&status->fresher_records);
-		uint64_t backoff_count = as_load_uint64(&status->backoff_count);
+		uint64_t retry_count = batch_uploader_retry_count(&status->batch_uploader);
 		uint32_t index_count = as_load_uint32(&status->index_count);
 		uint32_t udf_count = as_load_uint32(&status->udf_count);
 
@@ -1125,11 +950,12 @@ counter_thread_func(void *cont)
 			print_prev_ms = now_ms;
 
 			inf("%u UDF file(s), %u secondary index(es), %" PRIu64 " record(s) "
-					"(%" PRIu64 " KiB/s, %" PRIu64 " rec/s, %" PRIu64 " B/rec, backed off: "
+					"(%" PRIu64 " rec/s, %" PRIu64 " KiB/s, %" PRIu64 " B/rec, retries: "
 					"%" PRIu64 ")",
 					udf_count, index_count, now_records,
-					ms == 0 ? 0 : bytes * 1000 / 1024 / ms, ms == 0 ? 0 : records * 1000 / ms,
-					records == 0 ? 0 : bytes / records, backoff_count);
+					ms == 0 ? 0 : records * 1000 / ms,
+					ms == 0 ? 0 : bytes * 1000 / 1024 / ms,
+					records == 0 ? 0 : bytes / records, retry_count);
 
 			inf("Expired %" PRIu64 " : skipped %" PRIu64 " : err_ignored %" PRIu64 " "
 					": inserted %" PRIu64 ": failed %" PRIu64 " (existed %" PRIu64 " "
@@ -1656,35 +1482,5 @@ sig_hand(int32_t sig)
 	(void)sig;
 	err("### Restore interrupted ###");
 	stop();
-}
-
-static void
-print_stat(per_thread_context_t *ptc, cf_clock *prev_log, uint64_t *prev_records,	
-		cf_clock *now, cf_clock *store_time, cf_clock *read_time)
-{
-	ptc->read_time += *read_time;
-	ptc->store_time += *store_time;
-	ptc->read_ema = (99 * ptc->read_ema + 1 * (uint32_t)*read_time) / 100;
-	ptc->store_ema = (99 * ptc->store_ema + 1 * (uint32_t)*store_time) / 100;
-
-	++ptc->stat_records;
-
-	uint32_t time_diff = (uint32_t)((*now - *prev_log) / 1000);
-
-	if (time_diff < STAT_INTERVAL * 1000) {
-		return;
-	}
-
-	uint32_t rec_diff = (uint32_t)(ptc->stat_records - *prev_records);
-
-	ver("%" PRIu64 " per-thread record(s) (%u rec/s), "
-			"read latency: %u (%u) us, store latency: %u (%u) us",
-			ptc->stat_records,
-			*prev_records > 0 ? rec_diff * 1000 / time_diff : 1,
-			(uint32_t)(ptc->read_time / ptc->stat_records), ptc->read_ema,
-			(uint32_t)(ptc->store_time / ptc->stat_records), ptc->store_ema);
-
-	*prev_log = *now;
-	*prev_records = ptc->stat_records;
 }
 

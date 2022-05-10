@@ -178,6 +178,7 @@ batch_uploader_init(batch_uploader_t* uploader, aerospike* as,
 	uploader->max_async = conf->max_async_batches;
 	uploader->error = false;
 	uploader->batch_enabled = batch_writes_enabled;
+	uploader->retry_count = 0;
 	uploader->async_calls = 0;
 	uploader->conf = conf;
 	get_current_time(&uploader->start_time);
@@ -204,6 +205,12 @@ batch_uploader_set_callback(batch_uploader_t* uploader,
 {
 	uploader->upload_cb = cb;
 	uploader->udata = udata;
+}
+
+uint64_t
+batch_uploader_retry_count(const batch_uploader_t* uploader)
+{
+	return as_load_uint64(&uploader->retry_count);
 }
 
 bool
@@ -463,7 +470,6 @@ _queue_submit_if_timeout(batch_uploader_t* uploader)
 
 	pq_entry_t pq_entry = priority_queue_peek(&uploader->retry_queue);
 	if (pq_entry.priority > now_priority) {
-		printf("retrying transaction\n");
 		priority_queue_pop(&uploader->retry_queue);
 
 		// The soonest-expiring queued transaction has timed out, execute that
@@ -610,16 +616,6 @@ _await_async_calls(batch_uploader_t* uploader)
 	while (as_load_uint64(&uploader->async_calls) != 0) {
 		if (priority_queue_size(&uploader->retry_queue) > 0) {
 			timeout = _queue_lowest_timeout(uploader);
-
-			struct timespec n;
-			get_current_time(&n);
-			uint64_t diff = timespec_diff(&n, &timeout);
-			if (n.tv_sec > timeout.tv_sec || (n.tv_sec == timeout.tv_sec && n.tv_nsec > timeout.tv_nsec)) {
-				printf("Waiting 0s\n");
-			}
-			else {
-				printf("Waiting %f s for next timeout\n", (double) diff / 1000000.);
-			}
 		}
 		else {
 			// wait for at most one second if no transactions are queued.
@@ -718,6 +714,7 @@ _batch_submit_callback(as_error* ae, as_batch_records* batch, void* udata,
 			break;
 
 		case WRITE_RESULT_RETRY:
+			as_incr_uint64(&uploader->retry_count);
 			delay = retry_status_next_delay(&tracker->retry_status,
 					&uploader->retry_strategy);
 			if (delay > 0) {
@@ -869,6 +866,7 @@ _key_put_submit_callback(as_error* ae, void* udata, as_event_loop* event_loop)
 			break;
 
 		case WRITE_RESULT_RETRY:
+			as_incr_uint64(&uploader->retry_count);
 			as_store_bool(&tracker->should_retry, true);
 			break;
 
@@ -895,7 +893,6 @@ _key_put_submit_callback(as_error* ae, void* udata, as_event_loop* event_loop)
 
 			int64_t delay = retry_status_next_delay(&tracker->retry_status,
 					&uploader->retry_strategy);
-			printf("retrying, waiting %lld us\n", delay);
 			if (delay > 0) {
 				if (_queue_key_rec_transactions(uploader, tracker,
 							(uint64_t) delay)) {

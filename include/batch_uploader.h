@@ -93,6 +93,9 @@ typedef struct batch_uploader {
 	// Set when batch writes are available.
 	bool batch_enabled;
 
+	// The total number of retries made across all batch transactions.
+	uint64_t retry_count;
+
 	// The current number of oustanding record batches.
 	uint64_t async_calls;
 
@@ -160,6 +163,11 @@ void batch_uploader_free(batch_uploader_t*);
  */
 void batch_uploader_set_callback(batch_uploader_t*, upload_batch_callback cb,
 		void* udata);
+
+/*
+ * Returns the total number of retries made in the batch uploader.
+ */
+uint64_t batch_uploader_retry_count(const batch_uploader_t*);
 
 /*
  * Blocks until all outstanding async batch calls have completed.
