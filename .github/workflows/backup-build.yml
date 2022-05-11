@@ -12,7 +12,12 @@ jobs:
       CLIENTREPO: ${GITHUB_WORKSPACE}/client
       ASREPO: ${{ github.workspace }}/server
       AWS_SDK_STATIC_PATH: /usr/local/lib
+      EVENT_LIB: libuv
     steps:
+    - name: install libuv
+      id: install-libuv
+      run: |
+        sudo apt install -y libuv1-dev
     - name: install lcov
       id: install-lcov
       run: |
