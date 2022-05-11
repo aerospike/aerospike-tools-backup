@@ -138,6 +138,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 		{ "disable-batch-writes", no_argument, NULL, COMMAND_OPT_DISABLE_BATCH_WRITES },
 		{ "max-async-batches", required_argument, NULL, COMMAND_OPT_MAX_ASYNC_BATCHES },
 		{ "batch-size", required_argument, NULL, COMMAND_OPT_BATCH_SIZE },
+		{ "event-loops", required_argument, NULL, COMMAND_OPT_EVENT_LOOPS },
 
 		{ "s3-region", required_argument, NULL, COMMAND_OPT_S3_REGION },
 		{ "s3-profile", required_argument, NULL, COMMAND_OPT_S3_PROFILE },
@@ -531,6 +532,14 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 			conf->batch_size = (uint32_t) tmp;
 			break;
 
+		case COMMAND_OPT_EVENT_LOOPS:
+			if (!better_atoi(optarg, &tmp) || tmp < 0 || tmp > UINT32_MAX) {
+				err("Invalid event-loops value %s", optarg);
+				return RESTORE_CONFIG_INIT_FAILURE;
+			}
+			conf->event_loops = (uint32_t) tmp;
+			break;
+
 		case COMMAND_OPT_S3_REGION:
 			conf->s3_region = strdup(optarg);
 			break;
@@ -700,7 +709,8 @@ restore_config_default(restore_config_t *conf)
 
 	conf->disable_batch_writes = false;
 	conf->max_async_batches = DEFAULT_MAX_ASYNC_BATCHES;
-	conf->batch_size = DEFAULT_BATCH_SIZE;
+	conf->batch_size = BATCH_SIZE_UNDEFINED;
+	conf->event_loops = DEFAULT_EVENT_LOOPS;
 
 	memset(&conf->tls, 0, sizeof(as_config_tls));
 	conf->tls_name = NULL;
@@ -1035,7 +1045,11 @@ usage(const char *name)
 	fprintf(stderr, "      --batch-size <n>\n");
 	fprintf(stderr, "                      The max allowed number of outstanding async batch write calls\n");
 	fprintf(stderr, "                      to make to aerospike at a time.\n");
-	fprintf(stderr, "                      Default is 128.\n");
+	fprintf(stderr, "                      Default is 128 with batch writes enabled, or 16 without batch writes.\n");
+	fprintf(stderr, "      --event-loops <n>\n");
+	fprintf(stderr, "                      The number of c-client event loops to initialize for\n");
+	fprintf(stderr, "                      processing of asynchronous Aerospike transactions.\n");
+	fprintf(stderr, "                      Default is 1.\n");
 	fprintf(stderr, "      --s3-region <region>\n");
 	fprintf(stderr, "                      The S3 region that the bucket(s) exist in.\n");
 	fprintf(stderr, "      --s3-profile <profile_name>\n");

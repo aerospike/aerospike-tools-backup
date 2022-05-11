@@ -60,6 +60,10 @@
 
 #define DEFAULT_MAX_ASYNC_BATCHES 32
 #define DEFAULT_BATCH_SIZE 128
+#define DEFAULT_KEY_REC_BATCH_SIZE 16
+#define BATCH_SIZE_UNDEFINED -1u
+
+#define DEFAULT_EVENT_LOOPS 1
 
 /*
  * The global restore configuration and stats shared by all restore threads and the counter thread.
@@ -99,6 +103,8 @@ typedef struct restore_config {
 	// The batch size to use for batch uploading, or the size of groups of
 	// records to simultaneously upload.
 	uint32_t batch_size;
+	// The number of c-client event loops to use.
+	uint32_t event_loops;
 
 	// The region to use for S3.
 	char* s3_region;

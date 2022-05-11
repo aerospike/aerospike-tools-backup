@@ -54,6 +54,9 @@ typedef struct restore_status {
 
 	// Set to true when batch writes can and should be used.
 	bool batch_writes_enabled;
+	// The true batch size to use in the run, which will be set to the default
+	// if conf->batch_size is UNDEFINED.
+	uint32_t batch_size;
 
 	// The list of backup files to restore.
 	as_vector file_vec;

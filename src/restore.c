@@ -660,7 +660,7 @@ restore_thread_func(void *cont)
 
 		if (!uploader_init) {
 			if (record_uploader_init(&record_uploader,
-						&args.status->batch_uploader, args.conf->batch_size) != 0) {
+						&args.status->batch_uploader, args.status->batch_size) != 0) {
 				err("Failed to initialize record uploader");
 				break;
 			}

@@ -41,8 +41,10 @@
 // Forward Declarations.
 //
 
+static bool _init_as_config(as_config* as_conf, const restore_config_t* conf,
+		const as_config* prior_as_conf);
 static void _batch_complete_cb(batch_status_t*, void* restore_status_ptr);
-static bool set_resource_limit(const restore_config_t*,
+static bool set_resource_limit(const restore_config_t*, uint32_t batch_size,
 		bool batch_writes_enabled);
 static void add_default_tls_host(as_config *as_conf, const char* tls_name);
 
@@ -54,6 +56,11 @@ static void add_default_tls_host(as_config *as_conf, const char* tls_name);
 bool
 restore_status_init(restore_status_t* status, const restore_config_t* conf)
 {
+	// The aeropsike instance used just to determine server version and
+	// supported features.
+	aerospike* info_as;
+	as_error ae;
+
 	status->decoder = (backup_decoder_t){ text_parse };
 
 	as_vector_init(&status->file_vec, sizeof(void*), 25);
@@ -119,88 +126,24 @@ restore_status_init(restore_status_t* status, const restore_config_t* conf)
 		goto cleanup2;
 	}
 
-	as_config as_conf;
-	as_config_init(&as_conf);
-	as_conf.async_max_conns_per_node = conf->max_async_batches * conf->batch_size;
-	as_conf.conn_timeout_ms = conf->timeout;
-	as_conf.use_services_alternate = conf->use_services_alternate;
-	tls_config_clone(&as_conf.tls, &conf->tls);
-
-	if (!as_config_add_hosts(&as_conf, conf->host, (uint16_t) conf->port)) {
-		err("Invalid host(s) string %s", conf->host);
-		goto cleanup3;
+	as_config info_as_conf;
+	if (!_init_as_config(&info_as_conf, conf, NULL)) {
+		goto cleanup2;
 	}
 
-	if (conf->tls_name != NULL) {
-		add_default_tls_host(&as_conf, conf->tls_name);
-	}
-
-	if (conf->auth_mode && !as_auth_mode_from_string(&as_conf.auth_mode, conf->auth_mode)) {
-		err("Invalid authentication mode %s. Allowed values are INTERNAL / "
-				"EXTERNAL / EXTERNAL_INSECURE / PKI\n",
-				conf->auth_mode);
-		goto cleanup3;
-	}
-
-	char* password;
-	if (conf->user) {
-		if (strcmp(conf->password, DEFAULTPASSWORD) == 0) {
-			password = getpass("Enter Password: ");
-		}
-		else {
-			password = conf->password;
-		}
-
-		if (!as_config_set_user(&as_conf, conf->user, password)) {
-			printf("Invalid password for user name `%s`\n", conf->user);
-			goto cleanup3;
-		}
-	}
-
-	if (conf->tls.keyfile && conf->tls.keyfile_pw) {
-		char* keyfile_pw;
-		if (strcmp(conf->tls.keyfile_pw, DEFAULTPASSWORD) == 0) {
-			keyfile_pw = getpass("Enter TLS-Keyfile Password: ");
-		}
-		else {
-			keyfile_pw = conf->tls.keyfile_pw;
-		}
-
-		// we'll be overwriting the old keyfile_pw string
-		cf_free(as_conf.tls.keyfile_pw);
-		if (!tls_read_password(keyfile_pw, &as_conf.tls.keyfile_pw)) {
-			goto cleanup3;
-		}
-	}
-
-	status->as = cf_malloc(sizeof(aerospike));
-	if (status->as == NULL) {
-		err("Failed to malloc aerospike struct");
-		goto cleanup3;
-	}
-
-#if AS_EVENT_LIB_DEFINED
-	if (!as_event_create_loops(1 + 0 * conf->max_async_batches)) {
-		err("Failed to create %u event loops", conf->max_async_batches);
-		goto cleanup3;
-	}
-#else
-#error "Must define an event library when building"
-#endif
-
-	aerospike_init(status->as, &as_conf);
-	as_error ae;
+	info_as = (aerospike*) cf_malloc(sizeof(aerospike));
+	aerospike_init(info_as, &info_as_conf);
 
 	ver("Connecting to cluster");
 
-	if (aerospike_connect(status->as, &ae) != AEROSPIKE_OK) {
+	if (aerospike_connect(info_as, &ae) != AEROSPIKE_OK) {
 		err("Error while connecting to %s:%d - code %d: %s at %s:%d",
 				conf->host, conf->port, ae.code, ae.message, ae.file, ae.line);
-		goto cleanup4;
+		goto cleanup3;
 	}
 
-	if (get_server_version(status->as, &status->version_info) != 0) {
-		goto cleanup5;
+	if (get_server_version(info_as, &status->version_info) != 0) {
+		goto cleanup4;
 	}
 
 	ver("Connected to server version %u.%u.%u.%u",
@@ -212,25 +155,73 @@ restore_status_init(restore_status_t* status, const restore_config_t* conf)
 	if (conf->disable_batch_writes) {
 		status->batch_writes_enabled = false;
 	}
-	else if (!server_has_batch_writes(status->as, &status->version_info,
+	else if (!server_has_batch_writes(info_as, &status->version_info,
 				&status->batch_writes_enabled)) {
-		goto cleanup5;
+		goto cleanup4;
 	}
 
-	if (!set_resource_limit(conf, status->batch_writes_enabled)) {
-		goto cleanup5;
+	if (conf->batch_size == BATCH_SIZE_UNDEFINED) {
+		if (status->batch_writes_enabled) {
+			status->batch_size = DEFAULT_BATCH_SIZE;
+		}
+		else {
+			status->batch_size = DEFAULT_KEY_REC_BATCH_SIZE;
+		}
+	}
+	else {
+		status->batch_size = conf->batch_size;
+	}
+
+	if (!set_resource_limit(conf, status->batch_size, status->batch_writes_enabled)) {
+		goto cleanup4;
 	}
 
 	if (SERVER_VERSION_BEFORE(&status->version_info, 4, 9)) {
 		err("Aerospike Server version 4.9 or greater is required to run "
 				"asrestore, but version %" PRIu32 ".%" PRIu32 " is in use.",
 				status->version_info.major, status->version_info.minor);
+		goto cleanup4;
+	}
+
+	as_config as_conf;
+	if (!_init_as_config(&as_conf, conf, &info_as_conf)) {
+		goto cleanup4;
+	}
+
+	if (status->batch_writes_enabled) {
+		as_conf.async_max_conns_per_node = conf->max_async_batches;
+	}
+	else {
+		as_conf.async_max_conns_per_node = conf->max_async_batches * status->batch_size;
+	}
+
+	aerospike_close(info_as, &ae);
+	aerospike_destroy(info_as);
+
+	cf_free(info_as);
+	info_as = NULL;
+
+	status->as = cf_malloc(sizeof(aerospike));
+	aerospike_init(status->as, &as_conf);
+
+#if AS_EVENT_LIB_DEFINED
+	if (!as_event_create_loops(conf->event_loops)) {
+		err("Failed to create %d event loop(s)", conf->event_loops);
 		goto cleanup5;
+	}
+#else
+#error "Must define an event library when building"
+#endif
+
+	if (aerospike_connect(status->as, &ae) != AEROSPIKE_OK) {
+		err("Error while connecting to %s:%d - code %d: %s at %s:%d",
+				conf->host, conf->port, ae.code, ae.message, ae.file, ae.line);
+		goto cleanup6;
 	}
 
 	if (batch_uploader_init(&status->batch_uploader, status->as, conf,
 				status->batch_writes_enabled) != 0) {
-		goto cleanup5;
+		goto cleanup7;
 	}
 
 	batch_uploader_set_callback(&status->batch_uploader, _batch_complete_cb,
@@ -254,17 +245,26 @@ restore_status_init(restore_status_t* status, const restore_config_t* conf)
 
 	return true;
 
-cleanup5:
+cleanup7:
 	aerospike_close(status->as, &ae);
 
-cleanup4:
+cleanup6:
+	as_event_close_loops();
+
+cleanup5:
 	aerospike_destroy(status->as);
 	cf_free(status->as);
 
-	as_event_close_loops();
+cleanup4:
+	if (info_as != NULL) {
+		aerospike_close(info_as, &ae);
+	}
 
 cleanup3:
-	tls_config_destroy(&as_conf.tls);
+	if (info_as != NULL) {
+		aerospike_destroy(info_as);
+		cf_free(info_as);
+	}
 
 cleanup2:
 	pthread_cond_destroy(&status->limit_cond);
@@ -372,20 +372,78 @@ restore_status_sleep_for(restore_status_t* status, uint64_t n_secs)
 // Local helpers.
 //
 
+static bool
+_init_as_config(as_config* as_conf, const restore_config_t* conf,
+		const as_config* prior_as_conf)
+{
+	as_config_init(as_conf);
+	as_conf->conn_timeout_ms = conf->timeout;
+	as_conf->use_services_alternate = conf->use_services_alternate;
+	tls_config_clone(&as_conf->tls, &conf->tls);
+
+	if (!as_config_add_hosts(as_conf, conf->host, (uint16_t) conf->port)) {
+		err("Invalid host(s) string %s", conf->host);
+		goto cleanup1;
+	}
+
+	if (conf->tls_name != NULL) {
+		add_default_tls_host(as_conf, conf->tls_name);
+	}
+
+	if (conf->auth_mode && !as_auth_mode_from_string(&as_conf->auth_mode, conf->auth_mode)) {
+		err("Invalid authentication mode %s. Allowed values are INTERNAL / "
+				"EXTERNAL / EXTERNAL_INSECURE / PKI\n",
+				conf->auth_mode);
+		goto cleanup1;
+	}
+
+	char* password;
+	if (conf->user) {
+		if (strcmp(conf->password, DEFAULTPASSWORD) == 0) {
+			password = getpass("Enter Password: ");
+		}
+		else {
+			password = conf->password;
+		}
+
+		if (!as_config_set_user(as_conf, conf->user, password)) {
+			printf("Invalid password for user name `%s`\n", conf->user);
+			goto cleanup1;
+		}
+	}
+
+	if (prior_as_conf != NULL) {
+		as_conf->tls.keyfile_pw = safe_strdup(prior_as_conf->tls.keyfile_pw);
+	}
+	else if (conf->tls.keyfile && conf->tls.keyfile_pw) {
+		char* keyfile_pw;
+		if (strcmp(conf->tls.keyfile_pw, DEFAULTPASSWORD) == 0) {
+			keyfile_pw = getpass("Enter TLS-Keyfile Password: ");
+		}
+		else {
+			keyfile_pw = conf->tls.keyfile_pw;
+		}
+
+		// we'll be overwriting the old keyfile_pw string
+		cf_free(as_conf->tls.keyfile_pw);
+		if (!tls_read_password(keyfile_pw, &as_conf->tls.keyfile_pw)) {
+			goto cleanup1;
+		}
+	}
+
+	return true;
+
+cleanup1:
+	tls_config_destroy(&as_conf->tls);
+
+	return false;
+}
+
 static void
 _batch_complete_cb(batch_status_t* batch_status, void* restore_status_ptr)
 {
 	restore_status_t* status = (restore_status_t*) restore_status_ptr;
 
-	/*fprintf(stderr, "finished guuy!\n"
-			"\tignored: %llu\n"
-			"\tinserted: %llu\n"
-			"\texisted: %llu\n"
-			"\tfresher: %llu\n",
-			batch_status->ignored_records,
-			batch_status->inserted_records,
-			batch_status->existed_records,
-			batch_status->fresher_records);*/
 	as_add_uint64(&status->ignored_records,
 			as_load_uint64(&batch_status->ignored_records));
 	as_add_uint64(&status->inserted_records,
@@ -397,7 +455,7 @@ _batch_complete_cb(batch_status_t* batch_status, void* restore_status_ptr)
 }
 
 static bool
-set_resource_limit(const restore_config_t* conf, bool batch_writes_enabled)
+set_resource_limit(const restore_config_t* conf, uint32_t batch_size, bool batch_writes_enabled)
 {
 	struct rlimit l;
 	rlim_t max_open_files;
@@ -407,7 +465,7 @@ set_resource_limit(const restore_config_t* conf, bool batch_writes_enabled)
 		max_async_client_sockets = (rlim_t) conf->max_async_batches;
 	}
 	else {
-		max_async_client_sockets = (rlim_t) (conf->max_async_batches * conf->batch_size);
+		max_async_client_sockets = (rlim_t) (conf->max_async_batches * batch_size);
 	}
 
 	if (restore_config_from_cloud(conf)) {
