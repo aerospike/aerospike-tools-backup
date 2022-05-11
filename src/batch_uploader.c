@@ -929,6 +929,7 @@ _submit_batch(batch_uploader_t* uploader, as_vector* records)
 		// write the record as a series of bin-ops on the key
 		as_operations* op = &ops[i];
 		as_operations_init(op, rec->bins.size);
+		op->ttl = rec->ttl;
 		op->gen = rec->gen;
 		for (uint32_t bin_idx = 0; bin_idx < rec->bins.size; bin_idx++) {
 			as_operations_add_write(op, rec->bins.entries[bin_idx].name,
