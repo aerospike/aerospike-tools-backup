@@ -1302,29 +1302,26 @@ static bool
 ns_count_callback(void *context_, const char *key, const char *value)
 {
 	ns_count_context *context = (ns_count_context *)context_;
-	int64_t tmp;
+	int64_t repl_factor;
+	int64_t object_count;
 
-	if (strcmp(key, "objects") == 0) {
-		if (!better_atoi(value, &tmp) || tmp < 0) {
+	if (strcmp(key, "master_objects") == 0) {
+		if (!better_atoi(value, &object_count) || object_count < 0) {
 			err("Invalid object count %s", value);
 			return false;
 		}
 
-		context->count = (uint64_t) tmp;
+		context->count = (uint64_t) object_count;
 		return true;
 	}
 
-	if (strcmp(key, "repl-factor") == 0 || strcmp(key, "effective_replication_factor") == 0) {
-		if (!better_atoi(value, &tmp) || tmp < 0 || tmp > 100) {
+	if (strcmp(key, "replication-factor") == 0) {
+		if (!better_atoi(value, &repl_factor) || repl_factor < 0 || repl_factor > 100) {
 			err("Invalid replication factor %s", value);
 			return false;
 		}
 
-		// It's possible for some nodes to have effective replication factor 0
-		// if they are in the cluster but not the roster. Ignore these.
-		if (tmp != 0) {
-			context->factor = (uint32_t) tmp;
-		}
+		context->factor = (uint32_t) repl_factor;
 		return true;
 	}
 
@@ -1431,18 +1428,23 @@ get_object_count(aerospike *as, const char *namespace, as_vector* set_list,
 	char value[value_size];
 	snprintf(value, value_size, "namespace/%s", namespace);
 	inf("%-20s%-15s%-15s", "Node ID", "Objects", "Replication");
-	ns_count_context ns_context = { 0, 0 };
 
 	for (uint32_t i = 0; i < n_node_names; ++i) {
 		ver("Getting object count for node %s", (*node_names)[i]);
+		
+		ns_count_context ns_context = { -1lu, -1u };
 
 		if (!get_info(as, value, (*node_names)[i], &ns_context, ns_count_callback, true)) {
 			err("Error while getting namespace object count for node %s", (*node_names)[i]);
 			return false;
 		}
 
-		if (ns_context.factor == 0) {
-			err("Invalid namespace %s", namespace);
+		if (ns_context.count == -1lu) {
+			err("Failed to find master_objects field in namespace info result");
+			return false;
+		}
+		if (ns_context.factor == -1u) {
+			err("Failed to find replication_factor field in namespace info result");
 			return false;
 		}
 
@@ -1470,7 +1472,6 @@ get_object_count(aerospike *as, const char *namespace, as_vector* set_list,
 		*obj_count += count;
 	}
 
-	*obj_count /= ns_context.factor;
 	return true;
 }
 

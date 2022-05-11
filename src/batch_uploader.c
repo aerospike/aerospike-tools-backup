@@ -665,7 +665,7 @@ _batch_status_submit(batch_status_t* status,
 			as_incr_uint64(&status->ignored_records);
 
 			if (!conf->ignore_rec_error) {
-				err("Error while storing record");
+				err("Error while storing record - code %d", write_status);
 				return false;
 			}
 			break;
@@ -684,7 +684,7 @@ _batch_status_submit(batch_status_t* status,
 			break;
 
 		default:
-			err("Error while storing record");
+			err("Error while storing record - code %d", write_status);
 			return false;
 	}
 
