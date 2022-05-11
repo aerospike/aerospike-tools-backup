@@ -174,6 +174,18 @@ void batch_uploader_set_callback(batch_uploader_t*, upload_batch_callback cb,
 uint64_t batch_uploader_retry_count(const batch_uploader_t*);
 
 /*
+ * Returns true if an error has been encountered by the batch uploader, or
+ * batch_uploader_signal_error has been called.
+ */
+bool batch_uploader_has_error(const batch_uploader_t*);
+
+/*
+ * To be called if an error occurs, stops all uploads as soon as possible and
+ * causes all future upload attempts to immediately fail.
+ */
+void batch_uploader_signal_error(batch_uploader_t*);
+
+/*
  * Blocks until all outstanding async batch calls have completed.
  *
  * Returns false if an error occurred on any of the transactions.

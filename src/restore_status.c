@@ -241,6 +241,7 @@ restore_status_init(restore_status_t* status, const restore_config_t* conf)
 	as_store_uint32(&status->matched_indexes, 0);
 	as_store_uint32(&status->mismatched_indexes, 0);
 	as_store_uint32(&status->udf_count, 0);
+	as_store_bool(&status->finished, false);
 	as_store_bool(&status->stop, false);
 
 	return true;
@@ -325,9 +326,28 @@ restore_status_destroy(restore_status_t* status)
 }
 
 bool
+restore_status_has_finished(const restore_status_t* status)
+{
+	return as_load_bool(&status->finished);
+}
+
+void
+restore_status_finish(restore_status_t* status)
+{
+	// sets the finished variable. No need to grab a lock since condidition
+	// variables all used timed waits, so deadlock is impossible.
+	as_store_bool(&status->finished, true);
+
+	// wakes all threads waiting on the stop condition
+	pthread_cond_broadcast(&status->stop_cond);
+
+	s3_disable_request_processing();
+}
+
+bool
 restore_status_has_stopped(const restore_status_t* status)
 {
-	return as_load_uint8((uint8_t*) &status->stop);
+	return as_load_bool(&status->stop);
 }
 
 void
@@ -335,7 +355,7 @@ restore_status_stop(restore_status_t* status)
 {
 	// sets the stop variable. No need to grab a lock since condidition
 	// variables all used timed waits, so deadlock is impossible.
-	as_store_uint8((uint8_t*) &status->stop, 1);
+	as_store_bool(&status->stop, true);
 
 	// wakes all threads waiting on the stop condition
 	pthread_cond_broadcast(&status->stop_cond);
@@ -344,7 +364,8 @@ restore_status_stop(restore_status_t* status)
 }
 
 void
-restore_status_sleep_for(restore_status_t* status, uint64_t n_secs)
+restore_status_sleep_for(restore_status_t* status, uint64_t n_secs,
+		bool sleep_through_stop)
 {
 #ifdef __APPLE__
 	// MacOS uses gettimeofday instead of the monotonic clock for timed waits on
@@ -361,7 +382,9 @@ restore_status_sleep_for(restore_status_t* status, uint64_t n_secs)
 	t.tv_sec += (int64_t) n_secs;
 
 	pthread_mutex_lock(&status->stop_lock);
-	while (!restore_status_has_stopped(status) && timespec_has_not_happened(&t)) {
+	while (!restore_status_has_finished(status) &&
+			(sleep_through_stop || !restore_status_has_stopped(status)) &&
+			timespec_has_not_happened(&t)) {
 		pthread_cond_timedwait(&status->stop_cond, &status->stop_lock, &t);
 	}
 	pthread_mutex_unlock(&status->stop_lock);

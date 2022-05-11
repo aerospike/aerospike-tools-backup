@@ -115,7 +115,10 @@ typedef struct restore_status {
 	// The number of successfully stored UDF files.
 	uint32_t udf_count;
 
-	// Set when the restore has finished running.
+	// Set when the restore has finished running
+	bool finished;
+
+	// Set when the restore has encountered an error and should stop.
 	bool stop;
 
 	// Used when sleeping to ensure immediate awakening when the restore job
@@ -143,7 +146,17 @@ bool restore_status_init(restore_status_t*, const restore_config_t*);
 void restore_status_destroy(restore_status_t*);
 
 /*
- * Returns true if the program has stoppped
+ * Returns true if the program has finished.
+ */
+bool restore_status_has_finished(const restore_status_t*);
+
+/*
+ * Signals that the program has finished.
+ */
+void restore_status_finish(restore_status_t*);
+
+/*
+ * Returns true if the program has stoppped.
  */
 bool restore_status_has_stopped(const restore_status_t*);
 
@@ -153,8 +166,9 @@ bool restore_status_has_stopped(const restore_status_t*);
 void restore_status_stop(restore_status_t*);
 
 /*
- * Sleep on the stop condition, exiting from the sleep early if the program is
- * stopped
+ * Sleep on the stop condition, exiting from the sleep early when the program
+ * finishes (or if it's stopped by an error and sleep_through_stop is false).
  */
-void restore_status_sleep_for(restore_status_t* status, uint64_t n_secs);
+void restore_status_sleep_for(restore_status_t* status, uint64_t n_secs,
+		bool sleep_through_stop);
 

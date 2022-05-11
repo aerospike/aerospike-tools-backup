@@ -127,6 +127,7 @@ static bool _queue_key_rec_transactions(batch_uploader_t*,
 		record_batch_tracker_t* tracker, uint64_t delay);
 static struct timespec _queue_lowest_timeout(const batch_uploader_t*);
 static bool _queue_submit_if_timeout(batch_uploader_t*);
+static void _queue_clear(batch_uploader_t*);
 
 static write_result_t _categorize_write_result(as_error* ae,
 		const restore_config_t* conf);
@@ -219,10 +220,23 @@ batch_uploader_retry_count(const batch_uploader_t* uploader)
 }
 
 bool
+batch_uploader_has_error(const batch_uploader_t* uploader)
+{
+	return as_load_bool(&uploader->error);
+}
+
+void
+batch_uploader_signal_error(batch_uploader_t* uploader)
+{
+	as_store_bool(&uploader->error, true);
+	pthread_cond_broadcast(&uploader->async_cond);
+}
+
+bool
 batch_uploader_await(batch_uploader_t* uploader)
 {
 	_await_async_calls(uploader);
-	return !as_load_bool(&uploader->error);
+	return !batch_uploader_has_error(uploader);
 }
 
 bool
@@ -501,7 +515,8 @@ _queue_lowest_timeout(const batch_uploader_t* uploader)
 static bool
 _queue_submit_if_timeout(batch_uploader_t* uploader)
 {
-	if (priority_queue_size(&uploader->retry_queue) == 0) {
+	if (priority_queue_size(&uploader->retry_queue) == 0 ||
+			batch_uploader_has_error(uploader)) {
 		return true;
 	}
 
@@ -529,6 +544,45 @@ _queue_submit_if_timeout(batch_uploader_t* uploader)
 	}
 
 	return true;
+}
+
+/*
+ * Immediately fails all jobs in the retry queue. This method must be called
+ * while holding the async_lock.
+ */
+static void
+_queue_clear(batch_uploader_t* uploader)
+{
+	// Free all async slots taken by the transactions in the retry queue.
+	uploader->async_calls -= priority_queue_size(&uploader->retry_queue);
+
+	while (priority_queue_size(&uploader->retry_queue) > 0) {
+		if (uploader->batch_enabled) {
+			batch_tracker_t* tracker =
+				(batch_tracker_t*) priority_queue_pop(&uploader->retry_queue);
+
+			batch_status_t status;
+			batch_status_init(&status);
+			status.has_error = true;
+
+			if (uploader->upload_cb != NULL) {
+				uploader->upload_cb(&status, uploader->udata);
+			}
+
+			_batch_tracker_destroy(tracker);
+		}
+		else {
+			record_batch_tracker_t* tracker =
+				(record_batch_tracker_t*) priority_queue_pop(&uploader->retry_queue);
+			as_store_bool(&tracker->status.has_error, true);
+
+			if (uploader->upload_cb != NULL) {
+				uploader->upload_cb(&tracker->status, uploader->udata);
+			}
+
+			_record_batch_tracker_destroy(tracker);
+		}
+	}
 }
 
 /*
@@ -655,6 +709,12 @@ _await_async_calls(batch_uploader_t* uploader)
 
 	pthread_mutex_lock(&uploader->async_lock);
 	while (as_load_uint64(&uploader->async_calls) != 0) {
+		if (batch_uploader_has_error(uploader) &&
+				priority_queue_size(&uploader->retry_queue) > 0) {
+			_queue_clear(uploader);
+			continue;
+		}
+
 		if (priority_queue_size(&uploader->retry_queue) > 0) {
 			timeout = _queue_lowest_timeout(uploader);
 		}
@@ -750,12 +810,16 @@ _batch_submit_callback(as_error* ae, as_batch_records* batch, void* udata,
 			err("Error in aerospike_batch_write_async call - "
 					"code %d: %s at %s:%d",
 					ae->code, ae->message, ae->file, ae->line);
-			as_store_bool(&uploader->error, true);
+			batch_uploader_signal_error(uploader);
 			status.has_error = true;
 			break;
 
 		case WRITE_RESULT_RETRY:
 			as_incr_uint64(&uploader->retry_count);
+			if (batch_uploader_has_error(uploader)) {
+				break;
+			}
+
 			delay = retry_status_next_delay(&tracker->retry_status,
 					&uploader->retry_strategy);
 			if (delay > 0) {
@@ -780,7 +844,7 @@ _batch_submit_callback(as_error* ae, as_batch_records* batch, void* udata,
 						tracker->retry_status.attempts);
 			}
 
-			as_store_bool(&uploader->error, true);
+			batch_uploader_signal_error(uploader);
 			status.has_error = true;
 			break;
 
@@ -792,7 +856,7 @@ _batch_submit_callback(as_error* ae, as_batch_records* batch, void* udata,
 					(as_batch_write_record*) as_vector_get(&batch->list, i);
 				if (!_batch_status_submit(&status, batch_write->result,
 							uploader->conf)) {
-					as_store_bool(&uploader->error, true);
+					batch_uploader_signal_error(uploader);
 					status.has_error = true;
 				}
 			}
@@ -821,7 +885,7 @@ _do_batch_write(batch_uploader_t* uploader, batch_tracker_t* tracker)
 		err("Error while initiating aerospike_batch_write_async call - "
 				"code %d: %s at %s:%d",
 				ae.code, ae.message, ae.file, ae.line);
-		as_store_bool(&uploader->error, true);
+		batch_uploader_signal_error(uploader);
 		return false;
 	}
 
@@ -840,7 +904,7 @@ _submit_batch(batch_uploader_t* uploader, as_vector* records)
 	_reserve_async_slot(uploader);
 
 	// If we see the error flag set, abort this transaction and fail.
-	if (as_load_bool(&uploader->error)) {
+	if (batch_uploader_has_error(uploader)) {
 		_release_async_slot(uploader);
 		return false;
 	}
@@ -903,7 +967,7 @@ _key_put_submit_callback(as_error* ae, void* udata, as_event_loop* event_loop)
 			err("Error in aerospike_key_put_async call - "
 					"code %d: %s at %s:%d",
 					ae->code, ae->message, ae->file, ae->line);
-			as_store_bool(&uploader->error, true);
+			batch_uploader_signal_error(uploader);
 			as_store_bool(&tracker->status.has_error, true);
 			break;
 
@@ -916,7 +980,7 @@ _key_put_submit_callback(as_error* ae, void* udata, as_event_loop* event_loop)
 			if (!_batch_status_submit(&tracker->status,
 						ae == NULL ? AEROSPIKE_OK : ae->code,
 						uploader->conf)) {
-				as_store_bool(&uploader->error, true);
+				batch_uploader_signal_error(uploader);
 				as_store_bool(&tracker->status.has_error, true);
 			}
 			else {
@@ -929,7 +993,8 @@ _key_put_submit_callback(as_error* ae, void* udata, as_event_loop* event_loop)
 
 	if (as_aaf_uint64(&tracker->outstanding_calls, -1lu) == 0) {
 		if (!as_load_bool(&tracker->status.has_error) &&
-				as_load_bool(&tracker->should_retry)) {
+				as_load_bool(&tracker->should_retry) &&
+				!batch_uploader_has_error(uploader)) {
 
 			_record_batch_tracker_reset(tracker);
 
@@ -954,7 +1019,7 @@ _key_put_submit_callback(as_error* ae, void* udata, as_event_loop* event_loop)
 						tracker->retry_status.attempts);
 			}
 
-			as_store_bool(&uploader->error, true);
+			batch_uploader_signal_error(uploader);
 			as_store_bool(&tracker->status.has_error, true);
 		}
 
@@ -1000,7 +1065,7 @@ _do_key_recs_write(batch_uploader_t* uploader, record_batch_tracker_t* tracker)
 				err("Error while initiating aerospike_key_put_async call - "
 						"code %d: %s at %s:%d",
 						ae.code, ae.message, ae.file, ae.line);
-				as_store_bool(&uploader->error, true);
+				batch_uploader_signal_error(uploader);
 				as_store_bool(&tracker->status.has_error, true);
 
 				// Since there may have been some calls that succeeded before
@@ -1044,7 +1109,7 @@ _submit_key_recs(batch_uploader_t* uploader, as_vector* records)
 	_reserve_async_slot(uploader);
 
 	// If we see the error flag set, abort this transaction and fail.
-	if (as_load_bool(&uploader->error)) {
+	if (batch_uploader_has_error(uploader)) {
 		_release_async_slot(uploader);
 		return false;
 	}

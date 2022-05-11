@@ -292,9 +292,9 @@ cleanup5:
 	cf_queue_destroy(job_queue);
 
 cleanup4:
-	stop();
-
 	ver("Waiting for counter thread");
+
+	restore_status_finish(&status);
 
 	if (pthread_join(counter_thread, NULL) != 0) {
 		err_code("Error while joining counter thread");
@@ -890,8 +890,8 @@ counter_thread_func(void *cont)
 	uint64_t prev_records = as_load_uint64(&status->total_records);
 
 	while (true) {
-		restore_status_sleep_for(status, 1);
-		bool last_iter = restore_status_has_stopped(status);
+		restore_status_sleep_for(status, 1, true);
+		bool last_iter = restore_status_has_finished(status);
 
 		cf_clock now_ms = cf_getms();
 		uint32_t ms = (uint32_t) (now_ms - prev_ms);
@@ -1267,7 +1267,7 @@ restore_index(aerospike *as, index_param *index, as_vector *set_vec,
 		// aerospike_index_remove() is asynchronous. Check the index again, because AEROSPIKE_OK
 		// doesn't necessarily mean that the index is gone.
 		for (int32_t tries = 0; tries < MAX_TRIES; ++tries) {
-			restore_status_sleep_for(args->status, 1);
+			restore_status_sleep_for(args->status, 1, false);
 			stat = check_index(as, index, timeout);
 
 			if (stat != INDEX_STATUS_DIFFERENT) {
