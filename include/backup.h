@@ -64,6 +64,9 @@
 // The maximal number of UDF files that we can backup.
 #define MAX_UDF_FILES 1000
 
+// Estimate total backup file sizes with 99.9% confidence.
+#define BACKUP_FILE_ESTIMATE_CONFIDENCE_LEVEL 0.999
+
 /*
  * The per partition filter information pushed to the job queue and picked up
  * by the backup threads.

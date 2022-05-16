@@ -412,11 +412,8 @@ backup_status_init(backup_status_t* status, backup_config_t* conf)
 		goto cleanup3;
 	}
 
-	if (conf->estimate && status->rec_count_estimate > conf->n_estimate_samples) {
-		status->rec_count_estimate = conf->n_estimate_samples;
-	}
-	if (max_records > 0 && status->rec_count_estimate > max_records) {
-		status->rec_count_estimate = max_records;
+	if (conf->max_records > 0 && status->rec_count_estimate > conf->max_records) {
+		status->rec_count_estimate = conf->max_records;
 	}
 
 	if (node_names != NULL) {
