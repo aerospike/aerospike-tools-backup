@@ -1447,7 +1447,7 @@ scan_callback(const as_val *val, void *cont)
 	++bjc->rec_count_job;
 	as_incr_uint64(&bjc->status->rec_count_total);
 
-	if (bjc->conf->output_file != NULL) {
+	if (bjc->conf->output_file != NULL || bjc->conf->estimate) {
 		if (update_shared_file_pos(bjc->fd, &bjc->status->byte_count_total) < 0) {
 			ok = false;
 		}
@@ -1581,7 +1581,7 @@ process_secondary_indexes(backup_job_context_t *bjc)
 				goto cleanup3;
 			}
 
-			if (bjc->conf->output_file != NULL) {
+			if (bjc->conf->output_file != NULL || bjc->conf->estimate) {
 				if (update_shared_file_pos(bjc->fd, &bjc->status->byte_count_total) < 0) {
 					err("Error while storing secondary index in backup file");
 					goto cleanup3;
@@ -1691,7 +1691,7 @@ process_udfs(backup_job_context_t *bjc)
 			goto cleanup2;
 		}
 
-		if (bjc->conf->output_file != NULL) {
+		if (bjc->conf->output_file != NULL || bjc->conf->estimate) {
 			if (update_shared_file_pos(bjc->fd, &bjc->status->byte_count_total) < 0) {
 				err("Error while storing UDF file in backup file");
 				goto cleanup2;
@@ -1746,6 +1746,7 @@ backup_thread_func(void *cont)
 
 	cf_queue *job_queue = cont;
 	void *res = (void *)EXIT_FAILURE;
+	uint64_t backup_file_size;
 
 	while (true) {
 		if (has_stopped()) {
@@ -1844,7 +1845,7 @@ backup_thread_func(void *cont)
 				goto close_file;
 			}
 
-			if (bjc.conf->output_file != NULL) {
+			if (bjc.conf->output_file != NULL || bjc.conf->estimate) {
 				if (update_shared_file_pos(bjc.fd, &bjc.status->byte_count_total) < 0) {
 					err("Error while writing meta prefix header");
 					stop();
@@ -1913,6 +1914,22 @@ backup_thread_func(void *cont)
 				as_partitions_status_reserve(bjc.scan.parts_all);
 				as_partition_filter_set_partitions(&args.filter, bjc.scan.parts_all);
 			}
+
+			// if we're running an estimate, this is the only thread, so update
+			// the file position before giving the update
+			if (bjc.conf->estimate) {
+				if (io_proxy_flush(bjc.fd) == EOF) {
+					err("Error while flushing backup file %s", io_proxy_file_path(bjc.fd));
+					stop();
+					goto close_file;
+				}
+
+				if (update_shared_file_pos(bjc.fd, &bjc.status->byte_count_total) < 0) {
+					err("Error updating shared file pos of backup file %s", io_proxy_file_path(bjc.fd));
+					stop();
+					goto close_file;
+				}
+			}
 		}
 
 		if (status != AEROSPIKE_OK) {
@@ -1927,17 +1944,24 @@ backup_thread_func(void *cont)
 			goto close_file;
 		}
 
+		if (bjc.conf->output_file != NULL || bjc.conf->estimate) {
+			backup_file_size = as_load_uint64(&bjc.status->byte_count_total);
+		}
+		else {
+			backup_file_size = bjc.byte_count_job;
+		}
+
 		if (!bjc.interrupted) {
 			inf("Completed backup for %s, records: %" PRIu64 ", size: %" PRIu64 " "
 					"(~%" PRIu64 " B/rec)", bjc.desc, bjc.rec_count_job,
-					bjc.byte_count_job,
-					bjc.rec_count_job == 0 ? 0 : bjc.byte_count_job / bjc.rec_count_job);
+					backup_file_size,
+					bjc.rec_count_job == 0 ? 0 : backup_file_size / bjc.rec_count_job);
 		}
 		else {
 			inf("Backup of %s interrupted, records: %" PRIu64 ", size: %" PRIu64 " "
 					"(~%" PRIu64 " B/rec)", bjc.desc, bjc.rec_count_job,
-					bjc.byte_count_job,
-					bjc.rec_count_job == 0 ? 0 : bjc.byte_count_job / bjc.rec_count_job);
+					backup_file_size,
+					bjc.rec_count_job == 0 ? 0 : backup_file_size / bjc.rec_count_job);
 
 			stop();
 		}
