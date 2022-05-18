@@ -17,6 +17,7 @@ jobs:
     - name: install libuv
       id: install-libuv
       run: |
+        sudp apt update -y
         sudo apt install -y libuv1-dev
     - name: install lcov
       id: install-lcov

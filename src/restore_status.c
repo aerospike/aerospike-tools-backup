@@ -367,18 +367,8 @@ void
 restore_status_sleep_for(restore_status_t* status, uint64_t n_secs,
 		bool sleep_through_stop)
 {
-#ifdef __APPLE__
-	// MacOS uses gettimeofday instead of the monotonic clock for timed waits on
-	// condition variables
 	struct timespec t;
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-	TIMEVAL_TO_TIMESPEC(&tv, &t);
-#else
-	struct timespec t;
-	clock_gettime(CLOCK_MONOTONIC, &t);
-#endif /* __APPLE__ */
-
+	get_current_time(&t);
 	t.tv_sec += (int64_t) n_secs;
 
 	pthread_mutex_lock(&status->stop_lock);
@@ -493,11 +483,13 @@ set_resource_limit(const restore_config_t* conf, uint32_t batch_size, bool batch
 
 	if (restore_config_from_cloud(conf)) {
 		rlim_t max_s3_sockets = (rlim_t) conf->s3_max_async_downloads;
-		max_open_files = max_async_client_sockets + max_s3_sockets;
+		// add 3 for stdin/stdout/stderr
+		max_open_files = max_async_client_sockets + max_s3_sockets + 3;
 	}
 	else {
 		rlim_t max_open_bup_files = (rlim_t) conf->parallel;
-		max_open_files = max_async_client_sockets + max_open_bup_files;
+		// add 3 for stdin/stdout/stderr
+		max_open_files = max_async_client_sockets + max_open_bup_files + 3;
 	}
 
 	if (getrlimit(RLIMIT_NOFILE, &l) != 0) {

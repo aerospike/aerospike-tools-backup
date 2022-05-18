@@ -2393,8 +2393,9 @@ show_estimate(FILE *mach_fd, uint64_t *samples, uint32_t n_samples,
 			header_size, estimate_byte_count, rec_count_estimate,
 			BACKUP_FILE_ESTIMATE_CONFIDENCE_LEVEL);
 
-	inf("Estimated total backup file size (for backup-to-file, 99.9%% "
-			"confidence): %" PRIu64 " byte(s)", est_backup_size);
+	inf("Estimated total backup file size (for backup-to-file, %g%% "
+			"confidence): %" PRIu64 " byte(s)",
+			BACKUP_FILE_ESTIMATE_CONFIDENCE_LEVEL, est_backup_size);
 }
 
 /*

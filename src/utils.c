@@ -731,7 +731,7 @@ get_current_time(struct timespec* now)
 {
 #ifdef __APPLE__
 	// MacOS uses gettimeofday instead of the monotonic clock for timed waits on
-	// mutexes
+	// mutexes/condition variables
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
 	TIMEVAL_TO_TIMESPEC(&tv, now);
@@ -765,7 +765,7 @@ timespec_diff(const struct timespec* from, const struct timespec* until)
 {
 	uint64_t n_secs = (uint64_t) (until->tv_sec - from->tv_sec);
 	uint64_t n_nsecs = (uint64_t) (1000000000 + until->tv_nsec - from->tv_nsec);
-	return n_secs * 1000000 + n_nsecs / 1000 - 1000000;
+	return (n_secs * 1000000) + (n_nsecs / 1000 - 1000000);
 }
 
 /*
@@ -1791,10 +1791,11 @@ bool
 as_key_move(as_key* dst, as_key* src)
 {
 	*dst = *src;
+	if (as_load_uint32(&src->value.integer._.count) > 1) {
+		return false;
+	}
+
 	if (src->valuep == &src->value) {
-		if (as_load_uint32(&src->value.integer._.count) > 1) {
-			return false;
-		}
 		dst->valuep = &dst->value;
 	}
 

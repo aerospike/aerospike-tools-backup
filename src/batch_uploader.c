@@ -142,6 +142,7 @@ static void _batch_submit_callback(as_error* ae, as_batch_records* records,
 static bool _do_batch_write(batch_uploader_t* uploader,
 		batch_tracker_t* tracker);
 static bool _submit_batch(batch_uploader_t*, as_vector* records);
+static void _key_put_submit_finish(record_batch_tracker_t* tracker);
 static void _key_put_submit_callback(as_error* ae, void* udata, as_event_loop*);
 static void _do_key_recs_write(batch_uploader_t* uploader,
 		record_batch_tracker_t* tracker);
@@ -466,7 +467,7 @@ _queue_batch_transaction(batch_uploader_t* uploader, batch_tracker_t* tracker,
 	}
 	pthread_mutex_unlock(&uploader->async_lock);
 
-	pthread_cond_signal(&uploader->async_cond);
+	pthread_cond_broadcast(&uploader->async_cond);
 	return true;
 }
 
@@ -604,6 +605,11 @@ _categorize_write_result(as_error* ae, const restore_config_t* conf)
 		case AEROSPIKE_ERR_RECORD_KEY_MISMATCH:
 		case AEROSPIKE_ERR_BIN_NAME:
 		case AEROSPIKE_ERR_ALWAYS_FORBIDDEN:
+		case AEROSPIKE_ERR_FAIL_FORBIDDEN:
+		case AEROSPIKE_ERR_BIN_INCOMPATIBLE_TYPE:
+		case AEROSPIKE_ERR_BIN_NOT_FOUND:
+
+		// Error codes that aren't actually errors.
 		case AEROSPIKE_ERR_RECORD_GENERATION:
 		case AEROSPIKE_ERR_RECORD_EXISTS:
 
@@ -612,27 +618,34 @@ _categorize_write_result(as_error* ae, const restore_config_t* conf)
 		case AEROSPIKE_OK:
 			return WRITE_RESULT_OK;
 
-		// Cases that we retry on:
-		case AEROSPIKE_NO_RESPONSE:
-		case AEROSPIKE_MAX_ERROR_RATE:
-		case AEROSPIKE_ERR_ASYNC_QUEUE_FULL:
-		case AEROSPIKE_ERR_CONNECTION:
-		case AEROSPIKE_ERR_TLS_ERROR:
-		case AEROSPIKE_ERR_INVALID_NODE:
-		case AEROSPIKE_ERR_NO_MORE_CONNECTIONS:
-		case AEROSPIKE_ERR_ASYNC_CONNECTION:
-		case AEROSPIKE_ERR_INVALID_HOST:
-		case AEROSPIKE_ERR_SERVER:
-		case AEROSPIKE_ERR_CLUSTER_CHANGE:
-		case AEROSPIKE_ERR_TIMEOUT:
-		case AEROSPIKE_ERR_CLUSTER:
-		case AEROSPIKE_ERR_RECORD_BUSY:
-		case AEROSPIKE_ERR_DEVICE_OVERLOAD:
-		case AEROSPIKE_LOST_CONFLICT:
-		case AEROSPIKE_QUOTA_EXCEEDED:
-		case AEROSPIKE_ERR_BATCH_QUEUES_FULL:
-		case AEROSPIKE_ERR_INDEX:
-			return WRITE_RESULT_RETRY;
+		// Cases that retrying won't resolve (therefore are permanent errors).
+		case AEROSPIKE_ERR_MAX_RETRIES_EXCEEDED:
+		case AEROSPIKE_ERR_PARAM:
+		case AEROSPIKE_ERR_CLIENT:
+		case AEROSPIKE_ERR_REQUEST_INVALID:
+		case AEROSPIKE_ERR_SERVER_FULL:
+		case AEROSPIKE_ERR_UNSUPPORTED_FEATURE:
+		case AEROSPIKE_ERR_NAMESPACE_NOT_FOUND:
+		case AEROSPIKE_ERR_ENTERPRISE_ONLY:
+		case AEROSPIKE_ERR_OP_NOT_APPLICABLE:
+		case AEROSPIKE_FILTERED_OUT:
+		case AEROSPIKE_SECURITY_NOT_SUPPORTED:
+		case AEROSPIKE_SECURITY_NOT_ENABLED:
+		case AEROSPIKE_SECURITY_SCHEME_NOT_SUPPORTED:
+		case AEROSPIKE_INVALID_COMMAND:
+		case AEROSPIKE_INVALID_FIELD:
+		case AEROSPIKE_ILLEGAL_STATE:
+		case AEROSPIKE_EXPIRED_SESSION:
+		case AEROSPIKE_INVALID_ROLE:
+		case AEROSPIKE_NOT_AUTHENTICATED:
+		case AEROSPIKE_ROLE_VIOLATION:
+		case AEROSPIKE_NOT_WHITELISTED:
+		case AEROSPIKE_ERR_GEO_INVALID_GEOJSON:
+		case AEROSPIKE_ERR_INDEX_OOM:
+		case AEROSPIKE_ERR_INDEX_NOT_READABLE:
+			err("Error while storing record - code %d: %s at %s:%d",
+					ae->code, ae->message, ae->file, ae->line);
+			return WRITE_RESULT_PERMFAIL;
 
 		case AEROSPIKE_ERR_BATCH_DISABLED:
 			err("Batch writes appear to be disabled, turn them off by passing "
@@ -640,9 +653,8 @@ _categorize_write_result(as_error* ae, const restore_config_t* conf)
 			return WRITE_RESULT_PERMFAIL;
 
 		default: 
-			err("Error while storing record - code %d: %s at %s:%d",
-					ae->code, ae->message, ae->file, ae->line);
-			return WRITE_RESULT_PERMFAIL;
+			// Default to retrying the transaction.
+			return WRITE_RESULT_RETRY;
 	}
 }
 
@@ -662,6 +674,9 @@ _batch_status_submit(batch_status_t* status,
 		case AEROSPIKE_ERR_RECORD_KEY_MISMATCH:
 		case AEROSPIKE_ERR_BIN_NAME:
 		case AEROSPIKE_ERR_ALWAYS_FORBIDDEN:
+		case AEROSPIKE_ERR_FAIL_FORBIDDEN:
+		case AEROSPIKE_ERR_BIN_INCOMPATIBLE_TYPE:
+		case AEROSPIKE_ERR_BIN_NOT_FOUND:
 			as_incr_uint64(&status->ignored_records);
 
 			if (!conf->ignore_rec_error) {
@@ -807,9 +822,6 @@ _batch_submit_callback(as_error* ae, as_batch_records* batch, void* udata,
 
 	switch(_categorize_write_result(ae, uploader->conf)) {
 		case WRITE_RESULT_PERMFAIL:
-			err("Error in aerospike_batch_write_async call - "
-					"code %d: %s at %s:%d",
-					ae->code, ae->message, ae->file, ae->line);
 			batch_uploader_signal_error(uploader);
 			status.has_error = true;
 			break;
@@ -897,10 +909,6 @@ _submit_batch(batch_uploader_t* uploader, as_vector* records)
 {
 	uint32_t n_records = records->size;
 
-	if (n_records == 0) {
-		return true;
-	}
-
 	_reserve_async_slot(uploader);
 
 	// If we see the error flag set, abort this transaction and fail.
@@ -956,6 +964,51 @@ _submit_batch(batch_uploader_t* uploader, as_vector* records)
 }
 
 static void
+_key_put_submit_finish(record_batch_tracker_t* tracker)
+{
+	batch_uploader_t* uploader = tracker->uploader;
+
+	if (!as_load_bool(&tracker->status.has_error) &&
+			as_load_bool(&tracker->should_retry) &&
+			!batch_uploader_has_error(uploader)) {
+
+		_record_batch_tracker_reset(tracker);
+
+		int64_t delay = retry_status_next_delay(&tracker->retry_status,
+				&uploader->retry_strategy);
+		if (delay > 0) {
+			if (_queue_key_rec_transactions(uploader, tracker,
+						(uint64_t) delay)) {
+				// Don't mark the outstanding transaction as complete.
+				return;
+			}
+			// If queueing the transaction failed, fall through to free the
+			// tracker.
+		}
+		else if (delay == 0) {
+			_do_key_recs_write(uploader, tracker);
+			// Don't mark the outstanding transaction as complete.
+			return;
+		}
+		else { // delay == -1
+			err("Max key-put retries exceeded (%" PRIu32 ")",
+					tracker->retry_status.attempts);
+		}
+
+		batch_uploader_signal_error(uploader);
+		as_store_bool(&tracker->status.has_error, true);
+	}
+
+	// since this is the last record, we can make the upload_batch callback.
+	if (uploader->upload_cb != NULL) {
+		uploader->upload_cb(&tracker->status, uploader->udata);
+	}
+
+	_record_batch_tracker_destroy(tracker);
+	_release_async_slot(uploader);
+}
+
+static void
 _key_put_submit_callback(as_error* ae, void* udata, as_event_loop* event_loop)
 {
 	(void) event_loop;
@@ -965,9 +1018,6 @@ _key_put_submit_callback(as_error* ae, void* udata, as_event_loop* event_loop)
 
 	switch (_categorize_write_result(ae, uploader->conf)) {
 		case WRITE_RESULT_PERMFAIL:
-			err("Error in aerospike_key_put_async call - "
-					"code %d: %s at %s:%d",
-					ae->code, ae->message, ae->file, ae->line);
 			batch_uploader_signal_error(uploader);
 			as_store_bool(&tracker->status.has_error, true);
 			break;
@@ -993,44 +1043,7 @@ _key_put_submit_callback(as_error* ae, void* udata, as_event_loop* event_loop)
 	}
 
 	if (as_aaf_uint64(&tracker->outstanding_calls, -1lu) == 0) {
-		if (!as_load_bool(&tracker->status.has_error) &&
-				as_load_bool(&tracker->should_retry) &&
-				!batch_uploader_has_error(uploader)) {
-
-			_record_batch_tracker_reset(tracker);
-
-			int64_t delay = retry_status_next_delay(&tracker->retry_status,
-					&uploader->retry_strategy);
-			if (delay > 0) {
-				if (_queue_key_rec_transactions(uploader, tracker,
-							(uint64_t) delay)) {
-					// Don't mark the outstanding transaction as complete.
-					return;
-				}
-				// If queueing the transaction failed, fall through to free the
-				// tracker.
-			}
-			else if (delay == 0) {
-				_do_key_recs_write(uploader, tracker);
-				// Don't mark the outstanding transaction as complete.
-				return;
-			}
-			else { // delay == -1
-				err("Max key-put retries exceeded (%" PRIu32 ")",
-						tracker->retry_status.attempts);
-			}
-
-			batch_uploader_signal_error(uploader);
-			as_store_bool(&tracker->status.has_error, true);
-		}
-
-		// since this is the last record, we can make the upload_batch callback.
-		if (uploader->upload_cb != NULL) {
-			uploader->upload_cb(&tracker->status, uploader->udata);
-		}
-
-		_record_batch_tracker_destroy(tracker);
-		_release_async_slot(uploader);
+		_key_put_submit_finish(tracker);
 	}
 }
 
@@ -1093,12 +1106,7 @@ _do_key_recs_write(batch_uploader_t* uploader, record_batch_tracker_t* tracker)
 			if (as_aaf_uint64(&tracker->outstanding_calls, -1lu) == 0) {
 				// if this is the last record, we can make the upload_batch
 				// callback.
-				if (uploader->upload_cb != NULL) {
-					uploader->upload_cb(&tracker->status, uploader->udata);
-				}
-
-				_record_batch_tracker_destroy(tracker);
-				_release_async_slot(uploader);
+				_key_put_submit_finish(tracker);
 			}
 		}
 	}
