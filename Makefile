@@ -114,7 +114,11 @@ else
     LIBRARIES += -framework CoreFoundation -framework Security
   endif
 
-  LIBRARIES += -lcurl
+  ifeq ($(CURL_STATIC_PATH),)
+    LIBRARIES += -lcurl
+  else
+    LIBRARIES += $(CURL_STATIC_PATH)/libcurl.a
+  endif
 endif
 
 ifeq ($(OPENSSL_STATIC_PATH),)
