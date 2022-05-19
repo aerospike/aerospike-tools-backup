@@ -86,6 +86,7 @@ private:
 		inf("Initializing S3 API");
 
 		s3_api.options.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Off;
+		s3_api.options.httpOptions.installSigPipeHandler = true;
 		Aws::InitAPI(s3_api.options);
 
 		Aws::Client::ClientConfiguration conf;
