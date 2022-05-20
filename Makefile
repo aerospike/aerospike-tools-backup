@@ -367,13 +367,15 @@ $(TEST_RESTORE): $(TEST_RESTORE_OBJ) $(TOML) | $(DIR_TEST_BIN)
 
 -include $(TEST_DEPS)
 
-# Summary requires the lcov tool to be installed
-.PHONY: coverage
-coverage:
+# Requires the lcov tool to be installed
+$(DIR_TEST_BIN)/aerospike-tools-backup.info:
 	@echo
 	@lcov --capture --initial --directory $(DIR_TEST_BIN) --output-file $(DIR_TEST_BIN)/aerospike-tools-backup.info
 	@lcov --directory $(DIR_TEST_BIN) --capture --quiet --output-file $(DIR_TEST_BIN)/aerospike-tools-backup.info
 	@lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup.info --quiet --extract $(DIR_TEST_BIN)/aerospike-tools-backup.info '$(ROOT)/$(DIR_SRC)/*' '$(ROOT)/$(DIR_INC)/*'
+
+.PHONY: coverage
+coverage: | $(DIR_TEST_BIN)/aerospike-tools-backup.info
 	@lcov --summary $(DIR_TEST_BIN)/aerospike-tools-backup.info
 
 .PHONY: coverage-init
@@ -385,7 +387,7 @@ do-test: | coverage-init
 	@$(MAKE) -C . unit
 
 .PHONY: report
-report: coverage
+report: | $(DIR_TEST_BIN)/aerospike-tools-backup.info
 	@lcov -l $(DIR_TEST_BIN)/aerospike-tools-backup.info
 
 .PHONY: report-display
@@ -394,5 +396,4 @@ report-display: | $(DIR_TEST_BIN)/aerospike-tools-backup.info
 	@rm -rf $(DIR_TEST_BIN)/html
 	@mkdir -p $(DIR_TEST_BIN)/html
 	@genhtml --prefix $(DIR_TEST_BIN)/html --ignore-errors source $(DIR_TEST_BIN)/aerospike-tools-backup.info --legend --title "test lcov" --output-directory $(DIR_TEST_BIN)/html
-	@xdg-open file://$(ROOT)/$(DIR_TEST_BIN)/html/index.html
 

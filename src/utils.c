@@ -290,7 +290,7 @@ hex_dump_err(const void *data, uint32_t len)
 }
 
 /*
- * Clones an as_vector of strings src into dst.
+ * Clones an as_vector of strings (char[N]) src into dst.
  */
 bool
 str_vector_clone(as_vector* dst, const as_vector* src)
@@ -298,10 +298,12 @@ str_vector_clone(as_vector* dst, const as_vector* src)
 	as_vector_init(dst, src->item_size, src->size);
 
 	for (uint32_t i = 0; i < src->size; i++) {
-		as_vector_append(dst, safe_strdup((char*) as_vector_get((as_vector*) src, i)));
-		if (as_vector_get(dst, i) == NULL) {
+		char* dst_loc = (char*) as_vector_reserve(dst);
+		if (dst_loc == NULL) {
 			return false;
 		}
+
+		memcpy(dst_loc, as_vector_get((as_vector*) src, i), src->item_size);
 	}
 
 	return true;
@@ -324,13 +326,18 @@ str_vector_contains(const as_vector* v, const char* str)
 
 /*
  * Returns a string representation of a vector of c strings stored in a static
- * buffer (i.e. this function is not reentrant).
+ * buffer (i.e. this function is not thread-safe).
  */
 char*
 str_vector_tostring(const as_vector* v)
 {
 	static char buf[1024];
 	uint64_t pos = 0;
+
+	if (v->size == 0) {
+		buf[0] = '\0';
+	}
+
 	for (uint32_t i = 0; i < v->size; i++) {
 		pos += (uint64_t) snprintf(buf + pos, sizeof(buf) - pos, "%s",
 				(const char*) as_vector_get((as_vector*) v, i));
@@ -532,7 +539,7 @@ erfinv(double y)
 		return DBL_MAX;
 	}
 	if (y == -1.0) {
-		return DBL_MIN;
+		return -DBL_MAX;
 	}
 
 	if (fabs(y) <= CENTRAL_RANGE) {
@@ -562,7 +569,7 @@ erfinv(double y)
 double
 confidence_z(double p, uint64_t n_records)
 {
-	// an upper bound of 1 - (p ^ (1 / n_records))
+	// a lower bound of 1 - (p ^ (1 / n_records))
 	double q = (1 - p) / (double) n_records;
 	// the z-score of the upper confidence interval
 	double z = sqrt(2) * -erfinv(q * 2 - 1);

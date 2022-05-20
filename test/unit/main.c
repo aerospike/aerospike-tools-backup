@@ -31,6 +31,7 @@ main(void)
 	srunner_add_suite(sr, file_proxy_suite());
 	srunner_add_suite(sr, io_proxy_suite());
 	srunner_add_suite(sr, priority_queue_suite());
+	srunner_add_suite(sr, utils_suite());
 
 	srunner_set_fork_status(sr, CK_NOFORK);
 

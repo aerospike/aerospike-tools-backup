@@ -11,6 +11,7 @@ START_TEST(test_init)
 {
 	priority_queue_t pq;
 	ck_assert_int_eq(priority_queue_init(&pq, 8), 0);
+	ck_assert_uint_eq(priority_queue_size(&pq), 0);
 
 	priority_queue_free(&pq);
 }
@@ -23,6 +24,7 @@ START_TEST(test_insert_same_prio_capacity_8)
 
 	for (uint32_t i = 0; i < 8; i++) {
 		ck_assert(priority_queue_push(&pq, NULL, 0));
+		ck_assert_uint_eq(priority_queue_size(&pq), i + 1);
 	}
 	ck_assert(!priority_queue_push(&pq, NULL, 0));
 
@@ -37,6 +39,7 @@ START_TEST(test_insert_same_prio_capacity_64)
 
 	for (uint32_t i = 0; i < 64; i++) {
 		ck_assert(priority_queue_push(&pq, NULL, 0));
+		ck_assert_uint_eq(priority_queue_size(&pq), i + 1);
 	}
 	ck_assert(!priority_queue_push(&pq, NULL, 0));
 
@@ -52,6 +55,7 @@ do_insert_inc_prio(uint64_t capacity)
 
 	for (uint64_t i = 0; i < capacity; i++) {
 		ck_assert(priority_queue_push(&pq, (void*) (i + 1), i));
+		ck_assert_uint_eq(priority_queue_size(&pq), i + 1);
 	}
 
 	for (uint64_t i = 0; i < capacity; i++) {
@@ -59,9 +63,11 @@ do_insert_inc_prio(uint64_t capacity)
 		void* res = priority_queue_pop(&pq);
 
 		ck_assert_ptr_eq(peek_res.udata, res);
-		ck_assert_int_eq(peek_res.priority, capacity - i - 1);
+		ck_assert_uint_eq(peek_res.priority, capacity - i - 1);
 
 		ck_assert_ptr_eq(res, (void*) (capacity - i));
+
+		ck_assert_uint_eq(priority_queue_size(&pq), capacity - i - 1);
 	}
 
 	ck_assert_ptr_eq(priority_queue_pop(&pq), NULL);
@@ -111,6 +117,7 @@ do_insert_rand_prio(uint64_t capacity)
 
 	for (uint64_t i = 0; i < capacity; i++) {
 		ck_assert(priority_queue_push(&pq, (void*) (prios[i] + 1), prios[i]));
+		ck_assert_uint_eq(priority_queue_size(&pq), i + 1);
 	}
 
 	for (uint64_t i = 0; i < capacity; i++) {
@@ -118,9 +125,11 @@ do_insert_rand_prio(uint64_t capacity)
 		void* res = priority_queue_pop(&pq);
 
 		ck_assert_ptr_eq(peek_res.udata, res);
-		ck_assert_int_eq(peek_res.priority, capacity - i - 1);
+		ck_assert_uint_eq(peek_res.priority, capacity - i - 1);
 
 		ck_assert_ptr_eq(res, (void*) (capacity - i));
+
+		ck_assert_uint_eq(priority_queue_size(&pq), capacity - i - 1);
 	}
 
 	ck_assert_ptr_eq(priority_queue_pop(&pq), NULL);
