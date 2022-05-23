@@ -189,6 +189,20 @@ START_TEST(test_confidence_z_90)
 }
 END_TEST
 
+START_TEST(test_confidence_z_99)
+{
+	const double p = 0.99;
+	ck_assert_double_eq_tol(confidence_z(p, 1), 2.326, 0.01);
+}
+END_TEST
+
+START_TEST(test_confidence_z_999)
+{
+	const double p = 0.999;
+	ck_assert_double_eq_tol(confidence_z(p, 1), 3.090, 0.01);
+}
+END_TEST
+
 Suite* utils_suite()
 {
 	Suite* s;
@@ -229,6 +243,8 @@ Suite* utils_suite()
 
 	tc_confidence_z = tcase_create("confidence_z");
 	tcase_add_test(tc_erfinv, test_confidence_z_90);
+	tcase_add_test(tc_erfinv, test_confidence_z_99);
+	tcase_add_test(tc_erfinv, test_confidence_z_999);
 	suite_add_tcase(s, tc_confidence_z);
 
 	return s;
