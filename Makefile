@@ -127,6 +127,7 @@ else
 
     ifeq ($(OS),Darwin)
       LIBRARIES += -lssh2
+      LIBRARIES += -framework SystemConfiguration
     endif
   endif
 endif
