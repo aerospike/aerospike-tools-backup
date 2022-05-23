@@ -124,6 +124,7 @@ else
     LIBRARIES += -lcurl
   else
     LIBRARIES += $(CURL_STATIC_PATH)/libcurl.a
+    LIBRARIES += -lssh2
   endif
 endif
 
