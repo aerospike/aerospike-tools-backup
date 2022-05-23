@@ -203,6 +203,86 @@ START_TEST(test_confidence_z_999)
 }
 END_TEST
 
+START_TEST(test_better_atoi_0)
+{
+	const char num[] = "0";
+	int64_t val;
+
+	ck_assert(better_atoi(num, &val));
+	ck_assert_int_eq(val, 0);
+}
+END_TEST
+
+START_TEST(test_better_atoi_1)
+{
+	const char num[] = "1";
+	int64_t val;
+
+	ck_assert(better_atoi(num, &val));
+	ck_assert_int_eq(val, 1);
+}
+END_TEST
+
+START_TEST(test_better_atoi_n1)
+{
+	const char num[] = "-1";
+	int64_t val;
+
+	ck_assert(better_atoi(num, &val));
+	ck_assert_int_eq(val, -1);
+}
+END_TEST
+
+START_TEST(test_better_atoi_int_max)
+{
+	const char num[] = "2147483647";
+	int64_t val;
+
+	ck_assert(better_atoi(num, &val));
+	ck_assert_int_eq(val, INT32_MAX);
+}
+END_TEST
+
+START_TEST(test_better_atoi_uint_max)
+{
+	const char num[] = "4294967295";
+	int64_t val;
+
+	ck_assert(better_atoi(num, &val));
+	ck_assert_int_eq(val, UINT32_MAX);
+}
+END_TEST
+
+START_TEST(test_better_atoi_int_min)
+{
+	const char num[] = "-2147483648";
+	int64_t val;
+
+	ck_assert(better_atoi(num, &val));
+	ck_assert_int_eq(val, INT32_MIN);
+}
+END_TEST
+
+START_TEST(test_better_atoi_long_max)
+{
+	const char num[] = "9223372036854775807";
+	int64_t val;
+
+	ck_assert(better_atoi(num, &val));
+	ck_assert_int_eq(val, INT64_MAX);
+}
+END_TEST
+
+START_TEST(test_better_atoi_long_min)
+{
+	const char num[] = "-9223372036854775808";
+	int64_t val;
+
+	ck_assert(better_atoi(num, &val));
+	ck_assert_int_eq(val, INT64_MIN);
+}
+END_TEST
+
 Suite* utils_suite()
 {
 	Suite* s;
@@ -211,6 +291,7 @@ Suite* utils_suite()
 	TCase* tc_strdup;
 	TCase* tc_erfinv;
 	TCase* tc_confidence_z;
+	TCase* tc_better_atoi;
 
 	s = suite_create("Utils");
 
@@ -246,6 +327,17 @@ Suite* utils_suite()
 	tcase_add_test(tc_erfinv, test_confidence_z_99);
 	tcase_add_test(tc_erfinv, test_confidence_z_999);
 	suite_add_tcase(s, tc_confidence_z);
+
+	tc_better_atoi = tcase_create("better_atoi");
+	tcase_add_test(tc_better_atoi, test_better_atoi_0);
+	tcase_add_test(tc_better_atoi, test_better_atoi_1);
+	tcase_add_test(tc_better_atoi, test_better_atoi_n1);
+	tcase_add_test(tc_better_atoi, test_better_atoi_int_max);
+	tcase_add_test(tc_better_atoi, test_better_atoi_uint_max);
+	tcase_add_test(tc_better_atoi, test_better_atoi_int_min);
+	tcase_add_test(tc_better_atoi, test_better_atoi_long_max);
+	tcase_add_test(tc_better_atoi, test_better_atoi_long_min);
+	suite_add_tcase(s, tc_better_atoi);
 
 	return s;
 }
