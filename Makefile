@@ -126,8 +126,8 @@ else
     LIBRARIES += $(CURL_STATIC_PATH)/libcurl.a
 
     ifeq ($(OS),Darwin)
-      LIBRARIES += -lssh2
       LIBRARIES += -framework SystemConfiguration
+      LIBRARIES += -lssh2
     endif
   endif
 endif
