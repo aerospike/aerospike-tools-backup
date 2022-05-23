@@ -86,6 +86,9 @@ private:
 		inf("Initializing S3 API");
 
 		s3_api.options.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Off;
+		// Install SIGPIPE handler, which the sdk is able to recover from
+		// without terminating the backup.
+		// (see https://aerospike.atlassian.net/browse/TOOLS-2006)
 		s3_api.options.httpOptions.installSigPipeHandler = true;
 		Aws::InitAPI(s3_api.options);
 

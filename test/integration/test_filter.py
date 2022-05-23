@@ -77,6 +77,8 @@ def check_index(exists, set_name, bin_name, is_integer_index):
 		found = True
 	except aerospike.exception.IndexNotFound:
 		found = False
+	except aerospike.exception.MaxRetriesExceeded:
+		found = False
 
 	if exists:
 		assert found, "Missing index in set " + set_name
