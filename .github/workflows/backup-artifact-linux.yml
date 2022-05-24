@@ -21,7 +21,7 @@ jobs:
         cache-name: aws-sdk-cpp
       with:
         path: aws-sdk-cpp
-        key: aws-sdk-cpp-${{ env.AWS_SDK_CPP_VERSION }}-${{ runner.os }}
+        key: aws-sdk-cpp-linux-artifact-${{ env.AWS_SDK_CPP_VERSION }}-${{ runner.os }}
     - name: Download AWS C++ sdk
       uses: actions/checkout@v2
       if: steps.cache-aws-sdk-cpp.outputs.cache-hit != 'true'
