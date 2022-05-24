@@ -22,8 +22,10 @@
 # SOFTWARE.
 #
 
-ifndef CLIENTREPO
-$(error Please set the CLIENTREPO environment variable)
+# deprecated: support for explicit client repo
+ifdef CLIENTREPO
+$(warning Setting CLIENTREPO explicitly is deprecated, the c-client is now a submodule of asbackup)
+DIR_C_CLIENT := $(CLIENTREPO)
 endif
 
 OS := $(shell uname -s)
@@ -66,26 +68,30 @@ TEST_CXXFLAGS := -std=c++14 $(DWARF) -g -O2 -march=nocona -fno-common -fno-stric
 		-DTOOL_VERSION=\"$(VERSION)\"
 TEST_LDFLAGS := $(LDFLAGS) -fprofile-arcs -coverage -lcheck
 
-DIR_INC := include
-DIR_SRC := src
-DIR_OBJ := obj
-DIR_UNIT_TEST := test/unit
-DIR_TEST_BIN := test_target
+DIR_INC := $(ROOT)/include
+DIR_SRC := $(ROOT)/src
+DIR_OBJ := $(ROOT)/obj
+DIR_MODULES := $(ROOT)/modules
+DIR_UNIT_TEST := $(ROOT)/test/unit
+DIR_TEST_BIN := $(ROOT)/test_target
 DIR_TEST_OBJ := $(DIR_TEST_BIN)/obj
-DIR_INTEGRATION_TEST := test/integration
-DIR_BIN := bin
-DIR_LIB := lib
-DIR_DOCS := docs
-DIR_ENV := env
-DIR_TOML := src/toml
+DIR_INTEGRATION_TEST := $(ROOT)/test/integration
+DIR_BIN := $(ROOT)/bin
+DIR_LIB := $(ROOT)/lib
+DIR_DOCS := $(ROOT)/docs
+DIR_ENV := $(ROOT)/env
+DIR_TOML := $(ROOT)/src/toml
+
+DIR_C_CLIENT ?= $(DIR_MODULES)/c-client
+C_CLIENT_LIB := $(DIR_C_CLIENT)/target/$(PLATFORM)/lib/libaerospike.a
 
 INCLUDES := -I$(DIR_INC)
 INCLUDES += -I$(DIR_TOML)
-INCLUDES += -I$(CLIENTREPO)/src/include
-INCLUDES += -I$(CLIENTREPO)/modules/common/src/include
+INCLUDES += -I$(DIR_C_CLIENT)/src/include
+INCLUDES += -I$(DIR_C_CLIENT)/modules/common/src/include
 INCLUDES += -I/usr/local/opt/openssl/include
 
-LIBRARIES := $(CLIENTREPO)/target/$(PLATFORM)/lib/libaerospike.a
+LIBRARIES := $(C_CLIENT_LIB)
 LIBRARIES += -L/usr/local/lib
 
 ifeq ($(AWS_SDK_STATIC_PATH),)
@@ -114,7 +120,16 @@ else
     LIBRARIES += -framework CoreFoundation -framework Security
   endif
 
-  LIBRARIES += -lcurl
+  ifeq ($(CURL_STATIC_PATH),)
+    LIBRARIES += -lcurl
+  else
+    LIBRARIES += $(CURL_STATIC_PATH)/libcurl.a
+
+    ifeq ($(OS),Darwin)
+      LIBRARIES += -framework SystemConfiguration
+      LIBRARIES += -lssh2
+    endif
+  endif
 endif
 
 ifeq ($(OPENSSL_STATIC_PATH),)
@@ -214,6 +229,7 @@ all: $(BINS)
 .PHONY: clean
 clean:
 	$(MAKE) -C $(DIR_TOML) clean
+	$(MAKE) -C $(DIR_C_CLIENT) clean
 	rm -f $(DEPS) $(OBJS) $(BINS) $(TEST_OBJS) $(TEST_DEPS) $(TEST_BINS)
 	if [ -d $(DIR_OBJ) ]; then rmdir $(DIR_OBJ); fi
 	if [ -d $(DIR_BIN) ]; then rmdir $(DIR_BIN); fi
@@ -225,17 +241,17 @@ clean:
 .PHONY: info
 info:
 	@echo
-	@echo "  NAME:       " $(NAME)
+	@echo "  ROOT:       " $(ROOT)
 	@echo "  OS:         " $(OS)
 	@echo "  ARCH:       " $(ARCH)
-	@echo "  CLIENTREPO: " $(CLIENT_PATH)
+	@echo "  CLIENTREPO: " $(DIR_C_CLIENT)
 	@echo "  WD:         " $(shell pwd)
 	@echo
 	@echo "  PATHS:"
-	@echo "      source:     " $(SOURCE)
-	@echo "      target:     " $(TARGET_BASE)
-	@echo "      includes:   " $(INC_PATH)
-	@echo "      libraries:  " $(LIB_PATH)
+	@echo "      source:     " $(DIR_SRC)
+	@echo "      target:     " $(DIR_BIN)
+	@echo "      includes:   " $(DIR_INC)
+	@echo "      libraries:  " $(DIR_LIB)
 	@echo
 	@echo "  COMPILER:"
 	@echo "      command:    " $(CC)
@@ -262,14 +278,17 @@ $(DIR_OBJ)/%_c.o: $(DIR_SRC)/%.c | $(DIR_OBJ)
 $(DIR_OBJ)/%_cc.o: $(DIR_SRC)/%.cc | $(DIR_OBJ)
 	$(CXX) $(CXXFLAGS) -MMD -o $@ -c $(INCLUDES) $<
 
-$(BACKUP): $(BACKUP_OBJ) $(TOML) | $(DIR_BIN)
+$(BACKUP): $(BACKUP_OBJ) $(TOML) $(C_CLIENT_LIB) | $(DIR_BIN)
 	$(CXX) $(LDFLAGS) -o $(BACKUP) $(BACKUP_OBJ) $(LIBRARIES)
 
-$(RESTORE): $(RESTORE_OBJ) $(TOML) | $(DIR_BIN)
+$(RESTORE): $(RESTORE_OBJ) $(TOML) $(C_CLIENT_LIB) | $(DIR_BIN)
 	$(CXX) $(LDFLAGS) -o $(RESTORE) $(RESTORE_OBJ) $(LIBRARIES)
 
 $(TOML):
 	$(MAKE) -C $(DIR_TOML)
+
+$(C_CLIENT_LIB):
+	$(MAKE) -C $(DIR_C_CLIENT)
 
 -include $(BACKUP_DEP)
 -include $(RESTORE_DEP)
@@ -278,7 +297,7 @@ $(TOML):
 test: unit integration
 
 .PHONY: unit
-unit: $(DIR_TEST_BIN)/test | coverage-init
+unit: $(DIR_TEST_BIN)/test
 	@$<
 	@#valgrind --tool=memcheck --leak-check=full --track-origins=yes --show-leak-kinds=all $<
 
@@ -311,13 +330,13 @@ $(DIR_TEST_OBJ)/src/%_c.o: src/%.c | $(DIR_TEST_OBJ)/src
 $(DIR_TEST_OBJ)/src/%_cc.o: src/%.cc | $(DIR_TEST_OBJ)/src
 	$(CXX) $(TEST_CXXFLAGS) -MMD $(INCLUDES) -fprofile-arcs -ftest-coverage -coverage -o $@ -c $<
 
-$(DIR_TEST_BIN)/test: $(TEST_OBJ) $(CLIENTREPO)/target/$(PLATFORM)/lib/libaerospike.a $(TOML) | $(DIR_TEST_BIN)
-	$(CXX) -o $@ $(TEST_OBJ) $(CLIENTREPO)/target/$(PLATFORM)/lib/libaerospike.a $(TEST_LDFLAGS) $(LIBRARIES)
+$(DIR_TEST_BIN)/test: $(TEST_OBJ) $(DIR_C_CLIENT)/target/$(PLATFORM)/lib/libaerospike.a $(TOML) | $(DIR_TEST_BIN)
+	$(CXX) -o $@ $(TEST_OBJ) $(DIR_C_CLIENT)/target/$(PLATFORM)/lib/libaerospike.a $(TEST_LDFLAGS) $(LIBRARIES)
 
-$(TEST_BACKUP): $(TEST_BACKUP_OBJ) $(TOML) | $(DIR_TEST_BIN)
+$(TEST_BACKUP): $(TEST_BACKUP_OBJ) $(TOML) $(C_CLIENT_LIB) | $(DIR_TEST_BIN)
 	$(CXX) $(TEST_LDFLAGS) -o $(TEST_BACKUP) $(TEST_BACKUP_OBJ) $(LIBRARIES)
 
-$(TEST_RESTORE): $(TEST_RESTORE_OBJ) $(TOML) | $(DIR_TEST_BIN)
+$(TEST_RESTORE): $(TEST_RESTORE_OBJ) $(TOML) $(C_CLIENT_LIB) | $(DIR_TEST_BIN)
 	$(CXX) $(TEST_LDFLAGS) -o $(TEST_RESTORE) $(TEST_RESTORE_OBJ) $(LIBRARIES)
 
 -include $(TEST_DEPS)
@@ -325,15 +344,15 @@ $(TEST_RESTORE): $(TEST_RESTORE_OBJ) $(TOML) | $(DIR_TEST_BIN)
 # Summary requires the lcov tool to be installed
 .PHONY: coverage
 coverage:
-	@echo
-	@lcov --capture --initial --directory $(DIR_TEST_BIN) --output-file $(DIR_TEST_BIN)/aerospike-tools-backup.info
-	@lcov --directory $(DIR_TEST_BIN) --capture --quiet --output-file $(DIR_TEST_BIN)/aerospike-tools-backup.info
-	@lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup.info --quiet --extract $(DIR_TEST_BIN)/aerospike-tools-backup.info '$(ROOT)/$(DIR_SRC)/*' '$(ROOT)/$(DIR_INC)/*'
+	@lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup-tests.info --directory $(DIR_TEST_BIN) --capture --quiet
+	@lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup.info -a $(DIR_TEST_BIN)/aerospike-tools-backup-baseline.info -a $(DIR_TEST_BIN)/aerospike-tools-backup-tests.info
+	@lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup.info --quiet --extract $(DIR_TEST_BIN)/aerospike-tools-backup.info '$(DIR_SRC)/*' '$(DIR_INC)/*'
 	@lcov --summary $(DIR_TEST_BIN)/aerospike-tools-backup.info
 
 .PHONY: coverage-init
 coverage-init: $(TEST_BINS)
 	@lcov --zerocounters --directory $(DIR_TEST_BIN)
+	@lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup-baseline.info --directory $(DIR_TEST_BIN) --capture --initial
 
 .PHONY: do-test
 do-test: | coverage-init

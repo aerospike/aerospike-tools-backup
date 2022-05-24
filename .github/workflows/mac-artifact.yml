@@ -1,0 +1,203 @@
+name: Mac Artifact
+on:
+  push:
+    branches: [ master, test-ready ]
+  workflow_call:
+    inputs:
+      submodule:
+        description: The directory of the submodule, if this workflow is being called on a submodule
+        required: false
+        type: string
+jobs:
+  build:
+    runs-on: macos-10.15
+    env:
+      AWS_SDK_CPP_VERSION: 1.9.177
+      ZSTD_VERSION: 1.4.9
+      LD_LIBRARY_PATH: /usr/local/lib
+    steps:
+    - name: Get checkout directory
+      uses: haya14busa/action-cond@v1
+      id: checkout-dir
+      with:
+        cond: ${{ inputs.submodule != '' }}
+        if_true: aerospike-tools  # In this case we are expecting to checkout the tools package.
+        if_false: asbackup
+    - name: Get asbackup working directory
+      uses: haya14busa/action-cond@v1
+      id: working-dir
+      with:
+        cond: ${{ inputs.submodule != '' }}
+        if_true: aerospike-tools/${{ inputs.submodule }}  # In this case we are expecting to checkout the tools package.
+        if_false: asbackup
+    - uses: kenchan0130/actions-system-info@master
+      id: system-info
+    - name: install AWS requirements
+      id: install-aws-requirements
+      run: |
+        brew install openssl@1.1 readline cmake
+    - name: Cache AWS C++ sdk
+      id: cache-aws-sdk-cpp
+      uses: actions/cache@v2
+      env:
+        cache-name: aws-sdk-cpp
+      with:
+        path: aws-sdk-cpp-${{ env.AWS_SDK_CPP_VERSION }}
+        key: aws-sdk-cpp-${{ env.AWS_SDK_CPP_VERSION }}-${{ runner.os }}
+    - name: Download AWS C++ sdk
+      uses: actions/checkout@v2
+      if: steps.cache-aws-sdk-cpp.outputs.cache-hit != 'true'
+      with:
+        repository: aws/aws-sdk-cpp
+        submodules: recursive
+        ref: ${{ env.AWS_SDK_CPP_VERSION }}
+        path: aws-sdk-cpp-${{ env.AWS_SDK_CPP_VERSION }}
+    - name: Build AWS C++ sdk shared library
+      if: steps.cache-aws-sdk-cpp.outputs.cache-hit != 'true'
+      run: |
+        mkdir build
+        cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=ON -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib
+        make -C build
+      working-directory: aws-sdk-cpp-${{ env.AWS_SDK_CPP_VERSION }}
+    - name: Build AWS C++ sdk static library
+      if: steps.cache-aws-sdk-cpp.outputs.cache-hit != 'true'
+      run: |
+        mkdir build_static
+        cmake -S . -B build_static -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib
+        make -C build_static
+      working-directory: aws-sdk-cpp-${{ env.AWS_SDK_CPP_VERSION }}
+    - name: Install AWS C++ sdk shared library
+      run: |
+        sudo make install
+      working-directory: aws-sdk-cpp-${{ env.AWS_SDK_CPP_VERSION }}/build
+    - name: Download zstd
+      uses: actions/checkout@v2
+      with:
+        repository: facebook/zstd
+        submodules: recursive
+        ref: v${{ env.ZSTD_VERSION }}
+        path: zstd-${{ env.ZSTD_VERSION }}
+    - name: Cache zstd
+      id: cache-zstd
+      uses: actions/cache@v2
+      env:
+        cache-name: zstd
+      with:
+        path: zstd-${{ env.ZSTD_VERSION }}
+        key: zstd-${{ env.ZSTD_VERSION }}-${{ runner.os }}
+    - name: Build zstd
+      id: build-zstd
+      if: steps.cache-zstd.outputs.cache-hit != 'true'
+      run: |
+        make
+      working-directory: zstd-${{ env.ZSTD_VERSION }}
+    - name: install zstd
+      run: |
+        sudo make install
+      working-directory: zstd-${{ env.ZSTD_VERSION }}
+      # this will checkout the whole tools repo when run from aerospike-tools, but we will
+      # just cd into the correct directory calculated from working-dir
+    - uses: actions/checkout@v2
+      if: steps.cache-asbackup.outputs.cache-hit != 'true'
+      with: 
+        path: ${{ steps.checkout-dir.outputs.value }}
+        fetch-depth: 0 # fetch the entire commit history for all branches
+    - name: Checkout asbackup
+      run: |
+        git config --global url."https://github.com/".insteadOf "git@github.com:"
+        git submodule update --init --recursive -- ${{ inputs.submodule || '.' }}
+      working-directory: ${{ steps.checkout-dir.outputs.value }}
+    - name: Print version
+      working-directory: ${{ steps.working-dir.outputs.value }}
+      run: |
+        git describe --tags --always
+    - name: Get SHA
+      working-directory: ${{ steps.working-dir.outputs.value }}
+      id: sha
+      run: |
+        echo "::set-output name=sha::$(git rev-parse head)"
+    - name: Cache asbackup build
+      id: cache-asbackup
+      uses: actions/cache@v2
+      env:
+        cache-name: cache-asbackup
+        cache-index: "1"
+      with:
+        path: |
+          ${{ steps.working-dir.outputs.value }}/binaries
+        key: ${{ env.cache-name }}-${{ env.cache-index }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.system-info.outputs.release }}-${{ env.AWS_SDK_CPP_VERSION }}-${{ env.ZSTD_VERSION }}-${{ steps.sha.outputs.sha }}
+    - name: Build asbackup
+      if: steps.cache-asbackup.outputs.cache-hit != 'true'
+      run: |
+        make
+        mkdir -p binaries
+        cp -r bin binaries/dyn_bin
+        make clean
+      working-directory: ${{ steps.working-dir.outputs.value }}
+    - name: Sanity test dynamic lib backup artifacts
+      run: |
+        ./asbackup -n test -d backupdir 2>&1 | grep "Failed to connect"
+        ./asrestore -n test -d backupdir 2>&1 | grep "Failed to connect"
+      working-directory:  ${{ steps.working-dir.outputs.value }}/binaries/dyn_bin
+    - name: Uninstall AWS C++ sdk shared library
+      run: |
+          sudo rm /usr/local/lib/libaws-cpp-*
+    - name: Install AWS C++ sdk static library
+      if: steps.cache-asbackup.outputs.cache-hit != 'true'
+      run: |
+        sudo make install
+      working-directory: aws-sdk-cpp-${{ env.AWS_SDK_CPP_VERSION }}/build_static
+    - name: Build asbackup with static link to zstd and aws-sdk-cpp
+      if: steps.cache-asbackup.outputs.cache-hit != 'true'
+      run: |
+        make ZSTD_STATIC_PATH=/usr/local/lib AWS_SDK_STATIC_PATH=/usr/local/lib
+        mkdir -p binaries
+        cp -r bin binaries/static_bin
+        make clean
+      working-directory: ${{ steps.working-dir.outputs.value }}
+    - name: Sanity test static lib backup artifacts
+      run: |
+        ./asbackup -n test -d backupdir 2>&1 | grep "Failed to connect"
+        ./asrestore -n test -d backupdir 2>&1 | grep "Failed to connect"
+      working-directory:  ${{ steps.working-dir.outputs.value }}/binaries/static_bin
+    - name: Upload asbackup artifact
+      uses: actions/upload-artifact@v2
+      with: 
+        name: ${{ steps.system-info.outputs.platform }}-${{ runner.arch }}-${{ runner.os }}-${{ steps.system-info.outputs.release }}-asbackup
+        path: ${{ steps.working-dir.outputs.value }}/binaries/dyn_bin/asbackup
+        if-no-files-found: error
+    - name: Upload asrestore artifact
+      uses: actions/upload-artifact@v2
+      with: 
+        name: ${{ steps.system-info.outputs.platform }}-${{ runner.arch }}-${{ runner.os }}-${{ steps.system-info.outputs.release }}-asrestore
+        path: ${{ steps.working-dir.outputs.value }}/binaries/dyn_bin/asrestore
+        if-no-files-found: error
+    - name: Upload static asbackup artifact
+      uses: actions/upload-artifact@v2
+      with: 
+        name: ${{ steps.system-info.outputs.platform }}-${{ runner.arch }}-${{ runner.os }}-${{ steps.system-info.outputs.release }}-asbackup-static
+        path: ${{ steps.working-dir.outputs.value }}/binaries/static_bin/asbackup
+        if-no-files-found: error
+    - name: Upload static asrestore artifact
+      uses: actions/upload-artifact@v2
+      with: 
+        name: ${{ steps.system-info.outputs.platform }}-${{ runner.arch }}-${{ runner.os }}-${{ steps.system-info.outputs.release }}-asrestore-static
+        path: ${{ steps.working-dir.outputs.value }}/binaries/static_bin/asrestore
+        if-no-files-found: error
+  bundle-binaries:
+    needs: build
+    runs-on: macos-10.15
+    if: "${{ inputs.submodule == '' }}"
+
+    steps: 
+      - uses: kenchan0130/actions-system-info@master
+        id: system-info
+      - name: Get artifacts
+        uses: actions/download-artifact@v2
+        with:
+          path: binaries
+      - uses: actions/upload-artifact@v3
+        with:
+          name: binaries
+          path: binaries
+          if-no-files-found: error

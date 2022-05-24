@@ -4,9 +4,11 @@ on:
     branches: [ master, test-ready ]
 jobs:
   build-libraries:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     env:
-      CLIENTREPO: ${GITHUB_WORKSPACE}/client
+      AWS_SDK_CPP_VERSION: 1.9.177
+      ZSTD_VERSION: 1.4.9
+      LD_LIBRARY_PATH: /usr/local/lib
     steps:
     - name: install AWS requirements
       id: install-aws-requirements
@@ -19,79 +21,74 @@ jobs:
         cache-name: aws-sdk-cpp
       with:
         path: aws-sdk-cpp
-        key: aws-sdk-cpp-v2-${{ runner.os }}
+        key: aws-sdk-cpp-${{ env.AWS_SDK_CPP_VERSION }}-${{ runner.os }}
     - name: Download AWS C++ sdk
       uses: actions/checkout@v2
       if: steps.cache-aws-sdk-cpp.outputs.cache-hit != 'true'
       with:
         repository: aws/aws-sdk-cpp
         submodules: recursive
-        ref: 1.9.177
+        ref: ${{ env.AWS_SDK_CPP_VERSION }}
         path: aws-sdk-cpp
     - name: Build AWS C++ sdk shared library
       if: steps.cache-aws-sdk-cpp.outputs.cache-hit != 'true'
       run: |
         mkdir aws-sdk-cpp/build
         cd aws-sdk-cpp/build
-        cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=ON -DENABLE_TESTING=OFF -DCMAKE_PREFIX_PATH=/usr/local
+        cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=ON -DENABLE_TESTING=OFF -DCMAKE_PREFIX_PATH=/usr/local -DCMAKE_INSTALL_LIBDIR=lib
         make
     - name: Build AWS C++ sdk static library
       if: steps.cache-aws-sdk-cpp.outputs.cache-hit != 'true'
       run: |
         mkdir aws-sdk-cpp/build_static
         cd aws-sdk-cpp/build_static
-        cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_PREFIX_PATH=/usr/local
+        cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_PREFIX_PATH=/usr/local -DCMAKE_INSTALL_LIBDIR=lib
         make
     - name: Install AWS C++ sdk shared library
       run: |
         cd aws-sdk-cpp/build
         sudo make install
     - name: Download zstd
-      uses: dsaltares/fetch-gh-release-asset@0.0.5
+      uses: actions/checkout@v2
       with:
-        repo: "facebook/zstd"
-        version: "tags/v1.4.9"
-        file: zstd-1.4.9.tar.gz
+        repository: facebook/zstd
+        submodules: recursive
+        ref: v${{ env.ZSTD_VERSION }}
+        path: zstd-${{ env.ZSTD_VERSION }}
     - name: Cache zstd
       id: cache-zstd
       uses: actions/cache@v2
       env:
         cache-name: zstd
       with:
-        path: zstd-1.4.9
-        key: zstd-1.4.9-${{ runner.os }}
+        path: zstd-${{ env.ZSTD_VERSION }}
+        key: zstd-${{ env.ZSTD_VERSION }}-${{ runner.os }}
     - name: Build zstd
       id: build-zstd
       if: steps.cache-zstd.outputs.cache-hit != 'true'
       run: |
-        tar xvfz zstd-1.4.9.tar.gz && cd zstd-1.4.9
+        cd zstd-${{ env.ZSTD_VERSION }}
         make
-        #make test
     - name: install zstd
       run: |
-        cd zstd-1.4.9
+        cd zstd-${{ env.ZSTD_VERSION }}
         sudo make install
-    - name: Checkout c client
-      uses: actions/checkout@v2
-      with:
-        repository: aerospike/aerospike-client-c
-        submodules: recursive
-        ref: 6.0.0
-        path: client
     - name: Checkout asbackup
       uses: actions/checkout@v2
       with: 
         path: main
         submodules: recursive
-    - name: Build client lib
-      run: make
-      working-directory: client
     - name: Build asbackup
       run: |
         make
         cp -r bin dyn_bin
         make clean
       working-directory: main
+    - name: Sanity test dynamic lib backup artifacts
+      run: |
+        ./asbackup -n test -d backupdir 2>&1 | grep "Failed to connect"
+        ./asrestore -n test -d backupdir 2>&1 | grep "Failed to connect"
+      working-directory: main/dyn_bin
     - name: Uninstall AWS C++ sdk shared library
       run: |
           sudo rm /usr/local/lib/libaws-cpp-*
@@ -105,28 +102,33 @@ jobs:
         cp -r bin static_bin
         make clean
       working-directory: main
+    - name: Sanity test static lib backup artifacts
+      run: |
+        ./asbackup -n test -d backupdir 2>&1 | grep "Failed to connect"
+        ./asrestore -n test -d backupdir 2>&1 | grep "Failed to connect"
+      working-directory: main/static_bin
     - name: Upload asbackup artifact
       uses: actions/upload-artifact@v2
       with: 
-        name: asbackup
+        name: asbackup-${{ runner.os }}
         path: main/dyn_bin/asbackup
         if-no-files-found: error
     - name: Upload asrestore artifact
       uses: actions/upload-artifact@v2
       with: 
-        name: asrestore
+        name: asrestore-${{ runner.os }}
         path: main/dyn_bin/asrestore
         if-no-files-found: error
     - name: Upload static zstd asbackup artifact
       uses: actions/upload-artifact@v2
       with: 
-        name: asbackup-static
+        name: asbackup-${{ runner.os }}-static
         path: main/static_bin/asbackup
         if-no-files-found: error
     - name: Upload static zstd asrestore artifact
       uses: actions/upload-artifact@v2
       with: 
-        name: asrestore-static
+        name: asrestore-${{ runner.os }}-static
         path: main/static_bin/asrestore
         if-no-files-found: error
   pre-release:
@@ -139,11 +141,11 @@ jobs:
 
       - name: Checkout asbackup
         uses: actions/checkout@v2
-        with: 
+        with:
           submodules: recursive
       - name: Get artifacts
         uses: actions/download-artifact@v2
-        with: 
+        with:
           path: binaries/
       - name: Create tarball
         run: tar -czf binaries.tar.gz binaries
