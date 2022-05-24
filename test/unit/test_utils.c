@@ -283,6 +283,90 @@ START_TEST(test_better_atoi_long_min)
 }
 END_TEST
 
+START_TEST(test_timespec_add_1s)
+{
+	struct timespec ts = {
+		.tv_sec = 0,
+		.tv_nsec = 0
+	};
+
+	timespec_add_us(&ts, 1000000);
+	ck_assert_int_eq(ts.tv_sec, 1);
+	ck_assert_int_eq(ts.tv_nsec, 0);
+}
+END_TEST
+
+START_TEST(test_timespec_add_1ms)
+{
+	struct timespec ts = {
+		.tv_sec = 0,
+		.tv_nsec = 0
+	};
+
+	timespec_add_us(&ts, 1000);
+	ck_assert_int_eq(ts.tv_sec, 0);
+	ck_assert_int_eq(ts.tv_nsec, 1000000);
+}
+END_TEST
+
+START_TEST(test_timespec_add_1ms_overflow)
+{
+	struct timespec ts = {
+		.tv_sec = 0,
+		.tv_nsec = 999000050
+	};
+
+	timespec_add_us(&ts, 1000);
+	ck_assert_int_eq(ts.tv_sec, 1);
+	ck_assert_int_eq(ts.tv_nsec, 50);
+}
+END_TEST
+
+START_TEST(test_timespec_diff_1s)
+{
+	struct timespec ts1 = {
+		.tv_sec = 0,
+		.tv_nsec = 0
+	};
+	struct timespec ts2 = {
+		.tv_sec = 1,
+		.tv_nsec = 0
+	};
+
+	ck_assert_uint_eq(timespec_diff(&ts1, &ts2), 1000000);
+}
+END_TEST
+
+START_TEST(test_timespec_diff_1ms)
+{
+	struct timespec ts1 = {
+		.tv_sec = 0,
+		.tv_nsec = 0
+	};
+	struct timespec ts2 = {
+		.tv_sec = 0,
+		.tv_nsec = 1000000
+	};
+
+	ck_assert_uint_eq(timespec_diff(&ts1, &ts2), 1000);
+}
+END_TEST
+
+START_TEST(test_timespec_diff_1ms_overflow)
+{
+	struct timespec ts1 = {
+		.tv_sec = 0,
+		.tv_nsec = 999000050
+	};
+	struct timespec ts2 = {
+		.tv_sec = 1,
+		.tv_nsec = 50
+	};
+
+	ck_assert_uint_eq(timespec_diff(&ts1, &ts2), 1000);
+}
+END_TEST
+
 Suite* utils_suite()
 {
 	Suite* s;
@@ -292,6 +376,7 @@ Suite* utils_suite()
 	TCase* tc_erfinv;
 	TCase* tc_confidence_z;
 	TCase* tc_better_atoi;
+	TCase* tc_timespec;
 
 	s = suite_create("Utils");
 
@@ -338,6 +423,15 @@ Suite* utils_suite()
 	tcase_add_test(tc_better_atoi, test_better_atoi_long_max);
 	tcase_add_test(tc_better_atoi, test_better_atoi_long_min);
 	suite_add_tcase(s, tc_better_atoi);
+
+	tc_timespec = tcase_create("timespec utils");
+	tcase_add_test(tc_timespec, test_timespec_add_1s);
+	tcase_add_test(tc_timespec, test_timespec_add_1ms);
+	tcase_add_test(tc_timespec, test_timespec_add_1ms_overflow);
+	tcase_add_test(tc_timespec, test_timespec_diff_1s);
+	tcase_add_test(tc_timespec, test_timespec_diff_1ms);
+	tcase_add_test(tc_timespec, test_timespec_diff_1ms_overflow);
+	suite_add_tcase(s, tc_timespec);
 
 	return s;
 }
