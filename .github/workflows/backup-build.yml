@@ -2,7 +2,7 @@ name: Build and Test All
 
 on:
   push:
-    branches: [ master, test-ready, asbackup-3.10.1-bugfix ]
+    branches: [ master, test-ready ]
   pull_request:
     branches: [ master, test-ready ]
 jobs:
