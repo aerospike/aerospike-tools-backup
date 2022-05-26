@@ -127,7 +127,12 @@ else
 
     ifeq ($(OS),Darwin)
       LIBRARIES += -framework SystemConfiguration
-      LIBRARIES += -lssh2
+
+      ifeq ($(LIBSSH2_STATIC_PATH),)
+        LIBRARIES += -lssh2
+      else
+        LIBRARIES += $(LIBSSH2_STATIC_PATH)/libssh2.a
+      endif
     endif
   endif
 endif
@@ -142,7 +147,12 @@ else
 endif
 LIBRARIES += -lpthread
 LIBRARIES += -lm
-LIBRARIES += -lz
+
+ifeq ($(ZLIB_STATIC_PATH),)
+  LIBRARIES += -lz
+else
+  LIBRARIES += $(ZLIB_STATIC_PATH)/libz.a
+endif
 
 ifeq ($(ZSTD_STATIC_PATH),)
   LIBRARIES += -lzstd
