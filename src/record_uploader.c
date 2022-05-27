@@ -21,14 +21,14 @@
 
 #include <record_uploader.h>
 
+#pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wconversion"
 #pragma GCC diagnostic ignored "-Wsign-conversion"
 
 #include <aerospike/aerospike_key.h>
 #include <aerospike/as_record.h>
 
-#pragma GCC diagnostic warning "-Wconversion"
-#pragma GCC diagnostic warning "-Wsign-conversion"
+#pragma GCC diagnostic pop
 
 
 //==========================================================

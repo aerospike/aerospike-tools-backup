@@ -22,11 +22,12 @@
 
 #include <download_manager.h>
 
+#pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wsign-conversion"
 
 #include <aws/s3/model/HeadObjectRequest.h>
 
-#pragma GCC diagnostic warning "-Wsign-conversion"
+#pragma GCC diagnostic pop
 
 #include <s3_api.h>
 

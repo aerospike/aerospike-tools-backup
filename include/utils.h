@@ -42,6 +42,7 @@ extern "C" {
 #include <syscall.h>
 #endif
 
+#pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wconversion"
 #pragma GCC diagnostic ignored "-Wsign-conversion"
 
@@ -53,8 +54,7 @@ extern "C" {
 #include <aerospike/as_node.h>
 #include <aerospike/as_vector.h>
 
-#pragma GCC diagnostic warning "-Wconversion"
-#pragma GCC diagnostic warning "-Wsign-conversion"
+#pragma GCC diagnostic pop
 
 #include <encode.h>
 #include <io_proxy.h>

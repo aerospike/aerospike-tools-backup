@@ -41,6 +41,7 @@ extern "C" {
 #include <sys/statvfs.h>
 #include <sys/stat.h>
 
+#pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wconversion"
 #pragma GCC diagnostic ignored "-Wsign-conversion"
 
@@ -50,8 +51,7 @@ extern "C" {
 #include <aerospike/as_partition_filter.h>
 #include <aerospike/as_scan.h>
 
-#pragma GCC diagnostic warning "-Wconversion"
-#pragma GCC diagnostic warning "-Wsign-conversion"
+#pragma GCC diagnostic pop
 
 #include <backup_config.h>
 #include <backup_status.h>

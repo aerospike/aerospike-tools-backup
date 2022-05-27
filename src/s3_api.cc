@@ -22,11 +22,12 @@
 
 #include <s3_api.h>
 
+#pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wsign-conversion"
 
 #include <aws/core/Aws.h>
 
-#pragma GCC diagnostic warning "-Wsign-conversion"
+#pragma GCC diagnostic pop
 
 #include <asbackup_logger.h>
 #include <utils.h>

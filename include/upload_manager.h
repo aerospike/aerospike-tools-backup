@@ -28,6 +28,7 @@
 // Includes.
 //
 
+#pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wsign-conversion"
 
 #include <aws/core/utils/HashingUtils.h>
@@ -36,7 +37,7 @@
 #include <aws/s3/model/CompleteMultipartUploadRequest.h>
 #include <aws/s3/model/UploadPartRequest.h>
 
-#pragma GCC diagnostic warning "-Wsign-conversion"
+#pragma GCC diagnostic pop
 
 #include <backup.h>
 #include <file_proxy.h>

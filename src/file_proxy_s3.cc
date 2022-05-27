@@ -24,6 +24,7 @@
 #include <cstdio>
 #include <memory>
 
+#pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wsign-conversion"
 
 #include <aws/core/Aws.h>
@@ -33,7 +34,7 @@
 #include <aws/s3/model/ListObjectsRequest.h>
 #include <aws/s3/model/ListPartsRequest.h>
 
-#pragma GCC diagnostic warning "-Wsign-conversion"
+#pragma GCC diagnostic pop
 
 #include <asbackup_logger.h>
 #include <backup_state.h>

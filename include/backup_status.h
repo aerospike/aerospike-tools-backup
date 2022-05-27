@@ -28,6 +28,7 @@
 // Includes.
 //
 
+#pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wconversion"
 #pragma GCC diagnostic ignored "-Wsign-conversion"
 
@@ -35,8 +36,7 @@
 #include <aerospike/as_partition_filter.h>
 #include <aerospike/as_scan.h>
 
-#pragma GCC diagnostic warning "-Wconversion"
-#pragma GCC diagnostic warning "-Wsign-conversion"
+#pragma GCC diagnostic pop
 
 #include <backup_config.h>
 #include <enc_text.h>

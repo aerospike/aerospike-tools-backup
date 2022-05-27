@@ -31,12 +31,13 @@
 #include <condition_variable>
 #include <deque>
 
+#pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wsign-conversion"
 
 #include <aws/core/Aws.h>
 #include <aws/s3/model/GetObjectRequest.h>
 
-#pragma GCC diagnostic warning "-Wsign-conversion"
+#pragma GCC diagnostic pop
 
 #include <stream_manager.h>
 
