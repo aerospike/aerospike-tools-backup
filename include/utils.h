@@ -24,6 +24,10 @@
 
 #pragma once
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 //==========================================================
 // Includes.
 //
@@ -490,4 +494,8 @@ void tls_config_destroy(as_config_tls* tls);
  * Duplicates an as_config_tls object.
  */
 void tls_config_clone(as_config_tls* clone, const as_config_tls* src);
+
+#ifdef __cplusplus
+}
+#endif
 

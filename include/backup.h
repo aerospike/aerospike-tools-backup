@@ -24,6 +24,10 @@
 
 #pragma once
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 //==========================================================
 // Includes.
 //
@@ -173,4 +177,8 @@ int32_t backup_main(int32_t argc, char **argv);
  */
 backup_config_t* get_g_backup_conf(void);
 backup_status_t* get_g_backup_status(void);
+
+#ifdef __cplusplus
+}
+#endif
 
