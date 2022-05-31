@@ -167,8 +167,6 @@ def run(command, *options, do_async=False, pipe_stdout=None, pipe_stdin=None, en
 			env=dict(os.environ, **env)))
 	else:
 		subprocess.check_call(command, cwd=directory,
-				stdout=asyncio.subprocess.PIPE if pipe_stdout is None else pipe_stdout,
-				stderr=asyncio.subprocess.PIPE,
 				stdin=pipe_stdin,
 				env=dict(os.environ, **env))
 		return 0

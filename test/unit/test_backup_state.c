@@ -132,7 +132,7 @@ END_TEST
 
 START_TEST(test_serialize_io_proxy)
 {
-	file_proxy_t bup, fd;
+	file_proxy_t bup;
 	ck_assert_int_eq(file_proxy_write_init(&bup, TMP_FILE_1, 0), 0);
 
 	io_write_proxy_t io;
@@ -142,7 +142,7 @@ START_TEST(test_serialize_io_proxy)
 	ck_assert_int_eq(io_proxy_flush(&io), 0);
 	ck_assert_int_eq(io_proxy_serialize(&io, &bup), 0);
 
-	ck_assert_int_eq(file_proxy_close(&bup), 0);
+	ck_assert_int_eq(file_proxy_close2(&bup, FILE_PROXY_EOF), 0);
 
 	ck_assert_int_eq(file_proxy_read_init(&bup, TMP_FILE_1), 0);
 
@@ -155,8 +155,6 @@ START_TEST(test_serialize_io_proxy)
 	ck_assert_int_eq(io.num, io2.num);
 	ck_assert_int_eq(io.flags, io2.deserialized_flags);
 	ck_assert_int_eq(io2.flags, IO_PROXY_DESERIALIZE);
-
-	file_proxy_close(&fd);
 }
 END_TEST
 
@@ -185,6 +183,15 @@ START_TEST(test_init_single_file)
 
 		ck_assert_str_eq(io_proxy_file_path(f->io_proxy), TMP_FILE_2);
 		ck_assert_int_eq((int64_t) f->rec_count_file, (int64_t) rec_count);
+	}
+
+	// restore b1's files
+	{
+		io_write_proxy_t* io = test_malloc(sizeof(io_write_proxy_t));
+		ck_assert_ptr_ne(io, NULL);
+		io_write_proxy_init(io, TMP_FILE_2, 0);
+
+		ck_assert(backup_state_save_file(&b1, io, rec_count));
 	}
 
 	cmp_backup_state(&b1, &b2);
@@ -229,6 +236,17 @@ START_TEST(test_init_multiple_files)
 
 		ck_assert_str_eq(io_proxy_file_path(f->io_proxy), file_name);
 		ck_assert_int_eq((int64_t) f->rec_count_file, (int64_t) rec_counts[i]);
+	}
+
+	// restore b1's files
+	for (uint32_t i = 2; i < 2 + N_FILES; i++) {
+		TMP_FILE_N(file_name, i);
+
+		io_write_proxy_t* io = test_malloc(sizeof(io_write_proxy_t));
+		ck_assert_ptr_ne(io, NULL);
+		io_write_proxy_init(io, file_name, 0);
+
+		ck_assert(backup_state_save_file(&b1, io, rec_counts[i - 2]));
 	}
 
 	cmp_backup_state(&b1, &b2);

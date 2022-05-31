@@ -1,7 +1,7 @@
 /*
- * Aerospike Text Format Encoder
+ * Aerospike Delete Objects Buffer
  *
- * Copyright (c) 2008-2022 Aerospike, Inc. All rights reserved.
+ * Copyright (c) 2022 Aerospike, Inc. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -24,28 +24,48 @@
 
 #pragma once
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 //==========================================================
 // Includes.
 //
 
-#include <encode.h>
-#include <io_proxy.h>
-#include <utils.h>
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wsign-conversion"
+
+#include <aws/s3/S3Client.h>
+#include <aws/s3/model/DeleteObjectsRequest.h>
+
+#pragma GCC diagnostic pop
+
+#include <download_manager.h>
 
 
 //==========================================================
-// Public API.
+// Class Declarations.
 //
 
-bool text_put_record(io_write_proxy_t *fd, bool compact, const as_record *rec);
-bool text_put_udf_file(io_write_proxy_t *fd, const as_udf_file *file);
-bool text_put_secondary_index(io_write_proxy_t *fd, const index_param *index);
+/*
+ * Used to simplify deleting many objects from an S3 bucket, buffering the
+ * objects ID's to delete and sending DeleteObjects requests with them in
+ * groups, rather than sending a DeleteObject request for each object.
+ */
+class DeleteObjectsBuffer {
+public:
 
-#ifdef __cplusplus
-}
-#endif
+	DeleteObjectsBuffer(const Aws::S3::S3Client& client,
+			const Aws::String& bucket);
+
+	bool DeleteObject(const Aws::String& key);
+
+	bool Flush();
+
+private:
+	// max number of objects that can be deleted in a single delete objects
+	// request
+	static constexpr const uint64_t max_delete_objs = 1000;
+
+	const Aws::S3::S3Client& client;
+	const Aws::String bucket;
+	Aws::Vector<Aws::S3::Model::ObjectIdentifier> ids;
+
+};
 

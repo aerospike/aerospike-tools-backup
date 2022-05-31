@@ -38,12 +38,12 @@ CC ?= cc
 
 DWARF := $(shell $(CC) -Wall -Wextra -O2 -o /tmp/asflags_$${$$} src/flags.c; \
 		/tmp/asflags_$${$$}; rm /tmp/asflags_$${$$})
-CFLAGS += -std=gnu99 $(DWARF) -O2 -march=nocona -fno-common -fno-strict-aliasing \
+CFLAGS += -std=gnu99 $(DWARF) -O2 -flto -march=nocona -fno-common -fno-strict-aliasing \
 		-Wall -Wextra -Wconversion -Wsign-conversion -Wmissing-declarations \
 		-Wno-implicit-fallthrough -Wno-unused-result -Wno-typedef-redefinition \
 		-D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_FORTIFY_SOURCE=2 -DMARCH_$(ARCH) \
 		-DTOOL_VERSION=\"$(VERSION)\"
-CXXFLAGS := -std=c++14 $(DWARF) -O2 -march=nocona -fno-common -fno-strict-aliasing \
+CXXFLAGS := -std=c++14 $(DWARF) -O2 -flto -march=nocona -fno-common -fno-strict-aliasing \
 		-Wall -Wextra -Wconversion -Wsign-conversion -Wmissing-declarations \
 		-Wno-implicit-fallthrough -Wno-unused-result \
 		-D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_FORTIFY_SOURCE=2 -DMARCH_$(ARCH) \
@@ -66,7 +66,28 @@ TEST_CXXFLAGS := -std=c++14 $(DWARF) -g -O2 -march=nocona -fno-common -fno-stric
 		-Wno-implicit-fallthrough -Wno-unused-result \
 		-D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_FORTIFY_SOURCE=2 -DMARCH_$(ARCH) \
 		-DTOOL_VERSION=\"$(VERSION)\"
-TEST_LDFLAGS := $(LDFLAGS) -fprofile-arcs -coverage -lcheck
+TEST_LDFLAGS := $(LDFLAGS) -fprofile-arcs -lcheck
+
+ifeq ($(EVENT_LIB),libev)
+  CFLAGS += -DAS_USE_LIBEV
+  CXXFLAGS += -DAS_USE_LIBEV
+  TEST_CFLAGS += -DAS_USE_LIBEV
+  TEST_CXXFLAGS += -DAS_USE_LIBEV
+endif
+
+ifeq ($(EVENT_LIB),libuv)
+  CFLAGS += -DAS_USE_LIBUV
+  CXXFLAGS += -DAS_USE_LIBUV
+  TEST_CFLAGS += -DAS_USE_LIBUV
+  TEST_CXXFLAGS += -DAS_USE_LIBUV
+endif
+
+ifeq ($(EVENT_LIB),libevent)
+  CFLAGS += -DAS_USE_LIBEVENT
+  CXXFLAGS += -DAS_USE_LIBEVENT
+  TEST_CFLAGS += -DAS_USE_LIBEVENT
+  TEST_CXXFLAGS += -DAS_USE_LIBEVENT
+endif
 
 DIR_INC := $(ROOT)/include
 DIR_SRC := $(ROOT)/src
@@ -148,6 +169,30 @@ ifeq ($(ZSTD_STATIC_PATH),)
   LIBRARIES += -lzstd
 else
   LIBRARIES += $(ZSTD_STATIC_PATH)/libzstd.a
+endif
+
+ifeq ($(EVENT_LIB),libev)
+  ifeq ($(LIBEV_STATIC_PATH),)
+    LIBRARIES += -lev
+  else
+    LIBRARIES += $(LIBEV_STATIC_PATH)/libev.a
+  endif
+endif
+
+ifeq ($(EVENT_LIB),libuv)
+  ifeq ($(LIBUV_STATIC_PATH),)
+    LIBRARIES += -luv
+  else
+    LIBRARIES += $(LIBUV_STATIC_PATH)/libuv.a
+  endif
+endif
+
+ifeq ($(EVENT_LIB),libevent)
+  ifeq ($(LIBEVENT_STATIC_PATH),)
+    LIBRARIES += -levent_core -levent_pthreads
+  else
+    LIBRARIES += $(LIBEVENT_STATIC_PATH)/libevent_core.a $(LIBEVENT_STATIC_PATH)/libevent_pthreads.a
+  endif
 endif
 
 
@@ -304,7 +349,7 @@ unit: $(DIR_TEST_BIN)/test
 .PHONY: integration
 integration: $(TEST_INTEGRATION_TESTS)
 
-run_%: $(TEST_BINS) FORCE
+run_%: $(TEST_BINS) FORCE | coverage-init
 	@./tests.sh $(DIR_ENV) $(patsubst run_%,$(DIR_INTEGRATION_TEST)/%.py,$@)
 
 FORCE:
@@ -325,10 +370,10 @@ $(DIR_TEST_OBJ)/unit/%.o: test/unit/%.c | $(DIR_TEST_OBJ)/unit
 	$(CC) $(TEST_CFLAGS) -MMD $(INCLUDES) -o $@ -c $<
 
 $(DIR_TEST_OBJ)/src/%_c.o: src/%.c | $(DIR_TEST_OBJ)/src
-	$(CC) $(TEST_CFLAGS) -MMD $(INCLUDES) -fprofile-arcs -ftest-coverage -coverage -o $@ -c $<
+	$(CC) $(TEST_CFLAGS) -MMD $(INCLUDES) -fprofile-arcs -ftest-coverage -o $@ -c $<
 
 $(DIR_TEST_OBJ)/src/%_cc.o: src/%.cc | $(DIR_TEST_OBJ)/src
-	$(CXX) $(TEST_CXXFLAGS) -MMD $(INCLUDES) -fprofile-arcs -ftest-coverage -coverage -o $@ -c $<
+	$(CXX) $(TEST_CXXFLAGS) -MMD $(INCLUDES) -fprofile-arcs -ftest-coverage -o $@ -c $<
 
 $(DIR_TEST_BIN)/test: $(TEST_OBJ) $(DIR_C_CLIENT)/target/$(PLATFORM)/lib/libaerospike.a $(TOML) | $(DIR_TEST_BIN)
 	$(CXX) -o $@ $(TEST_OBJ) $(DIR_C_CLIENT)/target/$(PLATFORM)/lib/libaerospike.a $(TEST_LDFLAGS) $(LIBRARIES)
@@ -341,25 +386,28 @@ $(TEST_RESTORE): $(TEST_RESTORE_OBJ) $(TOML) $(C_CLIENT_LIB) | $(DIR_TEST_BIN)
 
 -include $(TEST_DEPS)
 
-# Summary requires the lcov tool to be installed
+# Requires the lcov tool to be installed
+$(DIR_TEST_BIN)/aerospike-tools-backup.info: FORCE
+	lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup-test.info --capture --directory $(DIR_TEST_BIN)
+	lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup-test.info --quiet --extract $(DIR_TEST_BIN)/aerospike-tools-backup-test.info '$(DIR_SRC)/*' '$(DIR_INC)/*'
+	lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup.info --quiet -a $(DIR_TEST_BIN)/aerospike-tools-backup-baseline.info -a $(DIR_TEST_BIN)/aerospike-tools-backup-test.info
+
 .PHONY: coverage
-coverage:
-	@lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup-tests.info --directory $(DIR_TEST_BIN) --capture --quiet
-	@lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup.info -a $(DIR_TEST_BIN)/aerospike-tools-backup-baseline.info -a $(DIR_TEST_BIN)/aerospike-tools-backup-tests.info
-	@lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup.info --quiet --extract $(DIR_TEST_BIN)/aerospike-tools-backup.info '$(DIR_SRC)/*' '$(DIR_INC)/*'
+coverage: | $(DIR_TEST_BIN)/aerospike-tools-backup.info
 	@lcov --summary $(DIR_TEST_BIN)/aerospike-tools-backup.info
 
 .PHONY: coverage-init
 coverage-init: $(TEST_BINS)
 	@lcov --zerocounters --directory $(DIR_TEST_BIN)
 	@lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup-baseline.info --directory $(DIR_TEST_BIN) --capture --initial
+	@lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup-baseline.info --quiet --extract $(DIR_TEST_BIN)/aerospike-tools-backup-baseline.info '$(DIR_SRC)/*' '$(DIR_INC)/*'
 
 .PHONY: do-test
 do-test: | coverage-init
 	@$(MAKE) -C . unit
 
 .PHONY: report
-report: coverage
+report: | $(DIR_TEST_BIN)/aerospike-tools-backup.info
 	@lcov -l $(DIR_TEST_BIN)/aerospike-tools-backup.info
 
 .PHONY: report-display
@@ -368,5 +416,4 @@ report-display: | $(DIR_TEST_BIN)/aerospike-tools-backup.info
 	@rm -rf $(DIR_TEST_BIN)/html
 	@mkdir -p $(DIR_TEST_BIN)/html
 	@genhtml --prefix $(DIR_TEST_BIN)/html --ignore-errors source $(DIR_TEST_BIN)/aerospike-tools-backup.info --legend --title "test lcov" --output-directory $(DIR_TEST_BIN)/html
-	@xdg-open file://$(ROOT)/$(DIR_TEST_BIN)/html/index.html
 

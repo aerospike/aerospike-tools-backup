@@ -12,8 +12,14 @@ jobs:
       ASREPO: ${{ github.workspace }}/server
       AWS_SDK_STATIC_PATH: /usr/local/lib
       AWS_SDK_CPP_VERSION: 1.9.177
+      EVENT_LIB: libuv
       ZSTD_VERSION: 1.4.9
     steps:
+    - name: install libuv
+      id: install-libuv
+      run: |
+        sudo apt update -y
+        sudo apt install -y libuv1-dev
     - name: install lcov
       id: install-lcov
       run: |

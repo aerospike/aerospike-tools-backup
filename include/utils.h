@@ -24,6 +24,10 @@
 
 #pragma once
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 //==========================================================
 // Includes.
 //
@@ -38,6 +42,7 @@
 #include <syscall.h>
 #endif
 
+#pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wconversion"
 #pragma GCC diagnostic ignored "-Wsign-conversion"
 
@@ -49,8 +54,7 @@
 #include <aerospike/as_node.h>
 #include <aerospike/as_vector.h>
 
-#pragma GCC diagnostic warning "-Wconversion"
-#pragma GCC diagnostic warning "-Wsign-conversion"
+#pragma GCC diagnostic pop
 
 #include <encode.h>
 #include <io_proxy.h>
@@ -224,6 +228,8 @@ typedef enum {
 	COMMAND_OPT_TOTAL_TIMEOUT,
 	COMMAND_OPT_MAX_RETRIES,
 	COMMAND_OPT_RETRY_DELAY,
+	COMMAND_OPT_RETRY_SCALE_FACTOR,
+	COMMAND_OPT_COMPRESSION_LEVEL,
 	COMMAND_OPT_REMOVE_ARTIFACTS,
 	COMMAND_OPT_ESTIMATE_SAMPLES,
 	COMMAND_OPT_S3_REGION,
@@ -231,7 +237,12 @@ typedef enum {
 	COMMAND_OPT_S3_ENDPOINT_OVERRIDE,
 	COMMAND_OPT_S3_MIN_PART_SIZE,
 	COMMAND_OPT_S3_MAX_ASYNC_DOWNLOADS,
-	COMMAND_OPT_S3_MAX_ASYNC_UPLOADS
+	COMMAND_OPT_S3_MAX_ASYNC_UPLOADS,
+	COMMAND_OPT_S3_LOG_LEVEL,
+	COMMAND_OPT_DISABLE_BATCH_WRITES,
+	COMMAND_OPT_MAX_ASYNC_BATCHES,
+	COMMAND_OPT_BATCH_SIZE,
+	COMMAND_OPT_EVENT_LOOPS
 } cmd_opt;
 
 /*
@@ -262,6 +273,17 @@ typedef struct {
 	uint8_t buffer[2];
 } b64_context;
 
+/*
+ * Struct containing server version information.
+ */
+typedef struct server_version {
+	// server version looks like "<major>.<minor>.<patch>.<build_id>"
+	uint32_t major;
+	uint32_t minor;
+	uint32_t patch;
+	uint32_t build_id;
+} server_version_t;
+
 extern bool g_verbose;
 extern bool g_silent;
 extern const uint8_t b64map[256];
@@ -276,8 +298,13 @@ extern const uint8_t b64map[256];
 // Marks an expression that is unlikely true.
 #define UNLIKELY(x) __builtin_expect(!!(x), 0)
 
+#ifndef MIN
 #define MIN(a, b) ((b) > (a) ? (a) : (b))
+#endif
+
+#ifndef MAX
 #define MAX(a, b) ((a) < (b) ? (b) : (a))
+#endif
 
 #ifdef __APPLE__
 
@@ -288,6 +315,10 @@ extern const uint8_t b64map[256];
 #define be64toh OSSwapBigToHostInt64
 
 #endif /* __APPLE__ */
+
+#define SERVER_VERSION_BEFORE(version_info, _major, _minor) \
+	((version_info)->major < _major || \
+	 ((version_info)->major == _major && (version_info)->minor < _minor))
 
 
 //==========================================================
@@ -301,6 +332,8 @@ extern const uint8_t b64map[256];
 		} \
 	} while(0)
 
+void log_line(const char *tag, const char *prefix, const char *format,
+		va_list args, bool error);
 void _ver_fn(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
 void inf(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
 void err(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
@@ -322,9 +355,13 @@ void safe_signal(pthread_cond_t *cond);
 double erfinv(double y);
 double confidence_z(double p, uint64_t n_records);
 char* dyn_sprintf(const char* format, ...) __attribute__ ((format (printf, 1, 2)));
-bool better_atoi(const char *string, uint64_t *val);
+bool better_atoi(const char *string, int64_t *val);
 bool parse_date_time(const char *string, int64_t *nanos);
 bool format_date_time(int64_t nanos, char *buffer, size_t size);
+void get_current_time(struct timespec* now);
+void timespec_add_us(struct timespec* ts, uint64_t us);
+uint64_t timespec_diff(const struct timespec* from,
+		const struct timespec* until);
 bool timespec_has_not_happened(struct timespec* ts);
 esc_res escape_space(const char *source, char *dest);
 esc_res unescape_space(const char *source, char *dest);
@@ -362,6 +399,33 @@ bool get_migrations(aerospike *as, char (*node_names)[][AS_NODE_NAME_SIZE],
 bool parse_index_info(char *ns, char *index_str, index_param *index);
 bool parse_set_list(as_vector* dst, const char* set_list);
 encryption_key_t* parse_encryption_key_env(const char* env_var_name);
+
+// Gets the current server version via an info command, returning 0 on success
+// and nonzero on failure.
+int get_server_version(aerospike* as, server_version_t*);
+bool server_has_batch_writes(aerospike* as, const server_version_t*,
+		bool* batch_writes_enabled);
+
+/*
+ * Moves the contents of a key from src to dst. src should not be freed after
+ * this operation, and its memory should be treated as uninitialized.
+ *
+ * Fails if the ref count of src is > 1, returning false.
+ */
+bool as_key_move(as_key* dst, as_key* src);
+
+/*
+ * Moves the contents of a record from src to dst. src should not be freed after
+ * this operation, and its memory should be treated as uninitialized.
+ *
+ * Fails if the ref count of src is > 1, returning false.
+ */
+bool as_record_move(as_record* dst, as_record* src);
+
+/*
+ * Swaps the contents of two vectors.
+ */
+void as_vector_swap(as_vector* v1, as_vector* v2);
 
 #ifdef __APPLE__
 char* strchrnul(const char* s, int c_in);
@@ -419,4 +483,19 @@ typedef struct exp_component {
  */
 as_exp* exp_component_join_and_compile(as_exp_ops join_op, uint32_t n_ops,
 		exp_component_t** components);
+
+/*
+ * Frees an as_config_tls. May be called multiple times without double frees
+ * happening.
+ */
+void tls_config_destroy(as_config_tls* tls);
+
+/*
+ * Duplicates an as_config_tls object.
+ */
+void tls_config_clone(as_config_tls* clone, const as_config_tls* src);
+
+#ifdef __cplusplus
+}
+#endif
 

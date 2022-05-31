@@ -24,10 +24,15 @@
 
 #pragma once
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 //==========================================================
 // Includes.
 //
 
+#pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wconversion"
 #pragma GCC diagnostic ignored "-Wsign-conversion"
 
@@ -35,8 +40,7 @@
 #include <aerospike/as_partition_filter.h>
 #include <aerospike/as_scan.h>
 
-#pragma GCC diagnostic warning "-Wconversion"
-#pragma GCC diagnostic warning "-Wsign-conversion"
+#pragma GCC diagnostic pop
 
 #include <backup_config.h>
 #include <enc_text.h>
@@ -225,6 +229,10 @@ void backup_status_abort_backup(backup_status_t* status);
  */
 void backup_status_abort_backup_unsafe(backup_status_t* status);
 
+/*
+ * Sleep on the stop condition, exiting from the sleep early if the program is
+ * stopped
+ */
 void backup_status_sleep_for(backup_status_t* status, uint64_t n_secs);
 
 /*
@@ -247,4 +255,8 @@ backup_state_t* backup_status_get_backup_state(backup_status_t* status);
  */
 void backup_status_save_scan_state(backup_status_t* status,
 		const as_partitions_status* parts);
+
+#ifdef __cplusplus
+}
+#endif
 

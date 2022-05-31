@@ -19,13 +19,13 @@
 // Includes.
 //
 
+#pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wconversion"
 #pragma GCC diagnostic ignored "-Wsign-conversion"
 
 #include <aerospike/as_exp.h>
 
-#pragma GCC diagnostic warning "-Wconversion"
-#pragma GCC diagnostic warning "-Wsign-conversion"
+#pragma GCC diagnostic pop
 
 #include <backup.h>
 #include <backup_state.h>
@@ -86,7 +86,8 @@ static bool queue_file(backup_job_context_t* bjc);
 static bool close_file(io_write_proxy_t *fd);
 static bool open_file(const char *file_path, const char *ns,
 		uint64_t disk_space, io_write_proxy_t *fd,
-		compression_opt c_opt, encryption_opt e_opt, encryption_key_t* pkey);
+		compression_opt c_opt, int32_t compression_level, encryption_opt e_opt,
+		encryption_key_t* pkey);
 static bool close_dir_file(backup_job_context_t *bjc);
 static bool open_dir_file(backup_job_context_t *bjc);
 static backup_state_t* load_backup_state(const char* state_file_path);
@@ -102,7 +103,11 @@ static bool init_scan_bins(char *bin_list, as_scan *scan);
 static bool narrow_partition_filters(backup_state_t* state,
 		as_vector* partition_filters);
 static distr_stats_t calc_record_stats(uint64_t* samples, uint32_t n_samples);
+static uint64_t estimate_total_backup_size(uint64_t* samples, uint32_t n_samples,
+		uint64_t header_size, uint64_t estimate_byte_count,
+		uint64_t rec_count_estimate, double confidence_level);
 static void show_estimate(FILE* mach_fd, uint64_t* samples, uint32_t n_samples,
+		uint64_t header_size, uint64_t estimate_byte_count,
 		uint64_t rec_count_estimate, io_write_proxy_t* fd);
 static void sig_hand(int32_t sig);
 static void no_op(int32_t sig);
@@ -369,6 +374,11 @@ run_backup(backup_config_t* conf)
 
 			backup_args.shared_fd = file.io_proxy;
 			io_proxy_init_compression(backup_args.shared_fd, conf->compress_mode);
+			if (conf->compress_mode != IO_PROXY_COMPRESS_NONE &&
+					io_proxy_set_compression_level(backup_args.shared_fd,
+						conf->compression_level) != 0) {
+				goto cleanup3;
+			}
 			io_proxy_init_encryption(backup_args.shared_fd, conf->pkey,
 					conf->encrypt_mode);
 
@@ -391,6 +401,8 @@ run_backup(backup_config_t* conf)
 			// don't do any throttling
 			estimate_conf->bandwidth = 0;
 			estimate_conf->records_per_second = 0;
+			// don't use max-records for the estimate (use estimate-samples)
+			estimate_conf->max_records = 0;
 
 			bool cur_silent_val = as_load_bool(&g_silent);
 			as_store_bool(&g_silent, true);
@@ -406,20 +418,13 @@ run_backup(backup_config_t* conf)
 				goto cleanup3;
 			}
 
-			distr_stats_t rec_stats = calc_record_stats(
+			uint64_t est_backup_size = estimate_total_backup_size(
 					estimate_status->estimate_samples,
-					estimate_status->n_estimate_samples);
-
-			double z = confidence_z(0.999,
-					estimate_status->rec_count_estimate);
-			double compression_ratio = (double) estimate_status->byte_count_total /
-				(double) (rec_stats.total + estimate_status->header_size);
-			uint64_t est_backup_size = estimate_status->header_size +
-				(uint64_t) ceil((double) status->rec_count_estimate * (
-							compression_ratio * rec_stats.mean +
-							(estimate_status->n_estimate_samples == 0 ? 0 :
-							 (z * sqrt(rec_stats.variance /
-									   (double) estimate_status->n_estimate_samples)))));
+					estimate_status->n_estimate_samples,
+					estimate_status->header_size,
+					estimate_status->byte_count_total,
+					status->rec_count_estimate,
+					BACKUP_FILE_ESTIMATE_CONFIDENCE_LEVEL);
 
 			ver("Estimated backup file size: %" PRIu64 " bytes", est_backup_size);
 
@@ -429,7 +434,8 @@ run_backup(backup_config_t* conf)
 			backup_args.shared_fd = (io_write_proxy_t*) cf_malloc(sizeof(io_write_proxy_t));
 			if (!open_file(conf->output_file, conf->ns, est_backup_size,
 						backup_args.shared_fd, conf->compress_mode,
-						conf->encrypt_mode, conf->pkey)) {
+						conf->compression_level, conf->encrypt_mode,
+						conf->pkey)) {
 				err("Error while opening shared backup file \"%s\"",
 						conf->output_file);
 				goto cleanup3;
@@ -440,7 +446,8 @@ run_backup(backup_config_t* conf)
 		backup_args.shared_fd = (io_write_proxy_t*) cf_malloc(sizeof(io_write_proxy_t));
 
 		if (!open_file(NULL, conf->ns, 0, backup_args.shared_fd,
-					conf->compress_mode, conf->encrypt_mode, conf->pkey)) {
+					conf->compress_mode, conf->compression_level,
+					conf->encrypt_mode, conf->pkey)) {
 			err("Error while opening \"/dev/null\"");
 			cf_free(backup_args.shared_fd);
 			goto cleanup3;
@@ -468,6 +475,11 @@ run_backup(backup_config_t* conf)
 					*(backup_state_file_t*) as_vector_get(&loaded_backup_state->files, i);
 
 				io_proxy_init_compression(file.io_proxy, conf->compress_mode);
+				if (conf->compress_mode != IO_PROXY_COMPRESS_NONE &&
+						io_proxy_set_compression_level(file.io_proxy,
+							conf->compression_level) != 0) {
+					goto cleanup4;
+				}
 				io_proxy_init_encryption(file.io_proxy, conf->pkey, conf->encrypt_mode);
 
 				queued_backup_fd_t q = {
@@ -609,6 +621,7 @@ cleanup6:
 		io_proxy_flush(backup_args.shared_fd);
 		update_shared_file_pos(backup_args.shared_fd, &status->byte_count_total);
 		show_estimate(mach_fd, status->estimate_samples, status->n_estimate_samples,
+				status->header_size, status->byte_count_total,
 				status->rec_count_estimate, backup_args.shared_fd);
 	}
 	else if (conf->output_file == NULL) {
@@ -800,6 +813,7 @@ save_backup_state:
 				// to have been created after all scans completed
 				if (backup_state_save(backup_state) != 0) {
 					err("Failed to save backup state, aborting backup");
+					backup_state = BACKUP_STATE_ABORTED;
 				}
 				else {
 					inf("Backup was interrupted, to resume, run backup with "
@@ -1054,7 +1068,7 @@ close_file(io_write_proxy_t *fd)
  */
 static bool
 open_file(const char *file_path, const char *ns, uint64_t disk_space,
-		io_write_proxy_t *fd, compression_opt c_opt,
+		io_write_proxy_t *fd, compression_opt c_opt, int32_t compression_level,
 		encryption_opt e_opt, encryption_key_t* pkey)
 {
 	const char* real_path;
@@ -1092,6 +1106,10 @@ open_file(const char *file_path, const char *ns, uint64_t disk_space,
 	ver("Initializing backup file %s", file_path);
 
 	io_proxy_init_compression(fd, c_opt);
+	if (c_opt != IO_PROXY_COMPRESS_NONE &&
+			io_proxy_set_compression_level(fd, compression_level) != 0) {
+		goto cleanup1;
+	}
 	io_proxy_init_encryption(fd, pkey, e_opt);
 
 	if (io_proxy_printf(fd, "Version " VERSION_3_1 "\n") < 0) {
@@ -1219,8 +1237,8 @@ open_dir_file(backup_job_context_t *bjc)
 
 		if (!open_file(file_path, bjc->conf->ns,
 					MIN(remaining_bytes, bjc->conf->file_limit), bjc->fd,
-					bjc->conf->compress_mode, bjc->conf->encrypt_mode,
-					bjc->conf->pkey)) {
+					bjc->conf->compress_mode, bjc->conf->compression_level,
+					bjc->conf->encrypt_mode, bjc->conf->pkey)) {
 			pthread_mutex_unlock(&bjc->status->dir_file_init_mutex);
 			cf_free(file_path);
 			return false;
@@ -1398,11 +1416,14 @@ scan_callback(const as_val *val, void *cont)
 	bool ok;
 	if (bjc->conf->estimate) {
 		uint32_t sample_idx = as_faa_uint32(bjc->n_samples, 1);
+		// should never happen, but just to ensure we don't write past the end
+		// of the sample buffer, check that we don't exceed estimate_samples
 		if (sample_idx >= bjc->conf->n_estimate_samples) {
 			as_store_uint32(bjc->n_samples, bjc->conf->n_estimate_samples);
-			inf("Backed up enough samples for estimate");
 			safe_unlock(&bjc->status->file_write_mutex);
-			return false;
+			// don't abort the scan, as this will cause a broken pipe error on
+			// the server. Let the scan gracefully terminate.
+			return true;
 		}
 
 		int64_t prev_pos = io_write_proxy_absolute_pos(bjc->fd);
@@ -1424,7 +1445,7 @@ scan_callback(const as_val *val, void *cont)
 	++bjc->rec_count_job;
 	as_incr_uint64(&bjc->status->rec_count_total);
 
-	if (bjc->conf->output_file != NULL) {
+	if (bjc->conf->output_file != NULL || bjc->conf->estimate) {
 		if (update_shared_file_pos(bjc->fd, &bjc->status->byte_count_total) < 0) {
 			ok = false;
 		}
@@ -1558,7 +1579,7 @@ process_secondary_indexes(backup_job_context_t *bjc)
 				goto cleanup3;
 			}
 
-			if (bjc->conf->output_file != NULL) {
+			if (bjc->conf->output_file != NULL || bjc->conf->estimate) {
 				if (update_shared_file_pos(bjc->fd, &bjc->status->byte_count_total) < 0) {
 					err("Error while storing secondary index in backup file");
 					goto cleanup3;
@@ -1668,7 +1689,7 @@ process_udfs(backup_job_context_t *bjc)
 			goto cleanup2;
 		}
 
-		if (bjc->conf->output_file != NULL) {
+		if (bjc->conf->output_file != NULL || bjc->conf->estimate) {
 			if (update_shared_file_pos(bjc->fd, &bjc->status->byte_count_total) < 0) {
 				err("Error while storing UDF file in backup file");
 				goto cleanup2;
@@ -1723,6 +1744,7 @@ backup_thread_func(void *cont)
 
 	cf_queue *job_queue = cont;
 	void *res = (void *)EXIT_FAILURE;
+	uint64_t backup_file_size;
 
 	while (true) {
 		if (has_stopped()) {
@@ -1821,7 +1843,7 @@ backup_thread_func(void *cont)
 				goto close_file;
 			}
 
-			if (bjc.conf->output_file != NULL) {
+			if (bjc.conf->output_file != NULL || bjc.conf->estimate) {
 				if (update_shared_file_pos(bjc.fd, &bjc.status->byte_count_total) < 0) {
 					err("Error while writing meta prefix header");
 					stop();
@@ -1890,6 +1912,22 @@ backup_thread_func(void *cont)
 				as_partitions_status_reserve(bjc.scan.parts_all);
 				as_partition_filter_set_partitions(&args.filter, bjc.scan.parts_all);
 			}
+
+			// if we're running an estimate, this is the only thread, so update
+			// the file position before giving the update
+			if (bjc.conf->estimate) {
+				if (io_proxy_flush(bjc.fd) == EOF) {
+					err("Error while flushing backup file %s", io_proxy_file_path(bjc.fd));
+					stop();
+					goto close_file;
+				}
+
+				if (update_shared_file_pos(bjc.fd, &bjc.status->byte_count_total) < 0) {
+					err("Error updating shared file pos of backup file %s", io_proxy_file_path(bjc.fd));
+					stop();
+					goto close_file;
+				}
+			}
 		}
 
 		if (status != AEROSPIKE_OK) {
@@ -1904,17 +1942,24 @@ backup_thread_func(void *cont)
 			goto close_file;
 		}
 
+		if (bjc.conf->output_file != NULL || bjc.conf->estimate) {
+			backup_file_size = as_load_uint64(&bjc.status->byte_count_total);
+		}
+		else {
+			backup_file_size = bjc.byte_count_job;
+		}
+
 		if (!bjc.interrupted) {
 			inf("Completed backup for %s, records: %" PRIu64 ", size: %" PRIu64 " "
 					"(~%" PRIu64 " B/rec)", bjc.desc, bjc.rec_count_job,
-					bjc.byte_count_job,
-					bjc.rec_count_job == 0 ? 0 : bjc.byte_count_job / bjc.rec_count_job);
+					backup_file_size,
+					bjc.rec_count_job == 0 ? 0 : backup_file_size / bjc.rec_count_job);
 		}
 		else {
 			inf("Backup of %s interrupted, records: %" PRIu64 ", size: %" PRIu64 " "
 					"(~%" PRIu64 " B/rec)", bjc.desc, bjc.rec_count_job,
-					bjc.byte_count_job,
-					bjc.rec_count_job == 0 ? 0 : bjc.byte_count_job / bjc.rec_count_job);
+					backup_file_size,
+					bjc.rec_count_job == 0 ? 0 : backup_file_size / bjc.rec_count_job);
 
 			stop();
 		}
@@ -2008,11 +2053,14 @@ counter_thread_func(void *cont)
 		uint32_t ms = (uint32_t)(now_ms - prev_ms);
 		prev_ms = now_ms;
 
-		if (status->rec_count_estimate > 0) {
+		uint64_t n_recs = conf->estimate ? conf->n_estimate_samples :
+			status->rec_count_estimate;
+
+		if (n_recs > 0) {
 			uint64_t now_bytes = as_load_uint64(&status->byte_count_total);
 			uint64_t now_recs = as_load_uint64(&status->rec_count_total);
 
-			int32_t percent = (int32_t)(now_recs * 100 / status->rec_count_estimate);
+			int32_t percent = (int32_t)(now_recs * 100 / n_recs);
 
 			// rec_count_estimate may be a little off, make sure that we only print up to 99%
 			if (percent < 100) {
@@ -2024,7 +2072,7 @@ counter_thread_func(void *cont)
 					uint64_t recs = now_recs - print_prev_recs;
 
 					int32_t eta = recs == 0 ? -1 :
-						(int32_t)(((uint64_t) status->rec_count_estimate - now_recs) *
+						(int32_t)(((uint64_t) n_recs - now_recs) *
 								ms / recs / 1000);
 					char eta_buff[ETA_BUF_SIZE];
 					format_eta(eta, eta_buff, sizeof eta_buff);
@@ -2046,7 +2094,7 @@ counter_thread_func(void *cont)
 					uint64_t recs = now_recs - mach_prev_recs;
 
 					int32_t eta = recs == 0 ? -1 :
-						(int32_t)(((uint64_t) status->rec_count_estimate - now_recs) *
+						(int32_t)(((uint64_t) n_recs - now_recs) *
 								ms / recs / 1000);
 					char eta_buff[ETA_BUF_SIZE];
 					format_eta(eta, eta_buff, sizeof eta_buff);
@@ -2272,6 +2320,35 @@ calc_record_stats(uint64_t* samples, uint32_t n_samples)
 }
 
 /*
+ * Estimates the total backup file size given:
+ *
+ * @param samples             The list of record sizes calculated in the estimate run.
+ * @param n_samples           The number of samples recorded in the samples list.
+ * @param header_size         The size of the backup file metadata section.
+ * @param estimate_byte_count The total size in bytes of the estimate backup file.
+ * @param rec_count_estimate  The estimated total number of records in the namespace.
+ * @param confidence_level    The upper-bound confidence interval level to calculate (out of 1).
+ */
+static uint64_t
+estimate_total_backup_size(uint64_t* samples, uint32_t n_samples,
+		uint64_t header_size, uint64_t estimate_byte_count,
+		uint64_t rec_count_estimate, double confidence_level)
+{
+	distr_stats_t rec_stats = calc_record_stats(samples, n_samples);
+
+	double z = confidence_z(confidence_level, rec_count_estimate);
+	double compression_ratio = (double) estimate_byte_count /
+		(double) (rec_stats.total + header_size);
+	uint64_t est_backup_size = header_size +
+		(uint64_t) ceil((double) rec_count_estimate * (
+					compression_ratio * rec_stats.mean +
+					(n_samples == 0 ? 0 :
+					 (z * sqrt(rec_stats.variance / (double) n_samples)))));
+
+	return est_backup_size;
+}
+
+/*
  * Estimates and outputs the average record size based on the given record size samples.
  *
  * The estimate is the upper bound for a 99.9999% confidence interval. The 99.9999% is where the
@@ -2280,11 +2357,14 @@ calc_record_stats(uint64_t* samples, uint32_t n_samples)
  * @param mach_fd             The file descriptor for the machine-readable output.
  * @param samples             The array of record size samples.
  * @param n_samples           The number of elements in the sample array.
+ * @param header_size         The size of the backup file metadata section.
+ * @param estimate_byte_count The total size in bytes of the estimate backup file.
  * @param rec_count_estimate  The total number of records.
  * @param fd                  The io_proxy that was written to
  */
 static void
 show_estimate(FILE *mach_fd, uint64_t *samples, uint32_t n_samples,
+		uint64_t header_size, uint64_t estimate_byte_count,
 		uint64_t rec_count_estimate, io_write_proxy_t* fd)
 {
 	distr_stats_t stats = calc_record_stats(samples, n_samples);
@@ -2308,6 +2388,14 @@ show_estimate(FILE *mach_fd, uint64_t *samples, uint32_t n_samples,
 			rec_count_estimate, upper) < 0 || fflush(mach_fd) == EOF)) {
 		err_code("Error while writing machine-readable estimate");
 	}
+
+	uint64_t est_backup_size = estimate_total_backup_size(samples, n_samples,
+			header_size, estimate_byte_count, rec_count_estimate,
+			BACKUP_FILE_ESTIMATE_CONFIDENCE_LEVEL);
+
+	inf("Estimated total backup file size (for backup-to-file, %g%% "
+			"confidence): %" PRIu64 " byte(s)",
+			BACKUP_FILE_ESTIMATE_CONFIDENCE_LEVEL, est_backup_size);
 }
 
 /*
@@ -2328,3 +2416,4 @@ no_op(int32_t sig)
 {
 	(void) sig;
 }
+

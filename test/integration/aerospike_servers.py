@@ -27,6 +27,8 @@ SERVER_IMAGE = "aerospike/aerospike-server:5.7.0.17"
 STATE_DIRECTORIES = ["state-%d" % i for i in range(1, N_NODES+1)]
 UDF_DIRECTORIES = ["udf-%d" % i for i in range(1, N_NODES+1)]
 
+LUA_DIRECTORY = lib.absolute_path(WORK_DIRECTORY, "lua")
+
 FAKE_TIME_FILE = "clock_gettime.txt"
 
 DOCKER_CLIENT = docker.from_env()
@@ -87,6 +89,9 @@ def remove_state_dirs():
 		if os.path.exists(udf):
 			lib.remove_dir(udf)
 
+	if os.path.exists(LUA_DIRECTORY):
+		lib.remove_dir(LUA_DIRECTORY)
+
 def init_work_dir():
 	"""
 	Creates an empty work directory.
@@ -112,6 +117,8 @@ def init_state_dirs():
 	for walker in UDF_DIRECTORIES:
 		udf = lib.absolute_path(os.path.join(WORK_DIRECTORY, walker))
 		os.mkdir(udf, 0o755)
+
+	os.mkdir(LUA_DIRECTORY, 0o755)
 
 def set_fake_time(seconds):
 	"""
@@ -203,6 +210,9 @@ def start_aerospike_servers(keep_work_dir=False):
 				"write": {
 					"max_retries": 5
 				}
+			},
+			"lua": {
+				"user_path": LUA_DIRECTORY
 			}
 		}
 

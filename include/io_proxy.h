@@ -23,6 +23,9 @@
  */
 #pragma once
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 //==========================================================
 // Includes.
@@ -317,6 +320,15 @@ int io_proxy_init_encryption_file(io_proxy_t*, const char* pkey_file_path,
 int io_proxy_init_compression(io_proxy_t*, compression_opt comp_mode);
 
 /*
+ * Sets the compression level to use. May only be called on proxies opened in
+ * write mode with compression enabled (after the call to
+ * io_proxy_init_compression).
+ *
+ * Returns non-zero on error, 0 on success.
+ */
+int io_proxy_set_compression_level(io_proxy_t*, int32_t compression_level);
+
+/*
  * Closes the io_proxy and frees resources associated with it. If this returns
  * non-zero, then the io_proxy is still in a valid state and hasn't been closed.
  *
@@ -430,4 +442,8 @@ int io_proxy_flush(io_write_proxy_t*);
  * returns != 0 if there is an error, else 0 if there was no error
  */
 int io_proxy_error(io_proxy_t*);
+
+#ifdef __cplusplus
+}
+#endif
 

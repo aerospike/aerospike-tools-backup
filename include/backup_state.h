@@ -24,6 +24,10 @@
 
 #pragma once
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 //==========================================================
 // Includes.
 //
@@ -198,4 +202,8 @@ bool backup_state_save_file(backup_state_t*, io_proxy_t* file,
  * state.
  */
 bool backup_state_contains_file(backup_state_t*, const char* file_name);
+
+#ifdef __cplusplus
+}
+#endif
 

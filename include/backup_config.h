@@ -24,18 +24,22 @@
 
 #pragma once
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 //==========================================================
 // Includes.
 //
 
+#pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wconversion"
 #pragma GCC diagnostic ignored "-Wsign-conversion"
 
 #include <aerospike/as_scan.h>
 #include <aerospike/as_tls.h>
 
-#pragma GCC diagnostic warning "-Wconversion"
-#pragma GCC diagnostic warning "-Wsign-conversion"
+#pragma GCC diagnostic pop
 
 #include <io_proxy.h>
 
@@ -87,6 +91,8 @@ typedef struct backup_config {
 	uint32_t s3_max_async_downloads;
 	// Max simultaneous upload requests from S3 allowed at a time.
 	uint32_t s3_max_async_uploads;
+	// Logging level of the AWS S3 C+ SDK.
+	s3_log_level_t s3_log_level;
 
 	as_namespace ns;
 	bool no_bins;
@@ -134,6 +140,8 @@ typedef struct backup_config {
 	int32_t parallel;
 	// The compression mode to be used (default is none)
 	compression_opt compress_mode;
+	// The compression level to use (or -1 if unspecified)
+	int32_t compression_level;
 	// The encryption mode to be used (default is none)
 	encryption_opt encrypt_mode;
 	// The encryption key given by the user
@@ -176,6 +184,9 @@ typedef struct backup_config {
 /*
  * Parses command line arguments from argv and populates/initializes the
  * backup_config_t struct.
+ *
+ * The backup_config_t struct returned by this method is always destroyable (and
+ * should be destroyed) regardless of the return value
  */
 int backup_config_init(int argc, char* argv[], backup_config_t* conf);
 
@@ -201,14 +212,7 @@ bool backup_config_log_start(const backup_config_t* conf);
  */
 bool backup_config_can_resume(const backup_config_t* conf);
 
-/*
- * Frees an as_config_tls. May be called multiple times without double frees
- * happening.
- */
-void tls_config_destroy(as_config_tls* tls);
-
-/*
- * Duplicates an as_config_tls object.
- */
-void tls_config_clone(as_config_tls* clone, const as_config_tls* src);
+#ifdef __cplusplus
+}
+#endif
 

@@ -61,6 +61,8 @@ typedef struct backup_state backup_state_t;
 #define S3_DEFAULT_MAX_ASYNC_UPLOADS 16
 #define S3_DEFAULT_MAX_ASYNC_DOWNLOADS 32
 
+#define S3_DEFAULT_LOG_LEVEL ((s3_log_level_t) Fatal)
+
 /*
  * Defines where the file is stored, either locally or in the cloud.
  */
@@ -99,6 +101,20 @@ typedef void s3_state_t;
 
 #endif /* __cplusplus */
 
+/*
+ * LogLevel used to control verbosity of the AWS S3 C++ SDK logging system.
+ */
+typedef enum s3_log_level
+{
+	Off = 0,
+	Fatal = 1,
+	Error = 2,
+	Warn = 3,
+	Info = 4,
+	Debug = 5,
+	Trace = 6
+} s3_log_level_t;
+
 typedef struct local_file_s {
 	FILE* fd;
 } local_file_t;
@@ -133,6 +149,12 @@ typedef struct __attribute__((packed)) file_proxy_serial_s {
 //
 
 /*
+ * Parses the log level in string format, populating log_level or returning
+ * false on error.
+ */
+bool s3_parse_log_level(const char* log_level_str, s3_log_level_t* log_level);
+
+/*
  * Sets the S3 region to use.
  */
 void s3_set_region(const char* region);
@@ -153,6 +175,11 @@ void s3_set_endpoint(const char* endpoint);
  */
 void s3_set_max_async_downloads(uint32_t max_async_downloads);
 void s3_set_max_async_uploads(uint32_t max_async_uploads);
+
+/*
+ * Sets the logging level of the AWS c++ sdk.
+ */
+void s3_set_log_level(s3_log_level_t log_level);
 
 /*
  * Immediately stop all async S3 requests currently being processed.

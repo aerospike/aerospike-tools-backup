@@ -104,6 +104,7 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 		{ "compact", no_argument, NULL, 'C' },
 		{ "parallel", required_argument, NULL, 'w' },
 		{ "compress", required_argument, NULL, 'z' },
+		{ "compression-level", required_argument, NULL, COMMAND_OPT_COMPRESSION_LEVEL },
 		{ "encrypt", required_argument, NULL, 'y' },
 		{ "encryption-key-file", required_argument, NULL, '1' },
 		{ "encryption-key-env", required_argument, NULL, '2' },
@@ -139,6 +140,8 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 		{ "socket-timeout", required_argument, NULL, COMMAND_OPT_SOCKET_TIMEOUT },
 		{ "total-timeout", required_argument, NULL, COMMAND_OPT_TOTAL_TIMEOUT },
 		{ "max-retries", required_argument, NULL, COMMAND_OPT_MAX_RETRIES },
+		{ "sleep-between-retries", required_argument, NULL, COMMAND_OPT_RETRY_DELAY },
+		// support the `--retry-delay` option until a major version bump.
 		{ "retry-delay", required_argument, NULL, COMMAND_OPT_RETRY_DELAY },
 
 		{ "s3-region", required_argument, NULL, COMMAND_OPT_S3_REGION },
@@ -147,13 +150,15 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 		{ "s3-min-part-size", required_argument, NULL, COMMAND_OPT_S3_MIN_PART_SIZE },
 		{ "s3-max-async-downloads", required_argument, NULL, COMMAND_OPT_S3_MAX_ASYNC_DOWNLOADS },
 		{ "s3-max-async-uploads", required_argument, NULL, COMMAND_OPT_S3_MAX_ASYNC_UPLOADS },
+		{ "s3-log-level", required_argument, NULL, COMMAND_OPT_S3_LOG_LEVEL },
 		{ NULL, 0, NULL, 0 }
 	};
 
 	backup_config_default(conf);
 
 	int32_t opt;
-	uint64_t tmp;
+	int64_t tmp;
+	s3_log_level_t s3_log_level;
 
 	// Don't print error messages for the first two argument parsers
 	opterr = 0;
@@ -207,11 +212,11 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 
 	if (read_conf_files) {
 		if (read_only_conf_file) {
-			if (! config_from_file(conf, instance, config_fname, 0, true)) {
+			if (!config_from_file(conf, instance, config_fname, 0, true)) {
 				return false;
 			}
 		} else {
-			if (! config_from_files(conf, instance, config_fname, true)) {
+			if (!config_from_files(conf, instance, config_fname, true)) {
 				return false;
 			}
 		}
@@ -303,7 +308,7 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 				return BACKUP_CONFIG_INIT_FAILURE;
 			}
 
-			conf->file_limit = tmp * 1024 * 1024;
+			conf->file_limit = ((uint64_t) tmp) * 1024 * 1024;
 			break;
 
 		case 'r':
@@ -323,7 +328,7 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 			break;
 
 		case 'L':
-			if (!better_atoi(optarg, &tmp) || tmp > UINT_MAX) {
+			if (!better_atoi(optarg, &tmp) || tmp < 0 || tmp > UINT_MAX) {
 				err("Invalid records-per-second value %s", optarg);
 				return BACKUP_CONFIG_INIT_FAILURE;
 			}
@@ -357,6 +362,14 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 				err("Invalid compression type \"%s\"", optarg);
 				return BACKUP_CONFIG_INIT_FAILURE;
 			}
+			break;
+
+		case COMMAND_OPT_COMPRESSION_LEVEL:
+			if (!better_atoi(optarg, &tmp) || tmp < INT32_MIN || tmp > INT32_MAX) {
+				err("Invalid compression-level value %s", optarg);
+				return BACKUP_CONFIG_INIT_FAILURE;
+			}
+			conf->compression_level = (int32_t) tmp;
 			break;
 
 		case 'y':
@@ -411,12 +424,12 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 			break;
 
 		case 'M':
-			if (!better_atoi(optarg, &tmp)) {
+			if (!better_atoi(optarg, &tmp) || tmp < 0) {
 				err("Invalid max-records value %s", optarg);
 				return BACKUP_CONFIG_INIT_FAILURE;
 			}
 
-			conf->max_records = tmp;
+			conf->max_records = (uint64_t) tmp;
 			break;
 
 		case 'm':
@@ -429,12 +442,12 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 
 		case 'N':
 			if (!better_atoi(optarg, &tmp) || tmp < 1 ||
-					tmp > ULONG_MAX / (1024 * 1024)) {
+					((uint64_t) tmp) > ULONG_MAX / (1024 * 1024)) {
 				err("Invalid bandwidth value %s", optarg);
 				return BACKUP_CONFIG_INIT_FAILURE;
 			}
 
-			conf->bandwidth = tmp * 1024 * 1024;
+			conf->bandwidth = ((uint64_t) tmp) * 1024 * 1024;
 			break;
 
 		case 'R':
@@ -537,7 +550,7 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 			break;
 
 		case COMMAND_OPT_SOCKET_TIMEOUT:
-			if (!better_atoi(optarg, &tmp) || tmp > UINT_MAX) {
+			if (!better_atoi(optarg, &tmp) || tmp < 0 || tmp > UINT_MAX) {
 				err("Invalid socket timeout value %s", optarg);
 				return BACKUP_CONFIG_INIT_FAILURE;
 			}
@@ -545,7 +558,7 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 			break;
 
 		case COMMAND_OPT_TOTAL_TIMEOUT:
-			if (!better_atoi(optarg, &tmp) || tmp > UINT_MAX) {
+			if (!better_atoi(optarg, &tmp) || tmp < 0 || tmp > UINT_MAX) {
 				err("Invalid total timeout value %s", optarg);
 				return BACKUP_CONFIG_INIT_FAILURE;
 			}
@@ -553,7 +566,7 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 			break;
 
 		case COMMAND_OPT_MAX_RETRIES:
-			if (!better_atoi(optarg, &tmp) || tmp > UINT_MAX) {
+			if (!better_atoi(optarg, &tmp) || tmp < 0 || tmp > UINT_MAX) {
 				err("Invalid max retries value %s", optarg);
 				return BACKUP_CONFIG_INIT_FAILURE;
 			}
@@ -561,7 +574,7 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 			break;
 
 		case COMMAND_OPT_RETRY_DELAY:
-			if (!better_atoi(optarg, &tmp) || tmp > UINT_MAX) {
+			if (!better_atoi(optarg, &tmp) || tmp < 0 || tmp > UINT_MAX) {
 				err("Invalid retry delay value %s", optarg);
 				return BACKUP_CONFIG_INIT_FAILURE;
 			}
@@ -581,16 +594,16 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 			break;
 
 		case COMMAND_OPT_S3_MIN_PART_SIZE:
-			if (!better_atoi(optarg, &tmp) || tmp == 0 ||
-					tmp > ULONG_MAX / (1024 * 1024)) {
+			if (!better_atoi(optarg, &tmp) || tmp <= 0 ||
+					((uint64_t) tmp) > ULONG_MAX / (1024 * 1024)) {
 				err("Invalid S3 min part size value %s", optarg);
 				return BACKUP_CONFIG_INIT_FAILURE;
 			}
-			conf->s3_min_part_size = tmp * 1024 * 1024;
+			conf->s3_min_part_size = ((uint64_t) tmp) * 1024 * 1024;
 			break;
 
 		case COMMAND_OPT_S3_MAX_ASYNC_DOWNLOADS:
-			if (!better_atoi(optarg, &tmp) || tmp == 0 || tmp > UINT_MAX) {
+			if (!better_atoi(optarg, &tmp) || tmp <= 0 || tmp > UINT_MAX) {
 				err("Invalid S3 max async downloads value %s", optarg);
 				return BACKUP_CONFIG_INIT_FAILURE;
 			}
@@ -598,11 +611,19 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 			break;
 
 		case COMMAND_OPT_S3_MAX_ASYNC_UPLOADS:
-			if (!better_atoi(optarg, &tmp) || tmp == 0 || tmp > UINT_MAX) {
+			if (!better_atoi(optarg, &tmp) || tmp <= 0 || tmp > UINT_MAX) {
 				err("Invalid S3 max async uploads value %s", optarg);
 				return BACKUP_CONFIG_INIT_FAILURE;
 			}
 			conf->s3_max_async_uploads = (uint32_t) tmp;
+			break;
+
+		case COMMAND_OPT_S3_LOG_LEVEL:
+			if (!s3_parse_log_level(optarg, &s3_log_level)) {
+				err("Invalid S3 log level \"%s\"", optarg);
+				return BACKUP_CONFIG_INIT_FAILURE;
+			}
+			conf->s3_log_level = s3_log_level;
 			break;
 
 		case CONFIG_FILE_OPT_FILE:
@@ -637,6 +658,12 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 
 	if (conf->set_list.size > 1 && conf->filter_exp != NULL) {
 		err("Multi-set backup and filter-exp are mutually exclusive");
+		return BACKUP_CONFIG_INIT_FAILURE;
+	}
+
+	if (conf->compress_mode == IO_PROXY_COMPRESS_NONE &&
+			conf->compression_level != 0) {
+		err("Cannot set compression level without compression enabled");
 		return BACKUP_CONFIG_INIT_FAILURE;
 	}
 
@@ -714,12 +741,19 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 
 	s3_set_max_async_downloads(conf->s3_max_async_downloads);
 	s3_set_max_async_uploads(conf->s3_max_async_uploads);
+	s3_set_log_level(conf->s3_log_level);
 
 	if (conf->estimate) {
 		if (conf->filter_exp != NULL || conf->node_list != NULL ||
 				conf->mod_after > 0 || conf->mod_before > 0 || conf->ttl_zero ||
 				conf->after_digest != NULL || conf->partition_list != NULL) {
 			inf("Warning: using estimate with any of the following will ignore their effects when calculating estimated time/storage: filter-exp, node-list, modified-after, modified-before, no-ttl-only, after-digest, partition-list");
+		}
+
+		if (conf->max_records > 0) {
+			inf("Warning: max-records is ignored with --estimate, use "
+					"--estimate-samples to limit the number of backup samples "
+					"taken (default is 10,000)");
 		}
 	}
 
@@ -742,6 +776,7 @@ backup_config_default(backup_config_t* conf)
 	conf->s3_min_part_size = 0;
 	conf->s3_max_async_downloads = S3_DEFAULT_MAX_ASYNC_DOWNLOADS;
 	conf->s3_max_async_uploads = S3_DEFAULT_MAX_ASYNC_UPLOADS;
+	conf->s3_log_level = S3_DEFAULT_LOG_LEVEL;
 
 	memset(conf->ns, 0, sizeof(as_namespace));
 	conf->no_bins = false;
@@ -768,6 +803,7 @@ backup_config_default(backup_config_t* conf)
 	conf->compact = false;
 	conf->parallel = 0;
 	conf->compress_mode = IO_PROXY_COMPRESS_NONE;
+	conf->compression_level = 0;
 	conf->encrypt_mode = IO_PROXY_ENCRYPT_NONE;
 	conf->pkey = NULL;
 	conf->machine = NULL;
@@ -900,6 +936,7 @@ backup_config_clone(backup_config_t* conf)
 	clone->s3_min_part_size = conf->s3_min_part_size;
 	clone->s3_max_async_downloads = conf->s3_max_async_downloads;
 	clone->s3_max_async_uploads = conf->s3_max_async_uploads;
+	clone->s3_log_level = conf->s3_log_level;
 	memcpy(clone->ns, conf->ns, sizeof(as_namespace));
 	clone->no_bins = conf->no_bins;
 	clone->state_file = safe_strdup(conf->state_file);
@@ -927,6 +964,7 @@ backup_config_clone(backup_config_t* conf)
 	clone->compact = conf->compact;
 	clone->parallel = conf->parallel;
 	clone->compress_mode = conf->compress_mode;
+	clone->compression_level = conf->compression_level;
 	clone->encrypt_mode = conf->encrypt_mode;
 	if (conf->pkey != NULL) {
 		clone->pkey = cf_malloc(sizeof(encryption_key_t));
@@ -992,58 +1030,6 @@ bool
 backup_config_can_resume(const backup_config_t* conf)
 {
 	return !conf->estimate;
-}
-
-void
-tls_config_destroy(as_config_tls* tls)
-{
-	if (tls->cafile != NULL) {
-		cf_free(tls->cafile);
-	}
-
-	if (tls->capath != NULL) {
-		cf_free(tls->capath);
-	}
-
-	if (tls->protocols != NULL) {
-		cf_free(tls->protocols);
-	}
-
-	if (tls->cipher_suite != NULL) {
-		cf_free(tls->cipher_suite);
-	}
-
-	if (tls->cert_blacklist != NULL) {
-		cf_free(tls->cert_blacklist);
-	}
-
-	if (tls->keyfile != NULL) {
-		cf_free(tls->keyfile);
-	}
-
-	if (tls->keyfile_pw != NULL) {
-		cf_free(tls->keyfile_pw);
-	}
-
-	if (tls->certfile != NULL) {
-		cf_free(tls->certfile);
-	}
-
-	memset(tls, 0, sizeof(as_config_tls));
-}
-
-void
-tls_config_clone(as_config_tls* clone, const as_config_tls* src)
-{
-	memcpy(clone, src, sizeof(as_config_tls));
-	clone->cafile = safe_strdup(src->cafile);
-	clone->capath = safe_strdup(src->capath);
-	clone->protocols = safe_strdup(src->protocols);
-	clone->cipher_suite = safe_strdup(src->cipher_suite);
-	clone->cert_blacklist = safe_strdup(src->cert_blacklist);
-	clone->keyfile = safe_strdup(src->keyfile);
-	clone->keyfile_pw = safe_strdup(src->keyfile_pw);
-	clone->certfile = safe_strdup(src->certfile);
 }
 
 
@@ -1296,7 +1282,7 @@ usage(const char *name)
 	fprintf(stderr, "      --max-retries <n>\n");
 	fprintf(stderr, "                      Maximum number of retries before aborting the current transaction.\n");
 	fprintf(stderr, "                      The default is 5.\n");
-	fprintf(stderr, "      --retry-delay <ms>\n");
+	fprintf(stderr, "      --sleep-between-retries <ms>\n");
 	fprintf(stderr, "                      The amount of time to sleep between retries. Default is 0.\n");
 	fprintf(stderr, "      --s3-region <region>\n");
 	fprintf(stderr, "                      The S3 region that the bucket(s) exist in.\n");
@@ -1311,7 +1297,18 @@ usage(const char *name)
 	fprintf(stderr, "                      The default is 32.\n");
 	fprintf(stderr, "      --s3-max-async-uploads <n>\n");
 	fprintf(stderr, "                      The maximum number of simultaneous upload requests from S3.\n");
-	fprintf(stderr, "                      The default is 16.\n\n");
+	fprintf(stderr, "                      The default is 16.\n");
+	fprintf(stderr, "      --s3-log-level <n>\n");
+	fprintf(stderr, "                      The log level of the AWS S3 C++ SDK. The possible levels are,\n");
+	fprintf(stderr, "                      from least to most granular:\n");
+	fprintf(stderr, "                       - Off\n");
+	fprintf(stderr, "                       - Fatal\n");
+	fprintf(stderr, "                       - Error\n");
+	fprintf(stderr, "                       - Warn\n");
+	fprintf(stderr, "                       - Info\n");
+	fprintf(stderr, "                       - Debug\n");
+	fprintf(stderr, "                       - Trace\n");
+	fprintf(stderr, "                      The default is Fatal.\n\n");
 
 	fprintf(stderr, "\n\n");
 	fprintf(stderr, "Default configuration files are read from the following files in the given order:\n");

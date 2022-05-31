@@ -102,8 +102,6 @@ assert_restore_config_eq(restore_config_t *c1, restore_config_t *c2)
 	CMP_INT_FIELD(c1->tls.log_session_info, c2->tls.log_session_info);
 	CMP_INT_FIELD(c1->tls.for_login_only, c2->tls.for_login_only);
 
-	ck_assert((c1->as == NULL) ^ (c2->as != NULL));
-
 	CMP_INT_FIELD(c1->parallel, c2->parallel);
 	CMP_STR_FIELD(c1->nice_list, c2->nice_list);
 	CMP_INT_FIELD(c1->no_records, c2->no_records);
@@ -137,7 +135,6 @@ assert_restore_config_eq(restore_config_t *c1, restore_config_t *c2)
 	CMP_INT_FIELD(c1->extra_ttl, c2->extra_ttl);
 	CMP_INT_FIELD((int64_t) c1->bandwidth, (int64_t) c2->bandwidth);
 	CMP_INT_FIELD(c1->tps, c2->tps);
-	CMP_PTR_FIELD(c1->decoder, c2->decoder);
 }
 
 

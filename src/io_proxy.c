@@ -380,6 +380,46 @@ io_proxy_init_compression(io_proxy_t* io, compression_opt compress_mode)
 }
 
 int
+io_proxy_set_compression_level(io_proxy_t* io, int32_t compression_level)
+{
+	ZSTD_bounds comp_lvl_bounds;
+
+	if (!io_proxy_is_writer(io)) {
+		err("Can only set compression level on a write proxy");
+		return -1;
+	}
+	if (!io_proxy_do_compress(io)) {
+		err("Cannot set compression level without enabling compression");
+		return -1;
+	}
+
+	comp_lvl_bounds = ZSTD_cParam_getBounds(ZSTD_c_compressionLevel);
+	if (ZSTD_isError(comp_lvl_bounds.error)) {
+		err("Failed to get zstd compression level bounds: %s",
+				ZSTD_getErrorName(comp_lvl_bounds.error));
+		return -1;
+	}
+
+	if (compression_level < comp_lvl_bounds.lowerBound ||
+			compression_level > comp_lvl_bounds.upperBound) {
+		err("Compression level %" PRId32 " is outside zstd compression level "
+				"bounds (%d - %d)",
+				compression_level,
+				comp_lvl_bounds.lowerBound, comp_lvl_bounds.upperBound);
+		return -1;
+	}
+
+	size_t res = ZSTD_CCtx_setParameter(io->cctx, ZSTD_c_compressionLevel,
+			compression_level);
+	if (ZSTD_isError(res)) {
+		err("Failed to set compression level: %s", ZSTD_getErrorName(res));
+		return -1;
+	}
+
+	return 0;
+}
+
+int
 io_proxy_close(io_proxy_t* io)
 {
 	if (file_proxy_close(&io->file) != 0) {
