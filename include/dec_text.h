@@ -24,11 +24,29 @@
 
 #pragma once
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+//==========================================================
+// Includes.
+//
+
 #include <encode.h>
 #include <io_proxy.h>
 #include <restore.h>
 #include <utils.h>
 
+
+//==========================================================
+// Public API.
+//
+
 decoder_status text_parse(io_read_proxy_t *fd, bool legacy, as_vector *ns_vec,
 		as_vector *bin_vec, uint32_t *orig_line_no, as_record *rec,
 		int32_t extra_ttl, bool *expired, index_param *index, udf_param *udf);
+
+#ifdef __cplusplus
+}
+#endif
+

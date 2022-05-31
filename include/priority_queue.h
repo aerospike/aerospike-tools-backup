@@ -24,6 +24,10 @@
 
 #pragma once
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 //==========================================================
 // Includes.
 //
@@ -86,4 +90,8 @@ void* priority_queue_pop(priority_queue_t*);
  * This method has undefined behavior if the queue is empty.
  */
 pq_entry_t priority_queue_peek(const priority_queue_t*);
+
+#ifdef __cplusplus
+}
+#endif
 

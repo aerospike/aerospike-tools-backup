@@ -24,6 +24,10 @@
 
 #pragma once
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 //==========================================================
 // Includes.
 //
@@ -207,4 +211,8 @@ bool backup_config_log_start(const backup_config_t* conf);
  * Returns true if the backup config is interruptable/resumable.
  */
 bool backup_config_can_resume(const backup_config_t* conf);
+
+#ifdef __cplusplus
+}
+#endif
 

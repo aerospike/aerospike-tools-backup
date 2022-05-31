@@ -24,6 +24,10 @@
 
 #pragma once
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 //==========================================================
 // Includes.
 //
@@ -240,4 +244,8 @@ void free_udfs(as_vector *udf_vec);
 void free_index(index_param *param);
 
 void free_indexes(as_vector *index_vec);
+
+#ifdef __cplusplus
+}
+#endif
 

@@ -24,6 +24,10 @@
 
 #pragma once
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 //==========================================================
 // Includes.
 //
@@ -67,4 +71,8 @@ void retry_status_init(retry_status_t*);
  * transaction shouldn't retry any more and should fail.
  */
 int64_t retry_status_next_delay(retry_status_t*, const retry_strategy_t*);
+
+#ifdef __cplusplus
+}
+#endif
 

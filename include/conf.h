@@ -24,7 +24,23 @@
 
 #pragma once
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+//==========================================================
+// Includes.
+//
+
 #include <stdbool.h>
+
+
+//==========================================================
+// Globals.
+//
+
+extern char *DEFAULTPASSWORD;
+
 
 //==========================================================
 // Public API.
@@ -35,4 +51,7 @@ bool config_from_file(void *c, const char* instance, const char* fname, int leve
 
 bool tls_read_password(char* value, char** ptr);
 
-extern char *DEFAULTPASSWORD;
+#ifdef __cplusplus
+}
+#endif
+

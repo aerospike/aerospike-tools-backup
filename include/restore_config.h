@@ -24,6 +24,10 @@
 
 #pragma once
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 //==========================================================
 // Includes.
 //
@@ -158,6 +162,11 @@ typedef struct restore_config {
 	char *auth_mode;
 } restore_config_t;
 
+
+//==========================================================
+// Public API.
+//
+
 /*
  * Parses command line arguments from argv and populates/initializes the
  * backup_config_t struct.
@@ -189,4 +198,8 @@ bool restore_config_parse_list(const char *which, size_t size, char *list,
  * the local filesystem.
  */
 bool restore_config_from_cloud(const restore_config_t* conf);
+
+#ifdef __cplusplus
+}
+#endif
 

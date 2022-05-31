@@ -24,6 +24,10 @@
 
 #pragma once
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 //==========================================================
 // Includes.
 //
@@ -171,4 +175,8 @@ void restore_status_stop(restore_status_t*);
  */
 void restore_status_sleep_for(restore_status_t* status, uint64_t n_secs,
 		bool sleep_through_stop);
+
+#ifdef __cplusplus
+}
+#endif
 

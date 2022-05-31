@@ -23,6 +23,9 @@
  */
 #pragma once
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 //==========================================================
 // Includes.
@@ -439,4 +442,8 @@ int io_proxy_flush(io_write_proxy_t*);
  * returns != 0 if there is an error, else 0 if there was no error
  */
 int io_proxy_error(io_proxy_t*);
+
+#ifdef __cplusplus
+}
+#endif
 

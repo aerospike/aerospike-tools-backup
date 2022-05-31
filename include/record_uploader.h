@@ -24,6 +24,10 @@
 
 #pragma once
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 //==========================================================
 // Includes.
 //
@@ -88,4 +92,8 @@ bool record_uploader_put(record_uploader_t*, as_record* rec);
  * otherwise records left in the current batch will not be written.
  */
 bool record_uploader_flush(record_uploader_t*);
+
+#ifdef __cplusplus
+}
+#endif
 

@@ -24,6 +24,10 @@
 
 #pragma once
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 //==========================================================
 // Includes.
 //
@@ -201,4 +205,8 @@ bool batch_uploader_await(batch_uploader_t*);
  * modified.
  */
 bool batch_uploader_submit(batch_uploader_t*, as_vector* records);
+
+#ifdef __cplusplus
+}
+#endif
 

@@ -24,6 +24,14 @@
 
 #pragma once
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+//==========================================================
+// Includes.
+//
+
 #include <dirent.h>
 #include <getopt.h>
 #include <signal.h>
@@ -50,6 +58,11 @@
 #include <restore_config.h>
 #include <restore_status.h>
 #include <utils.h>
+
+
+//==========================================================
+// Typedefs & constants.
+//
 
 // The interval for logging per-thread timing stats.
 #define STAT_INTERVAL 10
@@ -123,5 +136,14 @@ typedef enum {
 	INDEX_STATUS_DIFFERENT
 } index_status;
 
+
+//==========================================================
+// Public API.
+//
+
 int32_t restore_main(int32_t argc, char **argv);
+
+#ifdef __cplusplus
+}
+#endif
 

@@ -24,6 +24,10 @@
 
 #pragma once
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 //==========================================================
 // Includes.
 //
@@ -251,4 +255,8 @@ backup_state_t* backup_status_get_backup_state(backup_status_t* status);
  */
 void backup_status_save_scan_state(backup_status_t* status,
 		const as_partitions_status* parts);
+
+#ifdef __cplusplus
+}
+#endif
 
