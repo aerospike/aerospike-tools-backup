@@ -66,7 +66,7 @@ TEST_CXXFLAGS := -std=c++14 $(DWARF) -g -O2 -march=nocona -fno-common -fno-stric
 		-Wno-implicit-fallthrough -Wno-unused-result \
 		-D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_FORTIFY_SOURCE=2 -DMARCH_$(ARCH) \
 		-DTOOL_VERSION=\"$(VERSION)\"
-TEST_LDFLAGS := $(LDFLAGS) -fprofile-arcs -coverage -lcheck
+TEST_LDFLAGS := $(LDFLAGS) -fprofile-arcs -lcheck
 
 ifeq ($(EVENT_LIB),libev)
   CFLAGS += -DAS_USE_LIBEV
@@ -370,10 +370,10 @@ $(DIR_TEST_OBJ)/unit/%.o: test/unit/%.c | $(DIR_TEST_OBJ)/unit
 	$(CC) $(TEST_CFLAGS) -MMD $(INCLUDES) -o $@ -c $<
 
 $(DIR_TEST_OBJ)/src/%_c.o: src/%.c | $(DIR_TEST_OBJ)/src
-	$(CC) $(TEST_CFLAGS) -MMD $(INCLUDES) -fprofile-arcs -ftest-coverage -coverage -o $@ -c $<
+	$(CC) $(TEST_CFLAGS) -MMD $(INCLUDES) -fprofile-arcs -ftest-coverage -o $@ -c $<
 
 $(DIR_TEST_OBJ)/src/%_cc.o: src/%.cc | $(DIR_TEST_OBJ)/src
-	$(CXX) $(TEST_CXXFLAGS) -MMD $(INCLUDES) -fprofile-arcs -ftest-coverage -coverage -o $@ -c $<
+	$(CXX) $(TEST_CXXFLAGS) -MMD $(INCLUDES) -fprofile-arcs -ftest-coverage -o $@ -c $<
 
 $(DIR_TEST_BIN)/test: $(TEST_OBJ) $(DIR_C_CLIENT)/target/$(PLATFORM)/lib/libaerospike.a $(TOML) | $(DIR_TEST_BIN)
 	$(CXX) -o $@ $(TEST_OBJ) $(DIR_C_CLIENT)/target/$(PLATFORM)/lib/libaerospike.a $(TEST_LDFLAGS) $(LIBRARIES)
@@ -387,11 +387,10 @@ $(TEST_RESTORE): $(TEST_RESTORE_OBJ) $(TOML) $(C_CLIENT_LIB) | $(DIR_TEST_BIN)
 -include $(TEST_DEPS)
 
 # Requires the lcov tool to be installed
-$(DIR_TEST_BIN)/aerospike-tools-backup.info:
-	@echo
-	@lcov --capture --initial --directory $(DIR_TEST_BIN) --output-file $(DIR_TEST_BIN)/aerospike-tools-backup.info
-	@lcov --directory $(DIR_TEST_BIN) --capture --quiet --output-file $(DIR_TEST_BIN)/aerospike-tools-backup.info
-	@lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup.info --quiet --extract $(DIR_TEST_BIN)/aerospike-tools-backup.info '$(ROOT)/$(DIR_SRC)/*' '$(ROOT)/$(DIR_INC)/*'
+$(DIR_TEST_BIN)/aerospike-tools-backup.info: FORCE
+	lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup-test.info --capture --directory $(DIR_TEST_BIN)
+	lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup-test.info --quiet --extract $(DIR_TEST_BIN)/aerospike-tools-backup-test.info '$(DIR_SRC)/*' '$(DIR_INC)/*'
+	lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup.info --quiet -a $(DIR_TEST_BIN)/aerospike-tools-backup-baseline.info -a $(DIR_TEST_BIN)/aerospike-tools-backup-test.info
 
 .PHONY: coverage
 coverage: | $(DIR_TEST_BIN)/aerospike-tools-backup.info
@@ -401,6 +400,7 @@ coverage: | $(DIR_TEST_BIN)/aerospike-tools-backup.info
 coverage-init: $(TEST_BINS)
 	@lcov --zerocounters --directory $(DIR_TEST_BIN)
 	@lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup-baseline.info --directory $(DIR_TEST_BIN) --capture --initial
+	@lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup-baseline.info --quiet --extract $(DIR_TEST_BIN)/aerospike-tools-backup-baseline.info '$(DIR_SRC)/*' '$(DIR_INC)/*'
 
 .PHONY: do-test
 do-test: | coverage-init
