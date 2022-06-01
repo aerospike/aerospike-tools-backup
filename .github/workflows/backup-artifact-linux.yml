@@ -7,9 +7,15 @@ jobs:
     runs-on: ubuntu-20.04
     env:
       AWS_SDK_CPP_VERSION: 1.9.177
+      EVENT_LIB: libuv
       ZSTD_VERSION: 1.4.9
       LD_LIBRARY_PATH: /usr/local/lib
     steps:
+    - name: install libuv
+      id: install-libuv
+      run: |
+        sudo apt update -y
+        sudo apt install -y libuv1-dev
     - name: install AWS requirements
       id: install-aws-requirements
       run: |
