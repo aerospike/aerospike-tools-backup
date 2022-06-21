@@ -1933,7 +1933,14 @@ backup_thread_func(void *cont)
 		if (status != AEROSPIKE_OK) {
 			if (ae.code == AEROSPIKE_OK) {
 				inf("Abort scan for %s", bjc.desc);
-			} else {
+			}
+			else if (ae.code == AEROSPIKE_ERR_FAIL_FORBIDDEN) {
+				err("Failed to start scan job for %s, potentially not enough "
+						"available scan/query threads on the server - "
+						"code %d: %s at %s:%d",
+						bjc.desc, ae.code, ae.message, ae.file, ae.line);
+			}
+			else {
 				err("Error while running scan for %s - code %d: %s at %s:%d", bjc.desc,
 						ae.code, ae.message, ae.file, ae.line);
 			}
