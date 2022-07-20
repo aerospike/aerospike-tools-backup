@@ -1564,7 +1564,7 @@ parse_index_info(char *ns, char *index_str, index_param *index)
 				err("Invalid index type %s", arg);
 				goto cleanup2;
 			}
-		} else if (strcmp(para, "path") == 0) {
+		} else if (strcmp(para, "path") == 0 || strcmp(para, "context") == 0) {
 			path = arg;
 		}
 
