@@ -1537,28 +1537,28 @@ parse_index_info(char *ns, char *index_str, index_param *index)
 				goto cleanup2;
 			}
 		} else if (strcmp(para, "type") == 0) {
-			if (strcmp(arg, "STRING") == 0) {
+			if (strcasecmp(arg, "STRING") == 0) {
 				type = PATH_TYPE_STRING;
-			} else if (strcmp(arg, "TEXT") == 0) {
+			} else if (strcasecmp(arg, "TEXT") == 0) {
 				type = PATH_TYPE_STRING;
-			} else if (strcmp(arg, "NUMERIC") == 0) {
+			} else if (strcasecmp(arg, "NUMERIC") == 0) {
 				type = PATH_TYPE_NUMERIC;
-			} else if (strcmp(arg, "INT SIGNED") == 0) {
+			} else if (strcasecmp(arg, "INT SIGNED") == 0) {
 				type = PATH_TYPE_NUMERIC;
-			} else if (strcmp(arg, "GEOJSON") == 0) {
+			} else if (strcasecmp(arg, "GEOJSON") == 0) {
 				type = PATH_TYPE_GEOJSON;
 			} else {
 				err("Invalid path type %s", arg);
 				goto cleanup2;
 			}
 		} else if (strcmp(para, "indextype") == 0) {
-			if (strcmp(arg, "LIST") == 0) {
+			if (strcasecmp(arg, "LIST") == 0) {
 				index->type = INDEX_TYPE_LIST;
-			} else if (strcmp(arg, "MAPKEYS") == 0) {
+			} else if (strcasecmp(arg, "MAPKEYS") == 0) {
 				index->type = INDEX_TYPE_MAPKEYS;
-			} else if (strcmp(arg, "MAPVALUES") == 0) {
+			} else if (strcasecmp(arg, "MAPVALUES") == 0) {
 				index->type = INDEX_TYPE_MAPVALUES;
-			} else if (strcmp(arg, "NONE") == 0 || strcmp(arg, "DEFAULT") == 0) {
+			} else if (strcasecmp(arg, "NONE") == 0 || strcasecmp(arg, "DEFAULT") == 0) {
 				index->type = INDEX_TYPE_NONE;
 			} else {
 				err("Invalid index type %s", arg);
