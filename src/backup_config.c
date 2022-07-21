@@ -145,6 +145,7 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 		{ "retry-delay", required_argument, NULL, COMMAND_OPT_RETRY_DELAY },
 
 		{ "s3-region", required_argument, NULL, COMMAND_OPT_S3_REGION },
+		{ "s3-bucket", required_argument, NULL, COMMAND_OPT_S3_BUCKET },
 		{ "s3-profile", required_argument, NULL, COMMAND_OPT_S3_PROFILE },
 		{ "s3-endpoint-override", required_argument, NULL, COMMAND_OPT_S3_ENDPOINT_OVERRIDE },
 		{ "s3-min-part-size", required_argument, NULL, COMMAND_OPT_S3_MIN_PART_SIZE },
@@ -585,6 +586,10 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 			conf->s3_region = strdup(optarg);
 			break;
 
+		case COMMAND_OPT_S3_BUCKET:
+			conf->s3_bucket = strdup(optarg);
+			break;
+
 		case COMMAND_OPT_S3_PROFILE:
 			conf->s3_profile = strdup(optarg);
 			break;
@@ -731,6 +736,10 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 		s3_set_region(conf->s3_region);
 	}
 
+	if (conf->s3_bucket != NULL) {
+		s3_set_bucket(conf->s3_bucket);
+	}
+
 	if (conf->s3_profile != NULL) {
 		s3_set_profile(conf->s3_profile);
 	}
@@ -771,6 +780,7 @@ backup_config_default(backup_config_t* conf)
 	conf->auth_mode = NULL;
 
 	conf->s3_region = NULL;
+	conf->s3_bucket = NULL;
 	conf->s3_profile = NULL;
 	conf->s3_endpoint_override = NULL;
 	conf->s3_min_part_size = 0;
@@ -847,6 +857,10 @@ backup_config_destroy(backup_config_t* conf)
 
 	if (conf->s3_region != NULL) {
 		cf_free(conf->s3_region);
+	}
+
+	if (conf->s3_bucket != NULL) {
+		cf_free(conf->s3_bucket);
 	}
 
 	if (conf->s3_profile != NULL) {
@@ -931,6 +945,7 @@ backup_config_clone(backup_config_t* conf)
 	clone->user = safe_strdup(conf->user);
 	clone->password = safe_strdup(conf->password);
 	clone->s3_region = safe_strdup(conf->s3_region);
+	clone->s3_bucket = safe_strdup(conf->s3_bucket);
 	clone->s3_profile = safe_strdup(conf->s3_profile);
 	clone->s3_endpoint_override = safe_strdup(conf->s3_endpoint_override);
 	clone->s3_min_part_size = conf->s3_min_part_size;

@@ -60,6 +60,8 @@ public:
 	// This must be called before TryInitialize()
 	S3API& SetRegion(const std::string& region);
 
+	S3API& SetBucket(const std::string& bucket);
+
 	// This must be called before TryInitialize()
 	S3API& SetProfile(const std::string& profile);
 
@@ -75,6 +77,8 @@ public:
 	GroupDownloadManager* GetGroupDownloadManager();
 
 	const std::string& GetRegion() const;
+
+	const std::string& GetBucket() const;
 
 	const std::string& GetProfile() const;
 
@@ -100,6 +104,7 @@ private:
 	Aws::SDKOptions options;
 
 	std::string region;
+	std::string bucket;
 	std::string profile;
 	std::string endpoint;
 	Aws::Utils::Logging::LogLevel logLevel;
