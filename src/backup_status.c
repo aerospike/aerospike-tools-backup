@@ -39,7 +39,7 @@ static bool parse_partition_range(char *str, as_partition_filter *range);
 static bool parse_digest(const char *str, as_partition_filter *filter);
 static bool parse_partition_list(char *partition_list, as_vector *partition_filters);
 static bool parse_after_digest(char *str, as_vector* partition_filters);
-static bool parse_node_list(char *node_list, node_spec **node_specs,
+static bool parse_node_list(const char *node_list, node_spec **node_specs,
 		uint32_t *n_node_specs);
 static bool parse_sets(const as_vector* set_list, char* set_name,
 		exp_component_t* set_list_expr);
@@ -380,7 +380,7 @@ backup_status_init(backup_status_t* status, backup_config_t* conf)
 			goto cleanup3;
 		}
 
-		if (conf->parallel == 0) {
+		if (conf->parallel == 0 && !conf->estimate) {
 			conf->parallel = DEFAULT_NODE_BACKUP_PARALLEL;
 		}
 	}
@@ -976,27 +976,27 @@ parse_after_digest(char *str, as_vector* partition_filters)
  * result: true iff successful
  */
 static bool
-parse_node_list(char *node_list, node_spec **node_specs, uint32_t *n_node_specs)
+parse_node_list(const char *node_list, node_spec **node_specs, uint32_t *n_node_specs)
 {
 	bool res = false;
 	char *clone = safe_strdup(node_list);
 
 	// also allow ";" (remain backwards compatible)
-	for (size_t i = 0; node_list[i] != 0; ++i) {
-		if (node_list[i] == ';') {
-			node_list[i] = ',';
+	for (size_t i = 0; clone[i] != 0; ++i) {
+		if (clone[i] == ';') {
+			clone[i] = ',';
 		}
 	}
 
 	as_vector node_vec;
 	as_vector_inita(&node_vec, sizeof(void*), 25);
 
-	if (node_list[0] == 0) {
+	if (clone[0] == 0) {
 		err("Empty node list");
 		goto cleanup1;
 	}
 
-	split_string(node_list, ',', true, &node_vec);
+	split_string(clone, ',', true, &node_vec);
 
 	*n_node_specs = node_vec.size;
 	*node_specs = safe_malloc(sizeof (node_spec) * node_vec.size);
@@ -1014,12 +1014,12 @@ parse_node_list(char *node_list, node_spec **node_specs, uint32_t *n_node_specs)
 			char *closing = strchr(node_str, ']');
 
 			if (closing == NULL) {
-				err("Invalid node list %s (missing \"]\"", clone);
+				err("Invalid node list %s (missing \"]\"", node_list);
 				goto cleanup1;
 			}
 
 			if (closing[1] != ':') {
-				err("Invalid node list %s (missing \":\")", clone);
+				err("Invalid node list %s (missing \":\")", node_list);
 				goto cleanup1;
 			}
 
@@ -1029,7 +1029,7 @@ parse_node_list(char *node_list, node_spec **node_specs, uint32_t *n_node_specs)
 			colon = strchr(node_str, ':');
 
 			if (colon == NULL) {
-				err("Invalid node list %s (missing \":\")", clone);
+				err("Invalid node list %s (missing \":\")", node_list);
 				goto cleanup1;
 			}
 		}
@@ -1042,7 +1042,7 @@ parse_node_list(char *node_list, node_spec **node_specs, uint32_t *n_node_specs)
 		}
 
 		if (length == 0 || length > IP_ADDR_SIZE - 1) {
-			err("Invalid node list %s (invalid IP address)", clone);
+			err("Invalid node list %s (invalid IP address)", node_list);
 			goto cleanup2;
 		}
 
@@ -1056,7 +1056,7 @@ parse_node_list(char *node_list, node_spec **node_specs, uint32_t *n_node_specs)
 		} ver;
 
 		if (inet_pton(family, ip_addr, &ver) <= 0) {
-			err("Invalid node list %s (invalid IP address %s)", clone, ip_addr);
+			err("Invalid node list %s (invalid IP address %s)", node_list, ip_addr);
 			goto cleanup2;
 		}
 
@@ -1083,7 +1083,7 @@ parse_node_list(char *node_list, node_spec **node_specs, uint32_t *n_node_specs)
 		}
 
 		if (!better_atoi(colon + 1, &tmp) || tmp < 1 || tmp > 65535) {
-			err("Invalid node list %s (invalid port value %s)", clone, colon + 1);
+			err("Invalid node list %s (invalid port value %s)", node_list, colon + 1);
 			goto cleanup2;
 		}
 

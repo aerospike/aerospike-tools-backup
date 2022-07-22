@@ -403,6 +403,8 @@ run_backup(backup_config_t* conf)
 			estimate_conf->records_per_second = 0;
 			// don't use max-records for the estimate (use estimate-samples)
 			estimate_conf->max_records = 0;
+			// don't parallelize the estimate
+			estimate_conf->parallel = 0;
 
 			bool cur_silent_val = as_load_bool(&g_silent);
 			as_store_bool(&g_silent, true);

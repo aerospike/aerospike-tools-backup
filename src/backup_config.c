@@ -698,6 +698,11 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 		return BACKUP_CONFIG_INIT_FAILURE;
 	}
 
+	if (conf->estimate && conf->parallel != 0) {
+		err("Estimate cannot be parallelized, don't set --parallel.");
+		return BACKUP_CONFIG_INIT_FAILURE;
+	}
+
 	if (conf->partition_list != NULL && conf->after_digest != NULL) {
 		err("after-digest and partition-list arguments are mutually exclusive");
 		return BACKUP_CONFIG_INIT_FAILURE;
