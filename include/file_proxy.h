@@ -220,9 +220,9 @@ bool file_proxy_delete_directory(const char* path);
  * max expected file size of the file. If set to 0, no disk space check is done,
  * and the minimum allowable S3 part size is used.
  *
- * If the full path begins with "s3:", the path that follows is interpreted as
+ * If the full path begins with "s3://", the path that follows is interpreted as
  *
- *  "s3:<bucket>/<key>"
+ *  "s3://<bucket>/<key>"
  *
  * where <bucket> is the name of the AWS S3 bucket we'll be
  * uploading to/downloading from, and <key> is the key of the object in that

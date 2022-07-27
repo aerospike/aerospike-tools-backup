@@ -567,7 +567,7 @@ file_proxy_write(file_proxy_t* f, const void* buf, size_t count)
 	size_t bytes_written;
 
 	if (UNLIKELY(!_write_mode(f))) {
-			err("not in write mode");
+		err("not in write mode");
 		return 0;
 	}
 
