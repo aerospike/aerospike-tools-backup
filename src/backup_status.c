@@ -1302,7 +1302,7 @@ ns_count_callback(void *context_, const char *key, const char *value)
 	int64_t repl_factor;
 	int64_t object_count;
 
-	if (strcmp(key, "master_objects") == 0) {
+	if (strcmp(key, "objects") == 0) {
 		if (!better_atoi(value, &object_count) || object_count < 0) {
 			err("Invalid object count %s", value);
 			return false;
@@ -1420,6 +1420,7 @@ get_object_count(aerospike *as, const char *namespace, as_vector* set_list,
 	ver("Getting cluster object count");
 
 	*obj_count = 0;
+	uint32_t repl_factor = 0;
 
 	size_t value_size = sizeof "namespace/" - 1 + strlen(namespace) + 1;
 	char value[value_size];
@@ -1437,7 +1438,7 @@ get_object_count(aerospike *as, const char *namespace, as_vector* set_list,
 		}
 
 		if (ns_context.count == -1lu) {
-			err("Failed to find master_objects field in namespace info result");
+			err("Failed to find objects field in namespace info result");
 			return false;
 		}
 		if (ns_context.factor == -1u) {
@@ -1465,9 +1466,21 @@ get_object_count(aerospike *as, const char *namespace, as_vector* set_list,
 			}
 		}
 
+		if (i == 0) {
+			repl_factor = ns_context.factor;
+		}
+		else if (ns_context.factor != repl_factor) {
+			err("Inconsitent replication factor across nodes (found two nodes "
+					"with replication factors %" PRIu32 " and %" PRIu32 ")",
+					ns_context.factor, repl_factor);
+			return false;
+		}
+
 		inf("%-20s%-15" PRIu64 "%-15d", (*node_names)[i], count, ns_context.factor);
 		*obj_count += count;
 	}
+
+	*obj_count /= repl_factor;
 
 	return true;
 }
