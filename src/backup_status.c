@@ -393,7 +393,18 @@ backup_status_init(backup_status_t* status, backup_config_t* conf)
 		goto cleanup3;
 	}
 
-	inf("Namespace contains %" PRIu64 " record(s)", status->rec_count_estimate);
+	if (conf->set_list.size != 0) {
+		inf("Set%s %s contain%s %" PRIu64 " record(s)",
+				conf->set_list.size == 1 ? "" : "s",
+				str_vector_tostring(&conf->set_list),
+				conf->set_list.size != 1 ? "" : "s",
+				status->rec_count_estimate);
+	}
+	else {
+		inf("Namespace %.*s contains %" PRIu64 " record(s)",
+				(int) sizeof(as_namespace), conf->ns,
+				status->rec_count_estimate);
+	}
 
 	bool has_ldt;
 
