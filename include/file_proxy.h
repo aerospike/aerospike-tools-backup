@@ -160,6 +160,11 @@ bool s3_parse_log_level(const char* log_level_str, s3_log_level_t* log_level);
 void s3_set_region(const char* region);
 
 /*
+ * Sets the S3 bucket to use.
+ */
+void s3_set_bucket(const char* bucket);
+
+/*
  * Sets the AWS profile to use for credentials.
  */
 void s3_set_profile(const char* profile);
@@ -215,9 +220,9 @@ bool file_proxy_delete_directory(const char* path);
  * max expected file size of the file. If set to 0, no disk space check is done,
  * and the minimum allowable S3 part size is used.
  *
- * If the full path begins with "s3:", the path that follows is interpreted as
+ * If the full path begins with "s3://", the path that follows is interpreted as
  *
- *  "s3:<bucket>/<key>"
+ *  "s3://<bucket>/<key>"
  *
  * where <bucket> is the name of the AWS S3 bucket we'll be
  * uploading to/downloading from, and <key> is the key of the object in that

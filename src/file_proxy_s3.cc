@@ -150,6 +150,12 @@ s3_set_region(const char* region)
 }
 
 void
+s3_set_bucket(const char* bucket)
+{
+	g_api.SetBucket(bucket);
+}
+
+void
 s3_set_profile(const char* profile)
 {
 	g_api.SetProfile(profile);
@@ -231,7 +237,7 @@ s3_get_file_size(const char* bucket, const char* key)
 	const Aws::S3::S3Client& client = g_api.GetS3Client();
 
 	Aws::S3::Model::HeadObjectRequest meta_req;
-	meta_req.SetBucket(bucket);
+	meta_req.SetBucket(g_api.GetBucket());
 	meta_req.SetKey(key);
 
 	Aws::S3::Model::HeadObjectOutcome meta_res = client.HeadObject(meta_req);
@@ -257,7 +263,7 @@ s3_delete_object(const char* bucket, const char* key)
 
 	const Aws::S3::S3Client& client = g_api.GetS3Client();
 
-	DeleteObjectsBuffer del_buffer(client, bucket);
+	DeleteObjectsBuffer del_buffer(client, g_api.GetBucket());
 	del_buffer.DeleteObject(key);
 	return del_buffer.Flush();
 }
@@ -276,10 +282,10 @@ s3_delete_directory(const char* bucket, const char* prefix)
 
 	const Aws::S3::S3Client& client = g_api.GetS3Client();
 
-	DeleteObjectsBuffer del_buffer(client, bucket);
+	DeleteObjectsBuffer del_buffer(client, g_api.GetBucket());
 
 	Aws::S3::Model::ListObjectsRequest req;
-	req.SetBucket(bucket);
+	req.SetBucket(g_api.GetBucket());
 	req.SetPrefix(prefix);
 
 	Aws::S3::Model::ListObjectsOutcome res = client.ListObjects(req);
@@ -304,7 +310,7 @@ s3_delete_directory(const char* bucket, const char* prefix)
 	}
 
 	Aws::S3::Model::ListMultipartUploadsRequest ureq;
-	ureq.SetBucket(bucket);
+	ureq.SetBucket(g_api.GetBucket());
 	ureq.SetPrefix(prefix);
 
 	Aws::S3::Model::ListMultipartUploadsOutcome ures =
@@ -320,7 +326,7 @@ s3_delete_directory(const char* bucket, const char* prefix)
 
 		// check if the extension of the object is ".asb"
 		if (file_proxy_is_backup_file_path(obj_key.c_str())) {
-			if (!_abort_upload(bucket, upload)) {
+			if (!_abort_upload(g_api.GetBucket().c_str(), upload)) {
 				return -1;
 			}
 		}
@@ -347,7 +353,7 @@ s3_prepare_output_file(const backup_config_t* conf, const char* bucket,
 
 	// first, get the Object metadata
 	Aws::S3::Model::HeadObjectRequest meta_req;
-	meta_req.SetBucket(bucket);
+	meta_req.SetBucket(g_api.GetBucket());
 	meta_req.SetKey(key);
 
 	Aws::S3::Model::HeadObjectOutcome meta_res =
@@ -364,11 +370,11 @@ s3_prepare_output_file(const backup_config_t* conf, const char* bucket,
 		// object exists, remove it if we can
 		if (!conf->remove_files) {
 			err("S3 object s3:%s/%s exists, pass --remove-files to replace it",
-					bucket, key);
+					g_api.GetBucket().c_str(), key);
 			return false;
 		}
 
-		if (!s3_delete_object(bucket, key)) {
+		if (!s3_delete_object(g_api.GetBucket().c_str(), key)) {
 			return false;
 		}
 	}
@@ -394,12 +400,12 @@ s3_scan_directory(const backup_config_t* conf, const backup_status_t* status,
 		return false;
 	}
 
-	int64_t obj_count = _scan_objects(conf, backup_state, bucket, key);
+	int64_t obj_count = _scan_objects(conf, backup_state, g_api.GetBucket().c_str(), key);
 	if (obj_count < 0) {
 		return false;
 	}
 
-	int64_t upload_req_count = _scan_upload_requests(conf, backup_state, bucket, key);
+	int64_t upload_req_count = _scan_upload_requests(conf, backup_state, g_api.GetBucket().c_str(), key);
 	if (upload_req_count < 0) {
 		return false;
 	}
@@ -428,10 +434,10 @@ bool s3_get_backup_files(const char* bucket, const char* key,
 
 	const Aws::S3::S3Client& client = g_api.GetS3Client();
 
-	size_t prefix_len = strlen(S3_PREFIX) + strlen(bucket) + 1;
+	size_t prefix_len = strlen(S3_PREFIX) + strlen(g_api.GetBucket().c_str()) + 1;
 
 	Aws::S3::Model::ListObjectsRequest req;
-	req.SetBucket(bucket);
+	req.SetBucket(g_api.GetBucket());
 	req.SetPrefix(key);
 
 	Aws::S3::Model::ListObjectsOutcome res = client.ListObjects(req);
@@ -453,7 +459,7 @@ bool s3_get_backup_files(const char* bucket, const char* key,
 			}
 
 			snprintf(elem, prefix_len + obj_key.size() + 1,
-					S3_PREFIX "%s/%s", bucket, obj_key.c_str());
+					S3_PREFIX "%s/%s", g_api.GetBucket().c_str(), obj_key.c_str());
 			as_vector_append(file_vec, &elem);
 		}
 	}
@@ -486,7 +492,7 @@ file_proxy_s3_write_init(file_proxy_t* f, const char* bucket, const char* key,
 		return -1;
 	}
 
-	f->s3.s3_state = new UploadManager(g_api.GetS3Client(), bucket, key,
+	f->s3.s3_state = new UploadManager(g_api.GetS3Client(), g_api.GetBucket(), key,
 			_calc_part_size(max_file_size));
 	if (!static_cast<UploadManager*>(f->s3.s3_state)->StartUpload()) {
 		return -1;
@@ -504,7 +510,7 @@ file_proxy_s3_read_init(file_proxy_t* f, const char* bucket, const char* key)
 		return -1;
 	}
 
-	f->s3.s3_state = new DownloadManager(g_api.GetS3Client(), bucket, key);
+	f->s3.s3_state = new DownloadManager(g_api.GetS3Client(), g_api.GetBucket(), key);
 	if (!static_cast<DownloadManager*>(f->s3.s3_state)->StartDownload()) {
 		return -1;
 	}
@@ -580,7 +586,7 @@ file_proxy_s3_deserialize(file_proxy_t* f, file_proxy_t* src,
 
 	switch (file_proxy_get_mode(f)) {
 		case FILE_PROXY_WRITE_MODE:
-			f->s3.s3_state = new UploadManager(g_api.GetS3Client(), bucket, key, 0);
+			f->s3.s3_state = new UploadManager(g_api.GetS3Client(), g_api.GetBucket(), key, 0);
 			break;
 
 		case FILE_PROXY_READ_MODE:
@@ -692,7 +698,7 @@ _abort_upload(const char* bucket, const Aws::S3::Model::MultipartUpload& upload)
 	const Aws::S3::S3Client& client = g_api.GetS3Client();
 
 	Aws::S3::Model::AbortMultipartUploadRequest req;
-	req.SetBucket(bucket);
+	req.SetBucket(g_api.GetBucket());
 	req.SetKey(upload.GetKey());
 	req.SetUploadId(upload.GetUploadId());
 
@@ -720,11 +726,11 @@ _scan_objects(const backup_config_t* conf, backup_state_t* backup_state,
 {
 	const Aws::S3::S3Client& client = g_api.GetS3Client();
 
-	DeleteObjectsBuffer del_buffer(client, bucket);
+	DeleteObjectsBuffer del_buffer(client, g_api.GetBucket());
 	uint64_t file_count = 0;
 
 	Aws::S3::Model::ListObjectsRequest req;
-	req.SetBucket(bucket);
+	req.SetBucket(g_api.GetBucket());
 	req.SetPrefix(key);
 
 	Aws::S3::Model::ListObjectsOutcome res = client.ListObjects(req);
@@ -745,7 +751,7 @@ _scan_objects(const backup_config_t* conf, backup_state_t* backup_state,
 			}
 			else if (conf->state_file != NULL) {
 				std::ostringstream full_path;
-				full_path << S3_PREFIX << bucket << "/" << obj_key;
+				full_path << S3_PREFIX << g_api.GetBucket() << "/" << obj_key;
 				if (backup_state_contains_file(backup_state, full_path.str().c_str())) {
 					err("Expected object \"%s\" to be complete, but found in "
 							"backup state list of incomplete files",
@@ -757,7 +763,7 @@ _scan_objects(const backup_config_t* conf, backup_state_t* backup_state,
 			else {
 				err("S3 directory %s in bucket %s seems to contain an existing "
 						"backup; use -r to clear the directory",
-						key, bucket);
+						key, g_api.GetBucket().c_str());
 				return -1;
 			}
 		}
@@ -781,7 +787,7 @@ _check_multipart_uploads_list(const backup_config_t* conf,
 		const char* key)
 {
 	const Aws::S3::S3Client& client = g_api.GetS3Client();
-	size_t bucket_len = strlen(bucket);
+	size_t bucket_len = strlen(g_api.GetBucket().c_str());
 	size_t key_len = strlen(key);
 
 	if (conf->state_file != NULL) {
@@ -796,10 +802,10 @@ _check_multipart_uploads_list(const backup_config_t* conf,
 				return false;
 			}
 
-			if (strncmp(full_path + (sizeof(S3_PREFIX) - 1), bucket, bucket_len) != 0) {
+			if (strncmp(full_path + (sizeof(S3_PREFIX) - 1), g_api.GetBucket().c_str(), bucket_len) != 0) {
 				err("Expected bucket name \"%s\", but found \"%.*s\" in full "
 						"path %s",
-						bucket, (int) bucket_len,
+						g_api.GetBucket().c_str(), (int) bucket_len,
 						full_path + (sizeof(S3_PREFIX) - 1), full_path);
 				return false;
 			}
@@ -829,7 +835,7 @@ _check_multipart_uploads_list(const backup_config_t* conf,
 
 			// check for the existence of this multipart upload
 			Aws::S3::Model::ListPartsRequest lreq;
-			lreq.SetBucket(bucket);
+			lreq.SetBucket(g_api.GetBucket());
 			lreq.SetKey(request_key);
 			lreq.SetUploadId(upload_manager->GetUploadId());
 			lreq.SetMaxParts(0);
@@ -859,12 +865,12 @@ _scan_upload_requests(const backup_config_t* conf, backup_state_t* backup_state,
 {
 	const Aws::S3::S3Client& client = g_api.GetS3Client();
 
-	if (!_check_multipart_uploads_list(conf, backup_state, bucket, key)) {
+	if (!_check_multipart_uploads_list(conf, backup_state, g_api.GetBucket().c_str(), key)) {
 		return -1;
 	}
 
 	Aws::S3::Model::ListMultipartUploadsRequest ureq;
-	ureq.SetBucket(bucket);
+	ureq.SetBucket(g_api.GetBucket());
 	ureq.SetPrefix(key);
 
 	Aws::S3::Model::ListMultipartUploadsOutcome ures =
@@ -881,13 +887,13 @@ _scan_upload_requests(const backup_config_t* conf, backup_state_t* backup_state,
 		// check if the extension of the object is ".asb"
 		if (file_proxy_is_backup_file_path(obj_key.c_str())) {
 			if (conf->remove_files) {
-				if (!_abort_upload(bucket, upload)) {
+				if (!_abort_upload(g_api.GetBucket().c_str(), upload)) {
 					return -1;
 				}
 			}
 			else if (conf->state_file != NULL) {
 				std::ostringstream full_path;
-				full_path << S3_PREFIX << bucket << "/" << obj_key;
+				full_path << S3_PREFIX << g_api.GetBucket() << "/" << obj_key;
 				if (!backup_state_contains_file(backup_state, full_path.str().c_str())) {
 					err("Expected object \"%s\" to be in backup state list of "
 							"incomplete files, but was not found",
@@ -898,7 +904,7 @@ _scan_upload_requests(const backup_config_t* conf, backup_state_t* backup_state,
 			else {
 				err("S3 directory %s in bucket %s seems to contain an existing "
 						"backup; use -r to clear the directory",
-						key, bucket);
+						key, g_api.GetBucket().c_str());
 				return -1;
 			}
 		}

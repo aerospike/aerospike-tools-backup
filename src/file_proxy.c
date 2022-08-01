@@ -567,7 +567,7 @@ file_proxy_write(file_proxy_t* f, const void* buf, size_t count)
 	size_t bytes_written;
 
 	if (UNLIKELY(!_write_mode(f))) {
-			err("not in write mode");
+		err("not in write mode");
 		return 0;
 	}
 
@@ -1397,6 +1397,7 @@ _path_to_s3_path(const char* path, char** bucket, char** key)
 		return false;
 	}
 
+	/*
 	char* delim = strchr(s3_path, '/');
 	if (delim == NULL) {
 		err("Expected '/<key>' after bucket name in S3 file %s", path);
@@ -1416,6 +1417,8 @@ _path_to_s3_path(const char* path, char** bucket, char** key)
 
 	*bucket = s3_path;
 	*key = delim;
+	*/
+	*key = s3_path;
 	return true;
 }
 
@@ -1423,7 +1426,8 @@ static void
 _free_s3_path(char* bucket, char* key)
 {
 	(void) key;
-	char* s3_path = bucket;
+	//char* s3_path = bucket;
+	char* s3_path = key;
 
 	cf_free(s3_path);
 }
