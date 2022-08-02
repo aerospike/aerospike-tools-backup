@@ -39,7 +39,7 @@ static bool parse_partition_range(char *str, as_partition_filter *range);
 static bool parse_digest(const char *str, as_partition_filter *filter);
 static bool parse_partition_list(char *partition_list, as_vector *partition_filters);
 static bool parse_after_digest(char *str, as_vector* partition_filters);
-static bool parse_node_list(char *node_list, node_spec **node_specs,
+static bool parse_node_list(const char *node_list, node_spec **node_specs,
 		uint32_t *n_node_specs);
 static bool parse_sets(const as_vector* set_list, char* set_name,
 		exp_component_t* set_list_expr);
@@ -380,7 +380,7 @@ backup_status_init(backup_status_t* status, backup_config_t* conf)
 			goto cleanup3;
 		}
 
-		if (conf->parallel == 0) {
+		if (conf->parallel == 0 && !conf->estimate) {
 			conf->parallel = DEFAULT_NODE_BACKUP_PARALLEL;
 		}
 	}
@@ -393,7 +393,18 @@ backup_status_init(backup_status_t* status, backup_config_t* conf)
 		goto cleanup3;
 	}
 
-	inf("Namespace contains %" PRIu64 " record(s)", status->rec_count_estimate);
+	if (conf->set_list.size != 0) {
+		inf("Set%s %s contain%s %" PRIu64 " record(s)",
+				conf->set_list.size == 1 ? "" : "s",
+				str_vector_tostring(&conf->set_list),
+				conf->set_list.size != 1 ? "" : "s",
+				status->rec_count_estimate);
+	}
+	else {
+		inf("Namespace %.*s contains %" PRIu64 " record(s)",
+				(int) sizeof(as_namespace), conf->ns,
+				status->rec_count_estimate);
+	}
 
 	bool has_ldt;
 
@@ -976,27 +987,27 @@ parse_after_digest(char *str, as_vector* partition_filters)
  * result: true iff successful
  */
 static bool
-parse_node_list(char *node_list, node_spec **node_specs, uint32_t *n_node_specs)
+parse_node_list(const char *node_list, node_spec **node_specs, uint32_t *n_node_specs)
 {
 	bool res = false;
 	char *clone = safe_strdup(node_list);
 
 	// also allow ";" (remain backwards compatible)
-	for (size_t i = 0; node_list[i] != 0; ++i) {
-		if (node_list[i] == ';') {
-			node_list[i] = ',';
+	for (size_t i = 0; clone[i] != 0; ++i) {
+		if (clone[i] == ';') {
+			clone[i] = ',';
 		}
 	}
 
 	as_vector node_vec;
 	as_vector_inita(&node_vec, sizeof(void*), 25);
 
-	if (node_list[0] == 0) {
+	if (clone[0] == 0) {
 		err("Empty node list");
 		goto cleanup1;
 	}
 
-	split_string(node_list, ',', true, &node_vec);
+	split_string(clone, ',', true, &node_vec);
 
 	*n_node_specs = node_vec.size;
 	*node_specs = safe_malloc(sizeof (node_spec) * node_vec.size);
@@ -1014,12 +1025,12 @@ parse_node_list(char *node_list, node_spec **node_specs, uint32_t *n_node_specs)
 			char *closing = strchr(node_str, ']');
 
 			if (closing == NULL) {
-				err("Invalid node list %s (missing \"]\"", clone);
+				err("Invalid node list %s (missing \"]\"", node_list);
 				goto cleanup1;
 			}
 
 			if (closing[1] != ':') {
-				err("Invalid node list %s (missing \":\")", clone);
+				err("Invalid node list %s (missing \":\")", node_list);
 				goto cleanup1;
 			}
 
@@ -1029,7 +1040,7 @@ parse_node_list(char *node_list, node_spec **node_specs, uint32_t *n_node_specs)
 			colon = strchr(node_str, ':');
 
 			if (colon == NULL) {
-				err("Invalid node list %s (missing \":\")", clone);
+				err("Invalid node list %s (missing \":\")", node_list);
 				goto cleanup1;
 			}
 		}
@@ -1042,7 +1053,7 @@ parse_node_list(char *node_list, node_spec **node_specs, uint32_t *n_node_specs)
 		}
 
 		if (length == 0 || length > IP_ADDR_SIZE - 1) {
-			err("Invalid node list %s (invalid IP address)", clone);
+			err("Invalid node list %s (invalid IP address)", node_list);
 			goto cleanup2;
 		}
 
@@ -1056,7 +1067,7 @@ parse_node_list(char *node_list, node_spec **node_specs, uint32_t *n_node_specs)
 		} ver;
 
 		if (inet_pton(family, ip_addr, &ver) <= 0) {
-			err("Invalid node list %s (invalid IP address %s)", clone, ip_addr);
+			err("Invalid node list %s (invalid IP address %s)", node_list, ip_addr);
 			goto cleanup2;
 		}
 
@@ -1083,7 +1094,7 @@ parse_node_list(char *node_list, node_spec **node_specs, uint32_t *n_node_specs)
 		}
 
 		if (!better_atoi(colon + 1, &tmp) || tmp < 1 || tmp > 65535) {
-			err("Invalid node list %s (invalid port value %s)", clone, colon + 1);
+			err("Invalid node list %s (invalid port value %s)", node_list, colon + 1);
 			goto cleanup2;
 		}
 
@@ -1302,7 +1313,7 @@ ns_count_callback(void *context_, const char *key, const char *value)
 	int64_t repl_factor;
 	int64_t object_count;
 
-	if (strcmp(key, "master_objects") == 0) {
+	if (strcmp(key, "objects") == 0) {
 		if (!better_atoi(value, &object_count) || object_count < 0) {
 			err("Invalid object count %s", value);
 			return false;
@@ -1420,6 +1431,7 @@ get_object_count(aerospike *as, const char *namespace, as_vector* set_list,
 	ver("Getting cluster object count");
 
 	*obj_count = 0;
+	uint32_t repl_factor = 0;
 
 	size_t value_size = sizeof "namespace/" - 1 + strlen(namespace) + 1;
 	char value[value_size];
@@ -1437,7 +1449,7 @@ get_object_count(aerospike *as, const char *namespace, as_vector* set_list,
 		}
 
 		if (ns_context.count == -1lu) {
-			err("Failed to find master_objects field in namespace info result");
+			err("Failed to find objects field in namespace info result");
 			return false;
 		}
 		if (ns_context.factor == -1u) {
@@ -1465,9 +1477,21 @@ get_object_count(aerospike *as, const char *namespace, as_vector* set_list,
 			}
 		}
 
+		if (i == 0) {
+			repl_factor = ns_context.factor;
+		}
+		else if (ns_context.factor != repl_factor) {
+			err("Inconsitent replication factor across nodes (found two nodes "
+					"with replication factors %" PRIu32 " and %" PRIu32 ")",
+					ns_context.factor, repl_factor);
+			return false;
+		}
+
 		inf("%-20s%-15" PRIu64 "%-15d", (*node_names)[i], count, ns_context.factor);
 		*obj_count += count;
 	}
+
+	*obj_count /= repl_factor;
 
 	return true;
 }

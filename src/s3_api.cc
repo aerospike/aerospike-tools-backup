@@ -89,6 +89,13 @@ S3API::SetRegion(const std::string& region)
 }
 
 S3API&
+S3API::SetBucket(const std::string& bucket)
+{
+	this->bucket = bucket;
+	return *this;
+}
+
+S3API&
 S3API::SetProfile(const std::string& profile)
 {
 	if (IsInitialized()) {
@@ -155,6 +162,12 @@ S3API::GetRegion() const
 }
 
 const std::string&
+S3API::GetBucket() const
+{
+	return bucket;
+}
+
+const std::string&
 S3API::GetProfile() const
 {
 	return profile;
@@ -184,6 +197,55 @@ S3API::FinishAsyncUpload()
 {
 	_FinishAsync(async_uploads_lock, async_uploads_cv, async_uploads,
 			max_async_uploads);
+}
+
+
+const std::string&
+S3API::S3Path::GetKey() const
+{
+	return key;
+}
+
+const std::string&
+S3API::S3Path::GetBucket() const
+{
+	return bucket;
+}
+
+bool
+S3API::S3Path::ParsePath(const std::string& bucket, const std::string& path)
+{
+	if (bucket.size() == 0) {
+		// path is in the format "s3://<bucket>/<key>"
+		size_t delim = path.find('/', S3_PREFIX_LEN);
+
+		if (delim == std::string::npos) {
+			err("Failed to parse S3 path \"%s\", bucket name not followed by "
+					"'/'.", path.c_str());
+			return false;
+		}
+
+		this->bucket = path.substr(S3_PREFIX_LEN, delim - S3_PREFIX_LEN);
+		this->key = path.substr(delim + 1);
+	}
+	else {
+		this->bucket = bucket;
+		this->key = path.substr(S3_PREFIX_LEN);
+	}
+
+	return true;
+}
+
+
+std::optional<S3API::S3Path>
+S3API::ParseS3Path(const std::string& path) const
+{
+	S3API::S3Path path_obj;
+	if (!path_obj.ParsePath(this->bucket, path)) {
+		return std::optional<S3API::S3Path>();
+	}
+
+	return std::optional<S3API::S3Path>(std::move(path_obj));
 }
 
 void

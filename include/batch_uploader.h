@@ -67,11 +67,11 @@ typedef struct batch_status {
 	uint64_t ignored_records;
 	// The number of successfully restored records.
 	uint64_t inserted_records;
-	// The number of records dropped because they already existed in the
+	// The number of records not inserted because they already existed in the
 	// database.
 	uint64_t existed_records;
-	// The number of records dropped because the database already contained the
-	// records with a higher generation count.
+	// The number of records not inserted because the database already contained
+	// the records with a higher generation count.
 	uint64_t fresher_records;
 } batch_status_t;
 

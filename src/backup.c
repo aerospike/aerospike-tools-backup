@@ -403,6 +403,8 @@ run_backup(backup_config_t* conf)
 			estimate_conf->records_per_second = 0;
 			// don't use max-records for the estimate (use estimate-samples)
 			estimate_conf->max_records = 0;
+			// don't parallelize the estimate
+			estimate_conf->parallel = 0;
 
 			bool cur_silent_val = as_load_bool(&g_silent);
 			as_store_bool(&g_silent, true);
@@ -2402,7 +2404,7 @@ show_estimate(FILE *mach_fd, uint64_t *samples, uint32_t n_samples,
 
 	inf("Estimated total backup file size (for backup-to-file, %g%% "
 			"confidence): %" PRIu64 " byte(s)",
-			BACKUP_FILE_ESTIMATE_CONFIDENCE_LEVEL, est_backup_size);
+			100 * BACKUP_FILE_ESTIMATE_CONFIDENCE_LEVEL, est_backup_size);
 }
 
 /*
