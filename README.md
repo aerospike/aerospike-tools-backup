@@ -100,9 +100,7 @@ Let's now look at what the worker threads do, starting at `restore_thread_func()
   * When restoring from a single file, acquire the file lock by invoking `safe_lock()`. As all worker threads read from the same backup file, we can only allow one thread to read at a time.
   * Invoke the `parse()` function of the backup decoder to read the next record. The decoder is the counterpart to the encoder in `asbackup`. It implements the backup file format by deserializing record information from the the backup file. Its code is in `src/dec_text.c`, its interface in `include/dec_text.h`.
   * When backing up to a single file, release the file lock.
-  * Invoke `aerospike_key_put()` to store the current record in the cluster.
-
-For more detailed information, please generate the documentation (`make docs`) and open `docs/index.html`.
+  * Call `record_uploader_put` to asynchronously upload the record in batches.
 
 ## Backup File Format
 
