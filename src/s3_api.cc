@@ -237,15 +237,15 @@ S3API::S3Path::ParsePath(const std::string& bucket, const std::string& path)
 }
 
 
-std::optional<S3API::S3Path>
+std::pair<S3API::S3Path, bool>
 S3API::ParseS3Path(const std::string& path) const
 {
 	S3API::S3Path path_obj;
 	if (!path_obj.ParsePath(this->bucket, path)) {
-		return std::optional<S3API::S3Path>();
+		return std::pair<S3API::S3Path, bool>(S3API::S3Path(), false);
 	}
 
-	return std::optional<S3API::S3Path>(std::move(path_obj));
+	return std::pair<S3API::S3Path, bool>(std::move(path_obj), true);
 }
 
 void

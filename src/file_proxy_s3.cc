@@ -233,11 +233,11 @@ s3_get_file_size(const char* file_path)
 	}
 
 	const Aws::S3::S3Client& client = g_api.GetS3Client();
-	const std::optional<S3API::S3Path> path_res = g_api.ParseS3Path(file_path);
-	if (!path_res) {
+	const std::pair<S3API::S3Path, bool> path_res = g_api.ParseS3Path(file_path);
+	if (!path_res.second) {
 		return -1;
 	}
-	const S3API::S3Path path = *path_res;
+	const S3API::S3Path& path = path_res.first;
 
 	Aws::S3::Model::HeadObjectRequest meta_req;
 	meta_req.SetBucket(path.GetBucket());
@@ -265,11 +265,11 @@ s3_delete_object(const char* file_path)
 	}
 
 	const Aws::S3::S3Client& client = g_api.GetS3Client();
-	const std::optional<S3API::S3Path> path_res = g_api.ParseS3Path(file_path);
-	if (!path_res) {
+	const std::pair<S3API::S3Path, bool> path_res = g_api.ParseS3Path(file_path);
+	if (!path_res.second) {
 		return false;
 	}
-	const S3API::S3Path path = *path_res;
+	const S3API::S3Path& path = path_res.first;
 
 	DeleteObjectsBuffer del_buffer(client, path.GetBucket());
 	del_buffer.DeleteObject(path.GetKey());
@@ -289,11 +289,11 @@ s3_delete_directory(const char* dir_path)
 	}
 
 	const Aws::S3::S3Client& client = g_api.GetS3Client();
-	const std::optional<S3API::S3Path> path_res = g_api.ParseS3Path(dir_path);
-	if (!path_res) {
+	const std::pair<S3API::S3Path, bool> path_res = g_api.ParseS3Path(dir_path);
+	if (!path_res.second) {
 		return false;
 	}
-	const S3API::S3Path path = *path_res;
+	const S3API::S3Path& path = path_res.first;
 
 	DeleteObjectsBuffer del_buffer(client, path.GetBucket());
 
@@ -362,11 +362,11 @@ s3_prepare_output_file(const backup_config_t* conf, const char* file_path)
 	}
 
 	const Aws::S3::S3Client& client = g_api.GetS3Client();
-	const std::optional<S3API::S3Path> path_res = g_api.ParseS3Path(file_path);
-	if (!path_res) {
+	const std::pair<S3API::S3Path, bool> path_res = g_api.ParseS3Path(file_path);
+	if (!path_res.second) {
 		return false;
 	}
-	const S3API::S3Path path = *path_res;
+	const S3API::S3Path& path = path_res.first;
 
 	// first, get the Object metadata
 	Aws::S3::Model::HeadObjectRequest meta_req;
@@ -417,11 +417,11 @@ s3_scan_directory(const backup_config_t* conf, const backup_status_t* status,
 		return false;
 	}
 
-	const std::optional<S3API::S3Path> path_res = g_api.ParseS3Path(dir_path);
-	if (!path_res) {
+	const std::pair<S3API::S3Path, bool> path_res = g_api.ParseS3Path(dir_path);
+	if (!path_res.second) {
 		return false;
 	}
-	const S3API::S3Path path = *path_res;
+	const S3API::S3Path& path = path_res.first;
 
 	int64_t obj_count = _scan_objects(conf, backup_state,
 			path.GetBucket().c_str(), path.GetKey().c_str());
@@ -456,11 +456,11 @@ bool s3_get_backup_files(const char* prefix, as_vector* file_vec)
 		return false;
 	}
 
-	const std::optional<S3API::S3Path> path_res = g_api.ParseS3Path(prefix);
-	if (!path_res) {
+	const std::pair<S3API::S3Path, bool> path_res = g_api.ParseS3Path(prefix);
+	if (!path_res.second) {
 		return false;
 	}
-	const S3API::S3Path path = *path_res;
+	const S3API::S3Path& path = path_res.first;
 
 	const Aws::S3::S3Client& client = g_api.GetS3Client();
 
@@ -522,11 +522,11 @@ file_proxy_s3_write_init(file_proxy_t* f, const char* file_path,
 		return -1;
 	}
 
-	const std::optional<S3API::S3Path> path_res = g_api.ParseS3Path(file_path);
-	if (!path_res) {
+	const std::pair<S3API::S3Path, bool> path_res = g_api.ParseS3Path(file_path);
+	if (!path_res.second) {
 		return -1;
 	}
-	const S3API::S3Path path = *path_res;
+	const S3API::S3Path& path = path_res.first;
 
 	f->s3.s3_state = new UploadManager(g_api.GetS3Client(), path.GetBucket(),
 			path.GetKey(), _calc_part_size(max_file_size));
@@ -546,11 +546,11 @@ file_proxy_s3_read_init(file_proxy_t* f, const char* file_path)
 		return -1;
 	}
 
-	const std::optional<S3API::S3Path> path_res = g_api.ParseS3Path(file_path);
-	if (!path_res) {
+	const std::pair<S3API::S3Path, bool> path_res = g_api.ParseS3Path(file_path);
+	if (!path_res.second) {
 		return -1;
 	}
-	const S3API::S3Path path = *path_res;
+	const S3API::S3Path& path = path_res.first;
 
 	f->s3.s3_state = new DownloadManager(g_api.GetS3Client(), path.GetBucket(),
 			path.GetKey());
@@ -627,11 +627,11 @@ file_proxy_s3_deserialize(file_proxy_t* f, file_proxy_t* src,
 		return -1;
 	}
 
-	const std::optional<S3API::S3Path> path_res = g_api.ParseS3Path(file_path);
-	if (!path_res) {
+	const std::pair<S3API::S3Path, bool> path_res = g_api.ParseS3Path(file_path);
+	if (!path_res.second) {
 		return -1;
 	}
-	const S3API::S3Path path = *path_res;
+	const S3API::S3Path& path = path_res.first;
 
 	switch (file_proxy_get_mode(f)) {
 		case FILE_PROXY_WRITE_MODE:

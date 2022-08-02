@@ -29,7 +29,6 @@
 //
 
 #include <condition_variable>
-#include <optional>
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wsign-conversion"
@@ -119,7 +118,7 @@ public:
 		std::string bucket;
 	};
 
-	std::optional<S3Path> ParseS3Path(const std::string& path) const;
+	std::pair<S3Path, bool> ParseS3Path(const std::string& path) const;
 
 private:
 	std::once_flag init_once;
