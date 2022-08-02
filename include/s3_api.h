@@ -29,6 +29,7 @@
 //
 
 #include <condition_variable>
+#include <optional>
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wsign-conversion"
