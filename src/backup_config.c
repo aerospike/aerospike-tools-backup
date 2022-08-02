@@ -1306,6 +1306,10 @@ usage(const char *name)
 	fprintf(stderr, "                      The amount of time to sleep between retries. Default is 0.\n");
 	fprintf(stderr, "      --s3-region <region>\n");
 	fprintf(stderr, "                      The S3 region that the bucket(s) exist in.\n");
+	fprintf(stderr, "      --s3-bucket <bucket>\n");
+	fprintf(stderr, "                      The S3 bucket to use for all S3 objects. With this option\n");
+	fprintf(stderr, "                      given, S3 paths are then interpreted as \"s3://<key>\",\n");
+	fprintf(stderr, "                      i.e. the bucket name should be omitted from the path.\n");
 	fprintf(stderr, "      --s3-profile <profile_name>\n");
 	fprintf(stderr, "                      The S3 profile to use for credentials (the default is \"default\").\n");
 	fprintf(stderr, "      --s3-endpoint-override <url>\n");

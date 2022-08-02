@@ -81,6 +81,7 @@ typedef struct backup_config {
 
 	// The region to use for S3.
 	char* s3_region;
+	// The S3 bucket to use for all S3 objects.
 	char* s3_bucket;
 	// The profile to use for AWS credentials.
 	char* s3_profile;

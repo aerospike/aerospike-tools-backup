@@ -98,6 +98,28 @@ public:
 	 */
 	void FinishAsyncUpload();
 
+	class S3Path {
+	public:
+		S3Path() = default;
+		~S3Path() = default;
+
+		/*
+		 * Parses an S3 path of the form "s3://<bucket>/<key>" into it's
+		 * respective key/bucket values, or if the bucket string passed is not
+		 * empty, parses an S3 path of the form "s3://<key>".
+		 */
+		bool ParsePath(const std::string& bucket, const std::string& path);
+
+		const std::string& GetKey() const;
+		const std::string& GetBucket() const;
+
+	private:
+		std::string key;
+		std::string bucket;
+	};
+
+	std::optional<S3Path> ParseS3Path(const std::string& path) const;
+
 private:
 	std::once_flag init_once;
 	bool initialized;

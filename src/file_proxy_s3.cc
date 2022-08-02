@@ -54,25 +54,23 @@ extern "C" {
 
 void file_proxy_s3_shutdown();
 
-off_t s3_get_file_size(const char* bucket, const char* key);
-bool s3_delete_object(const char* bucket, const char* key);
-bool s3_delete_directory(const char* bucket, const char* prefix);
+off_t s3_get_file_size(const char* file_path);
+bool s3_delete_object(const char* file_path);
+bool s3_delete_directory(const char* dir_path);
 
-bool s3_prepare_output_file(const backup_config_t* conf, const char* bucket,
-		const char* key);
+bool s3_prepare_output_file(const backup_config_t* conf, const char* file_path);
 bool s3_scan_directory(const backup_config_t* conf,
 		const backup_status_t* status, backup_state_t* backup_state,
-		const char* bucket, const char* key);
-bool s3_get_backup_files(const char* bucket, const char* key,
-		as_vector* file_vec);
+		const char* dir_path);
+bool s3_get_backup_files(const char* prefix, as_vector* file_vec);
 
-extern int file_proxy_s3_write_init(file_proxy_t*, const char* bucket, const char* key,
+extern int file_proxy_s3_write_init(file_proxy_t*, const char* file_path,
 		uint64_t max_file_size);
-extern int file_proxy_s3_read_init(file_proxy_t*, const char* bucket, const char* key);
+extern int file_proxy_s3_read_init(file_proxy_t*, const char* file_path);
 int file_proxy_s3_close(file_proxy_t*, uint8_t mode);
 int file_proxy_s3_serialize(const file_proxy_t*, file_proxy_t* dst);
 int file_proxy_s3_deserialize(file_proxy_t*, file_proxy_t* src,
-		const char* bucket, const char* key);
+		const char* file_path);
 ssize_t file_proxy_s3_get_size(file_proxy_t*);
 int file_proxy_s3_putc(file_proxy_t* f, int c);
 size_t file_proxy_s3_write(file_proxy_t* f, const void* buf, size_t count);
@@ -226,7 +224,7 @@ s3_disable_request_processing()
  * Return the size of the given S3 object in bytes, or -1 on error.
  */
 off_t
-s3_get_file_size(const char* bucket, const char* key)
+s3_get_file_size(const char* file_path)
 {
 	// if this is the first thread to access S3, we have to initialize the AWS
 	// SDK
@@ -235,10 +233,15 @@ s3_get_file_size(const char* bucket, const char* key)
 	}
 
 	const Aws::S3::S3Client& client = g_api.GetS3Client();
+	const std::optional<S3API::S3Path> path_res = g_api.ParseS3Path(file_path);
+	if (!path_res) {
+		return -1;
+	}
+	const S3API::S3Path path = *path_res;
 
 	Aws::S3::Model::HeadObjectRequest meta_req;
-	meta_req.SetBucket(g_api.GetBucket());
-	meta_req.SetKey(key);
+	meta_req.SetBucket(path.GetBucket());
+	meta_req.SetKey(path.GetKey());
 
 	Aws::S3::Model::HeadObjectOutcome meta_res = client.HeadObject(meta_req);
 	if (!meta_res.IsSuccess()) {
@@ -253,7 +256,7 @@ s3_get_file_size(const char* bucket, const char* key)
  * Delete the given S3 object.
  */
 bool
-s3_delete_object(const char* bucket, const char* key)
+s3_delete_object(const char* file_path)
 {
 	// if this is the first thread to access S3, we have to initialize the AWS
 	// SDK
@@ -262,9 +265,14 @@ s3_delete_object(const char* bucket, const char* key)
 	}
 
 	const Aws::S3::S3Client& client = g_api.GetS3Client();
+	const std::optional<S3API::S3Path> path_res = g_api.ParseS3Path(file_path);
+	if (!path_res) {
+		return false;
+	}
+	const S3API::S3Path path = *path_res;
 
-	DeleteObjectsBuffer del_buffer(client, g_api.GetBucket());
-	del_buffer.DeleteObject(key);
+	DeleteObjectsBuffer del_buffer(client, path.GetBucket());
+	del_buffer.DeleteObject(path.GetKey());
 	return del_buffer.Flush();
 }
 
@@ -272,7 +280,7 @@ s3_delete_object(const char* bucket, const char* key)
  * Delete all S3 objects with given prefix ending in ".asb".
  */
 bool
-s3_delete_directory(const char* bucket, const char* prefix)
+s3_delete_directory(const char* dir_path)
 {
 	// if this is the first thread to access S3, we have to initialize the AWS
 	// SDK
@@ -281,12 +289,17 @@ s3_delete_directory(const char* bucket, const char* prefix)
 	}
 
 	const Aws::S3::S3Client& client = g_api.GetS3Client();
+	const std::optional<S3API::S3Path> path_res = g_api.ParseS3Path(dir_path);
+	if (!path_res) {
+		return false;
+	}
+	const S3API::S3Path path = *path_res;
 
-	DeleteObjectsBuffer del_buffer(client, g_api.GetBucket());
+	DeleteObjectsBuffer del_buffer(client, path.GetBucket());
 
 	Aws::S3::Model::ListObjectsRequest req;
-	req.SetBucket(g_api.GetBucket());
-	req.SetPrefix(prefix);
+	req.SetBucket(path.GetBucket());
+	req.SetPrefix(path.GetKey());
 
 	Aws::S3::Model::ListObjectsOutcome res = client.ListObjects(req);
 	if (!res.IsSuccess()) {
@@ -310,8 +323,8 @@ s3_delete_directory(const char* bucket, const char* prefix)
 	}
 
 	Aws::S3::Model::ListMultipartUploadsRequest ureq;
-	ureq.SetBucket(g_api.GetBucket());
-	ureq.SetPrefix(prefix);
+	ureq.SetBucket(path.GetBucket());
+	ureq.SetPrefix(path.GetKey());
 
 	Aws::S3::Model::ListMultipartUploadsOutcome ures =
 		client.ListMultipartUploads(ureq);
@@ -326,7 +339,7 @@ s3_delete_directory(const char* bucket, const char* prefix)
 
 		// check if the extension of the object is ".asb"
 		if (file_proxy_is_backup_file_path(obj_key.c_str())) {
-			if (!_abort_upload(g_api.GetBucket().c_str(), upload)) {
+			if (!_abort_upload(path.GetBucket().c_str(), upload)) {
 				return -1;
 			}
 		}
@@ -340,8 +353,7 @@ s3_delete_directory(const char* bucket, const char* prefix)
  * set.
  */
 bool
-s3_prepare_output_file(const backup_config_t* conf, const char* bucket,
-		const char* key)
+s3_prepare_output_file(const backup_config_t* conf, const char* file_path)
 {
 	// if this is the first thread to access S3, we have to initialize the AWS
 	// SDK
@@ -350,11 +362,16 @@ s3_prepare_output_file(const backup_config_t* conf, const char* bucket,
 	}
 
 	const Aws::S3::S3Client& client = g_api.GetS3Client();
+	const std::optional<S3API::S3Path> path_res = g_api.ParseS3Path(file_path);
+	if (!path_res) {
+		return false;
+	}
+	const S3API::S3Path path = *path_res;
 
 	// first, get the Object metadata
 	Aws::S3::Model::HeadObjectRequest meta_req;
-	meta_req.SetBucket(g_api.GetBucket());
-	meta_req.SetKey(key);
+	meta_req.SetBucket(path.GetBucket());
+	meta_req.SetKey(path.GetKey());
 
 	Aws::S3::Model::HeadObjectOutcome meta_res =
 		client.HeadObject(meta_req);
@@ -370,11 +387,11 @@ s3_prepare_output_file(const backup_config_t* conf, const char* bucket,
 		// object exists, remove it if we can
 		if (!conf->remove_files) {
 			err("S3 object s3:%s/%s exists, pass --remove-files to replace it",
-					g_api.GetBucket().c_str(), key);
+					path.GetBucket().c_str(), path.GetKey().c_str());
 			return false;
 		}
 
-		if (!s3_delete_object(g_api.GetBucket().c_str(), key)) {
+		if (!s3_delete_object(file_path)) {
 			return false;
 		}
 	}
@@ -392,7 +409,7 @@ s3_prepare_output_file(const backup_config_t* conf, const char* bucket,
  */
 bool
 s3_scan_directory(const backup_config_t* conf, const backup_status_t* status,
-		backup_state_t* backup_state, const char* bucket, const char* key)
+		backup_state_t* backup_state, const char* dir_path)
 {
 	// if this is the first thread to access S3, we have to initialize the AWS
 	// SDK
@@ -400,12 +417,20 @@ s3_scan_directory(const backup_config_t* conf, const backup_status_t* status,
 		return false;
 	}
 
-	int64_t obj_count = _scan_objects(conf, backup_state, g_api.GetBucket().c_str(), key);
+	const std::optional<S3API::S3Path> path_res = g_api.ParseS3Path(dir_path);
+	if (!path_res) {
+		return false;
+	}
+	const S3API::S3Path path = *path_res;
+
+	int64_t obj_count = _scan_objects(conf, backup_state,
+			path.GetBucket().c_str(), path.GetKey().c_str());
 	if (obj_count < 0) {
 		return false;
 	}
 
-	int64_t upload_req_count = _scan_upload_requests(conf, backup_state, g_api.GetBucket().c_str(), key);
+	int64_t upload_req_count = _scan_upload_requests(conf, backup_state,
+			path.GetBucket().c_str(), path.GetKey().c_str());
 	if (upload_req_count < 0) {
 		return false;
 	}
@@ -423,8 +448,7 @@ s3_scan_directory(const backup_config_t* conf, const backup_status_t* status,
  * Scans the given bucket for all files with prefix "key" and populates file_vec
  * with the names of all files ending in ".asb" found.
  */
-bool s3_get_backup_files(const char* bucket, const char* key,
-		as_vector* file_vec)
+bool s3_get_backup_files(const char* prefix, as_vector* file_vec)
 {
 	// if this is the first thread to access S3, we have to initialize the AWS
 	// SDK
@@ -432,13 +456,19 @@ bool s3_get_backup_files(const char* bucket, const char* key,
 		return false;
 	}
 
+	const std::optional<S3API::S3Path> path_res = g_api.ParseS3Path(prefix);
+	if (!path_res) {
+		return false;
+	}
+	const S3API::S3Path path = *path_res;
+
 	const Aws::S3::S3Client& client = g_api.GetS3Client();
 
-	size_t prefix_len = strlen(S3_PREFIX) + strlen(g_api.GetBucket().c_str()) + 1;
+	size_t prefix_len = strlen(S3_PREFIX) + path.GetBucket().size() + 1;
 
 	Aws::S3::Model::ListObjectsRequest req;
-	req.SetBucket(g_api.GetBucket());
-	req.SetPrefix(key);
+	req.SetBucket(path.GetBucket());
+	req.SetPrefix(path.GetKey());
 
 	Aws::S3::Model::ListObjectsOutcome res = client.ListObjects(req);
 	if (!res.IsSuccess()) {
@@ -459,7 +489,7 @@ bool s3_get_backup_files(const char* bucket, const char* key,
 			}
 
 			snprintf(elem, prefix_len + obj_key.size() + 1,
-					S3_PREFIX "%s/%s", g_api.GetBucket().c_str(), obj_key.c_str());
+					S3_PREFIX "%s/%s", path.GetBucket().c_str(), obj_key.c_str());
 			as_vector_append(file_vec, &elem);
 		}
 	}
@@ -477,7 +507,7 @@ cleanup:
 }
 
 int
-file_proxy_s3_write_init(file_proxy_t* f, const char* bucket, const char* key,
+file_proxy_s3_write_init(file_proxy_t* f, const char* file_path,
 		uint64_t max_file_size)
 {
 	if (max_file_size > S3_MAX_OBJECT_SIZE) {
@@ -492,8 +522,14 @@ file_proxy_s3_write_init(file_proxy_t* f, const char* bucket, const char* key,
 		return -1;
 	}
 
-	f->s3.s3_state = new UploadManager(g_api.GetS3Client(), g_api.GetBucket(), key,
-			_calc_part_size(max_file_size));
+	const std::optional<S3API::S3Path> path_res = g_api.ParseS3Path(file_path);
+	if (!path_res) {
+		return -1;
+	}
+	const S3API::S3Path path = *path_res;
+
+	f->s3.s3_state = new UploadManager(g_api.GetS3Client(), path.GetBucket(),
+			path.GetKey(), _calc_part_size(max_file_size));
 	if (!static_cast<UploadManager*>(f->s3.s3_state)->StartUpload()) {
 		return -1;
 	}
@@ -502,7 +538,7 @@ file_proxy_s3_write_init(file_proxy_t* f, const char* bucket, const char* key,
 }
 
 int
-file_proxy_s3_read_init(file_proxy_t* f, const char* bucket, const char* key)
+file_proxy_s3_read_init(file_proxy_t* f, const char* file_path)
 {
 	// if this is the first thread to access S3, we have to initialize the AWS
 	// SDK
@@ -510,7 +546,14 @@ file_proxy_s3_read_init(file_proxy_t* f, const char* bucket, const char* key)
 		return -1;
 	}
 
-	f->s3.s3_state = new DownloadManager(g_api.GetS3Client(), g_api.GetBucket(), key);
+	const std::optional<S3API::S3Path> path_res = g_api.ParseS3Path(file_path);
+	if (!path_res) {
+		return -1;
+	}
+	const S3API::S3Path path = *path_res;
+
+	f->s3.s3_state = new DownloadManager(g_api.GetS3Client(), path.GetBucket(),
+			path.GetKey());
 	if (!static_cast<DownloadManager*>(f->s3.s3_state)->StartDownload()) {
 		return -1;
 	}
@@ -576,7 +619,7 @@ file_proxy_s3_serialize(const file_proxy_t* f, file_proxy_t* dst)
 
 int
 file_proxy_s3_deserialize(file_proxy_t* f, file_proxy_t* src,
-		const char* bucket, const char* key)
+		const char* file_path)
 {
 	// if this is the first thread to access S3, we have to initialize the AWS
 	// SDK
@@ -584,9 +627,16 @@ file_proxy_s3_deserialize(file_proxy_t* f, file_proxy_t* src,
 		return -1;
 	}
 
+	const std::optional<S3API::S3Path> path_res = g_api.ParseS3Path(file_path);
+	if (!path_res) {
+		return -1;
+	}
+	const S3API::S3Path path = *path_res;
+
 	switch (file_proxy_get_mode(f)) {
 		case FILE_PROXY_WRITE_MODE:
-			f->s3.s3_state = new UploadManager(g_api.GetS3Client(), g_api.GetBucket(), key, 0);
+			f->s3.s3_state = new UploadManager(g_api.GetS3Client(),
+					path.GetBucket(), path.GetKey(), 0);
 			break;
 
 		case FILE_PROXY_READ_MODE:
@@ -698,7 +748,7 @@ _abort_upload(const char* bucket, const Aws::S3::Model::MultipartUpload& upload)
 	const Aws::S3::S3Client& client = g_api.GetS3Client();
 
 	Aws::S3::Model::AbortMultipartUploadRequest req;
-	req.SetBucket(g_api.GetBucket());
+	req.SetBucket(bucket);
 	req.SetKey(upload.GetKey());
 	req.SetUploadId(upload.GetUploadId());
 
@@ -726,11 +776,11 @@ _scan_objects(const backup_config_t* conf, backup_state_t* backup_state,
 {
 	const Aws::S3::S3Client& client = g_api.GetS3Client();
 
-	DeleteObjectsBuffer del_buffer(client, g_api.GetBucket());
+	DeleteObjectsBuffer del_buffer(client, bucket);
 	uint64_t file_count = 0;
 
 	Aws::S3::Model::ListObjectsRequest req;
-	req.SetBucket(g_api.GetBucket());
+	req.SetBucket(bucket);
 	req.SetPrefix(key);
 
 	Aws::S3::Model::ListObjectsOutcome res = client.ListObjects(req);
@@ -751,7 +801,7 @@ _scan_objects(const backup_config_t* conf, backup_state_t* backup_state,
 			}
 			else if (conf->state_file != NULL) {
 				std::ostringstream full_path;
-				full_path << S3_PREFIX << g_api.GetBucket() << "/" << obj_key;
+				full_path << S3_PREFIX << bucket << "/" << obj_key;
 				if (backup_state_contains_file(backup_state, full_path.str().c_str())) {
 					err("Expected object \"%s\" to be complete, but found in "
 							"backup state list of incomplete files",
@@ -763,7 +813,7 @@ _scan_objects(const backup_config_t* conf, backup_state_t* backup_state,
 			else {
 				err("S3 directory %s in bucket %s seems to contain an existing "
 						"backup; use -r to clear the directory",
-						key, g_api.GetBucket().c_str());
+						key, bucket);
 				return -1;
 			}
 		}
@@ -787,7 +837,7 @@ _check_multipart_uploads_list(const backup_config_t* conf,
 		const char* key)
 {
 	const Aws::S3::S3Client& client = g_api.GetS3Client();
-	size_t bucket_len = strlen(g_api.GetBucket().c_str());
+	size_t bucket_len = strlen(bucket);
 	size_t key_len = strlen(key);
 
 	if (conf->state_file != NULL) {
@@ -802,10 +852,10 @@ _check_multipart_uploads_list(const backup_config_t* conf,
 				return false;
 			}
 
-			if (strncmp(full_path + (sizeof(S3_PREFIX) - 1), g_api.GetBucket().c_str(), bucket_len) != 0) {
+			if (strncmp(full_path + (sizeof(S3_PREFIX) - 1), bucket, bucket_len) != 0) {
 				err("Expected bucket name \"%s\", but found \"%.*s\" in full "
 						"path %s",
-						g_api.GetBucket().c_str(), (int) bucket_len,
+						bucket, (int) bucket_len,
 						full_path + (sizeof(S3_PREFIX) - 1), full_path);
 				return false;
 			}
@@ -835,7 +885,7 @@ _check_multipart_uploads_list(const backup_config_t* conf,
 
 			// check for the existence of this multipart upload
 			Aws::S3::Model::ListPartsRequest lreq;
-			lreq.SetBucket(g_api.GetBucket());
+			lreq.SetBucket(bucket);
 			lreq.SetKey(request_key);
 			lreq.SetUploadId(upload_manager->GetUploadId());
 			lreq.SetMaxParts(0);
@@ -865,12 +915,12 @@ _scan_upload_requests(const backup_config_t* conf, backup_state_t* backup_state,
 {
 	const Aws::S3::S3Client& client = g_api.GetS3Client();
 
-	if (!_check_multipart_uploads_list(conf, backup_state, g_api.GetBucket().c_str(), key)) {
+	if (!_check_multipart_uploads_list(conf, backup_state, bucket, key)) {
 		return -1;
 	}
 
 	Aws::S3::Model::ListMultipartUploadsRequest ureq;
-	ureq.SetBucket(g_api.GetBucket());
+	ureq.SetBucket(bucket);
 	ureq.SetPrefix(key);
 
 	Aws::S3::Model::ListMultipartUploadsOutcome ures =
@@ -887,13 +937,13 @@ _scan_upload_requests(const backup_config_t* conf, backup_state_t* backup_state,
 		// check if the extension of the object is ".asb"
 		if (file_proxy_is_backup_file_path(obj_key.c_str())) {
 			if (conf->remove_files) {
-				if (!_abort_upload(g_api.GetBucket().c_str(), upload)) {
+				if (!_abort_upload(bucket, upload)) {
 					return -1;
 				}
 			}
 			else if (conf->state_file != NULL) {
 				std::ostringstream full_path;
-				full_path << S3_PREFIX << g_api.GetBucket() << "/" << obj_key;
+				full_path << S3_PREFIX << bucket << "/" << obj_key;
 				if (!backup_state_contains_file(backup_state, full_path.str().c_str())) {
 					err("Expected object \"%s\" to be in backup state list of "
 							"incomplete files, but was not found",
@@ -904,7 +954,7 @@ _scan_upload_requests(const backup_config_t* conf, backup_state_t* backup_state,
 			else {
 				err("S3 directory %s in bucket %s seems to contain an existing "
 						"backup; use -r to clear the directory",
-						key, g_api.GetBucket().c_str());
+						key, bucket);
 				return -1;
 			}
 		}

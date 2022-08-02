@@ -35,25 +35,24 @@
  */
 extern void file_proxy_s3_shutdown();
 
-extern off_t s3_get_file_size(const char* bucket, const char* key);
-extern bool s3_delete_object(const char* bucket, const char* key);
-extern bool s3_delete_directory(const char* bucket, const char* prefix);
+extern off_t s3_get_file_size(const char* path);
+extern bool s3_delete_object(const char* path);
+extern bool s3_delete_directory(const char* path);
 
 extern bool s3_prepare_output_file(const backup_config_t* conf,
-		const char* bucket, const char* key);
+		const char* path);
 extern bool s3_scan_directory(const backup_config_t* conf,
 		const backup_status_t* status, backup_state_t* backup_state,
-		const char* bucket, const char* key);
-extern bool s3_get_backup_files(const char* bucket, const char* key,
-		as_vector* file_vec);
+		const char* path);
+extern bool s3_get_backup_files(const char* path, as_vector* file_vec);
 
-extern int file_proxy_s3_write_init(file_proxy_t*, const char* bucket, const char* key,
+extern int file_proxy_s3_write_init(file_proxy_t*, const char* path,
 		uint64_t max_file_size);
-extern int file_proxy_s3_read_init(file_proxy_t*, const char* bucket, const char* key);
+extern int file_proxy_s3_read_init(file_proxy_t*, const char* path);
 extern int file_proxy_s3_close(file_proxy_t*, uint8_t mode);
 extern int file_proxy_s3_serialize(const file_proxy_t*, file_proxy_t* dst);
 extern int file_proxy_s3_deserialize(file_proxy_t*, file_proxy_t* src,
-		const char* bucket, const char* key);
+		const char* path);
 extern ssize_t file_proxy_s3_get_size(file_proxy_t*);
 extern int file_proxy_s3_putc(file_proxy_t*, int c);
 extern size_t file_proxy_s3_write(file_proxy_t*, const void* buf, size_t count);
@@ -72,8 +71,6 @@ static int _file_proxy_local_init_continue(file_proxy_t* f, const char* name,
 		uint8_t mode, uint64_t expected_fpos);
 static bool _write_mode(const file_proxy_t* f);
 static bool _read_mode(const file_proxy_t* f);
-static bool _path_to_s3_path(const char* path, char** bucket, char** key);
-static void _free_s3_path(char* bucket, char* key);
 
 
 //==========================================================
@@ -91,19 +88,11 @@ get_file_size(const char* path)
 {
 	off_t size;
 	uint8_t file_proxy_type = (uint8_t) file_proxy_path_type(path);
-	char* bucket;
-	char* key;
 	struct stat stat_buf;
 
 	switch (file_proxy_type) {
 		case FILE_PROXY_TYPE_S3:
-			if (!_path_to_s3_path(path, &bucket, &key)) {
-				return -1;
-			}
-
-			size = s3_get_file_size(bucket, key);
-
-			_free_s3_path(bucket, key);
+			size = s3_get_file_size(path);
 			break;
 		case FILE_PROXY_TYPE_LOCAL:
 			if (stat(path, &stat_buf) != 0) {
@@ -123,18 +112,10 @@ file_proxy_delete_file(const char* file_path)
 {
 	bool res = true;
 	uint8_t file_proxy_type = (uint8_t) file_proxy_path_type(file_path);
-	char* bucket;
-	char* key;
 
 	switch (file_proxy_type) {
 		case FILE_PROXY_TYPE_S3:
-			if (!_path_to_s3_path(file_path, &bucket, &key)) {
-				return -1;
-			}
-
-			res = s3_delete_object(bucket, key);
-
-			_free_s3_path(bucket, key);
+			res = s3_delete_object(file_path);
 			break;
 
 		case FILE_PROXY_TYPE_LOCAL:
@@ -153,21 +134,13 @@ file_proxy_delete_directory(const char* dir_path)
 {
 	bool res = true;
 	uint8_t file_proxy_type = (uint8_t) file_proxy_path_type(dir_path);
-	char* bucket;
-	char* key;
 	DIR* dir;
 	struct dirent *entry;
 	bool no_remaining_files = true;
 
 	switch (file_proxy_type) {
 		case FILE_PROXY_TYPE_S3:
-			if (!_path_to_s3_path(dir_path, &bucket, &key)) {
-				return -1;
-			}
-
-			res = s3_delete_directory(bucket, key);
-
-			_free_s3_path(bucket, key);
+			res = s3_delete_directory(dir_path);
 			break;
 
 		case FILE_PROXY_TYPE_LOCAL:
@@ -223,18 +196,10 @@ file_proxy_write_init(file_proxy_t* f, const char* full_path,
 {
 	int res;
 	uint8_t file_proxy_type = (uint8_t) file_proxy_path_type(full_path);
-	char* bucket;
-	char* key;
 
 	switch (file_proxy_type) {
 		case FILE_PROXY_TYPE_S3:
-			if (!_path_to_s3_path(full_path, &bucket, &key)) {
-				return -1;
-			}
-
-			res = file_proxy_s3_write_init(f, bucket, key, max_file_size);
-
-			_free_s3_path(bucket, key);
+			res = file_proxy_s3_write_init(f, full_path, max_file_size);
 			break;
 
 		case FILE_PROXY_TYPE_LOCAL:
@@ -256,18 +221,10 @@ file_proxy_read_init(file_proxy_t* f, const char* full_path)
 {
 	int res;
 	uint8_t file_proxy_type = (uint8_t) file_proxy_path_type(full_path);
-	char* bucket;
-	char* key;
 
 	switch (file_proxy_type) {
 		case FILE_PROXY_TYPE_S3:
-			if (!_path_to_s3_path(full_path, &bucket, &key)) {
-				return -1;
-			}
-
-			res = file_proxy_s3_read_init(f, bucket, key);
-
-			_free_s3_path(bucket, key);
+			res = file_proxy_s3_read_init(f, full_path);
 			break;
 
 		case FILE_PROXY_TYPE_LOCAL:
@@ -400,9 +357,6 @@ file_proxy_deserialize(file_proxy_t* f, file_proxy_t* src)
 	char* file_name;
 	uint64_t file_name_len;
 
-	char* bucket;
-	char* key;
-
 	if (file_proxy_read(src, &data, sizeof(data)) != sizeof(data)) {
 		err("Failed to read serialized metadata for io proxy");
 		return -1;
@@ -443,13 +397,7 @@ file_proxy_deserialize(file_proxy_t* f, file_proxy_t* src)
 			break;
 
 		case FILE_PROXY_TYPE_S3:
-			if (!_path_to_s3_path(file_name, &bucket, &key)) {
-				return -1;
-			}
-
-			res = file_proxy_s3_deserialize(f, src, bucket, key);
-
-			_free_s3_path(bucket, key);
+			res = file_proxy_s3_deserialize(f, src, file_name);
 			break;
 
 		default:
@@ -865,21 +813,12 @@ prepare_output_file(const backup_config_t* conf)
 
 	uint8_t file_proxy_type = file_proxy_path_type(file_path);
 	struct stat buf;
-	char* bucket;
-	char* key;
 
 	ver("Checking output file %s", file_path);
 
 	switch (file_proxy_type) {
 		case FILE_PROXY_TYPE_S3:
-			if (!_path_to_s3_path(file_path, &bucket, &key)) {
-				return false;
-			}
-
-			bool res = s3_prepare_output_file(conf, bucket, key);
-			_free_s3_path(bucket, key);
-
-			if (!res) {
+			if (!s3_prepare_output_file(conf, file_path)) {
 				return false;
 			}
 			break;
@@ -961,8 +900,6 @@ scan_directory(const backup_config_t* conf, const backup_status_t* status,
 	const char* dir_path = conf->directory;
 
 	uint8_t file_proxy_type = file_proxy_path_type(dir_path);
-	char* bucket;
-	char* key;
 	DIR* dir;
 	struct dirent *entry;
 	uint64_t file_count = 0;
@@ -970,14 +907,7 @@ scan_directory(const backup_config_t* conf, const backup_status_t* status,
 
 	switch (file_proxy_type) {
 		case FILE_PROXY_TYPE_S3:
-			if (!_path_to_s3_path(dir_path, &bucket, &key)) {
-				return false;
-			}
-
-			bool res = s3_scan_directory(conf, status, backup_state, bucket, key);
-			_free_s3_path(bucket, key);
-
-			if (!res) {
+			if (!s3_scan_directory(conf, status, backup_state, dir_path)) {
 				return false;
 			}
 			break;
@@ -1103,8 +1033,6 @@ bool
 get_backup_files(const char *dir_path, as_vector *file_vec)
 {
 	uint8_t file_proxy_type = file_proxy_path_type(dir_path);
-	char* bucket;
-	char* key;
 	bool res;
 	DIR* dir;
 	struct dirent* entry;
@@ -1113,12 +1041,7 @@ get_backup_files(const char *dir_path, as_vector *file_vec)
 
 	switch (file_proxy_type) {
 		case FILE_PROXY_TYPE_S3:
-			if (!_path_to_s3_path(dir_path, &bucket, &key)) {
-				return false;
-			}
-
-			res = s3_get_backup_files(bucket, key, file_vec);
-			_free_s3_path(bucket, key);
+			res = s3_get_backup_files(dir_path, file_vec);
 			break;
 
 		case FILE_PROXY_TYPE_LOCAL:
@@ -1389,7 +1312,8 @@ _read_mode(const file_proxy_t* f)
  * Converts a full path (s3:<s3_path>) to an S3 path (i.e. bucket and key)
  */
 static bool
-_path_to_s3_path(const char* path, char** bucket, char** key)
+_path_to_s3_path(const char* path, const char* g_bucket, char** bucket,
+		char** key)
 {
 	char* s3_path = safe_strdup(path + S3_PREFIX_LEN);
 	if (s3_path == NULL) {
