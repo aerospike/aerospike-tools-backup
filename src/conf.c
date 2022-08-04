@@ -1052,6 +1052,9 @@ config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance,
 				status = false;
 			}
 
+		} else if (! strcasecmp("disable-batch-writes", name)) {
+			status = config_bool(curtab, name, (void*)&c->disable_batch_writes);
+
 		} else if (! strcasecmp("s3-region", name)) {
 			status = config_str(curtab, name, (void*)&c->s3_region);
 
