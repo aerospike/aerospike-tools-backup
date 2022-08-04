@@ -214,6 +214,15 @@ bool backup_config_log_start(const backup_config_t* conf);
  */
 bool backup_config_can_resume(const backup_config_t* conf);
 
+/*
+ * Returns true if the partition filter should be allowed to cover more than
+ * what is saved in the backup state, i.e. if there may be partitions in the
+ * backup state with status NONE (not covered by the backup). For now, used when
+ * resuming a node-list backup, since the partitions owned by the node may have
+ * changed.
+ */
+bool backup_config_allow_uncovered_partitions(const backup_config_t* conf);
+
 #ifdef __cplusplus
 }
 #endif

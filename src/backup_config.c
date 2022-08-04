@@ -214,18 +214,18 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 	if (read_conf_files) {
 		if (read_only_conf_file) {
 			if (!config_from_file(conf, instance, config_fname, 0, true)) {
-				return false;
+				return BACKUP_CONFIG_INIT_FAILURE;
 			}
 		} else {
 			if (!config_from_files(conf, instance, config_fname, true)) {
-				return false;
+				return BACKUP_CONFIG_INIT_FAILURE;
 			}
 		}
 	} else { 
 		if (read_only_conf_file) {
 			err("--no-config-file and only-config-file are mutually exclusive "
 					"option. Please enable only one.");
-			return false;
+			return BACKUP_CONFIG_INIT_FAILURE;
 		}
 	}
 
@@ -1050,6 +1050,12 @@ bool
 backup_config_can_resume(const backup_config_t* conf)
 {
 	return !conf->estimate;
+}
+
+bool
+backup_config_allow_uncovered_partitions(const backup_config_t* conf)
+{
+	return conf->node_list != NULL;
 }
 
 

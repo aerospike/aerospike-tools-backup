@@ -101,7 +101,7 @@ static void * backup_thread_func(void *cont);
 static void * counter_thread_func(void *cont);
 static bool init_scan_bins(char *bin_list, as_scan *scan);
 static bool narrow_partition_filters(backup_state_t* state,
-		as_vector* partition_filters);
+		as_vector* partition_filters, const backup_config_t* conf);
 static distr_stats_t calc_record_stats(uint64_t* samples, uint32_t n_samples);
 static uint64_t estimate_total_backup_size(uint64_t* samples, uint32_t n_samples,
 		uint64_t header_size, uint64_t estimate_byte_count,
@@ -317,7 +317,7 @@ run_backup(backup_config_t* conf)
 			goto cleanup3;
 		}
 
-		if (!narrow_partition_filters(loaded_backup_state, &status->partition_filters)) {
+		if (!narrow_partition_filters(loaded_backup_state, &status->partition_filters, conf)) {
 			goto cleanup3;
 		}
 
@@ -413,6 +413,10 @@ run_backup(backup_config_t* conf)
 
 			backup_config_destroy(estimate_conf);
 			cf_free(estimate_conf);
+
+			// re-enable signal handling, since it was disabled at the end of
+			// the estimate run in run_backup.
+			set_sigaction(sig_hand);
 
 			if (estimate_status == RUN_BACKUP_FAILURE) {
 				err("Error while running backup estimate");
@@ -2197,7 +2201,8 @@ cleanup1:
  * case.
  */
 static bool
-narrow_partition_filters(backup_state_t* state, as_vector* partition_filters)
+narrow_partition_filters(backup_state_t* state, as_vector* partition_filters,
+		const backup_config_t* conf)
 {
 	for (uint32_t i = 0; i < partition_filters->size; i++) {
 		as_partition_filter* filter = (as_partition_filter*)
@@ -2230,9 +2235,18 @@ narrow_partition_filters(backup_state_t* state, as_vector* partition_filters)
 
 			switch (status) {
 				case BACKUP_STATE_STATUS_NONE:
-					err("Partition %u was not saved in the backup state file", part_id);
-					cf_free(parts_all);
-					return false;
+					if (!backup_config_allow_uncovered_partitions(conf)) {
+						err("Partition %u was not saved in the backup state file", part_id);
+						cf_free(parts_all);
+						return false;
+					}
+					else {
+						memset(pstat->digest.value, 0, sizeof(as_digest_value));
+						*((uint16_t*) pstat->digest.value) = part_id;
+						pstat->digest.init = true;
+					}
+
+					break;
 
 				case BACKUP_STATE_STATUS_NOT_STARTED:
 				case BACKUP_STATE_STATUS_COMPLETE_EMPTY:

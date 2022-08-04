@@ -67,8 +67,8 @@ public:
 	bool StartUpload();
 
 	/*
-	 * Uploads a block text to S3 in chunks, returning true on success and
-	 * false if any failure occured.
+	 * Uploads a block text to S3 in chunks, returning the number of characters
+	 * successfully written.
 	 */
 	uint64_t UploadText(const char* text, size_t text_len);
 
