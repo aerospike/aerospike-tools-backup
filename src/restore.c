@@ -76,6 +76,8 @@ restore_main(int32_t argc, char **argv)
 {
 	int32_t res = EXIT_FAILURE;
 
+	enable_client_log();
+
 	restore_config_t conf;
 	g_conf = &conf;
 
