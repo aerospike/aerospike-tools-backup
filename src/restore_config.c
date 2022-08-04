@@ -205,11 +205,11 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 
 	if (read_conf_files) {
 		if (read_only_conf_file) {
-			if (!config_from_file(&conf, instance, config_fname, 0, false)) {
+			if (!config_from_file(conf, instance, config_fname, 0, false)) {
 				return RESTORE_CONFIG_INIT_FAILURE;
 			}
 		} else {
-			if (!config_from_files(&conf, instance, config_fname, false)) {
+			if (!config_from_files(conf, instance, config_fname, false)) {
 				return RESTORE_CONFIG_INIT_FAILURE;
 			}
 		}
