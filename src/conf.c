@@ -1052,6 +1052,14 @@ config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance,
 				status = false;
 			}
 
+		} else if (! strcasecmp("retry-scale-factor", name)) {
+			status = config_int32(curtab, name, (int32_t*)&i_val);
+			if (i_val >= 0) {
+				c->retry_scale_factor = (uint32_t)i_val;
+			} else {
+				status = false;
+			}
+
 		} else if (! strcasecmp("disable-batch-writes", name)) {
 			status = config_bool(curtab, name, (void*)&c->disable_batch_writes);
 
