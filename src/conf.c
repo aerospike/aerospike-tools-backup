@@ -668,6 +668,9 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 				cf_free(compress_type);
 			}
 
+		} else if (! strcasecmp("compression-level", name)) {
+			status = config_int32(curtab, name, (void*)&c->compression_level);
+
 		} else if (! strcasecmp("encrypt", name)) {
 			char* encrypt_type = NULL;
 			status = config_str(curtab, name, (void*) &encrypt_type);
