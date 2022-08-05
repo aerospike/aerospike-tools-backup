@@ -181,7 +181,7 @@ void
 backup_state_free(backup_state_t* state)
 {
 	if (state->file != NULL) {
-		file_proxy_close2(state->file, FILE_PROXY_ABORT);
+		file_proxy_close2(state->file, FILE_PROXY_EOF);
 		cf_free(state->file);
 	}
 
