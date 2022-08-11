@@ -69,13 +69,77 @@ const uint8_t b64map[256] = {
 //
 
 static pid_t thread_id(void);
-static void log_line(const char *tag, const char *prefix, const char *format,
-		va_list args, bool error);
 
 
 //==========================================================
 // Public API.
 //
+
+/*
+ * Central log function. Writes a single log message.
+ *
+ * @param tag     The severity tag.
+ * @param prefix  A prefix to be prepended to the log message.
+ * @param format  The format string for the log message.
+ * @param args    The arguments for the log message, according to the format string.
+ * @param error   Indicates that errno information is to be added to the log message.
+ */
+void
+log_line(const char *tag, const char *prefix, const char *format, va_list args, bool error)
+{
+	char buffer[10000];
+	time_t now;
+	struct tm now_tm;
+
+	if ((now = time(NULL)) == (time_t)-1) {
+		fprintf(stderr, "Error while getting current time, error %d, %s\n", errno, strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+
+	if (gmtime_r(&now, &now_tm) == NULL) {
+		fprintf(stderr, "Error while calculating GMT, error %d, %s\n", errno, strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+
+	size_t index = 0;
+	size_t length = strftime(buffer + index, sizeof(buffer) - 1, "%Y-%m-%d %H:%M:%S %Z ", &now_tm);
+
+	if (length == 0) {
+		fprintf(stderr, "Error while converting time to string, error %d, %s\n", errno,
+				strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+
+	index += length;
+	length = (size_t) snprintf(buffer + index, sizeof(buffer) - index - 1,
+			"[%s] [%5d] %s", tag,
+			(int32_t) (thread_id() % 100000), prefix);
+	index += length;
+
+	length = (size_t) vsnprintf(buffer + index, sizeof(buffer) - index - 1,
+			format, args);
+	index += length;
+
+	if (index >= sizeof(buffer) - 1) {
+		fprintf(stderr, "Buffer overflow while creating log message\n");
+		exit(EXIT_FAILURE);
+	}
+
+	if (error) {
+		length = (size_t)snprintf(buffer + index, sizeof(buffer) - index - 1,
+				" (error %d: %s)",
+				errno, strerror(errno));
+		index += length;
+
+		if (index >= sizeof(buffer) - 1) {
+			fprintf(stderr, "Buffer overflow while creating log message\n");
+			exit(EXIT_FAILURE);
+		}
+	}
+
+	buffer[index] = '\n';
+	fwrite(buffer, 1, index + 1, stderr);
+}
 
 /*
  * Logs a debug message.
@@ -226,7 +290,7 @@ hex_dump_err(const void *data, uint32_t len)
 }
 
 /*
- * Clones an as_vector of strings src into dst.
+ * Clones an as_vector of strings (char[N]) src into dst.
  */
 bool
 str_vector_clone(as_vector* dst, const as_vector* src)
@@ -234,10 +298,12 @@ str_vector_clone(as_vector* dst, const as_vector* src)
 	as_vector_init(dst, src->item_size, src->size);
 
 	for (uint32_t i = 0; i < src->size; i++) {
-		as_vector_append(dst, safe_strdup((char*) as_vector_get((as_vector*) src, i)));
-		if (as_vector_get(dst, i) == NULL) {
+		char* dst_loc = (char*) as_vector_reserve(dst);
+		if (dst_loc == NULL) {
 			return false;
 		}
+
+		memcpy(dst_loc, as_vector_get((as_vector*) src, i), src->item_size);
 	}
 
 	return true;
@@ -260,13 +326,18 @@ str_vector_contains(const as_vector* v, const char* str)
 
 /*
  * Returns a string representation of a vector of c strings stored in a static
- * buffer (i.e. this function is not reentrant).
+ * buffer (i.e. this function is not thread-safe).
  */
 char*
 str_vector_tostring(const as_vector* v)
 {
 	static char buf[1024];
 	uint64_t pos = 0;
+
+	if (v->size == 0) {
+		buf[0] = '\0';
+	}
+
 	for (uint32_t i = 0; i < v->size; i++) {
 		pos += (uint64_t) snprintf(buf + pos, sizeof(buf) - pos, "%s",
 				(const char*) as_vector_get((as_vector*) v, i));
@@ -468,7 +539,7 @@ erfinv(double y)
 		return DBL_MAX;
 	}
 	if (y == -1.0) {
-		return DBL_MIN;
+		return -DBL_MAX;
 	}
 
 	if (fabs(y) <= CENTRAL_RANGE) {
@@ -498,7 +569,7 @@ erfinv(double y)
 double
 confidence_z(double p, uint64_t n_records)
 {
-	// an upper bound of 1 - (p ^ (1 / n_records))
+	// a lower bound of 1 - (p ^ (1 / n_records))
 	double q = (1 - p) / (double) n_records;
 	// the z-score of the upper confidence interval
 	double z = sqrt(2) * -erfinv(q * 2 - 1);
@@ -540,15 +611,11 @@ dyn_sprintf(const char* format, ...)
  * @result        `true`, if successful.
  */
 bool
-better_atoi(const char *string, uint64_t *val)
+better_atoi(const char *string, int64_t *val)
 {
-	if (*string < '0' || *string > '9') {
-		return false;
-	}
-
 	char *end;
-	*val = strtoul(string, &end, 10);
-	return *end == 0;
+	*val = strtol(string, &end, 10);
+	return end != string && *end == '\0';
 }
 
 /*
@@ -664,22 +731,58 @@ format_date_time(int64_t nanos, char *buffer, size_t size)
 }
 
 /*
+ * Get the current time using the clock used for timed waits in libpthread.
+ */
+void
+get_current_time(struct timespec* now)
+{
+#ifdef __APPLE__
+	// MacOS uses gettimeofday instead of the monotonic clock for timed waits on
+	// mutexes/condition variables
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	TIMEVAL_TO_TIMESPEC(&tv, now);
+#else
+	clock_gettime(CLOCK_MONOTONIC, now);
+#endif /* __APPLE__ */
+}
+
+/*
+ * Adds "us" microseconds to the timespec "ts".
+ *
+ * "us" can't be too large (> (ULONG_MAX - 999999999) / 1000), otherwise integer
+ * overflow will occur in the tv_nsec field. But this number is very large
+ * (18446744072709551), amounting to about ~584 years, so assume this won't
+ * happen.
+ */
+void
+timespec_add_us(struct timespec* ts, uint64_t us)
+{
+	ts->tv_nsec += 1000 * us;
+	ts->tv_sec += ts->tv_nsec / 1000000000;
+	ts->tv_nsec = ts->tv_nsec % 1000000000;
+}
+
+/*
+ * Returns the number of microseconds from timespec "from" until timespec
+ * "until".
+ */
+uint64_t
+timespec_diff(const struct timespec* from, const struct timespec* until)
+{
+	uint64_t n_secs = (uint64_t) (until->tv_sec - from->tv_sec);
+	uint64_t n_nsecs = (uint64_t) (1000000000 + until->tv_nsec - from->tv_nsec);
+	return (n_secs * 1000000) + (n_nsecs / 1000 - 1000000);
+}
+
+/*
  * returns true if the given timespec is in the future
  */
 bool
 timespec_has_not_happened(struct timespec* ts)
 {
-#ifdef __APPLE__
-	// MacOS uses gettimeofday instead of the monotonic clock for timed waits on
-	// mutexes
 	struct timespec now;
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-	TIMEVAL_TO_TIMESPEC(&tv, &now);
-#else
-	struct timespec now;
-	clock_gettime(CLOCK_MONOTONIC, &now);
-#endif /* __APPLE__ */
+	get_current_time(&now);
 
 	return now.tv_sec < ts->tv_sec ||
 		(now.tv_sec == ts->tv_sec && now.tv_nsec < ts->tv_nsec);
@@ -1434,34 +1537,34 @@ parse_index_info(char *ns, char *index_str, index_param *index)
 				goto cleanup2;
 			}
 		} else if (strcmp(para, "type") == 0) {
-			if (strcmp(arg, "STRING") == 0) {
+			if (strcasecmp(arg, "STRING") == 0) {
 				type = PATH_TYPE_STRING;
-			} else if (strcmp(arg, "TEXT") == 0) {
+			} else if (strcasecmp(arg, "TEXT") == 0) {
 				type = PATH_TYPE_STRING;
-			} else if (strcmp(arg, "NUMERIC") == 0) {
+			} else if (strcasecmp(arg, "NUMERIC") == 0) {
 				type = PATH_TYPE_NUMERIC;
-			} else if (strcmp(arg, "INT SIGNED") == 0) {
+			} else if (strcasecmp(arg, "INT SIGNED") == 0) {
 				type = PATH_TYPE_NUMERIC;
-			} else if (strcmp(arg, "GEOJSON") == 0) {
+			} else if (strcasecmp(arg, "GEOJSON") == 0) {
 				type = PATH_TYPE_GEOJSON;
 			} else {
 				err("Invalid path type %s", arg);
 				goto cleanup2;
 			}
 		} else if (strcmp(para, "indextype") == 0) {
-			if (strcmp(arg, "LIST") == 0) {
+			if (strcasecmp(arg, "LIST") == 0) {
 				index->type = INDEX_TYPE_LIST;
-			} else if (strcmp(arg, "MAPKEYS") == 0) {
+			} else if (strcasecmp(arg, "MAPKEYS") == 0) {
 				index->type = INDEX_TYPE_MAPKEYS;
-			} else if (strcmp(arg, "MAPVALUES") == 0) {
+			} else if (strcasecmp(arg, "MAPVALUES") == 0) {
 				index->type = INDEX_TYPE_MAPVALUES;
-			} else if (strcmp(arg, "NONE") == 0 || strcmp(arg, "DEFAULT") == 0) {
+			} else if (strcasecmp(arg, "NONE") == 0 || strcasecmp(arg, "DEFAULT") == 0) {
 				index->type = INDEX_TYPE_NONE;
 			} else {
 				err("Invalid index type %s", arg);
 				goto cleanup2;
 			}
-		} else if (strcmp(para, "path") == 0) {
+		} else if (strcmp(para, "path") == 0 || strcmp(para, "context") == 0) {
 			path = arg;
 		}
 
@@ -1590,6 +1693,158 @@ parse_encryption_key_env(const char* env_var_name)
 	return pkey;
 }
 
+int
+get_server_version(aerospike* as, server_version_t* version_info)
+{
+	as_error ae;
+	char* response;
+
+	if (aerospike_info_any(as, &ae, NULL, "version", &response) != AEROSPIKE_OK) {
+		err("Error while querying server version - code %d:\n"
+				"%s at %s:%d",
+				ae.code, ae.message, ae.file, ae.line);
+		return -1;
+	}
+
+	char* build_str = strstr(response, "build");
+	if (build_str == NULL || strlen(build_str) <= 6) {
+		err("Invalid info request response from server: %s\n", response);
+		cf_free(response);
+		return -1;
+	}
+
+	char* version_str = build_str + 6;
+	if (sscanf(version_str, "%" PRIu32 ".%" PRIu32 ".%" PRIu32 ".%" PRIu32 "\n",
+				&version_info->major, &version_info->minor,
+				&version_info->patch, &version_info->build_id) != 4) {
+		err("Invalid info request build number: %s\n", version_str);
+		cf_free(response);
+		return -1;
+	}
+
+	cf_free(response);
+	return 0;
+}
+
+/*
+ * Checks for availability of batch writes. Returns false if an error occurred
+ * while checking.
+ */
+bool
+server_has_batch_writes(aerospike* as, const server_version_t* version_info,
+		bool* batch_writes_enabled)
+{
+	const char batch_idx_threads_param[] = "batch-index-threads";
+	char* info_res;
+	as_error ae;
+
+	if (SERVER_VERSION_BEFORE(version_info, 6, 0)) {
+		// batch writes not available
+		*batch_writes_enabled = false;
+		return true;
+	}
+
+	char info_str[] = "get-config:context=service";
+
+	as_policy_info policy;
+	as_policy_info_init(&policy);
+
+	if (aerospike_info_any(as, &ae, &policy, info_str, &info_res) != AEROSPIKE_OK) {
+		err("Failed to query server to check availability of batch writes\n");
+		return false;
+	}
+
+	char* batch_index_threads = strstr(info_res, batch_idx_threads_param);
+	if (batch_index_threads == NULL) {
+		err("Server info response to %s is missing %s parameter\n", info_str,
+				batch_idx_threads_param);
+		ver("Response: %s", info_res);
+
+		*batch_writes_enabled = false;
+	}
+	else {
+		// param_val should be in the format "=<n idx threads>[;<more params>]"
+		char* param_val = batch_index_threads +
+			(sizeof(batch_idx_threads_param) - 1);
+		if (param_val[0] != '=') {
+			err("Invalid info response format: expected '=' to follow %s",
+					batch_idx_threads_param);
+			cf_free(info_res);
+			return false;
+		}
+
+		char* endptr;
+		uint64_t n_batch_threads = strtoul(param_val + 1, &endptr, 10);
+		if (endptr == param_val + 1 || (*endptr != '\0' && *endptr != ';')) {
+			*endptr = '\0';
+			err("Invalid info response format: expected a number to follow "
+					"\"%s=\", but got \"%s\"",
+					batch_idx_threads_param, param_val + 1);
+			cf_free(info_res);
+			return false;
+		}
+
+		ver("Num batch index threads: %" PRIu64, n_batch_threads);
+
+		*batch_writes_enabled = (n_batch_threads > 0);
+	}
+
+	cf_free(info_res);
+
+	return true;
+}
+
+bool
+as_key_move(as_key* dst, as_key* src)
+{
+	*dst = *src;
+	if (as_load_uint32(&src->value.integer._.count) > 1) {
+		return false;
+	}
+
+	if (src->valuep == &src->value) {
+		dst->valuep = &dst->value;
+	}
+
+	return true;
+}
+
+bool
+as_record_move(as_record* dst, as_record* src)
+{
+	if (as_load_uint32(&src->_._.count) > 1) {
+		return false;
+	}
+
+	*dst = *src;
+	return as_key_move(&dst->key, &src->key);
+}
+
+void
+as_vector_swap(as_vector* v1, as_vector* v2)
+{
+	// copied from aerospike/as_vector.c
+#define FLAGS_CREATED 2u
+
+	void* list = v1->list;
+	uint32_t capacity = v1->capacity;
+	uint32_t size = v1->size;
+	uint32_t item_size = v1->item_size;
+	uint32_t flags = v1->flags & ~FLAGS_CREATED;
+
+	v1->list = v2->list;
+	v1->capacity = v2->capacity;
+	v1->size = v2->size;
+	v1->item_size = v2->item_size;
+	v1->flags = (v1->flags & FLAGS_CREATED) | (v2->flags & ~FLAGS_CREATED);
+
+	v2->list = list;
+	v2->capacity = capacity;
+	v2->size = size;
+	v2->item_size = item_size;
+	v2->flags = (v2->flags & FLAGS_CREATED) | flags;
+}
+
 #ifdef __APPLE__
 
 char*
@@ -1624,74 +1879,6 @@ thread_id(void)
 	pthread_threadid_np(NULL, &tid);
 	return (pid_t)tid;
 #endif
-}
-
-/*
- * Central log function. Writes a single log message.
- *
- * @param tag     The severity tag.
- * @param prefix  A prefix to be prepended to the log message.
- * @param format  The format string for the log message.
- * @param args    The arguments for the log message, according to the format string.
- * @param error   Indicates that errno information is to be added to the log message.
- */
-static void
-log_line(const char *tag, const char *prefix, const char *format, va_list args, bool error)
-{
-	char buffer[10000];
-	time_t now;
-	struct tm now_tm;
-
-	if ((now = time(NULL)) == (time_t)-1) {
-		fprintf(stderr, "Error while getting current time, error %d, %s\n", errno, strerror(errno));
-		exit(EXIT_FAILURE);
-	}
-
-	if (gmtime_r(&now, &now_tm) == NULL) {
-		fprintf(stderr, "Error while calculating GMT, error %d, %s\n", errno, strerror(errno));
-		exit(EXIT_FAILURE);
-	}
-
-	size_t index = 0;
-	size_t length = strftime(buffer + index, sizeof buffer, "%Y-%m-%d %H:%M:%S %Z ", &now_tm);
-
-	if (length == 0) {
-		fprintf(stderr, "Error while converting time to string, error %d, %s\n", errno,
-				strerror(errno));
-		exit(EXIT_FAILURE);
-	}
-
-	index += length;
-	length = (size_t)snprintf(buffer + index, sizeof buffer - index, "[%s] [%5d] %s", tag,
-			(int32_t)(thread_id() % 100000), prefix);
-	index += length;
-
-	length = (size_t)vsnprintf(buffer + index, sizeof buffer - index, format, args);
-	index += length;
-
-	if (index >= sizeof buffer) {
-		fprintf(stderr, "Buffer overflow while creating log message\n");
-		exit(EXIT_FAILURE);
-	}
-
-	if (error) {
-		length = (size_t)snprintf(buffer + index, sizeof buffer - index, " (error %d: %s)", errno,
-				strerror(errno));
-		index += length;
-
-		if (index >= sizeof buffer) {
-			fprintf(stderr, "Buffer overflow while creating log message\n");
-			exit(EXIT_FAILURE);
-		}
-	}
-
-	if (index >= sizeof buffer) {
-		fprintf(stderr, "Buffer overflow while creating log message\n");
-		exit(EXIT_FAILURE);
-	}
-
-	buffer[index] = 0;
-	fprintf(stderr, "%s\n", buffer);
 }
 
 as_exp*
@@ -1757,5 +1944,57 @@ exp_component_join_and_compile(as_exp_ops join_op, uint32_t n_ops,
 
 	cf_free(table);
 	return compiled_exp;
+}
+
+void
+tls_config_destroy(as_config_tls* tls)
+{
+	if (tls->cafile != NULL) {
+		cf_free(tls->cafile);
+	}
+
+	if (tls->capath != NULL) {
+		cf_free(tls->capath);
+	}
+
+	if (tls->protocols != NULL) {
+		cf_free(tls->protocols);
+	}
+
+	if (tls->cipher_suite != NULL) {
+		cf_free(tls->cipher_suite);
+	}
+
+	if (tls->cert_blacklist != NULL) {
+		cf_free(tls->cert_blacklist);
+	}
+
+	if (tls->keyfile != NULL) {
+		cf_free(tls->keyfile);
+	}
+
+	if (tls->keyfile_pw != NULL) {
+		cf_free(tls->keyfile_pw);
+	}
+
+	if (tls->certfile != NULL) {
+		cf_free(tls->certfile);
+	}
+
+	memset(tls, 0, sizeof(as_config_tls));
+}
+
+void
+tls_config_clone(as_config_tls* clone, const as_config_tls* src)
+{
+	memcpy(clone, src, sizeof(as_config_tls));
+	clone->cafile = safe_strdup(src->cafile);
+	clone->capath = safe_strdup(src->capath);
+	clone->protocols = safe_strdup(src->protocols);
+	clone->cipher_suite = safe_strdup(src->cipher_suite);
+	clone->cert_blacklist = safe_strdup(src->cert_blacklist);
+	clone->keyfile = safe_strdup(src->keyfile);
+	clone->keyfile_pw = safe_strdup(src->keyfile_pw);
+	clone->certfile = safe_strdup(src->certfile);
 }
 

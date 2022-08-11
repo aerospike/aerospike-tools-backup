@@ -24,14 +24,14 @@
 #include <errno.h>
 #include <stdlib.h>
 
+#pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wconversion"
 #pragma GCC diagnostic ignored "-Wsign-conversion"
 
 #include <aerospike/as_atomic.h>
 #include <aerospike/as_partition.h>
 
-#pragma GCC diagnostic warning "-Wconversion"
-#pragma GCC diagnostic warning "-Wsign-conversion"
+#pragma GCC diagnostic pop
 
 #include <utils.h>
 
@@ -181,7 +181,7 @@ void
 backup_state_free(backup_state_t* state)
 {
 	if (state->file != NULL) {
-		file_proxy_close2(state->file, FILE_PROXY_ABORT);
+		file_proxy_close2(state->file, FILE_PROXY_EOF);
 		cf_free(state->file);
 	}
 

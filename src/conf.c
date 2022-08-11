@@ -668,6 +668,9 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 				cf_free(compress_type);
 			}
 
+		} else if (! strcasecmp("compression-level", name)) {
+			status = config_int32(curtab, name, (void*)&c->compression_level);
+
 		} else if (! strcasecmp("encrypt", name)) {
 			char* encrypt_type = NULL;
 			status = config_str(curtab, name, (void*) &encrypt_type);
@@ -776,7 +779,7 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 
 		} else if (! strcasecmp("socket-timeout", name)) {
 			status = config_int32(curtab, name, (int32_t*)&i_val);
-			if (i_val >= 0) {
+			if ((int32_t) i_val >= 0) {
 				c->socket_timeout = (uint32_t)i_val;
 			} else {
 				status = false;
@@ -784,7 +787,7 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 
 		} else if (! strcasecmp("total-timeout", name)) {
 			status = config_int32(curtab, name, (int32_t*)&i_val);
-			if (i_val >= 0) {
+			if ((int32_t) i_val >= 0) {
 				c->total_timeout = (uint32_t)i_val;
 			} else {
 				status = false;
@@ -792,7 +795,7 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 
 		} else if (! strcasecmp("max-retries", name)) {
 			status = config_int32(curtab, name, (int32_t*)&i_val);
-			if (i_val >= 0) {
+			if ((int32_t) i_val >= 0) {
 				c->max_retries = (uint32_t)i_val;
 			} else {
 				status = false;
@@ -800,7 +803,7 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 
 		} else if (! strcasecmp("retry-delay", name)) {
 			status = config_int32(curtab, name, (int32_t*)&i_val);
-			if (i_val >= 0) {
+			if ((int32_t) i_val >= 0) {
 				c->retry_delay = (uint32_t)i_val;
 			} else {
 				status = false;
@@ -808,6 +811,9 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 
 		} else if (! strcasecmp("s3-region", name)) {
 			status = config_str(curtab, name, (void*)&c->s3_region);
+
+		} else if (! strcasecmp("s3-bucket", name)) {
+			status = config_str(curtab, name, (void*)&c->s3_bucket);
 
 		} else if (! strcasecmp("s3-profile", name)) {
 			status = config_str(curtab, name, (void*)&c->s3_profile);
@@ -825,7 +831,7 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 
 		} else if (! strcasecmp("s3-max-async-downloads", name)) {
 			status = config_int64(curtab, name, (void*)&i_val);
-			if (i_val > 0 & i_val <= UINT_MAX) {
+			if (i_val > 0 && i_val <= UINT_MAX) {
 				c->s3_max_async_downloads = (uint32_t) i_val;
 			} else {
 				status = false;
@@ -833,9 +839,17 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 
 		} else if (! strcasecmp("s3-max-async-uploads", name)) {
 			status = config_int64(curtab, name, (void*)&i_val);
-			if (i_val > 0 & i_val <= UINT_MAX) {
+			if (i_val > 0 && i_val <= UINT_MAX) {
 				c->s3_max_async_uploads = (uint32_t) i_val;
 			} else {
+				status = false;
+			}
+
+		} else if (! strcasecmp("s3-log-level", name)) {
+			s = NULL;
+			status = config_str(curtab, name, (void*)&s);
+			if (status && !s3_parse_log_level(s, &c->s3_log_level)) {
+				err("Invalid S3 log level \"%s\"", s);
 				status = false;
 			}
 
@@ -879,6 +893,7 @@ config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance,
 	const char *value;
 
 	int64_t i_val = 0;
+	char* s;
 
 	for (uint8_t k = 0; 0 != (name = toml_key_in(curtab, k)); k++) {
 
@@ -1030,7 +1045,7 @@ config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance,
 
 		} else if (! strcasecmp("total-timeout", name)) {
 			status = config_int32(curtab, name, (int32_t*)&i_val);
-			if (i_val >= 0) {
+			if ((int32_t) i_val >= 0) {
 				c->total_timeout = (uint32_t)i_val;
 			} else {
 				status = false;
@@ -1038,7 +1053,7 @@ config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance,
 
 		} else if (! strcasecmp("max-retries", name)) {
 			status = config_int32(curtab, name, (int32_t*)&i_val);
-			if (i_val >= 0) {
+			if ((int32_t) i_val >= 0) {
 				c->max_retries = (uint32_t)i_val;
 			} else {
 				status = false;
@@ -1046,14 +1061,28 @@ config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance,
 
 		} else if (! strcasecmp("retry-delay", name)) {
 			status = config_int32(curtab, name, (int32_t*)&i_val);
-			if (i_val >= 0) {
+			if ((int32_t) i_val >= 0) {
 				c->retry_delay = (uint32_t)i_val;
 			} else {
 				status = false;
 			}
 
+		} else if (! strcasecmp("retry-scale-factor", name)) {
+			status = config_int32(curtab, name, (int32_t*)&i_val);
+			if ((int32_t) i_val >= 0) {
+				c->retry_scale_factor = (uint32_t)i_val;
+			} else {
+				status = false;
+			}
+
+		} else if (! strcasecmp("disable-batch-writes", name)) {
+			status = config_bool(curtab, name, (void*)&c->disable_batch_writes);
+
 		} else if (! strcasecmp("s3-region", name)) {
 			status = config_str(curtab, name, (void*)&c->s3_region);
+
+		} else if (! strcasecmp("s3-bucket", name)) {
+			status = config_str(curtab, name, (void*)&c->s3_bucket);
 
 		} else if (! strcasecmp("s3-profile", name)) {
 			status = config_str(curtab, name, (void*)&c->s3_profile);
@@ -1063,9 +1092,17 @@ config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance,
 
 		} else if (! strcasecmp("s3-max-async-downloads", name)) {
 			status = config_int64(curtab, name, (void*)&i_val);
-			if (i_val > 0 & i_val <= UINT_MAX) {
+			if (i_val > 0 && i_val <= UINT_MAX) {
 				c->s3_max_async_downloads = (uint32_t) i_val;
 			} else {
+				status = false;
+			}
+
+		} else if (! strcasecmp("s3-log-level", name)) {
+			s = NULL;
+			status = config_str(curtab, name, (void*)&s);
+			if (status && !s3_parse_log_level(s, &c->s3_log_level)) {
+				err("Invalid S3 log level \"%s\"", s);
 				status = false;
 			}
 

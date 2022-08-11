@@ -13,6 +13,7 @@ jobs:
     runs-on: macos-10.15
     env:
       AWS_SDK_CPP_VERSION: 1.9.177
+      EVENT_LIB: libuv
       LIBCURL_VERSION: curl-7_83_1
       ZSTD_VERSION: 1.4.9
       LD_LIBRARY_PATH: /usr/local/lib
@@ -33,6 +34,10 @@ jobs:
         if_false: asbackup
     - uses: kenchan0130/actions-system-info@master
       id: system-info
+    - name: install libuv
+      id: install-libuv
+      run: |
+        brew install libuv
     - name: install AWS requirements
       id: install-aws-requirements
       run: |

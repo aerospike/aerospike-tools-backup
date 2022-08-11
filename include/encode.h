@@ -24,12 +24,17 @@
 
 #pragma once
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 //==========================================================
 // Includes.
 //
 
 #include <stdbool.h>
 
+#pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wconversion"
 #pragma GCC diagnostic ignored "-Wsign-conversion"
 
@@ -37,8 +42,7 @@
 #include <aerospike/aerospike_udf.h>
 #include <aerospike/as_record.h>
 
-#pragma GCC diagnostic warning "-Wconversion"
-#pragma GCC diagnostic warning "-Wsign-conversion"
+#pragma GCC diagnostic pop
 
 #include <io_proxy.h>
 
@@ -227,4 +231,21 @@ typedef struct backup_decoder {
 			int32_t extra_ttl, bool *expired, index_param *index,
 			udf_param *udf);
 } backup_decoder_t;
+
+
+//==========================================================
+// Public API.
+//
+
+void free_udf(udf_param *param);
+
+void free_udfs(as_vector *udf_vec);
+
+void free_index(index_param *param);
+
+void free_indexes(as_vector *index_vec);
+
+#ifdef __cplusplus
+}
+#endif
 

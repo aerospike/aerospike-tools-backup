@@ -24,6 +24,10 @@
 
 #pragma once
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 //==========================================================
 // Includes.
 //
@@ -37,6 +41,7 @@
 #include <sys/statvfs.h>
 #include <sys/stat.h>
 
+#pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wconversion"
 #pragma GCC diagnostic ignored "-Wsign-conversion"
 
@@ -46,8 +51,7 @@
 #include <aerospike/as_partition_filter.h>
 #include <aerospike/as_scan.h>
 
-#pragma GCC diagnostic warning "-Wconversion"
-#pragma GCC diagnostic warning "-Wsign-conversion"
+#pragma GCC diagnostic pop
 
 #include <backup_config.h>
 #include <backup_status.h>
@@ -63,6 +67,9 @@
 
 // The maximal number of UDF files that we can backup.
 #define MAX_UDF_FILES 1000
+
+// Estimate total backup file sizes with 99.9% confidence.
+#define BACKUP_FILE_ESTIMATE_CONFIDENCE_LEVEL 0.999
 
 /*
  * The per partition filter information pushed to the job queue and picked up
@@ -170,4 +177,8 @@ int32_t backup_main(int32_t argc, char **argv);
  */
 backup_config_t* get_g_backup_conf(void);
 backup_status_t* get_g_backup_status(void);
+
+#ifdef __cplusplus
+}
+#endif
 

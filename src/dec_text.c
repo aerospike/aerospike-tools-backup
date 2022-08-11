@@ -116,8 +116,6 @@ text_parse(io_read_proxy_t *fd, bool legacy, as_vector *ns_vec,
 			goto out;
 		}
 
-		ver("Encountered end of file (line %u, col %u)", line_no[0], col_no[0]);
-
 		res = DECODER_EOF;
 		goto out;
 	}

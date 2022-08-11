@@ -23,6 +23,7 @@
 
 #include <backup_state.h>
 #include <conf.h>
+#include <utils.h>
 
 
 //==========================================================
@@ -38,7 +39,7 @@ static bool parse_partition_range(char *str, as_partition_filter *range);
 static bool parse_digest(const char *str, as_partition_filter *filter);
 static bool parse_partition_list(char *partition_list, as_vector *partition_filters);
 static bool parse_after_digest(char *str, as_vector* partition_filters);
-static bool parse_node_list(char *node_list, node_spec **node_specs,
+static bool parse_node_list(const char *node_list, node_spec **node_specs,
 		uint32_t *n_node_specs);
 static bool parse_sets(const as_vector* set_list, char* set_name,
 		exp_component_t* set_list_expr);
@@ -53,6 +54,7 @@ static bool ns_count_callback(void *context_, const char *key, const char *value
 static bool set_count_callback(void *context_, const char *key_, const char *value_);
 static bool get_object_count(aerospike *as, const char *namespace, as_vector* set_list,
 		char (*node_names)[][AS_NODE_NAME_SIZE], uint32_t n_node_names, uint64_t *obj_count);
+static bool check_server_version(backup_status_t* status, const backup_config_t* conf);
 
 
 //==========================================================
@@ -62,10 +64,14 @@ static bool get_object_count(aerospike *as, const char *namespace, as_vector* se
 bool
 backup_status_init(backup_status_t* status, backup_config_t* conf)
 {
+	uint64_t max_records;
+
 	status->node_specs = NULL;
 	status->n_node_specs = 0;
 
 	status->as = NULL;
+
+	max_records = conf->estimate ? conf->n_estimate_samples : conf->max_records;
 
 	status->policy = (as_policy_scan*) cf_malloc(sizeof(as_policy_scan));
 	as_policy_scan_init(status->policy);
@@ -73,7 +79,7 @@ backup_status_init(backup_status_t* status, backup_config_t* conf)
 	status->policy->base.total_timeout = conf->total_timeout;
 	status->policy->base.max_retries = conf->max_retries;
 	status->policy->base.sleep_between_retries = conf->retry_delay;
-	status->policy->max_records = conf->max_records;
+	status->policy->max_records = max_records;
 	status->policy->records_per_second = conf->records_per_second;
 
 	memset(status->set, 0, sizeof(as_set));
@@ -374,7 +380,7 @@ backup_status_init(backup_status_t* status, backup_config_t* conf)
 			goto cleanup3;
 		}
 
-		if (conf->parallel == 0) {
+		if (conf->parallel == 0 && !conf->estimate) {
 			conf->parallel = DEFAULT_NODE_BACKUP_PARALLEL;
 		}
 	}
@@ -387,7 +393,18 @@ backup_status_init(backup_status_t* status, backup_config_t* conf)
 		goto cleanup3;
 	}
 
-	inf("Namespace contains %" PRIu64 " record(s)", status->rec_count_estimate);
+	if (conf->set_list.size != 0) {
+		inf("Set%s %s contain%s %" PRIu64 " record(s)",
+				conf->set_list.size == 1 ? "" : "s",
+				str_vector_tostring(&conf->set_list),
+				conf->set_list.size != 1 ? "" : "s",
+				status->rec_count_estimate);
+	}
+	else {
+		inf("Namespace %.*s contains %" PRIu64 " record(s)",
+				(int) sizeof(as_namespace), conf->ns,
+				status->rec_count_estimate);
+	}
 
 	bool has_ldt;
 
@@ -402,9 +419,10 @@ backup_status_init(backup_status_t* status, backup_config_t* conf)
 		goto cleanup3;
 	}
 
-	if (conf->estimate && status->rec_count_estimate > conf->n_estimate_samples) {
-		status->rec_count_estimate = conf->n_estimate_samples;
+	if (!check_server_version(status, conf)) {
+		goto cleanup3;
 	}
+
 	if (conf->max_records > 0 && status->rec_count_estimate > conf->max_records) {
 		status->rec_count_estimate = conf->max_records;
 	}
@@ -423,6 +441,7 @@ cleanup3:
 cleanup2:
 	if (status->as != NULL) {
 		aerospike_destroy(status->as);
+		cf_free(status->as);
 	}
 
 	pthread_mutex_destroy(&status->committed_count_mutex);
@@ -504,7 +523,10 @@ void
 backup_status_set_n_threads(backup_status_t* status, const backup_config_t* conf,
 		uint32_t n_tasks, uint32_t n_threads)
 {
-	status->policy->max_records = (conf->max_records + n_tasks - 1) / n_tasks;
+	uint64_t max_records = conf->estimate ? conf->n_estimate_samples :
+		conf->max_records;
+
+	status->policy->max_records = (max_records + n_tasks - 1) / n_tasks;
 	status->policy->records_per_second = conf->records_per_second / n_threads;
 
 	// don't allow this to set rps to 0 if n_threads > rps (this would mean no
@@ -629,10 +651,6 @@ backup_status_abort_backup_unsafe(backup_status_t* status)
 	as_store_ptr(&status->backup_state, BACKUP_STATE_ABORTED);
 }
 
-/*
- * Sleep on the stop condition, exiting from the sleep early if the program is
- * stopped
- */
 void
 backup_status_sleep_for(backup_status_t* status, uint64_t n_secs)
 {
@@ -803,17 +821,18 @@ static bool
 parse_partition_range(char *str, as_partition_filter *range)
 {
 	char *p = strchr(str, '-');
-	uint64_t begin = 0;
-	uint64_t count = 1;
+	int64_t begin = 0;
+	int64_t count = 1;
 	bool rv = false;
 
 	if (p) {
 		*p++ = 0;
 	}
 
-	if (better_atoi(str, &begin) && begin < MAX_PARTITIONS) {	
+	if (better_atoi(str, &begin) && begin >= 0 && begin < MAX_PARTITIONS) {	
 		if (p) {
-			rv = better_atoi(p, &count) && (begin + count) <= MAX_PARTITIONS;
+			rv = better_atoi(p, &count) && count >= 0 &&
+				(begin + count) <= MAX_PARTITIONS;
 		}
 		else {
 			rv = true;
@@ -968,27 +987,27 @@ parse_after_digest(char *str, as_vector* partition_filters)
  * result: true iff successful
  */
 static bool
-parse_node_list(char *node_list, node_spec **node_specs, uint32_t *n_node_specs)
+parse_node_list(const char *node_list, node_spec **node_specs, uint32_t *n_node_specs)
 {
 	bool res = false;
 	char *clone = safe_strdup(node_list);
 
 	// also allow ";" (remain backwards compatible)
-	for (size_t i = 0; node_list[i] != 0; ++i) {
-		if (node_list[i] == ';') {
-			node_list[i] = ',';
+	for (size_t i = 0; clone[i] != 0; ++i) {
+		if (clone[i] == ';') {
+			clone[i] = ',';
 		}
 	}
 
 	as_vector node_vec;
 	as_vector_inita(&node_vec, sizeof(void*), 25);
 
-	if (node_list[0] == 0) {
+	if (clone[0] == 0) {
 		err("Empty node list");
 		goto cleanup1;
 	}
 
-	split_string(node_list, ',', true, &node_vec);
+	split_string(clone, ',', true, &node_vec);
 
 	*n_node_specs = node_vec.size;
 	*node_specs = safe_malloc(sizeof (node_spec) * node_vec.size);
@@ -1006,12 +1025,12 @@ parse_node_list(char *node_list, node_spec **node_specs, uint32_t *n_node_specs)
 			char *closing = strchr(node_str, ']');
 
 			if (closing == NULL) {
-				err("Invalid node list %s (missing \"]\"", clone);
+				err("Invalid node list %s (missing \"]\"", node_list);
 				goto cleanup1;
 			}
 
 			if (closing[1] != ':') {
-				err("Invalid node list %s (missing \":\")", clone);
+				err("Invalid node list %s (missing \":\")", node_list);
 				goto cleanup1;
 			}
 
@@ -1021,7 +1040,7 @@ parse_node_list(char *node_list, node_spec **node_specs, uint32_t *n_node_specs)
 			colon = strchr(node_str, ':');
 
 			if (colon == NULL) {
-				err("Invalid node list %s (missing \":\")", clone);
+				err("Invalid node list %s (missing \":\")", node_list);
 				goto cleanup1;
 			}
 		}
@@ -1034,7 +1053,7 @@ parse_node_list(char *node_list, node_spec **node_specs, uint32_t *n_node_specs)
 		}
 
 		if (length == 0 || length > IP_ADDR_SIZE - 1) {
-			err("Invalid node list %s (invalid IP address)", clone);
+			err("Invalid node list %s (invalid IP address)", node_list);
 			goto cleanup2;
 		}
 
@@ -1048,11 +1067,11 @@ parse_node_list(char *node_list, node_spec **node_specs, uint32_t *n_node_specs)
 		} ver;
 
 		if (inet_pton(family, ip_addr, &ver) <= 0) {
-			err("Invalid node list %s (invalid IP address %s)", clone, ip_addr);
+			err("Invalid node list %s (invalid IP address %s)", node_list, ip_addr);
 			goto cleanup2;
 		}
 
-		uint64_t tmp;
+		int64_t tmp;
 
 		if (family == AF_INET6) {
 			length = length + 1;
@@ -1075,14 +1094,14 @@ parse_node_list(char *node_list, node_spec **node_specs, uint32_t *n_node_specs)
 		}
 
 		if (!better_atoi(colon + 1, &tmp) || tmp < 1 || tmp > 65535) {
-			err("Invalid node list %s (invalid port value %s)", clone, colon + 1);
+			err("Invalid node list %s (invalid port value %s)", node_list, colon + 1);
 			goto cleanup2;
 		}
 
 		memcpy((*node_specs)[i].addr_string, ip_addr, IP_ADDR_SIZE);
 		(*node_specs)[i].family = family;
 		memcpy(&(*node_specs)[i].ver, &ver, sizeof ver);
-		(*node_specs)[i].port = htons((in_port_t)tmp);
+		(*node_specs)[i].port = htons((in_port_t) tmp);
 	}
 
 	res = true;
@@ -1291,25 +1310,26 @@ static bool
 ns_count_callback(void *context_, const char *key, const char *value)
 {
 	ns_count_context *context = (ns_count_context *)context_;
-	uint64_t tmp;
+	int64_t repl_factor;
+	int64_t object_count;
 
 	if (strcmp(key, "objects") == 0) {
-		if (!better_atoi(value, &tmp)) {
+		if (!better_atoi(value, &object_count) || object_count < 0) {
 			err("Invalid object count %s", value);
 			return false;
 		}
 
-		context->count = tmp;
+		context->count = (uint64_t) object_count;
 		return true;
 	}
 
-	if (strcmp(key, "repl-factor") == 0 || strcmp(key, "effective_replication_factor") == 0) {
-		if (!better_atoi(value, &tmp) || tmp == 0 || tmp > 100) {
+	if (strcmp(key, "replication-factor") == 0) {
+		if (!better_atoi(value, &repl_factor) || repl_factor < 0 || repl_factor > 100) {
 			err("Invalid replication factor %s", value);
 			return false;
 		}
 
-		context->factor = (uint32_t)tmp;
+		context->factor = (uint32_t) repl_factor;
 		return true;
 	}
 
@@ -1344,7 +1364,7 @@ set_count_callback(void *context_, const char *key_, const char *value_)
 	split_string(info, ':', false, &info_vec);
 
 	bool match = true;
-	uint64_t count = 0;
+	int64_t count = 0;
 
 	for (uint32_t i = 0; i < info_vec.size; ++i) {
 		char *key = as_vector_get_ptr(&info_vec, i);
@@ -1369,14 +1389,14 @@ set_count_callback(void *context_, const char *key_, const char *value_)
 		}
 
 		if ((strcmp(key, "n_objects") == 0 || strcmp(key, "objects") == 0) &&
-				!better_atoi(value, &count)) {
+				(!better_atoi(value, &count) || count < 0)) {
 			err("Invalid object count %s", value);
 			goto cleanup1;
 		}
 	}
 
 	if (match) {
-		context->count += count;
+		context->count += (uint64_t) count;
 	}
 
 	res = true;
@@ -1411,23 +1431,29 @@ get_object_count(aerospike *as, const char *namespace, as_vector* set_list,
 	ver("Getting cluster object count");
 
 	*obj_count = 0;
+	uint32_t repl_factor = 0;
 
 	size_t value_size = sizeof "namespace/" - 1 + strlen(namespace) + 1;
 	char value[value_size];
 	snprintf(value, value_size, "namespace/%s", namespace);
 	inf("%-20s%-15s%-15s", "Node ID", "Objects", "Replication");
-	ns_count_context ns_context = { 0, 0 };
 
 	for (uint32_t i = 0; i < n_node_names; ++i) {
 		ver("Getting object count for node %s", (*node_names)[i]);
+		
+		ns_count_context ns_context = { -1lu, -1u };
 
 		if (!get_info(as, value, (*node_names)[i], &ns_context, ns_count_callback, true)) {
 			err("Error while getting namespace object count for node %s", (*node_names)[i]);
 			return false;
 		}
 
-		if (ns_context.factor == 0) {
-			err("Invalid namespace %s", namespace);
+		if (ns_context.count == -1lu) {
+			err("Failed to find objects field in namespace info result");
+			return false;
+		}
+		if (ns_context.factor == -1u) {
+			err("Failed to find replication_factor field in namespace info result");
 			return false;
 		}
 
@@ -1451,11 +1477,73 @@ get_object_count(aerospike *as, const char *namespace, as_vector* set_list,
 			}
 		}
 
+		if (i == 0) {
+			repl_factor = ns_context.factor;
+		}
+		else if (ns_context.factor != repl_factor) {
+			err("Inconsitent replication factor across nodes (found two nodes "
+					"with replication factors %" PRIu32 " and %" PRIu32 ")",
+					ns_context.factor, repl_factor);
+			return false;
+		}
+
 		inf("%-20s%-15" PRIu64 "%-15d", (*node_names)[i], count, ns_context.factor);
 		*obj_count += count;
 	}
 
-	*obj_count /= ns_context.factor;
+	*obj_count /= repl_factor;
+
+	return true;
+}
+
+/*
+ * Checks that all features being used in this backup run are supported by the
+ * version of the server running.
+ */
+static bool
+check_server_version(backup_status_t* status, const backup_config_t* conf)
+{
+	server_version_t version_info;
+	if (get_server_version(status->as, &version_info) != 0) {
+		return false;
+	}
+
+	uint32_t major = version_info.major;
+	uint32_t minor = version_info.minor;
+
+	ver("Connected to server version %u.%u.%u.%u", major, minor,
+			version_info.patch, version_info.build_id);
+
+	if (SERVER_VERSION_BEFORE(&version_info, 4, 9)) {
+		err("Aerospike Server version 4.9 or greater is required to run "
+				"asbackup, but version %" PRIu32 ".%" PRIu32 " is in use.",
+				major, minor);
+		return false;
+	}
+
+	if ((conf->mod_before != 0 || conf->mod_after != 0) &&
+			SERVER_VERSION_BEFORE(&version_info, 5, 2)) {
+		err("Aerospike Server version 5.2 or greater is required for "
+				"--modified-before and --modified-after, but version "
+				"%" PRIu32 ".%" PRIu32 " is in use",
+				major, minor);
+		return false;
+	}
+
+	if (conf->set_list.size > 1 && SERVER_VERSION_BEFORE(&version_info, 5, 2)) {
+		err("Aerospike Server version 5.2 or greater is required for multi-set "
+				"backup, but version %" PRIu32 ".%" PRIu32 " is in use",
+				major, minor);
+		return false;
+	}
+
+	if (conf->ttl_zero && SERVER_VERSION_BEFORE(&version_info, 5, 2)) {
+		err("Aerospike Server version 5.2 or greater is required for "
+				"--no-ttl-only, but version %" PRIu32 ".%" PRIu32 " is in use",
+				major, minor);
+		return false;
+	}
+
 	return true;
 }
 

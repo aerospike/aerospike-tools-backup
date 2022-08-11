@@ -7,25 +7,11 @@ This is the developer documentation. For user documentation, please consult http
 
 ## Building
 
-Building the backup tools requires the source code of the Aerospike C client. Please clone it from GitHub.
-
-    git clone https://github.com/aerospike/aerospike-client-c.
-
-Then build the client.
-
-    cd aerospike-client-c
-    make
-    cd ..
-
-Then set the `CLIENTREPO` environment variable to point to the `aerospike-client-c` directory. The backup tools build process uses that variable to find the client code.
-
-    export CLIENTREPO=$(pwd)/aerospike-client-c
-
-Now clone the source code of the Aerospike backup tools from GitHub.
+Clone the source code of the Aerospike backup tools from GitHub.
 
     git clone https://github.com/aerospike/aerospike-tools-backup
 
-Then build the backup tools and generate the Doxygen documentation.
+Then build the backup tools.
 
     cd aerospike-tools-backup
     make
@@ -34,7 +20,7 @@ This gives you two binaries in the `bin` subdirectory -- `asbackup` and `asresto
 
 In order to run the tests that come with the code, you need `docker` installed. The tests spin up an Aerospike Cluster using docker containers for each node.
 
-Please make sure that you have Python 3, `virtualenv`, and `valgrind` installed. By default, the tests run `asbackup` and `asrestore` under the Valgrind memory checker. If you don't have the `valgrind` command, please change `USE_VALGRIND` in `test/lib.py` to `False`. Then run the tests.
+Please make sure that you have Python 3, `virtualenv`, and optionally `valgrind` installed. By default, the tests run `asbackup` and `asrestore` under the Valgrind memory checker. If you don't have the `valgrind` command, please change `USE_VALGRIND` in `test/lib.py` to `False`. Then run the tests.
 
     make test
 
@@ -42,29 +28,44 @@ This creates a virtual Python environment in a new subdirectory (`env`), activat
 
 ## Backup Source Code
 
-Let's take a quick look at the overall structure of the `asbackup` source code, at `src/backup.c`. The code does the following, starting at `main()`.
+Let's take a quick look at the overall structure of the `asbackup` source code, at `src/backup.c`. The code does the following, starting at `backup_main()`.
 
-  * Parse command line options into local variables or, if they need to be passed to a worker thread later, into a `backup_config` structure.
-  * Initialize an Aerospike client and connect it to the cluster to be backed up.
+  * Parse command line options into a `backup_config` struct with `backup_config_init`.
+  * Call `run_backup`, which first initializes all run status variables and an Aerospike client into a `backup_status` struct with `backup_status_init`.
+  * If only zero or one partition ranges are given, evenly divide the partition range into `--parallel` individual filters. This is done because each partition filter/range is a single backup job and cannot be parallelized.
+  * If we are resuming a backup run, load the backup state into the `backup_status` struct and narrow the partition filters (i.e. have them begin from where they left off in the interrupted run).
+  * If backing up to a single file (`--output-file` option, as opposed to backing up to a directory using `--directory`), create and open that backup file.
+    - If this is a resumed run, reopen the shared file from the backup state.
+    - Otherwise, run a backup estimate, calculate a 99.9% confidence estimate on the size of the final backup file, and open a file with that estimated size.
+  * If running a backup estimate, open a file writing to `\dev\null`.
+  * If backing up to a directory, initialize the file queue, scan the backup directory to make sure no files exist within it with an `.asb` extension, or if they do and `--remove-files` is set, delete them.
+    - If this is a resumed run, reopen all files from the backup state and push them to the file queue.
+  * If this is a resumable run (i.e. not an estimate), generate the path to be used for a backup state if we end up needing to make one.
   * Create the counter thread, which starts at `counter_thread_func()`. That's the thread that outputs the status and counter updates during the backup, among other things.
-  * When backing up to a single file (`--output-file` option, as opposed to backing up to a directory using `--directory`), create and open that backup file.
-  * Populate a `backup_thread_args` structure for each node to be backed up and submit it to the `job_queue` queue. Note two things:
-    - Only one of the `backup_thread_args` structures gets its `first` member set to `true`.
-    - When backing up to a single file, the `shared_fd` member gets the file handle of the created backup file (and `NULL` otherwise).
-  * Spawn backup worker threads, which start at `backup_thread_func()`. There's one of those for each partition filter, or `--parallel` of these if backing up a single partition filter (default 1).
+  * Spawn `--parallel` backup worker threads, which start at `backup_thread_func()`.
   * Wait for all backup worker threads to finish.
-  * When backing up to a single file, close that file.
+  * If running an estimate, display the estimate status.
+  * If backing up to a directory, iterate over all files in the file queue.
+    - If not saving the backup state (i.e. no error has happened), flush the file and close it.
+    - If saving the backup state, place the backup file in the backup state struct.
+    - If aborting the backup, close the file.
+  * If backing up to a single file and saving the backup state, place that file in the backup state struct.
+  * If saving the backup state (no matter what mode we're running in), go through all jobs still in the job queue and save them to the backup state.
+  * Go through all completed backup jobs and save them to the backup state (if we are saving the backup state).
+  * Join the counter thread.
+  * If not saving the backup state, free the shared backup file if it exists.
+  * Save the backup state if one was created.
   * Shut down the Aerospike client.
 
 Let's now look at what the worker threads do, starting at `backup_thread_func()`.
 
-  * Pop a `backup_thread_args` structure off the job queue. The job queue contains exactly one of those for each thread.
+  * Pop a `backup_thread_args` structure off the job queue.
   * Initialize a `backup_job_context` structure. That's where all the data local to a worker thread is kept. Some of the data is initialized from the `backup_thread_args` structure. In particular, when backing up to a single file, the `fd` member of the `backup_job_context` structure is initialized from the `shared_fd` member of the `backup_thread_args` structure. In that way, all backup threads share the same backup file handle.
-  * When backing up to a directory, open an exclusive backup file for the worker thread by invoking `open_dir_file()`.
+  * When backing up to a directory, open an exclusive backup file for the worker thread by invoking `open_dir_file()`. A backup file may be taken from the file queue if it isn't empty, or if it is empty, a new backup file is created.
   * If the backup thread is the single thread that has `first` set to `true` in its `backup_thread_args` structure, store secondary index definitions by invoking `process_secondary_indexes()`, and store UDF files by invoking `process_udfs()`. So, this work is done by a single thread, and that thread is chosen by setting its `first` member to `true`.
   * All other threads wait for the chosen thread to finish its secondary index and UDF file work by invoking `wait_one_shot()`. The chosen thread signals completion by invoking `signal_one_shot()`.
   * Initiate backup of records by invoking `aerospike_scan_partitions()` with `scan_callback()` as the callback function that gets invoked for each record in the namespace to be backed up. From here on, all worker threads work in parallel.
-  * If, after completing the scan, the backup file is not full (i.e. less than `--file-limit` MB in size), place the backup file on a queue to be reused by another backup job.
+  * If, after completing the scan, the backup file is not full (i.e. less than `--file-limit` MB in size), place the backup file on the file queue to be reused by another backup job.
 
 Let's now look at what the callback function, `scan_callback()`, does.
 
@@ -99,9 +100,7 @@ Let's now look at what the worker threads do, starting at `restore_thread_func()
   * When restoring from a single file, acquire the file lock by invoking `safe_lock()`. As all worker threads read from the same backup file, we can only allow one thread to read at a time.
   * Invoke the `parse()` function of the backup decoder to read the next record. The decoder is the counterpart to the encoder in `asbackup`. It implements the backup file format by deserializing record information from the the backup file. Its code is in `src/dec_text.c`, its interface in `include/dec_text.h`.
   * When backing up to a single file, release the file lock.
-  * Invoke `aerospike_key_put()` to store the current record in the cluster.
-
-For more detailed information, please generate the documentation (`make docs`) and open `docs/index.html`.
+  * Call `record_uploader_put` to asynchronously upload the record in batches.
 
 ## Backup File Format
 
