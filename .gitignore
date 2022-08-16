@@ -13,3 +13,4 @@ _tmp_python_client
 *.swp
 astools.conf
 test_dir
+.vscode/
