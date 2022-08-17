@@ -395,7 +395,7 @@ START_TEST(test_as_key_move_a_not_empty_str_key)
 	as_key* test_key = (as_key *) cf_malloc(sizeof(as_key));
 	
 	as_key_value* test_key_value = (as_key_value *) cf_malloc(sizeof(as_key_value));
-	test_key_value->string._.count=2;
+	test_key_value->integer._.count=2;
 	test_key_value->string.value="test";
 
 	test_key->valuep = &test_key_value;
@@ -409,7 +409,7 @@ START_TEST(test_as_key_move_a_not_empty_bytes_key)
 	as_key* test_key = (as_key *) cf_malloc(sizeof(as_key));
 	
 	as_key_value* test_key_value = (as_key_value *) cf_malloc(sizeof(as_key_value));
-	test_key_value->bytes._.count=2;
+	test_key_value->integer._.count=2;
 
 	test_key->valuep = &test_key_value;
 	
