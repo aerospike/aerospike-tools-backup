@@ -367,6 +367,73 @@ START_TEST(test_timespec_diff_1ms_overflow)
 }
 END_TEST
 
+
+START_TEST(test_as_key_move_an_empty_rec)
+{
+	as_key* test_key = (as_key *) cf_malloc(sizeof(as_key));
+	
+	ck_assert(as_key_move(test_key, test_key));
+}
+END_TEST
+
+START_TEST(test_as_key_move_a_not_empty_int_key)
+{
+	as_key* test_key = (as_key *) cf_malloc(sizeof(as_key));
+	
+	as_key_value* test_key_value = (as_key_value *) cf_malloc(sizeof(as_key_value));
+	test_key_value->integer._.count=2;
+	test_key_value->integer.value=5;
+
+	test_key->valuep = &test_key_value;
+	
+	ck_assert(!as_key_move(test_key, test_key));
+}
+END_TEST
+
+START_TEST(test_as_key_move_a_not_empty_str_key)
+{
+	as_key* test_key = (as_key *) cf_malloc(sizeof(as_key));
+	
+	as_key_value* test_key_value = (as_key_value *) cf_malloc(sizeof(as_key_value));
+	test_key_value->string._.count=2;
+	test_key_value->string.value="test";
+
+	test_key->valuep = &test_key_value;
+	
+	ck_assert(!as_key_move(test_key, test_key));
+}
+END_TEST
+
+START_TEST(test_as_key_move_a_not_empty_bytes_key)
+{
+	as_key* test_key = (as_key *) cf_malloc(sizeof(as_key));
+	
+	as_key_value* test_key_value = (as_key_value *) cf_malloc(sizeof(as_key_value));
+	test_key_value->bytes._.count=2;
+
+	test_key->valuep = &test_key_value;
+	
+	ck_assert(!as_key_move(test_key, test_key));
+}
+END_TEST
+
+START_TEST(test_as_key_move_success)
+{
+	as_key* src = (as_key *) cf_malloc(sizeof(as_key));
+	as_key* dst = (as_key *) cf_malloc(sizeof(as_key));
+
+	as_key_value* test_key_value = (as_key_value *) cf_malloc(sizeof(as_key_value));
+	test_key_value->integer._.count=1;
+	test_key_value->integer.value=123;
+
+	src->value = *test_key_value;
+	src->valuep = &src->value;
+
+	ck_assert(as_key_move(dst, src));
+	ck_assert(dst->value.integer.value == src->value.integer.value);
+}
+END_TEST
+
 Suite* utils_suite()
 {
 	Suite* s;
@@ -377,6 +444,7 @@ Suite* utils_suite()
 	TCase* tc_confidence_z;
 	TCase* tc_better_atoi;
 	TCase* tc_timespec;
+	TCase* tc_move_key;
 
 	s = suite_create("Utils");
 
@@ -433,6 +501,16 @@ Suite* utils_suite()
 	tcase_add_test(tc_timespec, test_timespec_diff_1ms_overflow);
 	suite_add_tcase(s, tc_timespec);
 
+	
+	tc_move_key = tcase_create("as_move_key utils");
+	tcase_add_test(tc_move_key, test_as_key_move_an_empty_rec);
+	tcase_add_test(tc_move_key, test_as_key_move_a_not_empty_int_key);
+	tcase_add_test(tc_move_key, test_as_key_move_a_not_empty_str_key);
+	tcase_add_test(tc_move_key, test_as_key_move_a_not_empty_bytes_key);
+	tcase_add_test(tc_move_key, test_as_key_move_success);
+
+	suite_add_tcase(s, tc_move_key);
+	
 	return s;
 }
 
