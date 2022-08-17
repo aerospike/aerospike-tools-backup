@@ -1801,6 +1801,7 @@ as_key_move(as_key* dst, as_key* src)
 	if (!src->valuep) {
 		return true;
 	}
+	
 	if (as_load_uint32(&src->valuep->integer._.count) > 1) {
 		inf("Couldn't move record key values (reference count > 1).");
 		return false;
