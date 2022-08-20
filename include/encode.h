@@ -131,10 +131,13 @@ typedef struct {
 	index_type type;
 	// The path expressions of the index as a vector of path_param. Currently,
 	// there's always only one path expression.
+	// c-client changed "position" (here called "path_vec->path") to "bin_name"
 	as_vector path_vec;
 	// The as_index_task struct populated by the aerospike_index_create_complex
 	// command which is used by aerospike_index_create_wait
 	as_index_task task;
+	// b64 encoded context for CDTs.
+	char *ctx;
 } index_param;
 
 /*

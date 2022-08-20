@@ -1509,11 +1509,11 @@ process_secondary_indexes(backup_job_context_t *bjc)
 	ver("Processing secondary indexes");
 
 	bool res = false;
-
-	size_t value_size = sizeof "sindex-list:ns=" - 1 + strlen(bjc->conf->ns) + 1;
+	char* b64_enable = ";b64=true";
+	size_t value_size = sizeof "sindex-list:ns=" - 1 + strlen(bjc->conf->ns) + strlen(b64_enable) + 1;
 	char value[value_size];
-	snprintf(value, value_size, "sindex-list:ns=%s", bjc->conf->ns);
-
+	snprintf(value, value_size, "sindex-list:ns=%s%s", bjc->conf->ns, b64_enable);
+	
 	as_policy_info policy;
 	as_policy_info_init(&policy);
 	policy.timeout = TIMEOUT;

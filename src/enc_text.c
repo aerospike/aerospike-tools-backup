@@ -515,8 +515,8 @@ text_put_secondary_index(io_write_proxy_t *fd,
 			return false;
 		}
 	}
-
-	if (io_proxy_printf(fd, "\n") < 0) {
+	
+	if (io_proxy_printf(fd, " %s\n", index->ctx != NULL ? escape(index->ctx) : "") < 0) {
 		err("Error while writing secondary index to backup file [3]");
 		return false;
 	}
