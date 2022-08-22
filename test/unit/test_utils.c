@@ -444,6 +444,28 @@ START_TEST(test_as_key_move_success)
 }
 END_TEST
 
+START_TEST(test_secondary_index_param_with_ctx)
+{
+	char* test_ns = "test_ns";
+	char* sindex_str = "ns=test_ns:indexname=test_id:set=testset:bin=test_list:type=numeric:indextype=list:context=lhABI8zIIqMDaWQ=:state=RW";
+	index_param* sindex_params;
+
+	bool res = parse_index_info(test_ns, sindex_str, sindex_params);
+
+	path_param *path = as_vector_get((as_vector *)&sindex_params->path_vec, 0);
+
+	ck_assert(!res); // failed parsing sindex
+	ck_assert(sindex_params->ns == test_ns);
+	ck_assert(sindex_params->set == "test_set"); //set
+	ck_assert(sindex_params->name == "test_id"); //indexname
+	ck_assert(sindex_params->type == INDEX_TYPE_LIST); //indextype
+	ck_assert(sindex_params->ctx == "lhABI8zIIqMDaWQ"); //b64 encoded ctx	
+	ck_assert(path->path == "test_list"); //bin name
+	ck_assert(path->type == PATH_TYPE_NUMERIC); //bin type
+	
+}
+END_TEST
+
 Suite* utils_suite()
 {
 	Suite* s;
@@ -455,6 +477,7 @@ Suite* utils_suite()
 	TCase* tc_better_atoi;
 	TCase* tc_timespec;
 	TCase* tc_move_key;
+	TCase* tc_index_param;
 
 	s = suite_create("Utils");
 
@@ -518,9 +541,11 @@ Suite* utils_suite()
 	tcase_add_test(tc_move_key, test_as_key_move_a_populated_str_key);
 	tcase_add_test(tc_move_key, test_as_key_move_a_populated_bytes_key);
 	tcase_add_test(tc_move_key, test_as_key_move_success);
-
 	suite_add_tcase(s, tc_move_key);
 	
+	tc_index_param = tcase_create("secondary index parameters utils");
+	tcase_add_test(tc_index_param, test_secondary_index_param_with_ctx);
+
 	return s;
 }
 
