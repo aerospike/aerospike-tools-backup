@@ -16,6 +16,13 @@ jobs:
       LIBCURL_VERSION: curl-7_83_1
       ZSTD_VERSION: 1.4.9
       LD_LIBRARY_PATH: /usr/local/lib
+      ZSTD_STATIC_PATH: /usr/local/lib 
+      AWS_SDK_STATIC_PATH: /usr/local/lib 
+      CURL_STATIC_PATH: /usr/local/lib 
+      OPENSSL_STATIC_PATH: /usr/local/opt/openssl/lib 
+      LIBSSH2_STATIC_PATH: /usr/local/lib 
+      EVENT_LIB: libuv 
+      LIBUV_STATIC_PATH: /usr/local/lib
     steps:
     - name: Get checkout directory
       uses: haya14busa/action-cond@v1
@@ -182,7 +189,7 @@ jobs:
     - name: Build asbackup with static link to zstd and aws-sdk-cpp
       if: steps.cache-asbackup.outputs.cache-hit != 'true'
       run: |
-        make ZSTD_STATIC_PATH=/usr/local/lib AWS_SDK_STATIC_PATH=/usr/local/lib CURL_STATIC_PATH=/usr/local/lib OPENSSL_STATIC_PATH=/usr/local/opt/openssl/lib LIBSSH2_STATIC_PATH=/usr/local/lib EVENT_LIB=libuv LIBUV_STATIC_PATH=/usr/local/lib
+        make 
         mkdir -p binaries
         cp -r bin binaries/static_bin
         make clean
