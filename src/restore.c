@@ -1168,6 +1168,13 @@ check_index(aerospike *as, index_param *index, uint32_t timeout)
 		}
 	}
 
+	if (!index->ctx && index->ctx != index2.ctx) {
+		ver("ctx mismatch, %s vs. %s", index->ctx, index2.ctx);
+
+		res = INDEX_STATUS_DIFFERENT;
+		goto cleanup3;
+	}
+
 	res = INDEX_STATUS_SAME;
 
 cleanup3:

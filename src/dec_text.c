@@ -1418,6 +1418,7 @@ text_parse_index(io_read_proxy_t *fd, as_vector *ns_vec, uint32_t *line_no,
 	char ns[MAX_TOKEN_SIZE];
 	char set[MAX_TOKEN_SIZE];
 	char name[MAX_TOKEN_SIZE];
+	char ctx[MAX_TOKEN_SIZE];
 	size_t n_paths;
 
 	if (!text_nul_read_token(fd, false, line_no, col_no, ns, sizeof ns, " ")) {
@@ -1548,11 +1549,21 @@ text_parse_index(io_read_proxy_t *fd, as_vector *ns_vec, uint32_t *line_no,
 			goto cleanup3;
 		}
 
-		if (!expect_char(fd, line_no, col_no, i == n_paths - 1 ? '\n' : ' ')) {
+		if (!expect_char(fd, line_no, col_no, ' ')) {
 			goto cleanup3;
 		}
 
 		as_vector_append(&index->path_vec, &path);
+	}
+
+	if (!text_nul_read_token(fd, false, line_no, col_no, ctx, sizeof ctx, "\n")) {
+		goto cleanup1;
+	}
+
+	index->ctx = safe_strdup(ctx);
+
+	if (!expect_char(fd, line_no, col_no, '\n')) {
+		goto cleanup4;
 	}
 
 	if (index->set[0] == 0) {
@@ -1563,6 +1574,9 @@ text_parse_index(io_read_proxy_t *fd, as_vector *ns_vec, uint32_t *line_no,
 
 	res = DECODER_INDEX;
 	goto cleanup0;
+
+cleanup4:
+ 	cf_free(index->ctx);
 
 cleanup3:
 	cf_free(path.path);
