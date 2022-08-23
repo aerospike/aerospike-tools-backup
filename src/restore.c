@@ -1061,9 +1061,10 @@ check_index(aerospike *as, index_param *index, uint32_t timeout)
 
 	index_status res = INDEX_STATUS_INVALID;
 
-	size_t value_size = sizeof "sindex-list:ns=" - 1 + strlen(index->ns) + 1;
+	char* b64_enable = ";b64=true";
+	size_t value_size = sizeof "sindex-list:ns=" - 1 + strlen(index->ns)+ strlen(b64_enable) + 1;
 	char value[value_size];
-	snprintf(value, value_size, "sindex-list:ns=%s", index->ns);
+	snprintf(value, value_size, "sindex-list:ns=%s%s", index->ns, b64_enable);
 
 	as_policy_info policy;
 	as_policy_info_init(&policy);
@@ -1169,10 +1170,10 @@ check_index(aerospike *as, index_param *index, uint32_t timeout)
 	}
 
 	if (!index->ctx && index->ctx != index2.ctx) {
-		ver("ctx mismatch, %s vs. %s", index->ctx, index2.ctx);
+		ver("Context mismatch, %s vs. %s", index->ctx, index2.ctx);
 
 		res = INDEX_STATUS_DIFFERENT;
-		goto cleanup3;
+		goto cleanup2;
 	}
 
 	res = INDEX_STATUS_SAME;
@@ -1321,15 +1322,30 @@ restore_index(aerospike *as, index_param *index, as_vector *set_vec,
 	}
 
 	ver("Creating index %s:%s:%s (%s)", index->ns, index->set, index->name, path->path);
+	
+	as_cdt_ctx ctx;
+	if (strcmp(index->ctx, "null") == 0) {
+		index->ctx = NULL;
+	}
+	else {
+		// convert b64 encoded ctx into as_cdt_ctx
+		bool res = as_cdt_ctx_from_base64(&ctx, index->ctx);
+		if (!res) {
+			err("Error while converting b64 encoded ctx %s into as_cdt_ctx index %s; index info %s:%s:%s (%s)", index->ctx, ctx,
+				index->ns, index->set, index->name, path->path);
+			
+			as_cdt_ctx_destroy(&ctx);
+			return false;
+		}
+	}
 
-	if (aerospike_index_create_complex(as, &ae, &index->task, &policy, index->ns,
+	if (aerospike_index_create_ctx(as, &ae, &index->task, &policy, index->ns,
 				index->set[0] == 0 ? NULL : index->set, path->path, index->name, itype,
-				dtype) != AEROSPIKE_OK) {
+				dtype, &ctx) != AEROSPIKE_OK) {
 		err("Error while creating index %s:%s:%s (%s) - code %d: %s at %s:%d", index->ns,
 				index->set, index->name, path->path, ae.code, ae.message, ae.file, ae.line);
 		return false;
 	}
-
 	return true;
 }
 
