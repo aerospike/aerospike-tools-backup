@@ -462,7 +462,11 @@ START_TEST(test_secondary_index_param_with_ctx)
 	ck_assert(sindex_params->ctx == "lhABI8zIIqMDaWQ"); //b64 encoded ctx	
 	ck_assert(path->path == "test_list"); //bin name
 	ck_assert(path->type == PATH_TYPE_NUMERIC); //bin type
-	
+
+	cf_free(sindex_str);
+	cf_free(test_ns);
+	as_vector_destroy(&path);
+	cf_free(sindex_params);
 }
 END_TEST
 
