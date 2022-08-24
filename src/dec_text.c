@@ -104,7 +104,6 @@ text_parse(io_read_proxy_t *fd, bool legacy, as_vector *ns_vec,
 		int32_t extra_ttl, bool *expired, index_param *index, udf_param *udf)
 {
 	decoder_status res = DECODER_ERROR;
-
 	uint32_t line_no[2] = { *orig_line_no, *orig_line_no };
 	uint32_t col_no[2] = { 1, 2 };
 

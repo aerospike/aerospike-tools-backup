@@ -1331,7 +1331,7 @@ restore_index(aerospike *as, index_param *index, as_vector *set_vec,
 		// convert b64 encoded ctx to as_cdt_ctx
 		bool res = as_cdt_ctx_from_base64(&ctx, index->ctx);
 		if (!res) {
-			err("Error while converting b64 encoded ctx %s into as_cdt_ctx index %s; index info %s:%s:%s (%s)", index->ctx, ctx,
+			err("Error while converting b64 encoded ctx %s into as_cdt_ctx; index info %s:%s:%s (%s)", index->ctx,
 				index->ns, index->set, index->name, path->path);
 			
 			as_cdt_ctx_destroy(&ctx);
