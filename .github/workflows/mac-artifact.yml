@@ -78,9 +78,10 @@ jobs:
       uses: actions/cache@v2
       env:
         cache-name: libcurl
+        cache-index: "1"
       with:
         path: curl-${{ env.LIBCURL_VERSION }}
-        key: curl-v2-${{ env.LIBCURL_VERSION }}-${{ runner.os }}
+        key: curl-v2-${{ env.LIBCURL_VERSION }}-${{ env.cache-index }}-${{ runner.os }}
     - name: Download libcurl
       uses: actions/checkout@v2
       if: steps.cache-libcurl.outputs.cache-hit != 'true'
