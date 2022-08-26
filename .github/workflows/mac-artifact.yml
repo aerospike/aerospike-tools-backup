@@ -1,7 +1,7 @@
 name: Mac Artifact
 on:
   push:
-    branches: [ master, test-ready ]
+    branches: [ master, test-ready, TOOLS-2131-remove-macos10-support ]
   workflow_call:
     inputs:
       submodule:
@@ -10,7 +10,7 @@ on:
         type: string
 jobs:
   build:
-    runs-on: macos-10.15
+    runs-on: macos-11
     env:
       AWS_SDK_CPP_VERSION: 1.9.177
       LIBCURL_VERSION: curl-7_83_1
@@ -219,7 +219,7 @@ jobs:
         if-no-files-found: error
   bundle-binaries:
     needs: build
-    runs-on: macos-10.15
+    runs-on: macos-11
     if: "${{ inputs.submodule == '' }}"
 
     steps: 
