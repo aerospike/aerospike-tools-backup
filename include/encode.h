@@ -135,6 +135,8 @@ typedef struct {
 	// The as_index_task struct populated by the aerospike_index_create_complex
 	// command which is used by aerospike_index_create_wait
 	as_index_task task;
+	// boolean ctx true if the sindex has a (not null) context
+	bool ctx;
 } index_param;
 
 /*
