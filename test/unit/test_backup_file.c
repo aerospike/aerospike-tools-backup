@@ -71,7 +71,7 @@ Suite* backup_file_suite()
     Suite* s;
 	TCase* tc_enc_dec_text;
 
-    s = suite_create("Backup file: encode/decode secondary index");
+    s = suite_create("Backup file: encode/decode a secondary index with ctx");
 
     tc_enc_dec_text = tcase_create("encode records in a backup file");
 	tcase_add_test(tc_enc_dec_text, test_enc_dec_text);

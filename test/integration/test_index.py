@@ -3,6 +3,7 @@
 """
 Tests the representation of indexes in backup files.
 """
+import aerospike
 
 import lib
 from run_backup import backup_and_restore
@@ -10,6 +11,7 @@ from run_backup import backup_and_restore
 SET_NAMES = [None] + lib.index_variations(63)
 INDEX_NAMES = ["normal"] + lib.index_variations(63)
 INDEX_PATHS = ["normal"] + lib.index_variations(14)
+CTX = lib.ctx_variations()
 
 def create_indexes(create_func):
 	"""
@@ -27,6 +29,28 @@ def check_indexes(check_func, value):
 	for set_name, index_path in zip(SET_NAMES, INDEX_PATHS):
 		check_func(set_name, index_path, value)
 
+def create_cdt_indexes(create_func, bin_type, index_type, ctx_type):
+	"""
+	Invokes the given cdt index creation function for all set names, index
+	names, index paths and ctx.
+	"""
+	for set_name, index_path, index_name, ctx in zip(SET_NAMES, INDEX_PATHS, INDEX_NAMES, CTX[ctx_type]):
+		create_func(set_name, index_path, index_name, bin_type, index_type, ctx)
+
+
+def test_integer_list_cdt_index_with_ctx():
+	"""
+	Tests cdt indexes on list with ctx across all set names, index names, 
+	bin types, and list-realted ctx (list_index, list_rank, list_value)
+	"""
+	backup_and_restore(
+		lambda context: create_cdt_indexes(lib.create_cdt_index, aerospike.INDEX_NUMERIC,\
+			 aerospike.INDEX_TYPE_LIST, "list_int"),
+		None,
+		lambda context: check_indexes(lib.check_list_index, 12345),
+		restore_delay=1
+	)
+	
 def test_integer_index():
 	"""
 	Tests integer indexes across all set names, index names, and index paths.

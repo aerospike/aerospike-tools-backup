@@ -4,6 +4,7 @@
 Utility functions for automated tests.
 """
 
+from optparse import Option
 import sys
 import os
 import os.path
@@ -19,6 +20,7 @@ import docker
 
 import aerospike
 from aerospike_client import validate_client, get_client
+from aerospike_helpers import cdt_ctx
 
 WORK_DIRECTORY = "work"
 
@@ -548,6 +550,25 @@ def create_string_map_value_index(set_name, bin_name, index_name):
 	assert ret == 0, "Unexpected error while creating index"
 	GLOBALS["indexes"].append(index_name)
 
+def create_cdt_index(set_name, bin_name, index_name, bin_type, index_type, ctx):
+	"""
+	Creates a cdt index with ctx.
+	"""
+	# validate
+	ret = -1
+	for _ in range(CLIENT_ATTEMPTS):
+		try:
+			ret = get_client().index_cdt_create(NAMESPACE, set_name, bin_name, \
+					index_type, bin_type, index_name, ctx)
+			break
+		except aerospike.exception.IndexFoundError:
+			safe_sleep(0.5)
+		#except aerospike.exception.AerospikeError as e:
+			#print("error happend due to {0}".format(e))
+			#safe_sleep(0.5)
+	assert ret == 0, "Unexpected error while creating index"
+	GLOBALS["indexes"].append(index_name)
+
 def random_alphameric():
 	"""
 	Generates a random alphanumeric character.
@@ -690,6 +711,51 @@ def index_variations(max_len):
 	variations.append(identifier_with_space(max_len, CHAR_TYPE_ALPHAMERIC))
 	return variations
 
+def ctx_list_ops(bin_type="int"):
+	"""
+	Generates a whole bunch of ctx that are suitable for list index(es).
+	"""
+	variations = []
+	variations.append(cdt_ctx.cdt_ctx_list_index(0))
+	variations.append(cdt_ctx.cdt_ctx_list_index(-1))
+	variations.append([cdt_ctx.cdt_ctx_list_index(1),cdt_ctx.cdt_ctx_list_index(0)])
+	variations.append(cdt_ctx.cdt_ctx_list_rank(-1))
+	variations.append([cdt_ctx.cdt_ctx_list_rank(1),cdt_ctx.cdt_ctx_list_index(0)])
+	variations.append([cdt_ctx.cdt_ctx_list_index(0), cdt_ctx.cdt_ctx_map_index(0)])
+	variations.append(cdt_ctx.cdt_ctx_list_value("test" if bin_type=="str" else 123456))
+	variations.append(cdt_ctx.cdt_ctx_list_value("sOmE random StrIng With sP@CE" if bin_type=="str" else 123456789))
+	return variations
+
+def ctx_map_ops(bin_type="int"):
+	"""
+	Generates a whole bunch of ctx that are suitable for map key/value index(es).
+	"""
+	variations = []
+	variations.append(cdt_ctx.cdt_ctx_map_index(0))
+	variations.append(cdt_ctx.cdt_ctx_map_index(-1))
+	variations.append([cdt_ctx.cdt_ctx_map_index(0), cdt_ctx.cdt_ctx_list_index(0)])
+	variations.append([cdt_ctx.cdt_ctx_map_index(0), cdt_ctx.cdt_ctx_list_rank(-1)])
+	variations.append(cdt_ctx.cdt_ctx_map_rank(-1))
+	variations.append(cdt_ctx.cdt_ctx_map_key("test-key" if bin_type=="str" else 123456))
+	variations.append(cdt_ctx.cdt_ctx_map_key("sOmE random StrIng With sP@CE" if bin_type=="str" else 123456789))
+	variations.append([cdt_ctx.cdt_ctx_map_key("test-key" if bin_type=="str" else 123456), cdt_ctx.cdt_ctx_map_rank(1)])
+	variations.append(cdt_ctx.cdt_ctx_map_value("test-key" if bin_type=="str" else 123456))
+	variations.append(cdt_ctx.cdt_ctx_map_value("sOmE random StrIng With sP@CE" if bin_type=="str" else 123456789))
+	variations.append([cdt_ctx.cdt_ctx_map_value("test-key" if bin_type=="str" else 123456), cdt_ctx.cdt_ctx_list_rank(-1)])
+	return variations
+
+def ctx_variations():
+	"""
+	Generate sample ctx that are suitable for secondary index(es) on nested CDTs
+	"""
+	ctx_types = {
+		"list_int": ctx_list_ops(),
+		"list_str": ctx_list_ops(bin_type="str"),
+		"map_int": ctx_map_ops(),
+		"map_str": ctx_map_ops(bin_type="str"),
+	}
+	return ctx_types
+	
 if __name__ == "__main__":
 	pass
 

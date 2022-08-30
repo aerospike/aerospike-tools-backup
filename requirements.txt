@@ -1,4 +1,4 @@
-aerospike~=6.1.0
+aerospike~=7.0.1
 docker
 pytest
 pylint

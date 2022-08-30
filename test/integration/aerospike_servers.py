@@ -22,7 +22,7 @@ N_NODES = 2
 
 WORK_DIRECTORY = lib.WORK_DIRECTORY
 
-SERVER_IMAGE = "aerospike/aerospike-server:5.7.0.17"
+SERVER_IMAGE = "aerospike/aerospike-server:6.0.0.1"
 
 STATE_DIRECTORIES = ["state-%d" % i for i in range(1, N_NODES+1)]
 UDF_DIRECTORIES = ["udf-%d" % i for i in range(1, N_NODES+1)]
@@ -202,7 +202,7 @@ def start_aerospike_servers(keep_work_dir=False):
 
 		print("Connecting client")
 		config = {
-			"hosts": [("127.0.0.1", lib.PORT)],
+			"hosts": [("localhost", lib.PORT)],
 			"policies": {
 				"read": {
 					"max_retries": 5
@@ -262,8 +262,9 @@ def stop_aerospike_servers(keep_work_dir=False):
 	remove_state_dirs()
 
 	if not keep_work_dir:
-		remove_work_dir()
-
+		#remove_work_dir()
+		pass
+		
 def reset_aerospike_servers(keep_metadata=False):
 	"""
 	Reset: disconnects the client, stops asd, restarts asd, reconnects the client.
