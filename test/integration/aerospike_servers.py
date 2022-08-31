@@ -22,7 +22,7 @@ N_NODES = 2
 
 WORK_DIRECTORY = lib.WORK_DIRECTORY
 
-SERVER_IMAGE = "aerospike/aerospike-server:6.0.0.1"
+SERVER_IMAGE = "aerospike/aerospike-server:6.1.0.1"
 
 STATE_DIRECTORIES = ["state-%d" % i for i in range(1, N_NODES+1)]
 UDF_DIRECTORIES = ["udf-%d" % i for i in range(1, N_NODES+1)]
@@ -182,7 +182,9 @@ def start_aerospike_servers(keep_work_dir=False):
 					None if index == 1 else (first_ip, first_base),
 					index)
 			cmd = '/usr/bin/asd --foreground --config-file %s --instance %s' % ('/opt/aerospike/work/' + lib.get_file(conf_file, base=mount_dir), str(index - 1))
+			
 			print('running in docker: %s' % cmd)
+
 			container = DOCKER_CLIENT.containers.run(SERVER_IMAGE,
 					command=cmd,
 					ports={
@@ -197,7 +199,6 @@ def start_aerospike_servers(keep_work_dir=False):
 			if index == 1:
 				container.reload()
 				first_ip = container.attrs["NetworkSettings"]["Networks"]["bridge"]["IPAddress"]
-
 		#del os.environ["LD_PRELOAD"]
 
 		print("Connecting client")
@@ -262,8 +263,7 @@ def stop_aerospike_servers(keep_work_dir=False):
 	remove_state_dirs()
 
 	if not keep_work_dir:
-		#remove_work_dir()
-		pass
+		remove_work_dir()
 		
 def reset_aerospike_servers(keep_metadata=False):
 	"""

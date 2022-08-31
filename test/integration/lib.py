@@ -3,8 +3,6 @@
 """
 Utility functions for automated tests.
 """
-
-from optparse import Option
 import sys
 import os
 import os.path
@@ -390,6 +388,44 @@ def check_map_value_index(set_name, bin_name, value):
 	"""
 	check_complex_index(set_name, bin_name, aerospike.INDEX_TYPE_MAPVALUES, value)
 
+def cdt_index_found_in_info_res(response, set_name, bin_name, index_type):
+	"""
+	Test presense of a given secondary index in client's response to info cmd
+	"""
+	found = False
+	itype = {
+		aerospike.INDEX_TYPE_MAPVALUES : "mapvalues",
+		aerospike.INDEX_TYPE_MAPKEYS : "mapkeys",
+		aerospike.INDEX_TYPE_LIST : "list"
+	}
+	expected_values = {"ns": NAMESPACE, "set": set_name, "indexname": bin_name, "indextype": itype[index_type]}
+	for info_digest in response:
+		records = response[info_digest][1].split(";")
+		for sindex in records:
+			res_values = dict(p.split("=") for p in sindex.split(":"))
+			found = all(expected_values.get(key) == res_values.get(key) for key in expected_values.keys())
+			if found:
+				found if res_values["context"] != None else False # context should have a value
+				return found
+	return found
+
+def check_cdt_index(set_name, bin_name, index_type):
+	"""
+	Test presense of a bin-name, index-type and ctx by calling an info command
+	on seconadary index(es)
+	"""
+	res = False
+	for _ in range (CLIENT_ATTEMPTS):
+		try:
+			responses = get_client().info_all("sindex-list:ns=", NAMESPACE)
+			if cdt_index_found_in_info_res(responses, set_name, bin_name, index_type):
+				res = True
+				break	
+		except:
+			safe_sleep(0.5)
+
+	assert res == False, "Unexpected error while checking cdt index {0}".format(bin_name)
+
 def validate_index_creation(set_name, bin_name, index_name):
 	"""
 	Validates the string parameters for the index creation functions.
@@ -554,18 +590,19 @@ def create_cdt_index(set_name, bin_name, index_name, bin_type, index_type, ctx):
 	"""
 	Creates a cdt index with ctx.
 	"""
-	# validate
+	validate_index_creation(set_name, bin_name, index_name)
 	ret = -1
 	for _ in range(CLIENT_ATTEMPTS):
 		try:
 			ret = get_client().index_cdt_create(NAMESPACE, set_name, bin_name, \
-					index_type, bin_type, index_name, ctx)
+					index_type, bin_type, index_name, {'ctx': ctx})
 			break
 		except aerospike.exception.IndexFoundError:
+			# found the index in the database, meaning it wasn't fully deleted, pause and try again
 			safe_sleep(0.5)
-		#except aerospike.exception.AerospikeError as e:
-			#print("error happend due to {0}".format(e))
-			#safe_sleep(0.5)
+		except aerospike.exception.AerospikeError as e:
+			print("Error while creating a cdt index: {0} [{1}]".format(e.msg, e.code))			
+		
 	assert ret == 0, "Unexpected error while creating index"
 	GLOBALS["indexes"].append(index_name)
 
@@ -716,14 +753,16 @@ def ctx_list_ops(bin_type="int"):
 	Generates a whole bunch of ctx that are suitable for list index(es).
 	"""
 	variations = []
-	variations.append(cdt_ctx.cdt_ctx_list_index(0))
-	variations.append(cdt_ctx.cdt_ctx_list_index(-1))
+	variations.append([cdt_ctx.cdt_ctx_list_index(0)])
+	variations.append([cdt_ctx.cdt_ctx_list_index(-1)])
 	variations.append([cdt_ctx.cdt_ctx_list_index(1),cdt_ctx.cdt_ctx_list_index(0)])
-	variations.append(cdt_ctx.cdt_ctx_list_rank(-1))
+	variations.append([cdt_ctx.cdt_ctx_list_rank(-1)])
 	variations.append([cdt_ctx.cdt_ctx_list_rank(1),cdt_ctx.cdt_ctx_list_index(0)])
 	variations.append([cdt_ctx.cdt_ctx_list_index(0), cdt_ctx.cdt_ctx_map_index(0)])
-	variations.append(cdt_ctx.cdt_ctx_list_value("test" if bin_type=="str" else 123456))
-	variations.append(cdt_ctx.cdt_ctx_list_value("sOmE random StrIng With sP@CE" if bin_type=="str" else 123456789))
+	variations.append([cdt_ctx.cdt_ctx_list_index(0), cdt_ctx.cdt_ctx_map_value(0)])
+	variations.append([cdt_ctx.cdt_ctx_list_value("test" if bin_type=="str" else 123456)])
+	variations.append([cdt_ctx.cdt_ctx_list_value("sOmE random StrIng With sP@CE" if bin_type=="str" else 123456789)])
+	variations.append([cdt_ctx.cdt_ctx_list_value("test" if bin_type=="str" else 123456),cdt_ctx.cdt_ctx_list_rank(-1)])
 	return variations
 
 def ctx_map_ops(bin_type="int"):
@@ -731,16 +770,15 @@ def ctx_map_ops(bin_type="int"):
 	Generates a whole bunch of ctx that are suitable for map key/value index(es).
 	"""
 	variations = []
-	variations.append(cdt_ctx.cdt_ctx_map_index(0))
-	variations.append(cdt_ctx.cdt_ctx_map_index(-1))
+	variations.append([cdt_ctx.cdt_ctx_map_index(-1)])
 	variations.append([cdt_ctx.cdt_ctx_map_index(0), cdt_ctx.cdt_ctx_list_index(0)])
 	variations.append([cdt_ctx.cdt_ctx_map_index(0), cdt_ctx.cdt_ctx_list_rank(-1)])
-	variations.append(cdt_ctx.cdt_ctx_map_rank(-1))
-	variations.append(cdt_ctx.cdt_ctx_map_key("test-key" if bin_type=="str" else 123456))
-	variations.append(cdt_ctx.cdt_ctx_map_key("sOmE random StrIng With sP@CE" if bin_type=="str" else 123456789))
+	variations.append([cdt_ctx.cdt_ctx_map_rank(-1)])
+	variations.append([cdt_ctx.cdt_ctx_map_key("test-key" if bin_type=="str" else 123456)])
+	variations.append([cdt_ctx.cdt_ctx_map_key("sOmE random StrIng With sP@CE" if bin_type=="str" else 123456789)])
 	variations.append([cdt_ctx.cdt_ctx_map_key("test-key" if bin_type=="str" else 123456), cdt_ctx.cdt_ctx_map_rank(1)])
-	variations.append(cdt_ctx.cdt_ctx_map_value("test-key" if bin_type=="str" else 123456))
-	variations.append(cdt_ctx.cdt_ctx_map_value("sOmE random StrIng With sP@CE" if bin_type=="str" else 123456789))
+	variations.append([cdt_ctx.cdt_ctx_map_value("test-key" if bin_type=="str" else 123456)])
+	variations.append([cdt_ctx.cdt_ctx_map_value("sOmE random StrIng With sP@CE" if bin_type=="str" else 123456789)])
 	variations.append([cdt_ctx.cdt_ctx_map_value("test-key" if bin_type=="str" else 123456), cdt_ctx.cdt_ctx_list_rank(-1)])
 	return variations
 
