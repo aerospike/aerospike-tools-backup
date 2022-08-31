@@ -74,6 +74,11 @@ record_uploader_flush(record_uploader_t* uploader)
 		return false;
 	}
 
+	for (int i = 0; i < uploader->records.size; i++) {
+		as_rec* rec_to_free = as_vector_get(&uploader->records, i);
+		as_rec_destroy(rec_to_free);
+	}
+
 	as_vector_clear(&uploader->records);
 
 	return true;
