@@ -1510,6 +1510,7 @@ parse_index_info(char *ns, char *index_str, index_param *index)
 	index->name = NULL;
 	index->type = INDEX_TYPE_INVALID;
 	index->ctx = NULL;
+
 	as_vector_init(&index->path_vec, sizeof (path_param), 25);
 
 	char *path = NULL;
