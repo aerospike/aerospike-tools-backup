@@ -1,7 +1,7 @@
 name: Mac Artifact
 on:
   push:
-    branches: [ master, test-ready ]
+    branches: [ master, test-ready, TOOLS-2137-uploader-leak ]
   workflow_call:
     inputs:
       submodule:
