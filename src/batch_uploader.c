@@ -281,13 +281,14 @@ _batch_tracker_alloc(batch_uploader_t* uploader, as_batch_records* batch,
 static void
 _batch_tracker_destroy(batch_tracker_t* tracker)
 {
+	_free_batch_records(tracker->batch, tracker->ops);
+
 	for (uint32_t i = 0; i < tracker->records.size; ++i) {
 		as_record* rec = as_vector_get(&tracker->records, i);
 		cf_free(rec->bins.entries);
 	}
 
 	as_vector_destroy(&tracker->records);
-	_free_batch_records(tracker->batch, tracker->ops);
 	cf_free(tracker);
 }
 
