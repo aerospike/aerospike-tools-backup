@@ -281,8 +281,18 @@ _batch_tracker_alloc(batch_uploader_t* uploader, as_batch_records* batch,
 static void
 _batch_tracker_destroy(batch_tracker_t* tracker)
 {
-	as_vector_destroy(&tracker->records);
 	_free_batch_records(tracker->batch, tracker->ops);
+
+	for (uint32_t i = 0; i < tracker->records.size; ++i) {
+		as_record* rec = as_vector_get(&tracker->records, i);
+		// the bin values for each record have count 1 here
+		// even after _free_batch_records
+		// because they were reserved by the tracker->ops
+		// in _submit_batch()
+		as_record_destroy(rec);
+	}
+
+	as_vector_destroy(&tracker->records);
 	cf_free(tracker);
 }
 
@@ -317,6 +327,11 @@ _record_batch_tracker_alloc(batch_uploader_t* uploader, as_vector* records)
 static void
 _record_batch_tracker_destroy(record_batch_tracker_t* tracker)
 {
+	for (uint32_t i = 0; i < tracker->records.size; ++i) {
+		as_rec* rec_to_free = as_vector_get(&tracker->records, i);
+		as_rec_destroy(rec_to_free);
+	}
+
 	as_vector_destroy(&tracker->records);
 	cf_free(tracker);
 }
