@@ -948,6 +948,7 @@ _submit_batch(batch_uploader_t* uploader, as_vector* records)
 			_release_async_slot(uploader);
 			return false;
 		}
+		as_val_reserve(batch_write->key.valuep);
 
 		// write the record as a series of bin-ops on the key
 		as_operations* op = &ops[i];
