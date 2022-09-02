@@ -285,9 +285,9 @@ _batch_tracker_destroy(batch_tracker_t* tracker)
 
 	for (uint32_t i = 0; i < tracker->records.size; ++i) {
 		as_record* rec = as_vector_get(&tracker->records, i);
-		// the bin values for each record have count 1 here
-		// even after _free_batch_records
-		// because they were reserved by the tracker->ops
+		// the bin values and key valuep for each record
+		// have count 1 here even after _free_batch_records
+		// because they were reserved by the tracker->batch/ops
 		// in _submit_batch()
 		as_record_destroy(rec);
 	}
