@@ -145,7 +145,7 @@ def temporary_path(extension):
 	GLOBALS["file_count"] += 1
 	return absolute_path(os.path.join(WORK_DIRECTORY, file_name))
 
-def run(command, *options, do_async=False, pipe_stdout=None, pipe_stdin=None, env={}):
+def run(command, *options, do_async=False, pipe_stdout=None, pipe_stdin=None, env={}, RUN_IN_DOCKER=False):
 	"""
 	Runs the given command with the given options.
 	"""
@@ -153,8 +153,18 @@ def run(command, *options, do_async=False, pipe_stdout=None, pipe_stdin=None, en
 	directory = absolute_path("../..")
 	command = [os.path.join("test_target", command)] + list(options)
 
+	if RUN_IN_DOCKER:
+		# Run valgrind based tests inside docker
+		docker_images = DOCKER_CLIENT.containers.list()
+		if len(docker_images) == 0:
+			print("NO DOCKER IMAGES FOUND")
+			return -1
+		doc_command = "docker exec -t {0} sh -c".format(docker_images[0].name).split()
+		USE_VALGRIND = True
+
 	if USE_VALGRIND:
-		command = ["./val.sh"] + command
+		#command = doc_command + ["./val.sh"] + command
+		command = doc_command + ["valgrind --leak-resolution=high -v".join(command)]
 
 	print("Executing", command, "in", directory)
 	if do_async:
