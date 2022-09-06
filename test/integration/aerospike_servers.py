@@ -202,7 +202,7 @@ def start_aerospike_servers(keep_work_dir=False):
 
 		print("Connecting client")
 		config = {
-			"hosts": [("127.0.0.1", lib.PORT)],
+			"hosts": [("localhost", lib.PORT)],
 			"policies": {
 				"read": {
 					"max_retries": 5

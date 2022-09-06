@@ -151,7 +151,7 @@ def run(command, *options, do_async=False, pipe_stdout=None, pipe_stdin=None, en
 	"""
 	print("Running", command, "with options", options)
 	directory = absolute_path("../..")
-	command = [os.path.join("test_target", command)] + list(options)
+	doc_command = []
 
 	if RUN_IN_DOCKER:
 		# Run valgrind based tests inside docker
@@ -159,13 +159,18 @@ def run(command, *options, do_async=False, pipe_stdout=None, pipe_stdin=None, en
 		if len(docker_images) == 0:
 			print("NO DOCKER IMAGES FOUND")
 			return -1
-		doc_command = "docker exec -t {0} sh -c".format(docker_images[0].name).split()
+		doc_command = ("docker exec -t {0} sh -c".format(docker_images[0].name)).split()
 		USE_VALGRIND = True
 
 	if USE_VALGRIND:
 		#command = doc_command + ["./val.sh"] + command
-		command = doc_command + ["valgrind --leak-resolution=high -v".join(command)]
+		doc_command = doc_command + ["/usr/bin/valgrind --leak-resolution=high -v"]
 
+	command = [os.path.join("test_target", command)] + list(options)
+
+	if doc_command:
+		command = doc_command + [" ".join(command)]
+	
 	print("Executing", command, "in", directory)
 	if do_async:
 		# preexec_fn is used to place the subprocess in a different process group
@@ -177,8 +182,8 @@ def run(command, *options, do_async=False, pipe_stdout=None, pipe_stdin=None, en
 			env=dict(os.environ, **env)))
 	else:
 		subprocess.check_call(command, cwd=directory,
-				stdin=pipe_stdin,
-				env=dict(os.environ, **env))
+				stdin=pipe_stdin)
+				#env=dict(os.environ, **env))
 		return 0
 
 def get_file(path, base=None):

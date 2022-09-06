@@ -5,8 +5,9 @@ Aerospike backup tool running utilities.
 """
 
 import os
-
+import time
 import aerospike_servers as as_srv
+import test_w_valgrind
 import lib
 
 def backup(*options, env={}, do_async=False, pipe_stdout=None):
@@ -136,7 +137,6 @@ def backup_and_restore(filler, preparer, checker, env={}, backup_opts=None,
 			break
 
 		try:
-
 			if lib.is_dir_mode():
 				path = lib.temporary_path("dir")
 				backup_to_directory(path, *(backup_opts + comp_enc_mode), env=env)
@@ -168,3 +168,35 @@ def backup_and_restore(filler, preparer, checker, env={}, backup_opts=None,
 			raise
 	as_srv.reset_aerospike_servers()
 
+def run_backup_w_valgrind(*backup_options):
+	"""
+	Run asbackup command with given options using valgrind
+	"""
+	as_srv.start_aerospike_servers()
+
+	test_w_valgrind.install_valgrind()
+
+	try:
+		lib.run("asbackup", *backup_options, do_async=False,
+				pipe_stdout=None, env={}, RUN_IN_DOCKER=True)
+	except:
+		as_srv.reset_aerospike_servers()
+		raise
+	
+	as_srv.reset_aerospike_servers()
+
+def run_restore_w_valgrind(*restore_options):
+	"""
+	Run asrestore command with given options using valgrind
+	"""
+	as_srv.start_aerospike_servers()
+
+	test_w_valgrind.install_valgrind()
+	try:
+		lib.run("asbackup", *restore_options, do_async=False,
+				pipe_stdout=None, env={}, RUN_IN_DOCKER=True)
+	except:
+		as_srv.reset_aerospike_servers()
+		raise
+
+	as_srv.reset_aerospike_servers()
