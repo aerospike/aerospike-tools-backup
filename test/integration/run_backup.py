@@ -7,7 +7,7 @@ Aerospike backup tool running utilities.
 import os
 import time
 import aerospike_servers as as_srv
-import test_w_valgrind
+import test_w_valgrind 
 import lib
 
 def backup(*options, env={}, do_async=False, pipe_stdout=None):
@@ -173,19 +173,22 @@ def run_backup_w_valgrind(*backup_options):
 	Run asbackup command with given options using valgrind
 	"""
 	as_srv.start_aerospike_servers()
-
+	#time.sleep(5)
 	test_w_valgrind.install_valgrind()
+	#time.sleep(5)
 
 	try:
-		lib.run("asbackup", *backup_options, do_async=False,
-				pipe_stdout=None, env={}, RUN_IN_DOCKER=True)
+		with open("val_bc.log", "w") as pipe_stdout:
+			lib.run("asbackup", *backup_options, do_async=False,
+				pipe_stdout=pipe_stdout, env={}, RUN_IN_DOCKER=True)
+		res = test_w_valgrind.parse_val_logs("val_bc.log")
+		print("RUN BCKUP WITH VALGRIND RES OF PARSER ", res)
 	except:
 		as_srv.reset_aerospike_servers()
 		raise
-	
 	as_srv.reset_aerospike_servers()
 
-def run_restore_w_valgrind(*restore_options):
+def run_restore_w_valgrind(*restore_options, pipe_stdout=None):
 	"""
 	Run asrestore command with given options using valgrind
 	"""
@@ -194,7 +197,7 @@ def run_restore_w_valgrind(*restore_options):
 	test_w_valgrind.install_valgrind()
 	try:
 		lib.run("asbackup", *restore_options, do_async=False,
-				pipe_stdout=None, env={}, RUN_IN_DOCKER=True)
+			pipe_stdout=pipe_stdout, env={}, RUN_IN_DOCKER=True)
 	except:
 		as_srv.reset_aerospike_servers()
 		raise
