@@ -14,7 +14,7 @@ import random
 import math
 import signal
 import asyncio
-
+import re
 import docker
 
 import aerospike
@@ -33,6 +33,11 @@ else:
 	USE_VALGRIND = False
 DOCKER_CLIENT = docker.from_env()
 
+# For tests with valgrind, asbackup is built from the source inside a docker image
+DOCKER_IMAGE = "" # used for valgrind tests
+TOOLS_VERSION = "aerospike-tools-7.2.0.ubuntu18.04.x86_64.deb"
+TOOLS_PACKAGE = "http://build.browser.qe.aerospike.com/citrusleaf/aerospike-tools/7.2.0/build/ubuntu-18.04/default/artifacts/{0}".format(TOOLS_VERSION)
+    
 NO_TTL = [0, -1, 4294967295] # these all mean "no TTL" in the test setup
 GLOBALS = { "file_count": 0, "dir_mode": False }
 
@@ -155,18 +160,17 @@ def run(command, *options, do_async=False, pipe_stdout=None, pipe_stdin=None, en
 	
 	if RUN_IN_DOCKER:
 		# Run valgrind based tests inside docker
-		docker_images = DOCKER_CLIENT.containers.list()
-		if len(docker_images) == 0:
+		if DOCKER_IMAGE == "":
 			print("NO DOCKER IMAGES FOUND")
 			return -1
-		doc_command = ("docker exec -t {0} sh -c".format(docker_images[0].name)).split()
+		doc_command = ("docker exec -t {0} sh -c".format(DOCKER_IMAGE)).split()
 		USE_VALGRIND = True
+		container_ip = DOCKER_CLIENT.containers.get(DOCKER_IMAGE).attrs["NetworkSettings"]["Gateway"]
 
 		if USE_VALGRIND:
-			#command = doc_command + ["./val.sh"] + command
-			#command = doc_command + ["./val.sh -v {0} {1}".format(command, " ".join(options))]
-			command = doc_command + ["/usr/bin/valgrind --leak-resolution=high -v {0} {1}".format(command, " ".join(options))]
+			command = doc_command + ["/usr/bin/valgrind --leak-resolution=high -v {0} -h {1} {2}".format(command, container_ip, " ".join(options))]
 	else:
+		# use locally built asbackup for non in-docker mode tests 
 		command = [os.path.join("test_target", command)] + list(options)
 
 	print("Executing", command, "in", directory)
@@ -181,6 +185,7 @@ def run(command, *options, do_async=False, pipe_stdout=None, pipe_stdin=None, en
 	else:
 		subprocess.check_call(command, cwd=directory,
 				stdin=pipe_stdin,
+				stdout=pipe_stdout,
 				env=dict(os.environ, **env))
 		return 0
 
@@ -702,6 +707,66 @@ def index_variations(max_len):
 	variations.append(identifier_with_space(max_len / 2, CHAR_TYPE_ALPHAMERIC))
 	variations.append(identifier_with_space(max_len, CHAR_TYPE_ALPHAMERIC))
 	return variations
+
+def install_valgrind():
+	docker_images = DOCKER_CLIENT.containers.list()
+	if len(docker_images) == 0:
+		print("NO DOCKER IMAGE FOUND")
+		return -1
+	cmd = "docker exec -t {0} sh -c".format(docker_images[0].name).split()
+	try:
+		cmd_check_install = [" valgrind --version"]
+		subprocess.check_call(cmd + cmd_check_install)
+	except: # valgrind need to be installed
+		cmd_install = "apt update && apt install -y valgrind && apt install -y wget && wget {0} && dpkg -i {1} && mkdir test".format(TOOLS_PACKAGE, TOOLS_VERSION)
+		cmd.append(str(cmd_install))
+		try:
+			subprocess.check_call(cmd)
+		except:
+			print("Exception occured during installing valgrind and other packages.")
+	DOCKER_IMAGE = docker_images[0].name
+
+def check_packages_installed():
+	if DOCKER_IMAGE == "":
+		print("NO DOCKER IMAGE FOUND")
+		return -1
+	cmd = "docker exec -t {0} sh -c".format(DOCKER_IMAGE).split()
+	try:
+		cmd_check_install = [" valgrind --version && asbackup --version"]
+		subprocess.check_call(cmd + cmd_check_install)
+	except: # valgrind need to be installed
+		print("Valgrind and asbackup have not installed properly!")
+		return False
+	return True
+
+def parse_val_logs(log_file):
+    res = True
+    HEAP_SUMMARY = re.compile("in use at exit: \d+ bytes")
+    ERROR_SUMMARY = re.compile("ERROR SUMMARY: \d+ errors")
+    heap_sum = []
+    error = []
+    try:
+        with open(log_file, "r") as f:
+            for line in f.readlines():
+                heap_sum = HEAP_SUMMARY.findall(line)
+                if len(heap_sum) >= 1:
+                    unfree_heap = re.findall(r'\d+', heap_sum[0])
+                    if unfree_heap[0] != "0":
+                        print("VALGRIND HEAP SUMMARY: {0} bytes in use at exit".format(unfree_heap[0]))
+                        res = False
+                
+                error = ERROR_SUMMARY.findall(line)
+                if len(error) >= 1:
+                    tot_errors = re.findall(r'\d+', error[0])
+                    if tot_errors[0] != "0":
+                        print("VALGRIND ERROR SUMMARY: {0} errors".format(tot_errors[0]))
+                        res = False
+    except Exception as e:
+        print("Unexpected error occured while parsing valgrind logs ", str(e))
+        res = False
+
+    os.remove(log_file)
+    return res
 
 if __name__ == "__main__":
 	pass

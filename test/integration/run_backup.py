@@ -7,7 +7,6 @@ Aerospike backup tool running utilities.
 import os
 import time
 import aerospike_servers as as_srv
-import test_w_valgrind 
 import lib
 
 def backup(*options, env={}, do_async=False, pipe_stdout=None):
@@ -74,7 +73,6 @@ def backup_async(filler, context={}, path=None, env={}, backup_opts=None,
 	filler(context)
 
 	try:
-
 		if lib.is_dir_mode():
 			if path is None:
 				path = lib.temporary_path("dir")
@@ -168,38 +166,45 @@ def backup_and_restore(filler, preparer, checker, env={}, backup_opts=None,
 			raise
 	as_srv.reset_aerospike_servers()
 
-def run_backup_w_valgrind(*backup_options):
+def run_backup_w_valgrind(filler, context={}, backup_options=None):
 	"""
 	Run asbackup command with given options using valgrind
 	"""
 	as_srv.start_aerospike_servers()
-	#time.sleep(5)
-	test_w_valgrind.install_valgrind()
-	#time.sleep(5)
+	lib.install_valgrind()
 
-	try:
-		with open("val_bc.log", "w") as pipe_stdout:
-			lib.run("asbackup", *backup_options, do_async=False,
-				pipe_stdout=pipe_stdout, env={}, RUN_IN_DOCKER=True)
-		res = test_w_valgrind.parse_val_logs("val_bc.log")
-		print("RUN BCKUP WITH VALGRIND RES OF PARSER ", res)
-	except:
+	filler(context)
+	if lib.check_packages_installed():
+		try:
+			with open("val_bc.log", "w") as pipe_stdout:
+				lib.run("asbackup", *backup_options, do_async=False,
+					pipe_stdout=pipe_stdout, env={}, RUN_IN_DOCKER=True)
+			res = lib.parse_val_logs("val_bc.log")
+		except:
+			as_srv.reset_aerospike_servers()
+			raise
 		as_srv.reset_aerospike_servers()
-		raise
-	as_srv.reset_aerospike_servers()
+		return res
+	else:
+		print("cannot proceed backup tests with valgrind")
+		return False
 
-def run_restore_w_valgrind(*restore_options, pipe_stdout=None):
+def run_restore_w_valgrind(*restore_options):
 	"""
 	Run asrestore command with given options using valgrind
 	"""
 	as_srv.start_aerospike_servers()
-
-	test_w_valgrind.install_valgrind()
-	try:
-		lib.run("asbackup", *restore_options, do_async=False,
-			pipe_stdout=pipe_stdout, env={}, RUN_IN_DOCKER=True)
-	except:
+	lib.install_valgrind()
+	if lib.check_packages_installed():
+		try:
+			with open("val_rs.log", "w") as pipe_stdout:
+				lib.run("asrestore", *restore_options, do_async=False,
+					pipe_stdout=pipe_stdout, env={}, RUN_IN_DOCKER=True)
+			res = lib.parse_val_logs("val_rs.log")
+		except:
+			as_srv.reset_aerospike_servers()
+			raise
 		as_srv.reset_aerospike_servers()
-		raise
-
-	as_srv.reset_aerospike_servers()
+		return res
+	print("cannot proceed restore tests with valgrind")
+	return False
