@@ -13,7 +13,7 @@ from run_backup import run_backup_w_valgrind, run_restore_w_valgrind
 import record_gen
 
 DOCKER_CLIENT = docker.from_env()
-path = "test"
+path = "test_dir"
 
 def get_basic_backup_options():
     backup_options = "--directory", path, \

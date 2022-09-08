@@ -3,9 +3,8 @@
 """
 Aerospike backup tool running utilities.
 """
-
-import os
 import time
+
 import aerospike_servers as as_srv
 import lib
 
@@ -171,8 +170,9 @@ def run_backup_w_valgrind(filler, context={}, backup_options=None):
 	Run asbackup command with given options using valgrind
 	"""
 	as_srv.start_aerospike_servers()
+	as_srv.copy_exec()
 	lib.install_valgrind()
-
+	time.sleep(8888)
 	filler(context)
 	if lib.check_packages_installed():
 		try:
@@ -194,6 +194,8 @@ def run_restore_w_valgrind(*restore_options):
 	Run asrestore command with given options using valgrind
 	"""
 	as_srv.start_aerospike_servers()
+	as_srv.copy_exec()
+
 	lib.install_valgrind()
 	if lib.check_packages_installed():
 		try:

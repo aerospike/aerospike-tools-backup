@@ -29,6 +29,9 @@ UDF_DIRECTORIES = ["udf-%d" % i for i in range(1, N_NODES+1)]
 
 LUA_DIRECTORY = lib.absolute_path(WORK_DIRECTORY, "lua")
 
+# make asbackup/asrestore executables accessible to docker
+EXEC_DIRECTORY = lib.absolute_path(WORK_DIRECTORY, "exec")
+
 FAKE_TIME_FILE = "clock_gettime.txt"
 
 DOCKER_CLIENT = docker.from_env()
@@ -91,6 +94,9 @@ def remove_state_dirs():
 
 	if os.path.exists(LUA_DIRECTORY):
 		lib.remove_dir(LUA_DIRECTORY)
+	
+	if os.path.exists(EXEC_DIRECTORY):
+		lib.remove_dir(EXEC_DIRECTORY)
 
 def init_work_dir():
 	"""
@@ -119,6 +125,8 @@ def init_state_dirs():
 		os.mkdir(udf, 0o755)
 
 	os.mkdir(LUA_DIRECTORY, 0o755)
+
+	os.mkdir(EXEC_DIRECTORY, 0o755)
 
 def set_fake_time(seconds):
 	"""
@@ -323,6 +331,8 @@ def stop_silent():
 		sys.stderr = stderr_tmp
 		raise
 
+def copy_exec():
+	pass
 # shut down the aerospike cluster when the tests are over
 atexit.register(stop_silent)
 

@@ -35,6 +35,7 @@ DOCKER_CLIENT = docker.from_env()
 
 # For tests with valgrind, asbackup is built from the source inside a docker image
 DOCKER_IMAGE = "" # used for valgrind tests
+VAL_SUP_FILE = "val.supp"
 TOOLS_VERSION = "aerospike-tools-7.2.0.ubuntu18.04.x86_64.deb"
 TOOLS_PACKAGE = "http://build.browser.qe.aerospike.com/citrusleaf/aerospike-tools/7.2.0/build/ubuntu-18.04/default/artifacts/{0}".format(TOOLS_VERSION)
     
@@ -168,7 +169,9 @@ def run(command, *options, do_async=False, pipe_stdout=None, pipe_stdin=None, en
 		container_ip = DOCKER_CLIENT.containers.get(DOCKER_IMAGE).attrs["NetworkSettings"]["Gateway"]
 
 		if USE_VALGRIND:
-			command = doc_command + ["/usr/bin/valgrind --leak-resolution=high -v {0} -h {1} {2}".format(command, container_ip, " ".join(options))]
+			val_args = "--track-fds=yes --leak-check=full --track-origins=yes --show-reachable=yes --suppressions={0}".\
+				format(absolute_path(os.path.join(WORK_DIRECTORY, VAL_SUP_FILE)))
+			command = doc_command + ["/usr/bin/valgrind {0} -v {1} -h {2} {3}".format(val_args, os.path.join("exec", command), container_ip, " ".join(options))]
 	else:
 		# use locally built asbackup for non in-docker mode tests 
 		command = [os.path.join("test_target", command)] + list(options)
@@ -718,10 +721,13 @@ def install_valgrind():
 		cmd_check_install = [" valgrind --version"]
 		subprocess.check_call(cmd + cmd_check_install)
 	except: # valgrind need to be installed
-		cmd_install = "apt update && apt install -y valgrind && apt install -y wget && wget {0} && dpkg -i {1} && mkdir test".format(TOOLS_PACKAGE, TOOLS_VERSION)
+		cmd_install = "apt update && apt install -y valgrind && mkdir test_dir " # && apt install -y wget && wget {0} && dpkg -i {1} && mkdir test_dir".\
+				#format(TOOLS_PACKAGE, TOOLS_VERSION)
 		cmd.append(str(cmd_install))
 		try:
 			subprocess.check_call(cmd)
+			# make valgrind supp file accessible to docker image
+			subprocess.check_call("cp {0} {1}".format(absolute_path(VAL_SUP_FILE), absolute_path(WORK_DIRECTORY)))
 		except:
 			print("Exception occured during installing valgrind and other packages.")
 	DOCKER_IMAGE = docker_images[0].name
@@ -732,7 +738,7 @@ def check_packages_installed():
 		return -1
 	cmd = "docker exec -t {0} sh -c".format(DOCKER_IMAGE).split()
 	try:
-		cmd_check_install = [" valgrind --version && asbackup --version"]
+		cmd_check_install = [" valgrind --version && exec/asbackup --version"]
 		subprocess.check_call(cmd + cmd_check_install)
 	except: # valgrind need to be installed
 		print("Valgrind and asbackup have not installed properly!")
