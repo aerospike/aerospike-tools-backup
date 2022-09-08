@@ -22,7 +22,7 @@ START_TEST(test_enc_dec_text)
 {
     io_write_proxy_t wio;
 	WRITE_INIT_MATRIX(wio, TMP_FILE_0, 1);
-    /*
+    
 	char test_ns[] = "test_ns";
 	char sindex_str[] = "ns=test_ns:indexname=test_id:set=testset:bin=test_list:type=numeric:indextype=list:context=lhABI8zIIqMDaWQ=:state=RW";
 	index_param sindex_params;
@@ -63,10 +63,6 @@ START_TEST(test_enc_dec_text)
     cf_free(path);
 	cf_free(path2); 
     as_vector_destroy(&ns_vec);
-    */
-    io_proxy_close2(&wio, FILE_PROXY_EOF);
-    remove(TMP_FILE_0);
-
 }
 END_TEST
 
