@@ -29,7 +29,7 @@ START_TEST(test_enc_dec_text)
 
 	bool res_parse_index = parse_index_info(test_ns, sindex_str, &sindex_params);
 	ck_assert(res_parse_index); // failed parsing sindex
-
+    /*
 	bool res_put = text_put_secondary_index(&wio, &sindex_params);
     io_proxy_flush(&wio);
     ck_assert(res_put); 
@@ -63,6 +63,9 @@ START_TEST(test_enc_dec_text)
     cf_free(path);
 	cf_free(path2); 
     as_vector_destroy(&ns_vec);
+    */
+    io_proxy_close2(&wio, FILE_PROXY_EOF);
+    remove(TMP_FILE_0);
 }
 END_TEST
 
