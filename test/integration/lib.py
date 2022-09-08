@@ -160,7 +160,7 @@ def run(command, *options, do_async=False, pipe_stdout=None, pipe_stdin=None, en
 	doc_command = []
 	
 	val_args = "--track-fds=yes --leak-check=full --track-origins=yes --show-reachable=yes --suppressions={0}".\
-			format(absolute_path(os.path.join(WORK_DIRECTORY, VAL_SUP_FILE)))
+			format(absolute_path(VAL_SUP_FILE))
 
 	if RUN_IN_DOCKER:
 		# Run valgrind based tests inside docker when run-in-docker is set
