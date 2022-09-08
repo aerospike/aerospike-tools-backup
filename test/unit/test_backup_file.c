@@ -34,6 +34,8 @@ START_TEST(test_enc_dec_text)
     io_proxy_flush(&wio);
     ck_assert(res_put); 
     
+    io_proxy_close2(&wio, FILE_PROXY_EOF);
+
 	io_read_proxy_t rio;
 	READ_INIT_MATRIX(rio, TMP_FILE_0, 1);
 
@@ -44,7 +46,8 @@ START_TEST(test_enc_dec_text)
 
     res = text_parse(&rio, false, &ns_vec, NULL, &line_no[0], NULL, 0, false, &sindex_params2, NULL);
     ck_assert_int_eq(res, DECODER_INDEX);
-    
+    io_proxy_close(&rio);
+
     path_param *path = as_vector_get((as_vector *)&sindex_params.path_vec, 0);
     path_param *path2 = as_vector_get((as_vector *)&sindex_params2.path_vec, 0);
     
@@ -57,8 +60,6 @@ START_TEST(test_enc_dec_text)
     ck_assert_str_eq(path->path, path2->path); // bin name
     ck_assert_int_eq(path->type, path2->type); //bin type
 
-    io_proxy_close(&rio);
-    io_proxy_close2(&wio, FILE_PROXY_EOF);
     remove(TMP_FILE_0);
     cf_free(path);
 	cf_free(path2); 
