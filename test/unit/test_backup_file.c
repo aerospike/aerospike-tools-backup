@@ -22,7 +22,7 @@ START_TEST(test_enc_dec_text)
 {
     io_write_proxy_t wio;
 	WRITE_INIT_MATRIX(wio, TMP_FILE_0, 1);
-
+    /*
 	char test_ns[] = "test_ns";
 	char sindex_str[] = "ns=test_ns:indexname=test_id:set=testset:bin=test_list:type=numeric:indextype=list:context=lhABI8zIIqMDaWQ=:state=RW";
 	index_param sindex_params;
@@ -33,7 +33,7 @@ START_TEST(test_enc_dec_text)
 	bool res_put = text_put_secondary_index(&wio, &sindex_params);
     io_proxy_flush(&wio);
     ck_assert(res_put); 
-    /*
+    
 	io_read_proxy_t rio;
 	READ_INIT_MATRIX(rio, TMP_FILE_0, 1);
 
