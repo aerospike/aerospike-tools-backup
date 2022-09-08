@@ -165,14 +165,12 @@ def backup_and_restore(filler, preparer, checker, env={}, backup_opts=None,
 			raise
 	as_srv.reset_aerospike_servers()
 
-def run_backup_w_valgrind(filler, context={}, backup_options=None):
+def run_backup_in_docker(filler, context={}, backup_options=None):
 	"""
-	Run asbackup command with given options using valgrind
+	Run asbackup command with given options inside a docker container
 	"""
 	as_srv.start_aerospike_servers()
-	as_srv.copy_exec()
 	lib.install_valgrind()
-	time.sleep(8888)
 	filler(context)
 	if lib.check_packages_installed():
 		try:
@@ -189,13 +187,11 @@ def run_backup_w_valgrind(filler, context={}, backup_options=None):
 		print("cannot proceed backup tests with valgrind")
 		return False
 
-def run_restore_w_valgrind(*restore_options):
+def run_restore_in_docker(*restore_options):
 	"""
-	Run asrestore command with given options using valgrind
+	Run asrestore command with given options inside a docker container
 	"""
 	as_srv.start_aerospike_servers()
-	as_srv.copy_exec()
-
 	lib.install_valgrind()
 	if lib.check_packages_installed():
 		try:
@@ -210,3 +206,37 @@ def run_restore_w_valgrind(*restore_options):
 		return res
 	print("cannot proceed restore tests with valgrind")
 	return False
+
+def run_backup_w_valgrind(filler, context={}, backup_options=None):
+	"""
+	Run asbackup command with given options using valgrind
+	"""
+	as_srv.start_aerospike_servers()
+	filler(context)
+	try:
+		with open("test_target/val_bc.log", "w") as pipe_stdout:
+			lib.run("asbackup", *backup_options, do_async=False,
+				pipe_stdout=pipe_stdout, env={}, USE_VALGRIND=True)
+		res = lib.parse_val_logs("test_target/val_bc.log")
+	except:
+		as_srv.reset_aerospike_servers()
+		raise
+	as_srv.reset_aerospike_servers()
+	return res
+
+def run_restore_w_valgrind(*restore_options):
+	"""
+	Run asrestore command with given options using valgrind
+	"""
+	as_srv.start_aerospike_servers()
+	try:
+		with open("test_target/val_rs.log", "w") as pipe_stdout:
+			lib.run("asrestore", *restore_options, do_async=False,
+				pipe_stdout=pipe_stdout, env={}, USE_VALGRIND=True)
+		res = lib.parse_val_logs("test_target/val_rs.log")
+	except:
+		as_srv.reset_aerospike_servers()
+		raise
+	as_srv.reset_aerospike_servers()
+	return res
+

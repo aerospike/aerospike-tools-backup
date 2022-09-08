@@ -151,7 +151,7 @@ def temporary_path(extension):
 	GLOBALS["file_count"] += 1
 	return absolute_path(os.path.join(WORK_DIRECTORY, file_name))
 
-def run(command, *options, do_async=False, pipe_stdout=None, pipe_stdin=None, env={}, RUN_IN_DOCKER=False):
+def run(command, *options, do_async=False, pipe_stdout=None, pipe_stdin=None, env={}, RUN_IN_DOCKER=False, USE_VALGRIND= False):
 	"""
 	Runs the given command with the given options.
 	"""
@@ -159,22 +159,24 @@ def run(command, *options, do_async=False, pipe_stdout=None, pipe_stdin=None, en
 	directory = absolute_path("../..")
 	doc_command = []
 	
+	val_args = "--track-fds=yes --leak-check=full --track-origins=yes --show-reachable=yes --suppressions={0}".\
+			format(absolute_path(os.path.join(WORK_DIRECTORY, VAL_SUP_FILE)))
+
 	if RUN_IN_DOCKER:
-		# Run valgrind based tests inside docker
+		# Run valgrind based tests inside docker when run-in-docker is set
 		if DOCKER_IMAGE == "":
 			print("NO DOCKER IMAGES FOUND")
 			return -1
 		doc_command = ("docker exec -t {0} sh -c".format(DOCKER_IMAGE)).split()
-		USE_VALGRIND = True
 		container_ip = DOCKER_CLIENT.containers.get(DOCKER_IMAGE).attrs["NetworkSettings"]["Gateway"]
-
-		if USE_VALGRIND:
-			val_args = "--track-fds=yes --leak-check=full --track-origins=yes --show-reachable=yes --suppressions={0}".\
-				format(absolute_path(os.path.join(WORK_DIRECTORY, VAL_SUP_FILE)))
-			command = doc_command + ["/usr/bin/valgrind {0} -v {1} -h {2} {3}".format(val_args, os.path.join("exec", command), container_ip, " ".join(options))]
+		command = doc_command + ["/usr/bin/valgrind {0} -v {1} -h {2} {3}".format(val_args, command, container_ip, " ".join(options))]
+	
 	else:
 		# use locally built asbackup for non in-docker mode tests 
 		command = [os.path.join("test_target", command)] + list(options)
+	
+	if USE_VALGRIND:
+		command = ["/usr/bin/valgrind {0} -v {1}".format(val_args, command)]
 
 	print("Executing", command, "in", directory)
 	if do_async:

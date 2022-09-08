@@ -24,6 +24,10 @@ jobs:
       id: install-lcov
       run: |
         sudo apt install -y lcov
+    - name: install Valgrind
+      id: install-valgrind
+      run: |
+        sudo apt install -y valgrind
     - name: install AWS requirements
       id: install-aws-requirements
       run: |
