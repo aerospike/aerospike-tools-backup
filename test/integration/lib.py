@@ -176,7 +176,8 @@ def run(command, *options, do_async=False, pipe_stdout=None, pipe_stdin=None, en
 		command = [os.path.join("test_target", command)] + list(options)
 	
 	if USE_VALGRIND:
-		command = ["valgrind --version && valgrind {0} -v {1}".format(val_args, " ".join(command))]
+		#command = ["valgrind {0} -v {1}".format(val_args, " ".join(command))]
+		command = ("valgrind --leak-check=full -v test_target/asbackup --version").split()
 
 	print("Executing", command, "in", directory)
 	if do_async:
