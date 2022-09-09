@@ -3,7 +3,6 @@
 """
 Tests the representation of asbackup/asrestore output runned with valgrind inside a docker container
 """
-from turtle import back
 from unittest.mock import NonCallableMagicMock
 import docker
 

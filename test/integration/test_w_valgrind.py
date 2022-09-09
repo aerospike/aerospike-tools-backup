@@ -3,8 +3,6 @@
 """
 Tests the representation of asbackup/asrestore output runned with valgrind
 """
-from turtle import back
-from unittest.mock import NonCallableMagicMock
 
 import lib
 from run_backup import run_backup_w_valgrind, run_restore_w_valgrind

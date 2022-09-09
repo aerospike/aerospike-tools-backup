@@ -137,7 +137,7 @@ jobs:
     - name: Test Bin Name
       run: make run_test_bin_name
       working-directory: main
-    - name: Test asbackup/asrestore Valgrind
+    - name: Test asbackup/asrestore with Valgrind
       run: make run_test_w_valgrind
       working-directory: main
     - name: Test Set Name
