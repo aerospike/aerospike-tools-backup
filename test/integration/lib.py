@@ -159,8 +159,8 @@ def run(command, *options, do_async=False, pipe_stdout=None, pipe_stdin=None, en
 	directory = absolute_path("../..")
 	doc_command = []
 	
-	val_args = "--track-fds=yes --leak-check=full --track-origins=yes --show-reachable=yes --suppressions={0}".\
-			format(absolute_path(VAL_SUP_FILE))
+	val_args = "--track-fds=yes --leak-check=full --track-origins=yes --show-reachable=yes"# --suppressions={0}".\
+			#format(absolute_path(os.path.join(directory, VAL_SUP_FILE)))
 
 	if RUN_IN_DOCKER:
 		# Run valgrind based tests inside docker when run-in-docker is set
@@ -176,7 +176,7 @@ def run(command, *options, do_async=False, pipe_stdout=None, pipe_stdin=None, en
 		command = [os.path.join("test_target", command)] + list(options)
 	
 	if USE_VALGRIND:
-		command = ["/usr/bin/valgrind {0} -v {1}".format(val_args, command)]
+		command = ["valgrind {0} -v {1}".format(val_args, command)]
 
 	print("Executing", command, "in", directory)
 	if do_async:
