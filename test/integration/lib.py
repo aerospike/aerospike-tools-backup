@@ -33,11 +33,12 @@ else:
 	USE_VALGRIND = False
 DOCKER_CLIENT = docker.from_env()
 
-# For tests with valgrind, asbackup is built from the source inside a docker image
+# For MAC 12.5 which doesnt suport valgrind, tests with valgrind is built from the source inside a docker image
 DOCKER_IMAGE = "" # used for valgrind tests
-VAL_SUP_FILE = "val.supp"
 TOOLS_VERSION = "aerospike-tools-7.2.0.ubuntu18.04.x86_64.deb"
 TOOLS_PACKAGE = "http://build.browser.qe.aerospike.com/citrusleaf/aerospike-tools/7.2.0/build/ubuntu-18.04/default/artifacts/{0}".format(TOOLS_VERSION)
+
+VAL_SUP_FILE = "val.supp"
     
 NO_TTL = [0, -1, 4294967295] # these all mean "no TTL" in the test setup
 GLOBALS = { "file_count": 0, "dir_mode": False }
@@ -159,8 +160,8 @@ def run(command, *options, do_async=False, pipe_stdout=None, pipe_stdin=None, en
 	directory = absolute_path("../..")
 	doc_command = []
 	
-	val_args = "--track-fds=yes --leak-check=full --track-origins=yes --show-reachable=yes"# --suppressions={0}".\
-			#format(absolute_path(os.path.join(directory, VAL_SUP_FILE)))
+	val_args = "--track-fds=yes --leak-check=full --track-origins=yes --show-reachable=yes --suppressions={0}".\
+			format(absolute_path(VAL_SUP_FILE))
 
 	if RUN_IN_DOCKER:
 		# Run valgrind based tests inside docker when run-in-docker is set
@@ -723,8 +724,8 @@ def install_valgrind():
 		cmd_check_install = [" valgrind --version"]
 		subprocess.check_call(cmd + cmd_check_install)
 	except: # valgrind need to be installed
-		cmd_install = "apt update && apt install -y valgrind && mkdir test_dir " # && apt install -y wget && wget {0} && dpkg -i {1} && mkdir test_dir".\
-				#format(TOOLS_PACKAGE, TOOLS_VERSION)
+		cmd_install = "apt update && apt install -y valgrind && mkdir test_dir && apt install -y wget && wget {0} && dpkg -i {1} && mkdir test_dir".\
+				format(TOOLS_PACKAGE, TOOLS_VERSION)
 		cmd.append(str(cmd_install))
 		try:
 			subprocess.check_call(cmd)
