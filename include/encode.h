@@ -87,8 +87,8 @@ typedef enum {
 	PATH_TYPE_STRING,
 	// The path results in an integer.
 	PATH_TYPE_NUMERIC,
-	// The path results in a geojson value.
-	PATH_TYPE_GEOJSON
+	// The path results in a geo2sphere value.
+	PATH_TYPE_GEO2DSPHERE
 } path_type;
 
 /*
