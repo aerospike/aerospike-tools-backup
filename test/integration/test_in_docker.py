@@ -6,7 +6,6 @@ Tests the representation of asbackup/asrestore output runned with valgrind insid
 from unittest.mock import NonCallableMagicMock
 import docker
 
-import aerospike_servers as as_srv
 import lib
 from run_backup import run_backup_in_docker, run_restore_in_docker
 import record_gen
