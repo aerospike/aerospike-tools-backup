@@ -1169,7 +1169,7 @@ check_index(aerospike *as, index_param *index, uint32_t timeout)
 		}
 	}
 
-	if (!index->ctx && index->ctx != index2.ctx) {
+	if (strcmp(index->ctx, index2.ctx) != 0) {
 		ver("Context mismatch, %s vs. %s", index->ctx, index2.ctx);
 
 		res = INDEX_STATUS_DIFFERENT;
@@ -1347,6 +1347,7 @@ restore_index(aerospike *as, index_param *index, as_vector *set_vec,
 		as_cdt_ctx_destroy(&ctx);
 		return false;
 	}
+	as_cdt_ctx_destroy(&ctx);
 	return true;
 }
 

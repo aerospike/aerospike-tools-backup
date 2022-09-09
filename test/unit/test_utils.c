@@ -466,6 +466,28 @@ START_TEST(test_secondary_index_param_with_ctx)
 }
 END_TEST
 
+START_TEST(test_secondary_index_param_without_ctx)
+{
+	char test_ns[] = "test_ns";
+	char sindex_str[] = "ns=test_ns:indexname=test_id:set=testset:bin=test_list:type=numeric:indextype=list:state=RW:path=test_list";
+	index_param sindex_params;
+
+	bool res = parse_index_info(test_ns, sindex_str, &sindex_params);
+	path_param *path = as_vector_get((as_vector *)&sindex_params.path_vec, 0);
+
+	ck_assert(res); // failed parsing sindex
+	ck_assert_str_eq(sindex_params.ns, test_ns);
+	ck_assert_str_eq(sindex_params.set, "testset"); //set
+	ck_assert_str_eq(sindex_params.name, "test_id"); //indexname
+	ck_assert_int_eq(sindex_params.type, INDEX_TYPE_LIST); //indextype
+	ck_assert_ptr_null(sindex_params.ctx); //ctx should be null	
+	ck_assert_str_eq(path->path, "test_list"); //bin name
+	ck_assert_int_eq(path->type, PATH_TYPE_NUMERIC); //bin type
+
+	cf_free(path);
+}
+END_TEST
+
 Suite* utils_suite()
 {
 	Suite* s;
@@ -545,6 +567,7 @@ Suite* utils_suite()
 	
 	tc_index_param = tcase_create("secondary index parameters utils");
 	tcase_add_test(tc_index_param, test_secondary_index_param_with_ctx);
+	tcase_add_test(tc_index_param, test_secondary_index_param_without_ctx);
 	suite_add_tcase(s, tc_index_param);
 
 	return s;
