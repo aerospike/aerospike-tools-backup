@@ -129,6 +129,7 @@ jobs:
       working-directory: main
     - name: Test Index
       run: make run_test_index
+      working-directory: main
     - name: Unit Test
       run: make unit
       working-directory: main
