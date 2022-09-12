@@ -1324,7 +1324,7 @@ restore_index(aerospike *as, index_param *index, as_vector *set_vec,
 	ver("Creating index %s:%s:%s (%s) %s", index->ns, index->set, index->name, path->path, index->ctx);
 	
 	as_cdt_ctx ctx;
-	if (strcasecmp(index->ctx, "NULL") == 0 || strcasecmp(index->ctx, "") == 0) {
+	if (strcmp(index->ctx, "NULL") == 0 || strcmp(index->ctx, "") == 0) {
 		index->ctx = NULL;
 	}
 	else {
