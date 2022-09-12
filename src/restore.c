@@ -1324,8 +1324,8 @@ restore_index(aerospike *as, index_param *index, as_vector *set_vec,
 	ver("Creating index %s:%s:%s (%s) %s", index->ns, index->set, index->name, path->path, index->ctx);
 	
 	as_cdt_ctx ctx;
-	if (strcmp(index->ctx, "null") == 0 || strcmp(index->ctx, "") == 0) {
-		index->ctx = NULL;
+	if (strcasecmp(index->ctx, "NULL") == 0 || strcasecmp(index->ctx, "") == 0) {
+		index->ctx[0] = 0;
 	}
 	else {
 		// convert b64 encoded ctx to as_cdt_ctx
@@ -1340,7 +1340,7 @@ restore_index(aerospike *as, index_param *index, as_vector *set_vec,
 	}
 	if (aerospike_index_create_ctx(as, &ae, &index->task, &policy, index->ns,
 				index->set[0] == 0 ? NULL : index->set, path->path, index->name, itype,
-				dtype, index->ctx == NULL ? NULL: &ctx) != AEROSPIKE_OK) {
+				dtype, index->ctx[0] == 0 ? NULL: &ctx) != AEROSPIKE_OK) {
 		err("Error while creating index %s:%s:%s (%s) - code %d: %s at %s:%d", index->ns,
 				index->set, index->name, path->path, ae.code, ae.message, ae.file, ae.line);
 		
