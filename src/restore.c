@@ -1339,9 +1339,13 @@ restore_index(aerospike *as, index_param *index, as_vector *set_vec,
 		}
 	}
 	inf("Before calling create_ctx from c-client");
+	if (index->ctx[0] == 0)
+	{
+		inf("Index ctx properly set to Null");//index->ctx[0] == 0 ? NULL : &ctx
+	}
 	if (aerospike_index_create_ctx(as, &ae, &index->task, &policy, index->ns,
 				index->set[0] == 0 ? NULL : index->set, path->path, index->name, itype,
-				dtype, index->ctx[0] == 0 ? NULL : &ctx) != AEROSPIKE_OK) {
+				dtype, NULL) != AEROSPIKE_OK) {
 		err("Error while creating index %s:%s:%s (%s) - code %d: %s at %s:%d", index->ns,
 				index->set, index->name, path->path, ae.code, ae.message, ae.file, ae.line);
 		
