@@ -1325,6 +1325,7 @@ restore_index(aerospike *as, index_param *index, as_vector *set_vec,
 	
 	as_cdt_ctx ctx;
 	if (strcasecmp(index->ctx, "NULL") == 0 || strcasecmp(index->ctx, "") == 0) {
+		inf("Before setting ctx to NULL");
 		index->ctx[0] = 0;
 	}
 	else {
@@ -1338,6 +1339,7 @@ restore_index(aerospike *as, index_param *index, as_vector *set_vec,
 			return false;
 		}
 	}
+	inf("Before calling create_ctx from c-client");
 	if (aerospike_index_create_ctx(as, &ae, &index->task, &policy, index->ns,
 				index->set[0] == 0 ? NULL : index->set, path->path, index->name, itype,
 				dtype, index->ctx[0] == 0 ? NULL: &ctx) != AEROSPIKE_OK) {
