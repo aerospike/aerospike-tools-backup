@@ -1324,6 +1324,7 @@ restore_index(aerospike *as, index_param *index, as_vector *set_vec,
 	ver("Creating index %s:%s:%s (%s)", index->ns, index->set, index->name, path->path);
 	
 	as_cdt_ctx ctx;
+	as_cdt_ctx_init(&ctx, 1);
 	if (strcasecmp(index->ctx, "NULL") == 0 || strcasecmp(index->ctx, "") == 0) {
 		index->ctx[0] = 0;
 	}
@@ -1338,7 +1339,6 @@ restore_index(aerospike *as, index_param *index, as_vector *set_vec,
 			return false;
 		}
 	}
-	inf("Before calling c-client index-create-ctx");
 	if (aerospike_index_create_ctx(as, &ae, &index->task, &policy, index->ns,
 				index->set[0] == 0 ? NULL : index->set, path->path, index->name, itype,
 				dtype, index->ctx[0] == 0 ? NULL : &ctx) != AEROSPIKE_OK) {
@@ -1348,9 +1348,7 @@ restore_index(aerospike *as, index_param *index, as_vector *set_vec,
 		as_cdt_ctx_destroy(&ctx);
 		return false;
 	}
-	if (index->ctx[0] != 0) {
-		as_cdt_ctx_destroy(&ctx); // destroy ctx if it has been initialized 
-	}
+	as_cdt_ctx_destroy(&ctx);
 	return true;
 }
 
