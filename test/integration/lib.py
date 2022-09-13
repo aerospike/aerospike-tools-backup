@@ -741,7 +741,7 @@ def check_packages_installed():
 		return -1
 	cmd = "docker exec -t {0} sh -c".format(DOCKER_IMAGE).split()
 	try:
-		cmd_check_install = [" valgrind --version && exec/asbackup --version"]
+		cmd_check_install = [" valgrind --version && asbackup --version"]
 		subprocess.check_call(cmd + cmd_check_install)
 	except: # valgrind need to be installed
 		print("Valgrind and asbackup have not installed properly!")
