@@ -1348,9 +1348,9 @@ restore_index(aerospike *as, index_param *index, as_vector *set_vec,
 		as_cdt_ctx_destroy(&ctx);
 		return false;
 	}
-	inf("After calling index-create-ctx from c-client");
-	as_cdt_ctx_destroy(&ctx);
-	inf("After destroy the cdt_ctx-- end of restore");
+	if (index->ctx[0] != 0) {
+		as_cdt_ctx_destroy(&ctx); // destroy ctx if it has been initialized 
+	}
 	return true;
 }
 
