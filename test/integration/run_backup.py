@@ -136,7 +136,6 @@ def backup_and_restore(filler, preparer, checker, env={}, backup_opts=None,
 			break
 
 		try:
-
 			if lib.is_dir_mode():
 				path = lib.temporary_path("dir")
 				backup_to_directory(path, *(backup_opts + comp_enc_mode), env=env)
