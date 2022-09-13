@@ -1221,7 +1221,7 @@ usage(const char *name)
 	fprintf(stderr, "  -z, --compress <compression_algorithm>\n");
 	fprintf(stderr, "                      Enables compressing of backup files using the specified compression algorithm.\n");
 	fprintf(stderr, "                      Supported compression algorithms are: zstd\n");
-	fprintf(stderr, "                      Set the zstd compression level via the --compression-level option\n");
+	fprintf(stderr, "                      Set the zstd compression level via the --compression-level option. Default level is 3.\n");
 	fprintf(stderr, "  -y, --encrypt <encryption_algorithm>\n");
 	fprintf(stderr, "                      Enables encryption of backup files using the specified encryption algorithm.\n");
 	fprintf(stderr, "                      A private key must be given, either via the --encryption-key-file option or\n");
