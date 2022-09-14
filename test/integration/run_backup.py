@@ -3,8 +3,6 @@
 """
 Aerospike backup tool running utilities.
 """
-import time
-
 import aerospike_servers as as_srv
 import lib
 
@@ -164,48 +162,6 @@ def backup_and_restore(filler, preparer, checker, env={}, backup_opts=None,
 			as_srv.reset_aerospike_servers()
 			raise
 	as_srv.reset_aerospike_servers()
-
-def run_backup_in_docker(filler, context={}, backup_options=None):
-	"""
-	Run asbackup command with given options inside a docker container
-	"""
-	as_srv.start_aerospike_servers()
-	lib.install_valgrind()
-	filler(context)
-	if lib.check_packages_installed():
-		try:
-			with open("val_bc.log", "w") as pipe_stdout:
-				lib.run("asbackup", *backup_options, do_async=False,
-					pipe_stdout=pipe_stdout, env={}, RUN_IN_DOCKER=True)
-			res = lib.parse_val_logs("val_bc.log")
-		except:
-			as_srv.reset_aerospike_servers()
-			raise
-		as_srv.reset_aerospike_servers()
-		return res
-	else:
-		print("cannot proceed backup tests with valgrind")
-		return False
-
-def run_restore_in_docker(*restore_options):
-	"""
-	Run asrestore command with given options inside a docker container
-	"""
-	as_srv.start_aerospike_servers()
-	lib.install_valgrind()
-	if lib.check_packages_installed():
-		try:
-			with open("val_rs.log", "w") as pipe_stdout:
-				lib.run("asrestore", *restore_options, do_async=False,
-					pipe_stdout=pipe_stdout, env={}, RUN_IN_DOCKER=True)
-			res = lib.parse_val_logs("val_rs.log")
-		except:
-			as_srv.reset_aerospike_servers()
-			raise
-		as_srv.reset_aerospike_servers()
-		return res
-	print("cannot proceed restore tests with valgrind")
-	return False
 
 def run_backup_w_valgrind(filler, context={}, backup_options=None):
 	"""

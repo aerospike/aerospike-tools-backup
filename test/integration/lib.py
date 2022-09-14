@@ -15,7 +15,6 @@ import math
 import signal
 import asyncio
 import re
-import docker
 
 import aerospike
 from aerospike_client import validate_client, get_client
@@ -31,12 +30,6 @@ if sys.platform == "linux":
 	USE_VALGRIND = False
 else:
 	USE_VALGRIND = False
-DOCKER_CLIENT = docker.from_env()
-
-# For MAC 12.5 which doesnt suport valgrind, tests with valgrind is built from the source inside a docker image
-DOCKER_IMAGE = "" # used for valgrind tests
-TOOLS_VERSION = "aerospike-tools-7.2.0.ubuntu18.04.x86_64.deb"
-TOOLS_PACKAGE = "http://build.browser.qe.aerospike.com/citrusleaf/aerospike-tools/7.2.0/build/ubuntu-18.04/default/artifacts/{0}".format(TOOLS_VERSION)
 
 VAL_SUP_FILE = "val.supp"
     
@@ -152,29 +145,17 @@ def temporary_path(extension):
 	GLOBALS["file_count"] += 1
 	return absolute_path(os.path.join(WORK_DIRECTORY, file_name))
 
-def run(command, *options, do_async=False, pipe_stdout=None, pipe_stdin=None, env={}, RUN_IN_DOCKER=False, USE_VALGRIND= False):
+def run(command, *options, do_async=False, pipe_stdout=None, pipe_stdin=None, env={}, USE_VALGRIND=False):
 	"""
 	Runs the given command with the given options.
 	"""
 	print("Running", command, "with options", options)
 	directory = absolute_path("../..")
-	doc_command = []
 	
+	command = [os.path.join("test_target", command)] + list(options)
+
 	val_args = "--track-fds=yes --leak-check=full --track-origins=yes --show-reachable=yes --suppressions={0}".\
 			format(absolute_path(VAL_SUP_FILE))
-
-	if RUN_IN_DOCKER:
-		# Run valgrind based tests inside docker when run-in-docker is set
-		if DOCKER_IMAGE == "":
-			print("NO DOCKER IMAGES FOUND")
-			return -1
-		doc_command = ("docker exec -t {0} sh -c".format(DOCKER_IMAGE)).split()
-		container_ip = DOCKER_CLIENT.containers.get(DOCKER_IMAGE).attrs["NetworkSettings"]["Gateway"]
-		command = doc_command + ["/usr/bin/valgrind {0} -v {1} -h {2} {3}".format(val_args, command, container_ip, " ".join(options))]
-	
-	else:
-		# use locally built asbackup for non in-docker mode tests 
-		command = [os.path.join("test_target", command)] + list(options)
 	
 	if USE_VALGRIND:
 		command = "valgrind {0} -v".format(val_args).split() + command
@@ -713,40 +694,6 @@ def index_variations(max_len):
 	variations.append(identifier_with_space(max_len / 2, CHAR_TYPE_ALPHAMERIC))
 	variations.append(identifier_with_space(max_len, CHAR_TYPE_ALPHAMERIC))
 	return variations
-
-def install_valgrind():
-	docker_images = DOCKER_CLIENT.containers.list()
-	if len(docker_images) == 0:
-		print("NO DOCKER IMAGE FOUND")
-		return -1
-	cmd = "docker exec -t {0} sh -c".format(docker_images[0].name).split()
-	try:
-		cmd_check_install = [" valgrind --version"]
-		subprocess.check_call(cmd + cmd_check_install)
-	except: # valgrind need to be installed
-		cmd_install = "apt update && apt install -y valgrind && mkdir test_dir && apt install -y wget && wget {0} && dpkg -i {1} && mkdir test_dir".\
-				format(TOOLS_PACKAGE, TOOLS_VERSION)
-		cmd.append(str(cmd_install))
-		try:
-			subprocess.check_call(cmd)
-			# make valgrind supp file accessible to docker image
-			subprocess.check_call("cp {0} {1}".format(absolute_path(VAL_SUP_FILE), absolute_path(WORK_DIRECTORY)))
-		except:
-			print("Exception occured during installing valgrind and other packages.")
-	DOCKER_IMAGE = docker_images[0].name
-
-def check_packages_installed():
-	if DOCKER_IMAGE == "":
-		print("NO DOCKER IMAGE FOUND")
-		return -1
-	cmd = "docker exec -t {0} sh -c".format(DOCKER_IMAGE).split()
-	try:
-		cmd_check_install = [" valgrind --version && asbackup --version"]
-		subprocess.check_call(cmd + cmd_check_install)
-	except: # valgrind need to be installed
-		print("Valgrind and asbackup have not installed properly!")
-		return False
-	return True
 
 def parse_val_logs(log_file):
     res = True
