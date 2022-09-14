@@ -1,7 +1,7 @@
 # coding=UTF-8
 
 """
-Tests the representation of asbackup/asrestore output runned with valgrind
+Tests basic asbackup/asrestore commands with valgrind for memory leaks/errors
 """
 
 import lib
@@ -23,7 +23,7 @@ def get_basic_restore_options():
 def test_backup_to_dir():
     """
 	Tests backup to dir running by valgrind
-	"""
+    """
     backup_options = get_basic_backup_options()
     context = {}
     n_records = 5000
@@ -33,13 +33,13 @@ def test_backup_to_dir():
 def test_restore_to_dir_batch_writes_disabled():
     """
 	Tests restore to dir with batch write disabled running by valgrind
-	"""
+    """
     restore_options = get_basic_restore_options()
     assert run_restore_w_valgrind(*restore_options, "--disable-batch-writes") == True, "Restore test with valgrind failed, cmd options {0}".format(restore_options)
 
 def test_restore_batch_writes_to_dir():
     """
 	Tests restore to dir with batch write enabled running by valgrind
-	"""
+    """
     restore_options = get_basic_restore_options()
     assert run_restore_w_valgrind(*restore_options) == True, "Restore test with valgrind failed, cmd options {0}".format(restore_options)
