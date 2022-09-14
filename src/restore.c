@@ -1321,7 +1321,7 @@ restore_index(aerospike *as, index_param *index, as_vector *set_vec,
 			return false;
 	}
 
-	ver("Creating index %s:%s:%s (%s):ctx:[%s]", index->ns, index->set, index->name, path->path, index->ctx);
+	ver("Creating index %s:%s:%s (%s):[%s]", index->ns, index->set, index->name, path->path, index->ctx);
 	
 	as_cdt_ctx ctx;
 	as_cdt_ctx_init(&ctx, 1);
