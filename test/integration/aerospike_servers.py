@@ -22,7 +22,8 @@ N_NODES = 2
 
 WORK_DIRECTORY = lib.WORK_DIRECTORY
 
-SERVER_IMAGE = "aerospike/aerospike-server:6.1.0.1"
+SERVER_IMAGE = "aerospike/aerospike-server"
+
 
 STATE_DIRECTORIES = ["state-%d" % i for i in range(1, N_NODES+1)]
 UDF_DIRECTORIES = ["udf-%d" % i for i in range(1, N_NODES+1)]
@@ -323,7 +324,6 @@ def stop_silent():
 		sys.stdout = stdout_tmp
 		sys.stderr = stderr_tmp
 		raise
-
 # shut down the aerospike cluster when the tests are over
 atexit.register(stop_silent)
 

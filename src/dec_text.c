@@ -1539,7 +1539,7 @@ text_parse_index(io_read_proxy_t *fd, as_vector *ns_vec, uint32_t *line_no,
 			break;
 
 		case 'G':
-			path.type = PATH_TYPE_GEOJSON;
+			path.type = PATH_TYPE_GEO2DSPHERE;
 			break;
 
 		default:

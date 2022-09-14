@@ -1547,8 +1547,8 @@ parse_index_info(char *ns, char *index_str, index_param *index)
 				type = PATH_TYPE_NUMERIC;
 			} else if (strcasecmp(arg, "INT SIGNED") == 0) {
 				type = PATH_TYPE_NUMERIC;
-			} else if (strcasecmp(arg, "GEOJSON") == 0) {
-				type = PATH_TYPE_GEOJSON;
+			} else if (strcasecmp(arg, "GEO2DSPHERE") == 0 || strcasecmp(arg, "GEOJSON") == 0) {
+				type = PATH_TYPE_GEO2DSPHERE;
 			} else {
 				err("Invalid path type %s", arg);
 				goto cleanup2;
