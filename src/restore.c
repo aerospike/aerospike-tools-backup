@@ -52,8 +52,8 @@ static bool open_file(const char *file_path, as_vector *ns_vec, io_read_proxy_t 
 static bool check_set(char *set, as_vector *set_vec);
 static void * restore_thread_func(void *cont);
 static void * counter_thread_func(void *cont);
-static const char * print_set(const char *set);
-static bool compare_sets(const char *set1, const char *set2);
+static const char * print_optional_str(const char *set);
+static bool compare_strs(const char *set1, const char *set2);
 static index_status check_index(aerospike *as, index_param *index, uint32_t timeout);
 static bool restore_index(aerospike *as, index_param *index,
 		as_vector *set_vec, restore_thread_args_t*, uint32_t timeout);
@@ -1005,38 +1005,38 @@ counter_thread_func(void *cont)
 }
 
 /*
- * Creates a printable secondary index set specification.
+ * Creates a printable secondary index set/ctx specification.
  *
- * @param set  The set specification to be printed.
+ * @param set  The set/ctx specification to be printed.
  *
  * @result     The printable set specification.
  */
 static const char *
-print_set(const char *set)
+print_optional_str(const char *set)
 {
 	return set != NULL && set[0] != 0 ? set : "[none]";
 }
 
 /*
- * Compares two secondary index set specifications for equality.
+ * Compares two secondary index optional string (set, ctx) specifications for equality.
  *
- * @param set1  The first set specification.
- * @param set2  The second set specification.
+ * @param str1  The first set/ctx specification.
+ * @param str2  The second set/ctx specification.
  *
- * @result      `true`, if the set specifications are equal.
+ * @result      `true`, if the given specifications are equal.
  */
 static bool
-compare_sets(const char *set1, const char *set2)
+compare_strs(const char *str1, const char *str2)
 {
-	bool none1 = set1 == NULL || set1[0] == 0;
-	bool none2 = set2 == NULL || set2[0] == 0;
+	bool none1 = str1 == NULL || str1[0] == 0;
+	bool none2 = str2 == NULL || str2[0] == 0;
 
 	if (none1 && none2) {
 		return true;
 	}
 
 	if (!none1 && !none2) {
-		return strcmp(set1, set2) == 0;
+		return strcmp(str1, str2) == 0;
 	}
 
 	return false;
@@ -1129,8 +1129,8 @@ check_index(aerospike *as, index_param *index, uint32_t timeout)
 		goto cleanup2;
 	}
 
-	if (!compare_sets(index->set, index2.set)) {
-		ver("Set mismatch, %s vs. %s", print_set(index->set), print_set(index2.set));
+	if (!compare_strs(index->set, index2.set)) {
+		ver("Set mismatch, %s vs. %s", print_optional_str(index->set), print_optional_str(index2.set));
 
 		res = INDEX_STATUS_DIFFERENT;
 		goto cleanup3;
@@ -1169,8 +1169,8 @@ check_index(aerospike *as, index_param *index, uint32_t timeout)
 		}
 	}
 
-	if (strcmp(index->ctx, index2.ctx) != 0) {
-		ver("Context mismatch, %s vs. %s", index->ctx, index2.ctx);
+	if (!compare_strs(index->ctx, index2.ctx)) {
+		ver("Context mismatch, %s vs. %s", print_optional_str(index->ctx), print_optional_str(index2.ctx));
 
 		res = INDEX_STATUS_DIFFERENT;
 		goto cleanup2;
@@ -1321,14 +1321,11 @@ restore_index(aerospike *as, index_param *index, as_vector *set_vec,
 			return false;
 	}
 
-	ver("Creating index %s:%s:%s (%s)", index->ns, index->set, index->name, path->path);
+	ver("Creating index %s:%s:%s (%s):ctx:[%s]", index->ns, index->set, index->name, path->path, index->ctx);
 	
 	as_cdt_ctx ctx;
 	as_cdt_ctx_init(&ctx, 1);
-	if (strcasecmp(index->ctx, "NULL") == 0 || strcasecmp(index->ctx, "") == 0) {
-		index->ctx[0] = 0;
-	}
-	else {
+	if (index->ctx != NULL && index->ctx[0] != 0) {
 		// convert b64 encoded ctx to as_cdt_ctx
 		bool res = as_cdt_ctx_from_base64(&ctx, index->ctx);
 		if (!res) {

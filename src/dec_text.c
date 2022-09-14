@@ -1418,7 +1418,6 @@ text_parse_index(io_read_proxy_t *fd, as_vector *ns_vec, uint32_t *line_no,
 	char set[MAX_TOKEN_SIZE];
 	char name[MAX_TOKEN_SIZE];
 	char ctx[MAX_TOKEN_SIZE];
-	index->ctx = NULL; // ctx is optional for sindex records
 	size_t n_paths;
 
 	if (!text_nul_read_token(fd, false, line_no, col_no, ns, sizeof ns, " ")) {

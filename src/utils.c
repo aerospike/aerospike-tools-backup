@@ -1569,7 +1569,7 @@ parse_index_info(char *ns, char *index_str, index_param *index)
 		} else if (strcmp(para, "bin") == 0) { 
 			path = arg;
 		} else if (strcmp(para, "context") == 0) {
-			index->ctx = strcmp(arg, "NULL") == 0 ? NULL : arg;
+			index->ctx = strcasecmp(arg, "NULL") == 0 ? NULL : arg;
 		}
 		if (path != NULL && type != PATH_TYPE_INVALID) {
 			path_param tmp = { path, type };
