@@ -52,8 +52,8 @@ static bool open_file(const char *file_path, as_vector *ns_vec, io_read_proxy_t 
 static bool check_set(char *set, as_vector *set_vec);
 static void * restore_thread_func(void *cont);
 static void * counter_thread_func(void *cont);
-static const char * print_optional_str(const char *set);
-static bool compare_strs(const char *set1, const char *set2);
+static const char * print_optional_str(const char *str);
+static bool compare_strs(const char *str1, const char *str2);
 static index_status check_index(aerospike *as, index_param *index, uint32_t timeout);
 static bool restore_index(aerospike *as, index_param *index,
 		as_vector *set_vec, restore_thread_args_t*, uint32_t timeout);
@@ -1012,9 +1012,9 @@ counter_thread_func(void *cont)
  * @result     The printable set specification.
  */
 static const char *
-print_optional_str(const char *set)
+print_optional_str(const char *str)
 {
-	return set != NULL && set[0] != 0 ? set : "[none]";
+	return str != NULL && str[0] != 0 ? str : "[none]";
 }
 
 /*
