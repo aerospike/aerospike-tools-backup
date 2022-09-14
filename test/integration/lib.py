@@ -14,8 +14,7 @@ import random
 import math
 import signal
 import asyncio
-
-import docker
+import re
 
 import aerospike
 from aerospike_client import validate_client, get_client
@@ -31,8 +30,9 @@ if sys.platform == "linux":
 	USE_VALGRIND = False
 else:
 	USE_VALGRIND = False
-DOCKER_CLIENT = docker.from_env()
 
+VAL_SUP_FILE = "val.supp"
+    
 NO_TTL = [0, -1, 4294967295] # these all mean "no TTL" in the test setup
 GLOBALS = { "file_count": 0, "dir_mode": False }
 
@@ -145,16 +145,20 @@ def temporary_path(extension):
 	GLOBALS["file_count"] += 1
 	return absolute_path(os.path.join(WORK_DIRECTORY, file_name))
 
-def run(command, *options, do_async=False, pipe_stdout=None, pipe_stdin=None, env={}):
+def run(command, *options, do_async=False, pipe_stdout=None, pipe_stdin=None, env={}, USE_VALGRIND=False):
 	"""
 	Runs the given command with the given options.
 	"""
 	print("Running", command, "with options", options)
 	directory = absolute_path("../..")
+	
 	command = [os.path.join("test_target", command)] + list(options)
 
+	val_args = "--track-fds=yes --leak-check=full --track-origins=yes --show-reachable=yes --suppressions={0}".\
+			format(absolute_path(VAL_SUP_FILE))
+	
 	if USE_VALGRIND:
-		command = ["./val.sh"] + command
+		command = "valgrind {0} -v".format(val_args).split() + command
 
 	print("Executing", command, "in", directory)
 	if do_async:
@@ -168,6 +172,7 @@ def run(command, *options, do_async=False, pipe_stdout=None, pipe_stdin=None, en
 	else:
 		subprocess.check_call(command, cwd=directory,
 				stdin=pipe_stdin,
+				stdout=pipe_stdout,
 				env=dict(os.environ, **env))
 		return 0
 
@@ -689,6 +694,35 @@ def index_variations(max_len):
 	variations.append(identifier_with_space(max_len / 2, CHAR_TYPE_ALPHAMERIC))
 	variations.append(identifier_with_space(max_len, CHAR_TYPE_ALPHAMERIC))
 	return variations
+
+def parse_val_logs(log_file):
+    res = True
+    HEAP_SUMMARY = re.compile("in use at exit: \d+ bytes")
+    ERROR_SUMMARY = re.compile("ERROR SUMMARY: \d+ errors")
+    heap_sum = []
+    error = []
+    try:
+        with open(log_file, "r") as f:
+            for line in f.readlines():
+                heap_sum = HEAP_SUMMARY.findall(line)
+                if len(heap_sum) >= 1:
+                    unfree_heap = re.findall(r'\d+', heap_sum[0])
+                    if unfree_heap[0] != "0":
+                        print("VALGRIND HEAP SUMMARY: {0} bytes in use at exit".format(unfree_heap[0]))
+                        res = False
+                
+                error = ERROR_SUMMARY.findall(line)
+                if len(error) >= 1:
+                    tot_errors = re.findall(r'\d+', error[0])
+                    if tot_errors[0] != "0":
+                        print("VALGRIND ERROR SUMMARY: {0} errors".format(tot_errors[0]))
+                        res = False
+    except Exception as e:
+        print("Unexpected error occured while parsing valgrind logs ", str(e))
+        res = False
+
+    os.remove(log_file)
+    return res
 
 if __name__ == "__main__":
 	pass

@@ -3,7 +3,6 @@
 """
 Tests the representation of indexes in backup files.
 """
-
 import lib
 from run_backup import backup_and_restore
 

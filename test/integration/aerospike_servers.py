@@ -22,7 +22,7 @@ N_NODES = 2
 
 WORK_DIRECTORY = lib.WORK_DIRECTORY
 
-SERVER_IMAGE = "aerospike/aerospike-server:5.7.0.17"
+SERVER_IMAGE = "aerospike/aerospike-server"
 
 STATE_DIRECTORIES = ["state-%d" % i for i in range(1, N_NODES+1)]
 UDF_DIRECTORIES = ["udf-%d" % i for i in range(1, N_NODES+1)]
@@ -202,7 +202,7 @@ def start_aerospike_servers(keep_work_dir=False):
 
 		print("Connecting client")
 		config = {
-			"hosts": [("127.0.0.1", lib.PORT)],
+			"hosts": [("localhost", lib.PORT)],
 			"policies": {
 				"read": {
 					"max_retries": 5
@@ -322,7 +322,6 @@ def stop_silent():
 		sys.stdout = stdout_tmp
 		sys.stderr = stderr_tmp
 		raise
-
 # shut down the aerospike cluster when the tests are over
 atexit.register(stop_silent)
 
