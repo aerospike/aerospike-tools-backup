@@ -1509,7 +1509,8 @@ parse_index_info(char *ns, char *index_str, index_param *index)
 	index->set = NULL;
 	index->name = NULL;
 	index->type = INDEX_TYPE_INVALID;
-	index->ctx = false;
+	index->ctx = NULL;
+
 	as_vector_init(&index->path_vec, sizeof (path_param), 25);
 
 	char *path = NULL;
@@ -1565,12 +1566,11 @@ parse_index_info(char *ns, char *index_str, index_param *index)
 				err("Invalid index type %s", arg);
 				goto cleanup2;
 			}
-		} else if (strcmp(para, "bin") == 0) {
+		} else if (strcmp(para, "bin") == 0) { 
 			path = arg;
-		} else if (strcmp(para, "context") == 0 && strcasecmp(arg, "NULL") != 0) {
-			index->ctx = true;
+		} else if (strcmp(para, "context") == 0) {
+			index->ctx = strcasecmp(arg, "NULL") == 0 ? NULL : arg;
 		}
-
 		if (path != NULL && type != PATH_TYPE_INVALID) {
 			path_param tmp = { path, type };
 			as_vector_append(&index->path_vec, &tmp);
@@ -1806,7 +1806,7 @@ as_key_move(as_key* dst, as_key* src)
 	}
 	
 	if (as_load_uint32(&src->valuep->integer._.count) > 1) {
-		inf("Couldn't move record key values (reference count > 1).");
+		//inf("Couldn't move record key values (reference count > 1).");
 		return false;
 	}
 

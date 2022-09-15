@@ -109,10 +109,10 @@ def backup_and_restore(filler, preparer, checker, env={}, backup_opts=None,
 	Do one backup-restore cycle.
 	"""
 	if backup_opts is None:
-		backup_opts = []
+		backup_opts = ["--host=localhost"]
 
 	if restore_opts is None:
-		restore_opts = []
+		restore_opts = ["--host=localhost"]
 
 	as_srv.start_aerospike_servers()
 

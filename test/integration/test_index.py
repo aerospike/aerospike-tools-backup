@@ -3,12 +3,14 @@
 """
 Tests the representation of indexes in backup files.
 """
+import aerospike
 import lib
 from run_backup import backup_and_restore
 
 SET_NAMES = [None] + lib.index_variations(63)
 INDEX_NAMES = ["normal"] + lib.index_variations(63)
 INDEX_PATHS = ["normal"] + lib.index_variations(14)
+CTX = lib.ctx_variations()
 
 def create_indexes(create_func):
 	"""
@@ -25,6 +27,100 @@ def check_indexes(check_func, value):
 	"""
 	for set_name, index_path in zip(SET_NAMES, INDEX_PATHS):
 		check_func(set_name, index_path, value)
+
+def check_cdt_indexes(check_func, index_type):
+	"""
+	Invokes the given cdt index check function for all set names, index names,
+	and given index type.
+	"""
+	for set_name, index_path in zip(SET_NAMES, INDEX_PATHS):
+		check_func(set_name, index_path, index_type)
+		
+def create_cdt_indexes(create_func, bin_type, index_type, ctx_type):
+	"""
+	Invokes the given cdt index creation function for all set names, index
+	names, index paths and ctx.
+	"""
+	for set_name, index_path, index_name, ctx in zip(SET_NAMES, INDEX_PATHS, INDEX_NAMES, CTX[ctx_type]):
+		create_func(set_name, index_path, index_name, bin_type, index_type, ctx)
+
+def test_integer_list_cdt_index_with_ctx():
+	"""
+	Tests cdt indexes on list with ctx across all set names, index names, 
+	bin types, and list-realted ctx (list_index, list_rank, list_value)
+	"""
+	backup_and_restore(
+		lambda context: create_cdt_indexes(lib.create_cdt_index, aerospike.INDEX_NUMERIC,\
+			 aerospike.INDEX_TYPE_LIST, "list_int"),
+		None,
+		lambda context: check_cdt_indexes(lib.check_cdt_index, aerospike.INDEX_TYPE_LIST),
+		restore_delay=1
+	)
+
+def test_string_list_cdt_index_with_ctx():
+	"""
+	Tests cdt indexes on list with ctx across all set names, index names, 
+	bin types, and list-realted ctx (list_index, list_rank, list_value)
+	"""
+	backup_and_restore(
+		lambda context: create_cdt_indexes(lib.create_cdt_index, aerospike.INDEX_STRING,\
+			 aerospike.INDEX_TYPE_LIST, "list_str"),
+		None,
+		lambda context: check_cdt_indexes(lib.check_cdt_index, aerospike.INDEX_TYPE_LIST),
+		restore_delay=1
+	)
+
+def test_integer_map_key_cdt_index_with_ctx():
+	"""
+	Tests cdt indexes on list with ctx across all set names, index names, 
+	bin types, and list-realted ctx (list_index, list_rank, list_value)
+	"""
+	backup_and_restore(
+		lambda context: create_cdt_indexes(lib.create_cdt_index, aerospike.INDEX_NUMERIC,\
+			 aerospike.INDEX_TYPE_MAPKEYS, "map_int"),
+		None,
+		lambda context: check_cdt_indexes(lib.check_cdt_index, aerospike.INDEX_TYPE_MAPKEYS),
+		restore_delay=1
+	)
+
+def test_string_map_key_cdt_index_with_ctx():
+	"""
+	Tests cdt indexes on list with ctx across all set names, index names, 
+	bin types, and list-realted ctx (list_index, list_rank, list_value)
+	"""
+	backup_and_restore(
+		lambda context: create_cdt_indexes(lib.create_cdt_index, aerospike.INDEX_STRING,\
+			 aerospike.INDEX_TYPE_MAPKEYS, "map_str"),
+		None,
+		lambda context: check_cdt_indexes(lib.check_cdt_index, aerospike.INDEX_TYPE_MAPKEYS),
+		restore_delay=1
+	)
+
+def test_integer_map_value_cdt_index_with_ctx():
+	"""
+	Tests cdt indexes on list with ctx across all set names, index names, 
+	bin types, and list-realted ctx (list_index, list_rank, list_value)
+	"""
+	backup_and_restore(
+		lambda context: create_cdt_indexes(lib.create_cdt_index, aerospike.INDEX_NUMERIC,\
+			 aerospike.INDEX_TYPE_MAPVALUES, "map_int"),
+		None,
+		lambda context: check_cdt_indexes(lib.check_cdt_index, aerospike.INDEX_TYPE_MAPVALUES),
+		restore_delay=1
+	)
+
+def test_string_map_value_cdt_index_with_ctx():
+	"""
+	Tests cdt indexes on list with ctx across all set names, index names, 
+	bin types, and list-realted ctx (list_index, list_rank, list_value)
+	"""
+	backup_and_restore(
+		lambda context: create_cdt_indexes(lib.create_cdt_index, aerospike.INDEX_STRING,\
+			 aerospike.INDEX_TYPE_MAPVALUES, "map_str"),
+		None,
+		lambda context: check_cdt_indexes(lib.check_cdt_index, aerospike.INDEX_TYPE_MAPVALUES),
+		restore_delay=1
+	)
 
 def test_integer_index():
 	"""
