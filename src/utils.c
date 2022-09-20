@@ -1509,12 +1509,8 @@ parse_index_info(char *ns, char *index_str, index_param *index)
 	index->set = NULL;
 	index->name = NULL;
 	index->type = INDEX_TYPE_INVALID;
-<<<<<<< HEAD
-	index->ctx = false;
-=======
 	index->ctx = NULL;
 
->>>>>>> e6ab87fa4fb8ba08622d30638b0d821225141491
 	as_vector_init(&index->path_vec, sizeof (path_param), 25);
 
 	char *path = NULL;
@@ -1570,17 +1566,10 @@ parse_index_info(char *ns, char *index_str, index_param *index)
 				err("Invalid index type %s", arg);
 				goto cleanup2;
 			}
-<<<<<<< HEAD
-		} else if (strcmp(para, "bin") == 0) {
-			path = arg;
-		} else if (strcmp(para, "context") == 0 && strcasecmp(arg, "NULL") != 0) {
-			index->ctx = true;
-=======
 		} else if (strcmp(para, "bin") == 0) { 
 			path = arg;
 		} else if (strcmp(para, "context") == 0) {
 			index->ctx = strcasecmp(arg, "NULL") == 0 ? NULL : arg;
->>>>>>> e6ab87fa4fb8ba08622d30638b0d821225141491
 		}
 		if (path != NULL && type != PATH_TYPE_INVALID) {
 			path_param tmp = { path, type };

@@ -1552,11 +1552,7 @@ process_secondary_indexes(backup_job_context_t *bjc)
 
 	inf("Backing up %u secondary index(es)", info_vec.size);
 	int32_t skipped = 0;
-<<<<<<< HEAD
-	int32_t skipped_sids_with_ctx = 0;
-=======
-	
->>>>>>> e6ab87fa4fb8ba08622d30638b0d821225141491
+
 	char *clone = safe_strdup(info_str);
 	index_param index;
 
@@ -1567,13 +1563,7 @@ process_secondary_indexes(backup_job_context_t *bjc)
 			err("Error while parsing secondary index info string %s", clone);
 			goto cleanup2;
 		}
-<<<<<<< HEAD
-		if (index.ctx) {
-			skipped_sids_with_ctx++;
-			continue;
-		} 
-=======
->>>>>>> e6ab87fa4fb8ba08622d30638b0d821225141491
+		
 		ver("Storing index %s", index.name);
 
 		uint32_t n_sets = bjc->conf->set_list.size;
@@ -1622,13 +1612,6 @@ process_secondary_indexes(backup_job_context_t *bjc)
 	if (skipped > 0) {
 		inf("Skipped %d index(es) with unwanted set(s)", skipped);
 	}
-<<<<<<< HEAD
-	if (skipped_sids_with_ctx > 0) {
-		inf("WARNING: Skipped %d index(es) with context. Current version doesn't backup secondary indexes with context.", skipped_sids_with_ctx);
-	}
-=======
->>>>>>> e6ab87fa4fb8ba08622d30638b0d821225141491
-	goto cleanup2;
 
 cleanup3:
 	as_vector_destroy(&index.path_vec);
