@@ -11,6 +11,7 @@ Suite* file_proxy_suite(void);
 Suite* io_proxy_suite(void);
 Suite* priority_queue_suite(void);
 Suite* utils_suite(void);
+Suite* backup_file_suite(void);
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-function"

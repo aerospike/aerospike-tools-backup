@@ -1053,8 +1053,8 @@ usage(const char *name)
 	fprintf(stderr, "                      <max-async-batches> * <batch-size>\n");
 	fprintf(stderr, "                      Default is 32.\n");
 	fprintf(stderr, "      --batch-size <n>\n");
-	fprintf(stderr, "                      The max allowed number of outstanding async batch write calls\n");
-	fprintf(stderr, "                      to make to aerospike at a time.\n");
+	fprintf(stderr, "                      The max allowed number of records to simultaneously upload\n");
+	fprintf(stderr, "                      in an async batch write calls to make to aerospike at a time.\n");
 	fprintf(stderr, "                      Default is 128 with batch writes enabled, or 16 without batch writes.\n");
 	fprintf(stderr, "      --event-loops <n>\n");
 	fprintf(stderr, "                      The number of c-client event loops to initialize for\n");

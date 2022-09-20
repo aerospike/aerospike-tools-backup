@@ -22,7 +22,8 @@ N_NODES = 2
 
 WORK_DIRECTORY = lib.WORK_DIRECTORY
 
-SERVER_IMAGE = "aerospike/aerospike-server:5.7.0.17"
+SERVER_IMAGE = "aerospike/aerospike-server"
+
 
 STATE_DIRECTORIES = ["state-%d" % i for i in range(1, N_NODES+1)]
 UDF_DIRECTORIES = ["udf-%d" % i for i in range(1, N_NODES+1)]
@@ -182,7 +183,9 @@ def start_aerospike_servers(keep_work_dir=False):
 					None if index == 1 else (first_ip, first_base),
 					index)
 			cmd = '/usr/bin/asd --foreground --config-file %s --instance %s' % ('/opt/aerospike/work/' + lib.get_file(conf_file, base=mount_dir), str(index - 1))
+			
 			print('running in docker: %s' % cmd)
+
 			container = DOCKER_CLIENT.containers.run(SERVER_IMAGE,
 					command=cmd,
 					ports={
@@ -197,12 +200,11 @@ def start_aerospike_servers(keep_work_dir=False):
 			if index == 1:
 				container.reload()
 				first_ip = container.attrs["NetworkSettings"]["Networks"]["bridge"]["IPAddress"]
-
 		#del os.environ["LD_PRELOAD"]
 
 		print("Connecting client")
 		config = {
-			"hosts": [("127.0.0.1", lib.PORT)],
+			"hosts": [("localhost", lib.PORT)],
 			"policies": {
 				"read": {
 					"max_retries": 5
@@ -263,7 +265,7 @@ def stop_aerospike_servers(keep_work_dir=False):
 
 	if not keep_work_dir:
 		remove_work_dir()
-
+		
 def reset_aerospike_servers(keep_metadata=False):
 	"""
 	Reset: disconnects the client, stops asd, restarts asd, reconnects the client.
@@ -322,7 +324,6 @@ def stop_silent():
 		sys.stdout = stdout_tmp
 		sys.stderr = stderr_tmp
 		raise
-
 # shut down the aerospike cluster when the tests are over
 atexit.register(stop_silent)
 
