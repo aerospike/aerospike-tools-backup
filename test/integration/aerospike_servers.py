@@ -105,8 +105,8 @@ def remove_valgrind_logs():
 		os.remove(lib.VAL_LOGS_RESTORE)		
 
 	if os.path.exists(lib.VAL_BACKUP_FILES):
-		os.remove(lib.VAL_BACKUP_FILES)
-		
+		lib.remove_dir(lib.VAL_BACKUP_FILES)
+
 def init_work_dir():
 	"""
 	Creates an empty work directory.
