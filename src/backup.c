@@ -1613,7 +1613,7 @@ process_secondary_indexes(backup_job_context_t *bjc)
 		inf("Skipped %d index(es) with unwanted set(s)", skipped);
 	}
 	
-	goto cleanup2;
+	//goto cleanup2;
 
 cleanup3:
 	as_vector_destroy(&index.path_vec);
