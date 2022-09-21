@@ -1556,7 +1556,7 @@ text_parse_index(io_read_proxy_t *fd, as_vector *ns_vec, uint32_t *line_no,
 	}
 
 	if (!text_nul_read_token(fd, false, line_no, col_no, ctx, sizeof ctx, "\n")) {
-		goto cleanup1;
+		goto cleanup3;
 	}
 
 	index->ctx = safe_strdup(ctx);
