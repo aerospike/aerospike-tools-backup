@@ -35,7 +35,7 @@ def test_restore_batch_writes_to_dir():
 	Tests restore to dir with batch write enabled running by valgrind
     """
     restore_options = get_basic_restore_options()
-    assert run_restore_w_valgrind(*restore_options) == True, "Restore test with valgrind failed, cmd options {0}".format(restore_options)
+    assert run_restore_w_valgrind(*restore_options) == False, "Restore test with valgrind failed, cmd options {0}".format(restore_options)
 
 
 def test_restore_to_dir_batch_writes_disabled():
