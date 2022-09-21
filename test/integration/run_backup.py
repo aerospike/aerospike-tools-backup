@@ -174,7 +174,7 @@ def run_backup_w_valgrind(filler, context={}, backup_options=None):
 		with open(lib.VAL_LOGS_BACKUP, "w") as pipe_stdout:
 			lib.run("asbackup", *backup_options, do_async=False,
 				pipe_stdout=pipe_stdout, env={}, USE_VALGRIND=True)
-			pipe_stdout.flush()
+			pipe_stdout.close()
 		res = lib.parse_val_logs(lib.VAL_LOGS_BACKUP)
 	except:
 		as_srv.reset_aerospike_servers()
@@ -192,7 +192,7 @@ def run_restore_w_valgrind(*restore_options):
 		with open(lib.VAL_LOGS_RESTORE, "w") as pipe_stdout:
 			lib.run("asrestore", *restore_options, do_async=False,
 				pipe_stdout=pipe_stdout, env={}, USE_VALGRIND=True)
-			pipe_stdout.flush()
+			pipe_stdout.close()
 		res = lib.parse_val_logs(lib.VAL_LOGS_RESTORE)
 	except:
 		as_srv.reset_aerospike_servers()

@@ -805,8 +805,10 @@ def parse_val_logs(log_file):
 	res = False
 	HEAP_SUMMARY = re.compile("in use at exit: \d+ bytes")
 	ERROR_SUMMARY = re.compile("ERROR SUMMARY: \d+ errors")
+	INVALID_FREE = re.compile("Invalid free()")
 	heap_sum = []
 	error = []
+	invalid_heap_op = []
 	try:
 		with open(log_file, "r") as f:
 			for line in f.readlines():
@@ -823,6 +825,12 @@ def parse_val_logs(log_file):
 					if tot_errors[0] != "0":
 						print("VALGRIND ERROR SUMMARY: {0} errors".format(tot_errors[0]))
 						res = True
+
+				invalid_heap_op = INVALID_FREE.findall(line)
+				if len(invalid_heap_op) >= 1:
+					print("VALGRIND Invalid free() / delete / delete[] / realloc() Detected")
+					res = True
+					
 	except Exception as e:
 		print("Unexpected error occured while parsing valgrind logs ", str(e))
 		res = True
