@@ -802,7 +802,7 @@ def ctx_variations():
 	return ctx_types
 
 def parse_val_logs(log_file):
-	res = True
+	res = False
 	HEAP_SUMMARY = re.compile("in use at exit: \d+ bytes")
 	ERROR_SUMMARY = re.compile("ERROR SUMMARY: \d+ errors")
 	INVALID_FREE = re.compile("Invalid free()")
@@ -817,23 +817,23 @@ def parse_val_logs(log_file):
 					unfree_heap = re.findall(r'\d+', heap_sum[0])
 					if unfree_heap[0] != "0":
 						print("VALGRIND HEAP SUMMARY: {0} bytes in use at exit".format(unfree_heap[0]))
-						res = False
+						res = True
 				
 				error = ERROR_SUMMARY.findall(line)
 				if len(error) >= 1:
 					tot_errors = re.findall(r'\d+', error[0])
 					if tot_errors[0] != "0":
 						print("VALGRIND ERROR SUMMARY: {0} errors".format(tot_errors[0]))
-						res = False
+						res = True
 
 				invalid_heap_op = INVALID_FREE.findall(line)
 				if len(invalid_heap_op) >= 1:
 					print("VALGRIND Invalid free() / delete / delete[] / realloc() Detected")
-					res = False
-
+					res = True
+					
 	except Exception as e:
 		print("Unexpected error occured while parsing valgrind logs ", str(e))
-		res = False
+		res = True
 
 	os.remove(log_file)
 	return res
