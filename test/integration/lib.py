@@ -147,7 +147,7 @@ def temporary_path(extension):
 	GLOBALS["file_count"] += 1
 	return absolute_path(os.path.join(WORK_DIRECTORY, file_name))
 
-def run(command, *options, do_async=False, pipe_stdout=None, pipe_stdin=None, env={}, USE_VALGRIND=False):
+def run(command, *options, do_async=False, pipe_stdout=None, pipe_stdin=None, pipe_stderr=None, env={}, USE_VALGRIND=False):
 	"""
 	Runs the given command with the given options.
 	"""
@@ -175,6 +175,7 @@ def run(command, *options, do_async=False, pipe_stdout=None, pipe_stdin=None, en
 		subprocess.check_call(command, cwd=directory,
 				stdin=pipe_stdin,
 				stdout=pipe_stdout,
+				stderr=pipe_stderr,
 				env=dict(os.environ, **env))
 		return 0
 
