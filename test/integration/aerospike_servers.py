@@ -93,6 +93,17 @@ def remove_state_dirs():
 	if os.path.exists(LUA_DIRECTORY):
 		lib.remove_dir(LUA_DIRECTORY)
 
+def remove_valgrind_logs():
+	"""
+	Removes the output log files from valgrind tests
+	"""
+	print("Removing Valgrind logs")
+
+	if os.path.exists(lib.VAL_LOGS_BACKUP):
+		os.remove(lib.VAL_LOGS_BACKUP)
+	if os.path.exists(lib.VAL_LOGS_RESTORE):
+		os.remove(lib.VAL_LOGS_RESTORE)		
+
 def init_work_dir():
 	"""
 	Creates an empty work directory.
@@ -265,6 +276,9 @@ def stop_aerospike_servers(keep_work_dir=False):
 
 	if not keep_work_dir:
 		remove_work_dir()
+	
+	# delete log files from valgrind tests
+	remove_valgrind_logs()
 		
 def reset_aerospike_servers(keep_metadata=False):
 	"""

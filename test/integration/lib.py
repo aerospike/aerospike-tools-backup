@@ -32,7 +32,9 @@ else:
 	USE_VALGRIND = False
 
 VAL_SUP_FILE = "val.supp"
-    
+VAL_LOGS_BACKUP = "val_bc.log"
+VAL_LOGS_RESTORE = "val_rs.log"
+
 NO_TTL = [0, -1, 4294967295] # these all mean "no TTL" in the test setup
 GLOBALS = { "file_count": 0, "dir_mode": False }
 
