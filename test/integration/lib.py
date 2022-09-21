@@ -802,33 +802,34 @@ def ctx_variations():
 	return ctx_types
 
 def parse_val_logs(log_file):
-    res = True
-    HEAP_SUMMARY = re.compile("in use at exit: \d+ bytes")
-    ERROR_SUMMARY = re.compile("ERROR SUMMARY: \d+ errors")
-    heap_sum = []
-    error = []
-    try:
-        with open(log_file, "r") as f:
-            for line in f.readlines():
-                heap_sum = HEAP_SUMMARY.findall(line)
-                if len(heap_sum) >= 1:
-                    unfree_heap = re.findall(r'\d+', heap_sum[0])
-                    if unfree_heap[0] != "0":
-                        print("VALGRIND HEAP SUMMARY: {0} bytes in use at exit".format(unfree_heap[0]))
-                        res = False
-                
-                error = ERROR_SUMMARY.findall(line)
-                if len(error) >= 1:
-                    tot_errors = re.findall(r'\d+', error[0])
-                    if tot_errors[0] != "0":
-                        print("VALGRIND ERROR SUMMARY: {0} errors".format(tot_errors[0]))
-                        res = False
-    except Exception as e:
-        print("Unexpected error occured while parsing valgrind logs ", str(e))
-        res = False
+	res = True
+	HEAP_SUMMARY = re.compile("in use at exit: \d+ bytes")
+	ERROR_SUMMARY = re.compile("ERROR SUMMARY: \d+ errors")
+	heap_sum = []
+	error = []
+	try:
+		with open(log_file, "r") as f:
+			for line in f.readlines():
+				heap_sum = HEAP_SUMMARY.findall(line)
+				if len(heap_sum) >= 1:
+					unfree_heap = re.findall(r'\d+', heap_sum[0])
+					if unfree_heap[0] != "0":
+						print("VALGRIND HEAP SUMMARY: {0} bytes in use at exit".format(unfree_heap[0]))
+						res = False
+				
+				error = ERROR_SUMMARY.findall(line)
+				if len(error) >= 1:
+					tot_errors = re.findall(r'\d+', error[0])
+					if tot_errors[0] != "0":
+						print("VALGRIND ERROR SUMMARY: {0} errors".format(tot_errors[0]))
+						res = False
+				print(">> VAL LOG Lines >>> \n {0}".format(line))
+	except Exception as e:
+		print("Unexpected error occured while parsing valgrind logs ", str(e))
+		res = False
 
-    os.remove(log_file)
-    return res
+	os.remove(log_file)
+	return res
 
 if __name__ == "__main__":
 	pass
