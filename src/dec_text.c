@@ -1559,11 +1559,11 @@ text_parse_index(io_read_proxy_t *fd, as_vector *ns_vec, uint32_t *line_no,
 		goto cleanup3;
 	}
 
-	index->ctx = safe_strdup(ctx);
-
 	if (!expect_char(fd, line_no, col_no, '\n')) {
-		goto cleanup4;
+		goto cleanup3;
 	}
+
+	index->ctx = safe_strdup(ctx);
 
 	if (index->set[0] == 0) {
 		ver("Index: %s", index->name);
