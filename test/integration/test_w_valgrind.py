@@ -30,16 +30,17 @@ def test_backup_to_dir():
     filler = lambda context: record_gen.put_records(n_records, context, lib.SET, do_indexes=True)
     assert run_backup_w_valgrind(filler, context=context, backup_options=backup_options) == False, "Backup test with valgrind failed, cmd options {0}".format(backup_options)
 
-def test_restore_to_dir_batch_writes_disabled():
-    """
-	Tests restore to dir with batch write disabled running by valgrind
-    """
-    restore_options = get_basic_restore_options()
-    assert run_restore_w_valgrind(*restore_options, "--disable-batch-writes") == False, "Restore test with valgrind failed, cmd options {0}".format(restore_options)
-
 def test_restore_batch_writes_to_dir():
     """
 	Tests restore to dir with batch write enabled running by valgrind
     """
     restore_options = get_basic_restore_options()
     assert run_restore_w_valgrind(*restore_options) == True, "Restore test with valgrind failed, cmd options {0}".format(restore_options)
+
+
+def test_restore_to_dir_batch_writes_disabled():
+    """
+	Tests restore to dir with batch write disabled running by valgrind
+    """
+    restore_options = get_basic_restore_options()
+    assert run_restore_w_valgrind(*restore_options, "--disable-batch-writes") == False, "Restore test with valgrind failed, cmd options {0}".format(restore_options)
