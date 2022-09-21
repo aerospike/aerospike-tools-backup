@@ -67,6 +67,7 @@ free_index(index_param *param)
 	cf_free(param->ns);
 	cf_free(param->set);
 	cf_free(param->name);
+	cf_free(param->ctx);
 
 	for (uint32_t i = 0; i < param->path_vec.size; ++i) {
 		path_param *param2 = as_vector_get(&param->path_vec, i);
