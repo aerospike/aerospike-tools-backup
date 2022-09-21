@@ -823,7 +823,6 @@ def parse_val_logs(log_file):
 					if tot_errors[0] != "0":
 						print("VALGRIND ERROR SUMMARY: {0} errors".format(tot_errors[0]))
 						res = False
-				print(">> VAL LOG Lines >>> \n {0}".format(line))
 	except Exception as e:
 		print("Unexpected error occured while parsing valgrind logs ", str(e))
 		res = False
