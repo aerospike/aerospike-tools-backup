@@ -167,6 +167,7 @@ def run_backup_w_valgrind(filler, context={}, backup_options=None):
 	"""
 	Run asbackup command with given options using valgrind
 	"""
+	res = False
 	as_srv.start_aerospike_servers()
 	filler(context)
 	try:
@@ -185,6 +186,7 @@ def run_restore_w_valgrind(*restore_options):
 	"""
 	Run asrestore command with given options using valgrind
 	"""
+	res = False
 	as_srv.start_aerospike_servers()
 	try:
 		with open(lib.VAL_LOGS_RESTORE, "w") as pipe_stdout:
