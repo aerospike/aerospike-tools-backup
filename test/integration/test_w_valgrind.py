@@ -8,7 +8,7 @@ import lib
 from run_backup import run_backup_w_valgrind, run_restore_w_valgrind
 import record_gen
 
-path = "test_dir"
+path = lib.VAL_BACKUP_FILES
 
 def get_basic_backup_options():
     backup_options = "--directory", path, \

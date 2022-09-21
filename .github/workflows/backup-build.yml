@@ -131,11 +131,6 @@ jobs:
     - name: Initialize codecov
       run: make coverage-init
       working-directory: main
-      
-    - name: Test asbackup/asrestore with Valgrind
-      run: make run_test_w_valgrind
-      working-directory: main
-
     - name: Unit Test
       run: make unit
       working-directory: main
