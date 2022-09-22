@@ -45,7 +45,7 @@ jobs:
     - name: Get cmake version
       id: cmake_version
       run: |
-        echo "::set-output name=version::$(cmake -v)"
+        echo "::set-output name=version::$(cmake --version)"
     - name: Cache AWS C++ sdk
       id: cache-aws-sdk-cpp
       uses: actions/cache@v2
