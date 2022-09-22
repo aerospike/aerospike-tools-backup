@@ -50,25 +50,25 @@ jobs:
         submodules: recursive
         ref: v${{ env.CMAKE_VERSION }}
         path: CMake-${{ env.CMAKE_VERSION }}
-     - name: Cache cmake
-        id: cache-cmake
-        uses: actions/cache@v2
-        env:
-          cache-name: cmake
-        with:
-          path: CMake-${{ env.CMAKE_VERSION }}
-          key: cmake-${{ env.CMAKE_VERSION }}-${{ runner.os }}
+    - name: Cache cmake
+      id: cache-cmake
+      uses: actions/cache@v2
+      env:
+        cache-name: cmake
+      with:
+        path: CMake-${{ env.CMAKE_VERSION }}
+        key: cmake-${{ env.CMAKE_VERSION }}-${{ runner.os }}
     - name: Build cmake
-        id: build-cmake
-        if: steps.cache-cmake.outputs.cache-hit != 'true'
-        run: |
-          ./bootstrap 
-          make
-        working-directory: CMake-${{ env.CMAKE_VERSION }}
+      id: build-cmake
+      if: steps.cache-cmake.outputs.cache-hit != 'true'
+      run: |
+        ./bootstrap 
+        make
+      working-directory: CMake-${{ env.CMAKE_VERSION }}
     - name: install cmake
-     run: |
+      run: |
        sudo make install
-     working-directory: CMake-${{ env.CMAKE_VERSION }}
+      working-directory: CMake-${{ env.CMAKE_VERSION }}
     - name: Cache AWS C++ sdk
       id: cache-aws-sdk-cpp
       uses: actions/cache@v2
