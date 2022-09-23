@@ -17,7 +17,7 @@ jobs:
       ZSTD_VERSION: 1.4.9
       LD_LIBRARY_PATH: /usr/local/lib
       EVENT_LIB: libuv
-      CMAKE_VERSION: 3.24.1 
+      CMAKE_VERSION: 3.24.1
     steps:
     - name: Get checkout directory
       uses: haya14busa/action-cond@v1
