@@ -31,7 +31,7 @@
 // Typedefs & constants.
 //
 
-#define OPTIONS_SHORT "-h:Sp:A:U:P::n:d:i:t:vm:B:s:urgN:RILFwVZT:y:z:"
+#define OPTIONS_SHORT "-h:Sp:A:U:P::n:d:i:t:vm:B:s:urgN:RIOELFwVZT:y:z:"
 
 // The C client's version string.
 extern char *aerospike_client_version;
@@ -122,6 +122,8 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 		{ "nice", required_argument, NULL, 'N' },
 		{ "no-records", no_argument, NULL, 'R' },
 		{ "no-indexes", no_argument, NULL, 'I' },
+		{ "no-roles", no_argument, NULL, 'O' },
+		{ "no-users", no_argument, NULL, 'E' },
 		{ "indexes-last", no_argument, NULL, 'L' },
 		{ "no-udfs", no_argument, NULL, 'F' },
 		{ "wait", no_argument, NULL, 'w' },
@@ -380,6 +382,14 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 
 		case 'I':
 			conf->no_indexes = true;
+			break;
+		
+		case 'O':
+			conf->no_roles = true;
+			break;
+		
+		case 'E':
+			conf->no_users = true;
 			break;
 
 		case 'L':
@@ -689,6 +699,8 @@ restore_config_default(restore_config_t *conf)
 	conf->no_indexes = false;
 	conf->indexes_last = false;
 	conf->no_udfs = false;
+	conf->no_roles = false;
+	conf->no_users = false;
 	conf->wait = false;
 	conf->ns_list = NULL;
 	conf->directory = NULL;
@@ -1012,6 +1024,10 @@ usage(const char *name)
 	fprintf(stderr, "                      Don't restore any records.\n");
 	fprintf(stderr, "  -I, --no-indexes\n");
 	fprintf(stderr, "                      Don't restore any secondary indexes.\n");
+	fprintf(stderr, "  -O, --no-roles\n");
+	fprintf(stderr, "                      Don't restore any roles.\n");
+	fprintf(stderr, "  -E, --no-users\n");
+	fprintf(stderr, "                      Don't restore any users.\n");
 	fprintf(stderr, "  -L, --indexes-last\n");
 	fprintf(stderr, "                      Restore secondary indexes only after UDFs and records \n");
 	fprintf(stderr, "                      have been restored.\n");

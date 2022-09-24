@@ -97,6 +97,8 @@ static as_scan* prepare_scan(as_scan* scan, const backup_job_context_t* bjc);
 static bool scan_callback(const as_val *val, void *cont);
 static bool process_secondary_indexes(backup_job_context_t *bjc);
 static bool process_udfs(backup_job_context_t *bjc);
+static bool process_roles(backup_job_context_t *bjc);
+static bool process_users(backup_job_context_t *bjc);
 static void * backup_thread_func(void *cont);
 static void * counter_thread_func(void *cont);
 static bool init_scan_bins(char *bin_list, as_scan *scan);
@@ -1725,6 +1727,97 @@ cleanup1:
 }
 
 /*
+ * Stores Roles.
+ *
+ *  - Retrieves the information from the cluster.
+ *  - Parses the information.
+ *  - Invokes backup_encoder.put_role() to store it.
+ *
+ * @param bjc  The backup job context of the backup thread that's backing up the UDF files.
+ *
+ * @result     `true`, if successful.
+ */
+static bool
+process_roles(backup_job_context_t *bjc)
+{
+	ver("Processing Roles");
+
+	bool res = false;
+
+	as_role*** roles;
+	int* roles_size;
+
+	as_policy_info policy;
+	as_policy_info_init(&policy);
+	policy.timeout = TIMEOUT;
+	as_error ae;
+
+	// query list of possible roles
+	if (aerospike_query_roles(bjc->status->as, &ae, &policy, &roles, &roles_size)!= AEROSPIKE_OK)
+	{
+		
+	}
+	for (int i = 0; i < roles_size; i++) {
+		as_role_destroy(roles[i]);
+	}
+	
+	// put roles into backup file
+cleanup1:
+	as_roles_destroy(roles, roles_size);
+	return res;
+}
+
+/*
+ * Stores Users.
+ *
+ *  - Retrieves the information from the cluster.
+ *  - Parses the information.
+ *  - Invokes backup_encoder.put_user() to store it.
+ *
+ * @param bjc  The backup job context of the backup thread that's backing up the UDF files.
+ *
+ * @result     `true`, if successful.
+ */
+static bool
+process_users(backup_job_context_t *bjc)
+{
+	ver("Processing Users (and their roles)");
+
+	bool res = false;
+
+	as_vector users;
+	as_vector_init(&users, sizeof(as_user*), 100);
+	int users_size;
+
+	as_policy_info policy;
+	as_policy_info_init(&policy);
+	policy.timeout = TIMEOUT;
+	as_error ae;
+
+	// query list of all users
+	if (aerospike_query_users(bjc->status->as, &ae, &policy, &users, &users_size)!= AEROSPIKE_OK)
+	{
+		err("Error while listing users - code %d: %s ", ae.code, ae.message);
+		goto cleanup1;
+	}
+	inf("Backing up %u user(s)", users_size);
+	
+	as_vector user;
+	as_vector_inita(&user, sizeof(as_user*), 1);
+
+	for (uint32_t i=0; i < users_size; ++i)
+	{
+		// fetch each user's info
+	}
+	
+
+	// put roles into backup file
+cleanup1:
+	as_users_destroy(&users, users_size);
+	return res;
+}
+
+/*
  * Main backup worker thread function.
  *
  *   - Pops the backup_thread_args for a cluster node off the job queue.
@@ -1734,8 +1827,8 @@ cleanup1:
  *   - If backing up to a directory: creates a new backup file by invoking
  *       open_dir_file().
  *   - If handling the first job from the queue: stores secondary index
- *       information and UDF file by invoking process_secondary_indexes() and
- *       process_udfs().
+ *       information, UDF file, roles and users by invoking process_secondary_indexes(),
+ *       process_udfs(), process_roles(), and process_users().
  *   - Initiates a node or partition scan with scan_callback() as the callback
  *       and the initialized backup_job_context_t as user-specified context.
  *
@@ -1877,6 +1970,22 @@ backup_thread_func(void *cont)
 				ver("Skipping UDF backup");
 			} else if (!process_udfs(&bjc)) {
 				err("Error while processing UDFs");
+				stop();
+				goto close_file;
+			}
+
+			if (bjc.conf->no_roles) {
+				ver("Skipping Roles backup");
+			} else if (!process_roles(&bjc)) {
+				err("Error while processing roles");
+				stop();
+				goto close_file;
+			}
+
+			if (bjc.conf->no_users) {
+				ver("Skipping Users backup");
+			} else if (!process_users(&bjc)) {
+				err("Error while processing users");
 				stop();
 				goto close_file;
 			}
