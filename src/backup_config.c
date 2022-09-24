@@ -31,7 +31,7 @@
 // Typedefs & constants.
 //
 
-#define OPTIONS_SHORT "h:Sp:A:U:P::n:s:d:o:c:F:rvxCB:l:X:D:M:m:eN:RIuVZa:b:L:q:w:z:y:f:"
+#define OPTIONS_SHORT "h:Sp:A:U:P::n:s:d:o:c:F:rvxCB:l:X:D:M:m:eN:RIuOEVZa:b:L:q:w:z:y:f:"
 
 // The C client's version string
 extern char *aerospike_client_version;
@@ -114,6 +114,8 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 		{ "no-records", no_argument, NULL, 'R' },
 		{ "no-indexes", no_argument, NULL, 'I' },
 		{ "no-udfs", no_argument, NULL, 'u' },
+		{ "no-roles", no_argument, NULL, 'O' },
+		{ "no-users", no_argument, NULL, 'E' },
 		{ "services-alternate", no_argument, NULL, 'S' },
 		{ "namespace", required_argument, NULL, 'n' },
 		{ "set", required_argument, NULL, 's' },
@@ -461,6 +463,14 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 
 		case 'u':
 			conf->no_udfs = true;
+			break;
+
+		case 'O':
+			conf->no_roles = true;
+			break;
+		
+		case 'E':
+			conf->no_users = true;
 			break;
 
 		case 'S':
@@ -829,6 +839,8 @@ backup_config_default(backup_config_t* conf)
 	conf->no_records = false;
 	conf->no_indexes = false;
 	conf->no_udfs = false;
+	conf->no_roles = false;
+	conf->no_users = false;
 	conf->file_limit = DEFAULT_FILE_LIMIT * 1024 * 1024;
 
 	memset(&conf->tls, 0, sizeof(as_config_tls));
@@ -1001,6 +1013,8 @@ backup_config_clone(backup_config_t* conf)
 	clone->no_records = conf->no_records;
 	clone->no_indexes = conf->no_indexes;
 	clone->no_udfs = conf->no_udfs;
+	clone->no_roles = conf->no_roles;
+	clone->no_users = conf->no_users;
 	clone->file_limit = conf->file_limit;
 	clone->auth_mode = safe_strdup(conf->auth_mode);
 	clone->partition_list = safe_strdup(conf->partition_list);
@@ -1287,6 +1301,10 @@ usage(const char *name)
 	fprintf(stderr, "                      Don't backup any indexes.\n");
 	fprintf(stderr, "  -u, --no-udfs\n");
 	fprintf(stderr, "                      Don't backup any UDFs.\n");
+	fprintf(stderr, "  -O, --no-roles\n");
+	fprintf(stderr, "                      Don't backup any roles.\n");
+	fprintf(stderr, "  -E, --no-users\n");
+	fprintf(stderr, "                      Don't backup any users.\n");
 	fprintf(stderr, "  -a, --modified-after <YYYY-MM-DD_HH:MM:SS>\n");
 	fprintf(stderr, "                      Perform an incremental backup; only include records \n");
 	fprintf(stderr, "                      that changed after the given date and time. The system's \n");

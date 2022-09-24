@@ -164,6 +164,10 @@ typedef struct backup_config {
 	bool no_indexes;
 	// Excludes UDF files from the backup.
 	bool no_udfs;
+	// Exclude roles from the backup.
+	bool no_roles;
+	//Exclude users from the backup.
+	bool no_users;
 	// Start a new backup file when the current backup file crosses this size.
 	uint64_t file_limit;
 	// Authentication mode

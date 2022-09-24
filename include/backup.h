@@ -50,6 +50,7 @@ extern "C" {
 #include <aerospike/aerospike_info.h>
 #include <aerospike/as_partition_filter.h>
 #include <aerospike/as_scan.h>
+#include <aerospike/as_admin.h>
 
 #pragma GCC diagnostic pop
 

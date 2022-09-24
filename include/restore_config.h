@@ -83,6 +83,8 @@ typedef struct restore_config {
 	char *nice_list;
 	bool no_records;
 	bool no_indexes;
+	bool no_roles;
+	bool no_users;
 	bool indexes_last;
 	bool no_udfs;
 	bool wait;
