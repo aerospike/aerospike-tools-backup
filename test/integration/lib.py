@@ -3,7 +3,6 @@
 """
 Utility functions for automated tests.
 """
-
 import sys
 import os
 import os.path
@@ -14,11 +13,11 @@ import random
 import math
 import signal
 import asyncio
-
-import docker
+import re
 
 import aerospike
 from aerospike_client import validate_client, get_client
+from aerospike_helpers import cdt_ctx
 
 WORK_DIRECTORY = "work"
 
@@ -31,7 +30,11 @@ if sys.platform == "linux":
 	USE_VALGRIND = False
 else:
 	USE_VALGRIND = False
-DOCKER_CLIENT = docker.from_env()
+
+VAL_SUP_FILE = "val.supp"
+VAL_LOGS_BACKUP = "val_bc.log"
+VAL_LOGS_RESTORE = "val_rs.log"
+VAL_BACKUP_FILES = "test_dir"
 
 NO_TTL = [0, -1, 4294967295] # these all mean "no TTL" in the test setup
 GLOBALS = { "file_count": 0, "dir_mode": False }
@@ -145,16 +148,20 @@ def temporary_path(extension):
 	GLOBALS["file_count"] += 1
 	return absolute_path(os.path.join(WORK_DIRECTORY, file_name))
 
-def run(command, *options, do_async=False, pipe_stdout=None, pipe_stdin=None, env={}):
+def run(command, *options, do_async=False, pipe_stdout=None, pipe_stdin=None, pipe_stderr=None, env={}, USE_VALGRIND=False):
 	"""
 	Runs the given command with the given options.
 	"""
 	print("Running", command, "with options", options)
 	directory = absolute_path("../..")
+	
 	command = [os.path.join("test_target", command)] + list(options)
 
+	val_args = "--track-fds=yes --leak-check=full --track-origins=yes --show-reachable=yes --suppressions={0}".\
+			format(absolute_path(VAL_SUP_FILE))
+	
 	if USE_VALGRIND:
-		command = ["./val.sh"] + command
+		command = "valgrind {0} -v".format(val_args).split() + command
 
 	print("Executing", command, "in", directory)
 	if do_async:
@@ -168,6 +175,8 @@ def run(command, *options, do_async=False, pipe_stdout=None, pipe_stdin=None, en
 	else:
 		subprocess.check_call(command, cwd=directory,
 				stdin=pipe_stdin,
+				stdout=pipe_stdout,
+				stderr=pipe_stderr,
 				env=dict(os.environ, **env))
 		return 0
 
@@ -388,6 +397,44 @@ def check_map_value_index(set_name, bin_name, value):
 	"""
 	check_complex_index(set_name, bin_name, aerospike.INDEX_TYPE_MAPVALUES, value)
 
+def cdt_index_found_in_info_res(response, set_name, bin_name, index_type):
+	"""
+	Test presense of a given secondary index in client's response to info cmd
+	"""
+	found = False
+	itype = {
+		aerospike.INDEX_TYPE_MAPVALUES : "mapvalues",
+		aerospike.INDEX_TYPE_MAPKEYS : "mapkeys",
+		aerospike.INDEX_TYPE_LIST : "list"
+	}
+	expected_values = {"ns": NAMESPACE, "set": set_name, "indexname": bin_name, "indextype": itype[index_type]}
+	for info_digest in response:
+		records = response[info_digest][1].split(";")
+		for sindex in records:
+			res_values = dict(p.split("=") for p in sindex.split(":"))
+			found = all(expected_values.get(key) == res_values.get(key) for key in expected_values.keys())
+			if found:
+				found if res_values["context"] != None else False # context should have a value
+				return found
+	return found
+
+def check_cdt_index(set_name, bin_name, index_type):
+	"""
+	Test presense of a bin-name, index-type and ctx by calling an info command
+	on seconadary index(es)
+	"""
+	res = False
+	for _ in range (CLIENT_ATTEMPTS):
+		try:
+			responses = get_client().info_all("sindex-list:ns=", NAMESPACE)
+			if cdt_index_found_in_info_res(responses, set_name, bin_name, index_type):
+				res = True
+				break	
+		except:
+			safe_sleep(0.5)
+
+	assert res == False, "Unexpected error while checking cdt index {0}".format(bin_name)
+
 def validate_index_creation(set_name, bin_name, index_name):
 	"""
 	Validates the string parameters for the index creation functions.
@@ -548,6 +595,26 @@ def create_string_map_value_index(set_name, bin_name, index_name):
 	assert ret == 0, "Unexpected error while creating index"
 	GLOBALS["indexes"].append(index_name)
 
+def create_cdt_index(set_name, bin_name, index_name, bin_type, index_type, ctx):
+	"""
+	Creates a cdt index with ctx.
+	"""
+	validate_index_creation(set_name, bin_name, index_name)
+	ret = -1
+	for _ in range(CLIENT_ATTEMPTS):
+		try:
+			ret = get_client().index_cdt_create(NAMESPACE, set_name, bin_name, \
+					index_type, bin_type, index_name, {'ctx': ctx})
+			break
+		except aerospike.exception.IndexFoundError:
+			# found the index in the database, meaning it wasn't fully deleted, pause and try again
+			safe_sleep(0.5)
+		except aerospike.exception.AerospikeError as e:
+			print("Error while creating a cdt index: {0} [{1}]".format(e.msg, e.code))			
+		
+	assert ret == 0, "Unexpected error while creating index"
+	GLOBALS["indexes"].append(index_name)
+
 def random_alphameric():
 	"""
 	Generates a random alphanumeric character.
@@ -689,6 +756,89 @@ def index_variations(max_len):
 	variations.append(identifier_with_space(max_len / 2, CHAR_TYPE_ALPHAMERIC))
 	variations.append(identifier_with_space(max_len, CHAR_TYPE_ALPHAMERIC))
 	return variations
+
+def ctx_list_ops(bin_type="int"):
+	"""
+	Generates a whole bunch of ctx that are suitable for list index(es).
+	"""
+	variations = []
+	variations.append([cdt_ctx.cdt_ctx_list_index(0)])
+	variations.append([cdt_ctx.cdt_ctx_list_index(-1)])
+	variations.append([cdt_ctx.cdt_ctx_list_index(1),cdt_ctx.cdt_ctx_list_index(0)])
+	variations.append([cdt_ctx.cdt_ctx_list_rank(-1)])
+	variations.append([cdt_ctx.cdt_ctx_list_rank(1),cdt_ctx.cdt_ctx_list_index(0)])
+	variations.append([cdt_ctx.cdt_ctx_list_index(0), cdt_ctx.cdt_ctx_map_index(0)])
+	variations.append([cdt_ctx.cdt_ctx_list_index(0), cdt_ctx.cdt_ctx_map_value(0)])
+	variations.append([cdt_ctx.cdt_ctx_list_value("test" if bin_type=="str" else 123456)])
+	variations.append([cdt_ctx.cdt_ctx_list_value("sOmE random StrIng With sP@CE" if bin_type=="str" else 123456789)])
+	variations.append([cdt_ctx.cdt_ctx_list_value("test" if bin_type=="str" else 123456),cdt_ctx.cdt_ctx_list_rank(-1)])
+	return variations
+
+def ctx_map_ops(bin_type="int"):
+	"""
+	Generates a whole bunch of ctx that are suitable for map key/value index(es).
+	"""
+	variations = []
+	variations.append([cdt_ctx.cdt_ctx_map_index(-1)])
+	variations.append([cdt_ctx.cdt_ctx_map_index(0), cdt_ctx.cdt_ctx_list_index(0)])
+	variations.append([cdt_ctx.cdt_ctx_map_index(0), cdt_ctx.cdt_ctx_list_rank(-1)])
+	variations.append([cdt_ctx.cdt_ctx_map_rank(-1)])
+	variations.append([cdt_ctx.cdt_ctx_map_key("test-key" if bin_type=="str" else 123456)])
+	variations.append([cdt_ctx.cdt_ctx_map_key("sOmE random StrIng With sP@CE" if bin_type=="str" else 123456789)])
+	variations.append([cdt_ctx.cdt_ctx_map_key("test-key" if bin_type=="str" else 123456), cdt_ctx.cdt_ctx_map_rank(1)])
+	variations.append([cdt_ctx.cdt_ctx_map_value("test-key" if bin_type=="str" else 123456)])
+	variations.append([cdt_ctx.cdt_ctx_map_value("sOmE random StrIng With sP@CE" if bin_type=="str" else 123456789)])
+	variations.append([cdt_ctx.cdt_ctx_map_value("test-key" if bin_type=="str" else 123456), cdt_ctx.cdt_ctx_list_rank(-1)])
+	return variations
+
+def ctx_variations():
+	"""
+	Generate sample ctx that are suitable for secondary index(es) on nested CDTs
+	"""
+	ctx_types = {
+		"list_int": ctx_list_ops(),
+		"list_str": ctx_list_ops(bin_type="str"),
+		"map_int": ctx_map_ops(),
+		"map_str": ctx_map_ops(bin_type="str"),
+	}
+	return ctx_types
+
+def parse_val_logs(log_file):
+	res = False
+	HEAP_SUMMARY = re.compile("in use at exit: \d+ bytes")
+	ERROR_SUMMARY = re.compile("ERROR SUMMARY: \d+ errors")
+	INVALID_FREE = re.compile("Invalid free()")
+	heap_sum = []
+	error = []
+	invalid_heap_op = []
+	try:
+		with open(log_file, "r") as f:
+			for line in f.readlines():
+				heap_sum = HEAP_SUMMARY.findall(line)
+				if len(heap_sum) >= 1:
+					unfree_heap = re.findall(r'\d+', heap_sum[0])
+					if unfree_heap[0] != "0":
+						print("VALGRIND HEAP SUMMARY: {0} bytes in use at exit".format(unfree_heap[0]))
+						res = True
+				
+				error = ERROR_SUMMARY.findall(line)
+				if len(error) >= 1:
+					tot_errors = re.findall(r'\d+', error[0])
+					if tot_errors[0] != "0":
+						print("VALGRIND ERROR SUMMARY: {0} errors".format(tot_errors[0]))
+						res = True
+
+				invalid_heap_op = INVALID_FREE.findall(line)
+				if len(invalid_heap_op) >= 1:
+					print("VALGRIND Invalid free() / delete / delete[] / realloc() Detected")
+					res = True
+					
+	except Exception as e:
+		print("Unexpected error occured while parsing valgrind logs ", str(e))
+		res = True
+
+	os.remove(log_file)
+	return res
 
 if __name__ == "__main__":
 	pass

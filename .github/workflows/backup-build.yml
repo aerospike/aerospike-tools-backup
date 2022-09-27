@@ -24,6 +24,10 @@ jobs:
       id: install-lcov
       run: |
         sudo apt install -y lcov
+    - name: install Valgrind
+      id: install-valgrind
+      run: |
+        sudo apt install -y valgrind
     - name: install AWS requirements
       id: install-aws-requirements
       run: |
@@ -132,6 +136,9 @@ jobs:
       working-directory: main
     - name: Test Bin Name
       run: make run_test_bin_name
+      working-directory: main
+    - name: Test asbackup/asrestore with Valgrind
+      run: make run_test_w_valgrind
       working-directory: main
     - name: Test Set Name
       run: make run_test_set_name
