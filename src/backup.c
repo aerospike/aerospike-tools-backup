@@ -1808,12 +1808,22 @@ process_users(backup_job_context_t *bjc)
 	for (uint32_t i=0; i < users_size; ++i)
 	{
 		// fetch each user's info
-	}
-	
+		//if (aerospike_query_user(bjc->status->as, &ae, &policy, &users[i]->name, &user) != AEROSPIKE_OK)
+		//{
+		//	err("Error while getting user's info - code %d: %s", ae.code, ae.message);
+		//	goto cleanup2;
+		//}
 
-	// put roles into backup file
+	}
+	goto cleanup0;
+	// put users and their roles info into backup file
+cleanup2:
+	as_vector_destroy(&user);
+
 cleanup1:
 	as_users_destroy(&users, users_size);
+	
+cleanup0:
 	return res;
 }
 
