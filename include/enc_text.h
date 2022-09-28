@@ -44,6 +44,7 @@ extern "C" {
 bool text_put_record(io_write_proxy_t *fd, bool compact, const as_record *rec);
 bool text_put_udf_file(io_write_proxy_t *fd, const as_udf_file *file);
 bool text_put_secondary_index(io_write_proxy_t *fd, const index_param *index);
+bool text_put_user_info(io_write_proxy_t *fd, const as_user *user);
 
 #ifdef __cplusplus
 }

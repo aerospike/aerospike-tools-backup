@@ -101,7 +101,9 @@ typedef struct backup_status {
 	volatile uint32_t index_count;
 	// The number of UDF files backed up.
 	volatile uint32_t udf_count;
-
+	// The number of users backed up.
+	volatile uint32_t user_count;
+	
 	// List of partition filters (as_partition_filter)
 	as_vector partition_filters;
 

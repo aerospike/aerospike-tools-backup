@@ -85,7 +85,7 @@ backup_status_init(backup_status_t* status, backup_config_t* conf)
 	memset(status->set, 0, sizeof(as_set));
 
 	status->encoder = (backup_encoder_t) {
-		text_put_record, text_put_udf_file, text_put_secondary_index
+		text_put_record, text_put_udf_file, text_put_secondary_index, text_put_user_info,
 	};
 
 	status->rec_count_estimate = 0;
@@ -98,7 +98,8 @@ backup_status_init(backup_status_t* status, backup_config_t* conf)
 	status->byte_count_limit = 0;
 	status->index_count = 0;
 	status->udf_count = 0;
-
+	status->user_count = 0;
+	
 	as_vector_init(&status->partition_filters, sizeof(as_partition_filter), 1);
 
 	status->started = false;
