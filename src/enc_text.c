@@ -18,6 +18,7 @@
 #include <enc_text.h>
 #include <utils.h>
 
+
 /*
  * Maps a BLOB type to its one-character label.
  *
@@ -529,3 +530,29 @@ text_put_secondary_index(io_write_proxy_t *fd,
 	return true;
 }
 
+/*
+ * Part of the interface exposed by the text backup file format encoder.
+ *
+ * See backup_encoder.put_user_info for details.
+ */
+bool
+text_put_user_info(io_write_proxy_t *fd,
+		const as_user *user)
+{
+	if (io_proxy_printf(fd, GLOBAL_PREFIX "u %s", escape(user->name)) < 0) {
+		err("Error while writing user's info to backup file [1]");
+		return false;
+	}
+	for (uint32_t i = 0; i < user->roles_size; ++i) {
+		if(io_proxy_printf(fd, " %s", escape(user->roles[i])) < 0) {
+			err("Error while writing user's info to backup file [2]");
+			return false;
+		}
+	}
+	if (io_proxy_printf(fd, "\n") < 0) {
+		err("Error while writing user's info to backup file [2]");
+		return false;
+	}
+
+	return true;
+}

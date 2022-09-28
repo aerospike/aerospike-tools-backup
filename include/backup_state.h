@@ -73,6 +73,7 @@ typedef struct backup_global_status {
 	uint64_t file_count;
 	uint32_t index_count;
 	uint32_t udf_count;
+	uint32_t user_count;
 	uint64_t rec_count_total;
 	uint64_t byte_count_total;
 	uint64_t rec_count_total_committed;

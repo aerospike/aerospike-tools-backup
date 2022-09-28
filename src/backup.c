@@ -844,9 +844,9 @@ save_backup_state:
 
 	uint64_t records = as_load_uint64(&status->rec_count_total);
 	uint64_t bytes = as_load_uint64(&status->byte_count_total);
-	inf("Backed up %" PRIu64 " record(s), %u secondary index(es), %u UDF file(s), "
+	inf("Backed up %" PRIu64 " record(s), %u secondary index(es), %u UDF file(s), %u Users, "
 			"%" PRIu64 " byte(s) in total (~%" PRIu64 " B/rec)", records,
-			status->index_count, status->udf_count, bytes,
+			status->index_count, status->udf_count, status->user_count ,bytes,
 			records == 0 ? 0 : bytes / records);
 
 	if (mach_fd != NULL && (fprintf(mach_fd,
@@ -1757,13 +1757,11 @@ process_roles(backup_job_context_t *bjc)
 	{
 		
 	}
-	for (int i = 0; i < roles_size; i++) {
-		as_role_destroy(roles[i]);
-	}
 	
 	// put roles into backup file
 cleanup1:
 	as_roles_destroy(roles, roles_size);
+cleanup0:
 	return res;
 }
 
@@ -1772,7 +1770,7 @@ cleanup1:
  *
  *  - Retrieves the information from the cluster.
  *  - Parses the information.
- *  - Invokes backup_encoder.put_user() to store it.
+ *  - Invokes backup_encoder.put_user_info() to store it.
  *
  * @param bjc  The backup job context of the backup thread that's backing up the UDF files.
  *
@@ -1802,24 +1800,58 @@ process_users(backup_job_context_t *bjc)
 	}
 	inf("Backing up %u user(s)", users_size);
 	
-	as_vector user;
-	as_vector_inita(&user, sizeof(as_user*), 1);
+	as_user* user;
+	as_vector cur_user;
+	as_vector_inita(&cur_user, sizeof(as_user*), 1);
 
 	for (uint32_t i=0; i < users_size; ++i)
 	{
+		user = as_vector_get_ptr(&users, i);
 		// fetch each user's info
-		//if (aerospike_query_user(bjc->status->as, &ae, &policy, &users[i]->name, &user) != AEROSPIKE_OK)
-		//{
-		//	err("Error while getting user's info - code %d: %s", ae.code, ae.message);
-		//	goto cleanup2;
-		//}
+		if (aerospike_query_user(bjc->status->as, &ae, &policy, user->name, &cur_user) != AEROSPIKE_OK)
+		{
+			err("Error while getting user's info - code %d: %s", ae.code, ae.message);
+			goto cleanup2;
+		}
+		ver("Storing user %s", user->name);
+		
+		// backing up to a single backup file: allow one thread at a time to write
+		if (bjc->conf->output_file != NULL || bjc->conf->estimate) {
+			safe_lock(&bjc->status->file_write_mutex);
+		}
 
+		bool ok = bjc->status->encoder.put_user_info(bjc->fd, user);
+
+		if (bjc->conf->output_file != NULL || bjc->conf->estimate) {
+			safe_unlock(&bjc->status->file_write_mutex);
+		}
+
+		if (!ok) {
+			err("Error while storing user info in backup file");
+			goto cleanup2;
+		}
+
+		if (bjc->conf->output_file != NULL || bjc->conf->estimate) {
+			if (update_shared_file_pos(bjc->fd, &bjc->status->byte_count_total) < 0) {
+				err("Error while storing users info in backup file");
+				goto cleanup2;
+			}
+		}
+		else {
+			if (update_file_pos(bjc->fd, &bjc->byte_count_file, &bjc->byte_count_job,
+						&bjc->status->byte_count_total) < 0) {
+				err("Error while storing users info in backup file");
+				goto cleanup2;
+			}
+		}
 	}
+	bjc->status->user_count = users_size;
+	res = true;
 	goto cleanup0;
 	// put users and their roles info into backup file
 cleanup2:
-	as_vector_destroy(&user);
-
+	as_user_destroy(&cur_user);
+	cf_free(user);
 cleanup1:
 	as_users_destroy(&users, users_size);
 	

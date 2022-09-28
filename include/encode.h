@@ -41,6 +41,7 @@ extern "C" {
 #include <aerospike/aerospike_index.h>
 #include <aerospike/aerospike_udf.h>
 #include <aerospike/as_record.h>
+#include <aerospike/as_admin.h>
 
 #pragma GCC diagnostic pop
 
@@ -203,6 +204,16 @@ typedef struct backup_encoder {
 	 * @result       `true`, if successful.
 	 */
 	bool (*put_secondary_index)(io_write_proxy_t *fd, const index_param *index);
+
+	/*
+	 * Writes the specification of a user and it's roles to the backup file.
+	 *
+	 * @param fd     The file descriptor of the backup file.
+	 * @param user   The user specification to be written.
+	 *
+	 * @result       `true`, if successful.
+	 */
+	bool (*put_user_info)(io_write_proxy_t *fd, const as_user *user);
 } backup_encoder_t;
 
 /*
