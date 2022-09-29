@@ -61,6 +61,8 @@ static bool wait_index(index_param *index);
 static bool restore_indexes(aerospike *as, as_vector *index_vec, as_vector *set_vec,
 		restore_thread_args_t*, bool wait, uint32_t timeout);
 static bool restore_udf(aerospike *as, udf_param *udf, uint32_t timeout);
+static bool restore_users(aerospike *as, as_vector *user, uint32_t timeout);
+//TODO restore user singular and plural 
 static bool wait_udf(aerospike *as, udf_param *udf, uint32_t timeout);
 static void sig_hand(int32_t sig);
 //static void print_stat(per_thread_context_t *ptc, cf_clock *prev_log,
@@ -706,6 +708,7 @@ restore_thread_func(void *cont)
 			bool expired;
 			index_param index;
 			udf_param udf;
+			as_user user;
 
 			// restoring from a single backup file: allow one thread at a time to read
 			if (ptc.conf->input_file != NULL) {
@@ -725,7 +728,7 @@ restore_thread_func(void *cont)
 
 			decoder_status res = ptc.status->decoder.parse(ptc.fd, ptc.legacy,
 					ptc.ns_vec, ptc.bin_vec, ptc.line_no, &rec,
-					ptc.conf->extra_ttl, &expired, &index, &udf);
+					ptc.conf->extra_ttl, &expired, &index, &udf, &user);
 
 			// set the stop flag inside the critical section; see check above
 			if (res == DECODER_ERROR) {
@@ -799,6 +802,18 @@ restore_thread_func(void *cont)
 
 				as_incr_uint32(&args.status->udf_count);
 				continue;
+			}
+
+			if (res == DECODER_USER) {
+				if (args.conf->no_users) {
+					ver("Ignoring Users info block");
+					free_user(&user);
+					continue;
+				}
+				//else if (!restore_user(args.status->as, &udf, args.conf->timeout)) {
+				//	err("Error while restoring user");
+				//	break;
+				//}
 			}
 
 			if (res == DECODER_RECORD) {

@@ -84,9 +84,11 @@ static decoder_status text_parse_index(io_read_proxy_t *fd, as_vector *ns_vec,
 		uint32_t *line_no, uint32_t *col_no, index_param *index);
 static decoder_status text_parse_udf(io_read_proxy_t *fd, uint32_t *line_no,
 		uint32_t *col_no, udf_param *udf);
+static decoder_status text_parse_user(io_read_proxy_t *fd, uint32_t *line_no,
+		uint32_t *col_no, as_user *user);
 static decoder_status text_parse_global(io_read_proxy_t *fd, as_vector *ns_vec,
 		uint32_t *line_no, uint32_t *col_no, index_param *index,
-		udf_param *udf);
+		udf_param *udf, as_user *user);
 
 
 //==========================================================
@@ -101,7 +103,7 @@ static decoder_status text_parse_global(io_read_proxy_t *fd, as_vector *ns_vec,
 decoder_status
 text_parse(io_read_proxy_t *fd, bool legacy, as_vector *ns_vec,
 		as_vector *bin_vec, uint32_t *orig_line_no, as_record *rec,
-		int32_t extra_ttl, bool *expired, index_param *index, udf_param *udf)
+		int32_t extra_ttl, bool *expired, index_param *index, udf_param *udf, as_user *user)
 {
 	decoder_status res = DECODER_ERROR;
 	uint32_t line_no[2] = { *orig_line_no, *orig_line_no };
@@ -120,7 +122,7 @@ text_parse(io_read_proxy_t *fd, bool legacy, as_vector *ns_vec,
 	}
 
 	if (!legacy && ch == GLOBAL_PREFIX[0]) {
-		res = text_parse_global(fd, ns_vec, line_no, col_no, index, udf);
+		res = text_parse_global(fd, ns_vec, line_no, col_no, index, udf, user);
 		goto out;
 	}
 
@@ -1694,6 +1696,75 @@ cleanup0:
 }
 
 /*
+ * Reads and parses Users info from the backup file.
+ *
+ * @param fd       The file descriptor of the backup file.
+ * @param line_no  The current line number.
+ * @param col_no   The current column number.
+ * @param user      The as_user to be populated.
+ *
+ * @result         See @ref decoder_status.
+ */
+static decoder_status
+text_parse_user(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
+		as_user *user)
+{
+	decoder_status res = DECODER_ERROR;
+	if (user == NULL) {
+		err("Unexpected user backup block (line %u)", line_no[0]);
+		goto cleanup0;
+	}
+
+	ver("Parsing user info in line %u", line_no[0]);
+
+	if (!expect_char(fd, line_no, col_no, ' ')) {
+		goto cleanup0;
+	}
+
+	char name[MAX_TOKEN_SIZE];
+	size_t n_roles;
+
+	if (!text_nul_read_token(fd, false, line_no, col_no, name, sizeof name, " ")) {
+		goto cleanup0;
+	}
+
+	if (!expect_char(fd, line_no, col_no, ' ')) {
+		goto cleanup0;
+	}
+
+	if (!text_read_size(fd, false, line_no, col_no, &n_roles, " ")) {
+		goto cleanup0;
+	}
+	strcpy(user->name, name);
+	user->roles_size = n_roles;
+	char role[AS_ROLE_SIZE];
+	as_vector_init(&user->roles, sizeof (as_role), 25);
+
+	for (size_t i = 0; i < n_roles; ++i) {
+		if (!expect_char(fd, line_no, col_no, ' ')) {
+			goto cleanup1;
+		}
+
+		if (!text_nul_read_token(fd, false, line_no, col_no, role, sizeof role, " ")) {
+			goto cleanup1;
+		}
+
+		if (!expect_char(fd, line_no, col_no, i == n_roles - 1 ? '\n' : ' ')) {
+			goto cleanup1;
+		}
+
+		as_vector_append(&user->roles, safe_strdup(role));
+	}
+	res = DECODER_USER;
+	goto cleanup0;
+
+cleanup1:
+	as_vector_destroy(&user->roles);
+cleanup0:
+	return res;
+}
+
+/*
  * Reads and parses an entity from the global section (secondary index information, UDF files)
  * in the backup file.
  *
@@ -1703,12 +1774,13 @@ cleanup0:
  * @param col_no   The current column number.
  * @param index    The index_param to be populated.
  * @param udf      The udf_param to be populated.
+ * @param user     The as_user info to be populated.
  *
  * @result         See @ref decoder_status.
  */
 static decoder_status
 text_parse_global(io_read_proxy_t *fd, as_vector *ns_vec, uint32_t *line_no,
-		uint32_t *col_no, index_param *index, udf_param *udf)
+		uint32_t *col_no, index_param *index, udf_param *udf, as_user *user)
 {
 	if (!expect_char(fd, line_no, col_no, ' ')) {
 		return DECODER_ERROR;
@@ -1728,6 +1800,9 @@ text_parse_global(io_read_proxy_t *fd, as_vector *ns_vec, uint32_t *line_no,
 		return text_parse_udf(fd, line_no, col_no, udf);
 	}
 
+	if (type == 'U') {
+		return text_parse_user(fd, line_no, col_no, user);
+	}
 	err("Invalid global type character %s in block (line %u, col %u)", print_char(type), line_no[0],
 			col_no[0]);
 	return DECODER_ERROR;

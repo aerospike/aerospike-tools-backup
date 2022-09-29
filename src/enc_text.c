@@ -539,7 +539,7 @@ bool
 text_put_user_info(io_write_proxy_t *fd,
 		const as_user *user)
 {
-	if (io_proxy_printf(fd, GLOBAL_PREFIX "u %s", escape(user->name)) < 0) {
+	if (io_proxy_printf(fd, GLOBAL_PREFIX "U %s %u", escape(user->name), user->roles_size) < 0) {
 		err("Error while writing user's info to backup file [1]");
 		return false;
 	}
