@@ -1722,26 +1722,30 @@ text_parse_user(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
 	if (!text_read_size(fd, false, line_no, col_no, &n_roles, " ")) {
 		goto cleanup0;
 	}
+
+	if (!expect_char(fd, line_no, col_no, ' ')) {
+			goto cleanup0;
+	}
 	strcpy(user->name, name);
 	user->roles_size = n_roles;
 	char role[AS_ROLE_SIZE];
 	as_vector_init(&user->roles, sizeof (as_role), 25);
 
 	for (size_t i = 0; i < n_roles; ++i) {
-		if (!expect_char(fd, line_no, col_no, ' ')) {
-			goto cleanup1;
-		}
-
 		if (!text_nul_read_token(fd, false, line_no, col_no, role, sizeof role, " ")) {
 			goto cleanup1;
 		}
 
-		if (!expect_char(fd, line_no, col_no, i == n_roles - 1 ? '\n' : ' ')) {
+		if (!expect_char(fd, line_no, col_no, ' ')) {
 			goto cleanup1;
 		}
-
 		as_vector_append(&user->roles, safe_strdup(role));
 	}
+	
+	if (!expect_char(fd, line_no, col_no, '\n')) {
+			goto cleanup1;
+	}
+
 	res = DECODER_USER;
 	goto cleanup0;
 
