@@ -61,8 +61,8 @@ static bool wait_index(index_param *index);
 static bool restore_indexes(aerospike *as, as_vector *index_vec, as_vector *set_vec,
 		restore_thread_args_t*, bool wait, uint32_t timeout);
 static bool restore_udf(aerospike *as, udf_param *udf, uint32_t timeout);
-static bool restore_users(aerospike *as, as_vector *user, uint32_t timeout);
-//TODO restore user singular and plural 
+static user_status check_user(aerospike *as, as_user *user, uint32_t timeout);
+static bool restore_user(aerospike *as, as_user *user, restore_thread_args_t* args, uint32_t timeout);
 static bool wait_udf(aerospike *as, udf_param *udf, uint32_t timeout);
 static void sig_hand(int32_t sig);
 //static void print_stat(per_thread_context_t *ptc, cf_clock *prev_log,
@@ -810,7 +810,8 @@ restore_thread_func(void *cont)
 					free_user(&user);
 					continue;
 				}
-				//else if (!restore_user(args.status->as, &udf, args.conf->timeout)) {
+				//TODO: restore_user needs to be completed
+				//else if (!restore_user(args.status->as, &user, &args, args.conf->timeout)) {
 				//	err("Error while restoring user");
 				//	break;
 				//}
@@ -1459,6 +1460,96 @@ restore_udf(aerospike *as, udf_param *udf, uint32_t timeout)
 
 	as_bytes_destroy(&content);
 
+	return true;
+}
+
+static user_status
+check_user(aerospike *as, as_user *user, uint32_t timeout)
+{
+	ver("Checking user %s status", user->name);
+	user_status res = USER_STATUS_INVALID;
+
+	as_policy_info policy;
+	as_policy_info_init(&policy);
+	as_error ae;
+	
+	as_vector cur_user;
+	as_vector_inita(&cur_user, sizeof(as_user*), 1);
+
+	as_status user_query_res = aerospike_query_user(&as, &ae, &policy, user->name, &cur_user);
+	if (user_query_res != AEROSPIKE_OK)
+	{
+		err("Error while getting user's info - code %d: %s", ae.code, ae.message);
+		goto cleanup1;
+	}
+	if (user_query_res == AEROSPIKE_USER_ALREADY_EXISTS)
+	{
+		res = USER_STATUS_EXISTS;
+		goto cleanup0;
+	}
+
+	res = USER_STATUS_ABSENT;
+	goto cleanup0;
+cleanup1:
+	as_user_destroy(&user);
+cleanup0:
+	return res;
+}
+
+static bool
+restore_user(aerospike *as, as_user *user, restore_thread_args_t* args, uint32_t timeout)
+{
+	inf("Restoring user %s information", user->name);
+	// TODO: prevent restoring the user that currently is running the asrestore 
+	// deleting admin user would break the connection
+	bool res = false;
+	as_policy_info policy;
+	as_policy_info_init(&policy);
+	policy.timeout = timeout;
+
+	as_error ae;
+
+	// check if user already exist (and call drop user accordingly)
+	user_status stat = check_user(as, user, timeout);
+	if (stat == USER_STATUS_EXISTS) {
+		ver("Removing user %s that already exist", user->name);
+
+		if (aerospike_drop_user(as, &ae, &policy, user->name)!= AEROSPIKE_OK) {
+			err("Error while removing user %s - code %d: %s at %s:%d", user->name,
+					ae.code, ae.message, ae.file, ae.line);
+			return false;
+		}
+
+		// aerospike_drop_user() is asynchronous. Check the user again, because AEROSPIKE_OK
+		// doesn't necessarily mean that the user is gone.
+		for (int32_t tries = 0; tries < MAX_TRIES; ++tries) {
+			restore_status_sleep_for(args->status, 1, false);
+			stat = check_user(as, user, timeout);
+
+			if (stat != USER_STATUS_ABSENT) {
+				break;
+			}
+		}
+	}
+	switch (stat) {
+		case USER_STATUS_INVALID:
+			err("Unknown user status");
+			return false;
+
+		case USER_STATUS_ABSENT:
+			break;
+
+		case USER_STATUS_EXISTS:
+			err("Error while removing already existed user %s", user->name);
+			return false;
+	}
+	ver("Creating user %s with %u roles", user->name, user->roles_size);
+	// Currently set the password to username
+	if (aerospike_create_user(as, &ae, &policy, user->name, user->name, user->roles, user->roles_size) != AEROSPIKE_OK) {
+		err("Error while creating user %s - code %d: %s at %s:%d", user->name,
+					ae.code, ae.message, ae.file, ae.line);
+			return false;
+	}
 	return true;
 }
 

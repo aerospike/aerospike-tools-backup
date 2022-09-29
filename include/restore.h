@@ -136,6 +136,17 @@ typedef enum {
 	INDEX_STATUS_DIFFERENT
 } index_status;
 
+/*
+ * Indicates, whether a user exists and matches a given username.
+ */
+typedef enum {
+	// Invalid.
+	USER_STATUS_INVALID,
+	// The user already exist.
+	USER_STATUS_EXISTS,
+	// The user does not exist.
+	USER_STATUS_ABSENT
+} user_status;
 
 //==========================================================
 // Public API.
