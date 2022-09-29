@@ -164,6 +164,8 @@ typedef enum {
 	DECODER_INDEX,
 	// A UDF file was read and is returned.
 	DECODER_UDF,
+	// A User info was read and is returned.
+	DECODER_USER,
 	// The end of the backup file was encountered.
 	DECODER_EOF,
 		// An error occurred.
@@ -236,13 +238,15 @@ typedef struct backup_decoder {
 	 *                  [DECODER_INDEX](@ref decoder_status::DECODER_INDEX).
 	 * @param udf       The returned UDF file. Only valid, if the result is
 	 *                  [DECODER_UDF](@ref decoder_status::DECODER_UDF).
+	 * @param user       The returned user information. Only valid, if the result is
+	 *                  [DECODER_USER](@ref decoder_status::DECODER_USER).
 	 *
 	 * @result          See @ref decoder_status.
 	 */
 	decoder_status (*parse)(io_read_proxy_t *fd, bool legacy, as_vector *ns_vec,
 			as_vector *bin_vec, uint32_t *line_no, as_record *rec,
 			int32_t extra_ttl, bool *expired, index_param *index,
-			udf_param *udf);
+			udf_param *udf, as_user *user);
 } backup_decoder_t;
 
 
@@ -257,6 +261,10 @@ void free_udfs(as_vector *udf_vec);
 void free_index(index_param *param);
 
 void free_indexes(as_vector *index_vec);
+
+void free_user(as_user *user);
+
+void free_users(as_vector /*<as_user>*/ *users, int user_size);
 
 #ifdef __cplusplus
 }

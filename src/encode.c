@@ -92,3 +92,25 @@ free_indexes(as_vector *index_vec)
 	}
 }
 
+/*
+ * Deallocates the fields of a user information record.
+ *
+ * @param param  The as_user to be deallocated.
+ */
+void
+free_user(as_user *param)
+{
+	as_user_destroy(&param);
+}
+
+/*
+ * Deallocates a vector of user information record.
+ *
+ * @param user_vec  The vector of as_user to be deallocated.
+ * @param user_size The number of users to be deallocated
+ */
+void
+free_users(as_vector *user_vec, int user_size)
+{
+	as_users_destroy(&user_vec, user_size);
+}

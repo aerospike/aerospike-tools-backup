@@ -44,7 +44,7 @@ extern "C" {
 
 decoder_status text_parse(io_read_proxy_t *fd, bool legacy, as_vector *ns_vec,
 		as_vector *bin_vec, uint32_t *orig_line_no, as_record *rec,
-		int32_t extra_ttl, bool *expired, index_param *index, udf_param *udf);
+		int32_t extra_ttl, bool *expired, index_param *index, udf_param *udf, as_user *user);
 
 #ifdef __cplusplus
 }
