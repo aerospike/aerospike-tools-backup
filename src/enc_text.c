@@ -539,12 +539,12 @@ bool
 text_put_user_info(io_write_proxy_t *fd,
 		const as_user *user)
 {
-	if (io_proxy_printf(fd, GLOBAL_PREFIX "U %s %u", escape(user->name), user->roles_size) < 0) {
+	if (io_proxy_printf(fd, GLOBAL_PREFIX "U %s %u ", escape(user->name), user->roles_size) < 0) {
 		err("Error while writing user's info to backup file [1]");
 		return false;
 	}
 	for (uint32_t i = 0; i < user->roles_size; ++i) {
-		if(io_proxy_printf(fd, " %s", escape(user->roles[i])) < 0) {
+		if(io_proxy_printf(fd, "%s ", escape(user->roles[i])) < 0) {
 			err("Error while writing user's info to backup file [2]");
 			return false;
 		}
