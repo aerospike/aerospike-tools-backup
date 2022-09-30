@@ -1449,6 +1449,8 @@ check_user(aerospike *as, as_user *user, uint32_t timeout)
 
 	as_policy_info policy;
 	as_policy_info_init(&policy);
+	policy.timeout = TIMEOUT;
+
 	as_error ae;
 	
 	as_vector cur_user;
@@ -1483,7 +1485,7 @@ restore_user(aerospike *as, as_user *user, restore_thread_args_t* args, uint32_t
 	bool res = false;
 	as_policy_info policy;
 	as_policy_info_init(&policy);
-	policy.timeout = timeout;
+	policy.timeout = TIMEOUT;
 
 	as_error ae;
 
