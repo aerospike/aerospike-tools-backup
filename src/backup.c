@@ -1808,11 +1808,6 @@ process_users(backup_job_context_t *bjc)
 	{
 		user = as_vector_get_ptr(&users, i);
 	
-		//if (aerospike_query_user(bjc->status->as, &ae, &policy, user->name, &cur_user) != AEROSPIKE_OK)
-		//{
-		//	err("Error while getting user's info - code %d: %s", ae.code, ae.message);
-		//	goto cleanup2;
-		//}
 		ver("Storing user %s", user->name);
 		
 		// backing up to a single backup file: allow one thread at a time to write

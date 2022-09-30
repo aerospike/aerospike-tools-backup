@@ -810,7 +810,10 @@ restore_thread_func(void *cont)
 					free_user(&user);
 					continue;
 				}
-				//TODO: restore_user needs to be completed
+				/*TODO: restore_user needs to be completed
+				currently request would timeout before finishing the check_user func.
+				debug passing &policy (and timeout arg) to aerospike_query_user
+				*/
 				//else if (!restore_user(args.status->as, &user, &args, args.conf->timeout)) {
 				//	err("Error while restoring user");
 				//	break;
@@ -1471,7 +1474,7 @@ check_user(aerospike *as, as_user *user, uint32_t timeout)
 
 	as_policy_info policy;
 	as_policy_info_init(&policy);
-	policy.timeout = TIMEOUT;
+	policy.timeout = timeout;
 
 	as_error ae;
 	
@@ -1507,7 +1510,7 @@ restore_user(aerospike *as, as_user *user, restore_thread_args_t* args, uint32_t
 	bool res = false;
 	as_policy_info policy;
 	as_policy_info_init(&policy);
-	policy.timeout = TIMEOUT;
+	policy.timeout = timeout;
 
 	as_error ae;
 
