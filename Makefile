@@ -38,12 +38,12 @@ CC ?= cc
 
 DWARF := $(shell $(CC) -Wall -Wextra -O2 -o /tmp/asflags_$${$$} src/flags.c; \
 		/tmp/asflags_$${$$}; rm /tmp/asflags_$${$$})
-CFLAGS += -std=gnu99 $(DWARF) -O2 -flto -march=nocona -fno-common -fno-strict-aliasing \
+CFLAGS += -std=gnu99 $(DWARF) -O2 -flto -fno-common -fno-strict-aliasing \
 		-Wall -Wextra -Wconversion -Wsign-conversion -Wmissing-declarations \
 		-Wno-implicit-fallthrough -Wno-unused-result -Wno-typedef-redefinition \
 		-D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_FORTIFY_SOURCE=2 -DMARCH_$(ARCH) \
 		-DTOOL_VERSION=\"$(VERSION)\"
-CXXFLAGS := -std=c++14 $(DWARF) -O2 -flto -march=nocona -fno-common -fno-strict-aliasing \
+CXXFLAGS := -std=c++14 $(DWARF) -O2 -flto -fno-common -fno-strict-aliasing \
 		-Wall -Wextra -Wconversion -Wsign-conversion -Wmissing-declarations \
 		-Wno-implicit-fallthrough -Wno-unused-result \
 		-D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_FORTIFY_SOURCE=2 -DMARCH_$(ARCH) \
@@ -56,12 +56,12 @@ ifeq ($(OS), Linux)
 LDFLAGS += -pthread
 endif
 
-TEST_CFLAGS := -std=gnu99 $(DWARF) -g -O2 -march=nocona -fno-common -fno-strict-aliasing \
+TEST_CFLAGS := -std=gnu99 $(DWARF) -g -O2 -fno-common -fno-strict-aliasing \
 		-Wall -Wextra -Wconversion -Wsign-conversion -Wmissing-declarations \
 		-Wno-implicit-fallthrough -Wno-unused-result -Wno-typedef-redefinition \
 		-D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_FORTIFY_SOURCE=2 -DMARCH_$(ARCH) \
 		-DTOOL_VERSION=\"$(VERSION)\"
-TEST_CXXFLAGS := -std=c++14 $(DWARF) -g -O2 -march=nocona -fno-common -fno-strict-aliasing \
+TEST_CXXFLAGS := -std=c++14 $(DWARF) -g -O2 -fno-common -fno-strict-aliasing \
 		-Wall -Wextra -Wconversion -Wsign-conversion -Wmissing-declarations \
 		-Wno-implicit-fallthrough -Wno-unused-result \
 		-D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_FORTIFY_SOURCE=2 -DMARCH_$(ARCH) \
