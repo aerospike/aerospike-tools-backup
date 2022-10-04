@@ -1347,23 +1347,31 @@ static void
 _ctr128_sub_from(uint8_t dst[AES_BLOCK_SIZE], const uint8_t src[AES_BLOCK_SIZE],
 		uint64_t val)
 {
+
+	// convert the 128bit source into 2 big endian uint64_t
+	// the htobe64 makes sure we are always working in big endian
+	// regardless of host architecture
 	uint64_t v1 = htobe64(*(const uint64_t*) &src[0]);
 	uint64_t v2 = htobe64(*(const uint64_t*) &src[8]);
-	__asm__("subq %[val], %[v2]\n\t"
-			"sbbq $0, %[v1]"
-			: [v1] "+r" (v1),
-			  [v2] "+&r" (v2)
-			: [val] "r" (val)
-			: "cc");
-	v1 = be64toh(v1);
-	v2 = be64toh(v2);
-	__asm__("movq %[v1], (%[dst])\n\t"
-			"movq %[v2], 0x8(%[dst])"
-			:
-			: [v1] "r" (v1),
-			  [v2] "r" (v2),
-			  [dst] "r" (dst)
-			: "memory");
+	
+	__uint128_t tmp = 0;
+	// include and shift the most significant bits
+	tmp = tmp | v1;
+	tmp = tmp << 64;
+	// include the lower order bits
+	tmp = tmp | v2;
+	// add the value
+	tmp -= (__uint128_t) val;
+
+	__uint128_t mask = 0x00000000ffffffff;
+
+	// shift tmp so that the meaningful bits aren't truncated
+	// during cast to uint64_t
+	v1 = be64toh((uint64_t)((tmp >> 64) & mask));
+	v2 = be64toh((uint64_t)(tmp & mask));
+
+	memcpy(dst, &v1, 8);
+	memcpy(dst+8, &v2, 8);
 }
 
 static int
