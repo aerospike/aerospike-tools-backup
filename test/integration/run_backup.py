@@ -3,9 +3,6 @@
 """
 Aerospike backup tool running utilities.
 """
-
-import os
-
 import aerospike_servers as as_srv
 import lib
 
@@ -73,7 +70,6 @@ def backup_async(filler, context={}, path=None, env={}, backup_opts=None,
 	filler(context)
 
 	try:
-
 		if lib.is_dir_mode():
 			if path is None:
 				path = lib.temporary_path("dir")
@@ -113,10 +109,10 @@ def backup_and_restore(filler, preparer, checker, env={}, backup_opts=None,
 	Do one backup-restore cycle.
 	"""
 	if backup_opts is None:
-		backup_opts = []
+		backup_opts = ["--host=localhost"]
 
 	if restore_opts is None:
-		restore_opts = []
+		restore_opts = ["--host=localhost"]
 
 	as_srv.start_aerospike_servers()
 
@@ -136,7 +132,6 @@ def backup_and_restore(filler, preparer, checker, env={}, backup_opts=None,
 			break
 
 		try:
-
 			if lib.is_dir_mode():
 				path = lib.temporary_path("dir")
 				backup_to_directory(path, *(backup_opts + comp_enc_mode), env=env)
@@ -167,4 +162,39 @@ def backup_and_restore(filler, preparer, checker, env={}, backup_opts=None,
 			as_srv.reset_aerospike_servers()
 			raise
 	as_srv.reset_aerospike_servers()
+
+def run_backup_w_valgrind(filler, context={}, backup_options=None):
+	"""
+	Run asbackup command with given options using valgrind
+	"""
+	res = False
+	as_srv.start_aerospike_servers()
+	filler(context)
+	try:
+		with open(lib.VAL_LOGS_BACKUP, "w") as pipe_stdout:
+			lib.run("asbackup", *backup_options, do_async=False,
+				pipe_stderr=pipe_stdout, env={}, USE_VALGRIND=True)
+		res = lib.parse_val_logs(lib.VAL_LOGS_BACKUP)
+	except:
+		as_srv.reset_aerospike_servers()
+		raise
+	as_srv.reset_aerospike_servers()
+	return res
+
+def run_restore_w_valgrind(*restore_options):
+	"""
+	Run asrestore command with given options using valgrind
+	"""
+	res = False
+	as_srv.start_aerospike_servers()
+	try:
+		with open(lib.VAL_LOGS_RESTORE, "w") as pipe_stdout:
+			lib.run("asrestore", *restore_options, do_async=False,
+				pipe_stderr=pipe_stdout, env={}, USE_VALGRIND=True)
+		res = lib.parse_val_logs(lib.VAL_LOGS_RESTORE)
+	except:
+		as_srv.reset_aerospike_servers()
+		raise
+	as_srv.reset_aerospike_servers()
+	return res
 
