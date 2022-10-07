@@ -617,8 +617,7 @@ cleanup6:
 	}
 
 	// Since we won't be acquiring any more locks from here on
-	// TODO review atomics
-	// as_fence_memory();
+	as_fence_seq();
 
 	backup_state = backup_status_get_backup_state(status);
 	do_backup_save_state = backup_state != NULL &&
