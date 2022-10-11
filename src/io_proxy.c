@@ -1311,9 +1311,24 @@ static void
 _ctr128_add_to(uint8_t dst[AES_BLOCK_SIZE], const uint8_t src[AES_BLOCK_SIZE],
 		uint64_t val)
 {
-	// this works because AES_BLOCK_SIZE is 16
-	// if that changes this will break
-	*(__uint128_t*) dst =  (*(const __uint128_t*) src) + 1;
+	uint64_t v1 = htobe64(*(const uint64_t*) &src[0]);
+	uint64_t v2 = htobe64(*(const uint64_t*) &src[8]);
+
+	__asm__("add %[v2], %[val], %[v2]\n\t"
+			"adc %[v1], $0, %[v1]"
+			: [v1] "+r" (v1),
+			  [v2] "+&r" (v2)
+			: [val] "r" (val)
+			: "cc");
+	v1 = be64toh(v1);
+	v2 = be64toh(v2);
+	__asm__("mov (%[dst]), %[v1]\n\t"
+			"mov 0x8(%[dst]), %[v2]"
+			:
+			: [v1] "r" (v1),
+			  [v2] "r" (v2),
+			  [dst] "r" (dst)
+			: "memory");
 }
 
 /*
@@ -1326,9 +1341,26 @@ static void
 _ctr128_sub_from(uint8_t dst[AES_BLOCK_SIZE], const uint8_t src[AES_BLOCK_SIZE],
 		uint64_t val)
 {
-        // this	works because AES_BLOCK_SIZE is	16
-        // if that changes this	will break 
-        *(__uint128_t*) dst =  (*(const __uint128_t*) src) - 1;
+	// *(__uint128_t*) dst =  (*(const __uint128_t*) src) - 1;
+
+	uint64_t v1 = htobe64(*(const uint64_t*) &src[0]);
+	uint64_t v2 = htobe64(*(const uint64_t*) &src[8]);
+
+	__asm__("sub %[v2], %[val], %[v2]\n\t"
+			"sbc %[v1], $0, %[v1]"
+			: [v1] "+r" (v1),
+			  [v2] "+&r" (v2)
+			: [val] "r" (val)
+			: "cc");
+	v1 = be64toh(v1);
+	v2 = be64toh(v2);
+	__asm__("mov (%[dst]), %[v1]\n\t"
+			"mov 0x8(%[dst]), %[v2]"
+			:
+			: [v1] "r" (v1),
+			  [v2] "r" (v2),
+			  [dst] "r" (dst)
+			: "memory");
 }
 
 static int
