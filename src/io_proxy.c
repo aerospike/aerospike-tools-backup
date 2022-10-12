@@ -1311,17 +1311,17 @@ static void
 _ctr128_add_to(uint8_t dst[AES_BLOCK_SIZE], const uint8_t src[AES_BLOCK_SIZE],
 		uint64_t val)
 {
-	uint64_t v1 = htobe64(*(const uint64_t*) &src[0]);
-	uint64_t old_v2 = htobe64((*(const uint64_t*) &src[8]));
-	uint64_t v2 = old_v2 + val;
-	// did v2 roll over?
-	if (old_v2 > v2) {
-		v1 += v2 + 1;
-		v2 = 0xFFFFFFFFFFFFFFFF;
-	}
+	uint64_t v1 = be64toh(*(const uint64_t*) &src[0]);
+	uint64_t v2 = be64toh(*(const uint64_t*) &src[8]);
 
-	*((uint64_t*) &dst[0]) = be64toh(v1);
-	*((uint64_t*) &dst[8]) = be64toh(v2);
+	v2 += val;
+	v1 += v2 < val;
+
+	v1 = htobe64(v1);
+	v2 = htobe64(v2);
+
+	*((uint64_t*) &dst[0]) = v1;
+	*((uint64_t*) &dst[8]) = v2;
 }
 
 /*
@@ -1334,19 +1334,18 @@ static void
 _ctr128_sub_from(uint8_t dst[AES_BLOCK_SIZE], const uint8_t src[AES_BLOCK_SIZE],
 		uint64_t val)
 {
-	// *(__uint128_t*) dst =  (*(const __uint128_t*) src) - 1;
+	uint64_t v1 = be64toh(*(const uint64_t*) &src[0]);
+	uint64_t v2 = be64toh(*(const uint64_t*) &src[8]);
+	uint64_t carry = val > v2;
 
-	uint64_t v1 = htobe64(*(const uint64_t*) &src[0]);
-	uint64_t old_v2 = htobe64(*(const uint64_t*) &src[8]);
-	uint64_t v2 = old_v2 - val;
-	// did v2 roll over?
-	if (old_v2 < v2) {
-		v1 -= 0xFFFFFFFFFFFFFFFF - v2 - 1;
-		v2 = 0;
-	}
+	v2 -= val;
+	v1 -= carry;
 
-	*((uint64_t*) &dst[0]) = be64toh(v1);
-	*((uint64_t*) &dst[8]) = be64toh(v2);
+	v1 = htobe64(v1);
+	v2 = htobe64(v2);
+
+	*((uint64_t*) &dst[0]) = v1;
+	*((uint64_t*) &dst[8]) = v2;
 }
 
 static int
