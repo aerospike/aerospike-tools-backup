@@ -766,18 +766,18 @@ io_proxy_getc_unlocked(io_read_proxy_t* io)
 char*
 io_proxy_gets(io_read_proxy_t* io, char* str, int n)
 {
-	char c;
+	int32_t c;
 	int i;
 
 	for (i = 0; i < n - 1; i++) {
-		c = (char) io_proxy_getc(io);
+		c = io_proxy_getc(io);
 		if (c == EOF) {
 			if (i == 0) {
 				return NULL;
 			}
 			break;
 		}
-		str[i] = c;
+		str[i] = (char) c;
 		if (c == '\n') {
 			i++;
 			break;
