@@ -43,6 +43,7 @@ START_TEST(test_enc_dec_text)
     decoder_status res = DECODER_ERROR;
     index_param sindex_params2;
     as_vector ns_vec; //empty ns vector
+    as_vector_init(&ns_vec, 0, 0);
 
     res = text_parse(&rio, false, &ns_vec, NULL, &line_no[0], NULL, 0, false, &sindex_params2, NULL);
     ck_assert_int_eq(res, DECODER_INDEX);
@@ -62,7 +63,7 @@ START_TEST(test_enc_dec_text)
 
     remove(TMP_FILE_0);
     cf_free(path);
-	cf_free(path2); 
+    cf_free(path2); 
     as_vector_destroy(&ns_vec);
 }
 END_TEST

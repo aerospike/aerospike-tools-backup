@@ -371,7 +371,8 @@ END_TEST
 START_TEST(test_as_key_move_an_empty_key)
 {
 	as_key* test_key = (as_key *) test_malloc(sizeof(as_key));
-	
+	test_key->valuep = NULL;
+
 	ck_assert(as_key_move(test_key, test_key));
 	cf_free(test_key);
 }
