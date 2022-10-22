@@ -33,17 +33,19 @@ ARCH := $(shell uname -m)
 PLATFORM := $(OS)-$(ARCH)
 VERSION := $(shell git describe 2>/dev/null; if [ $${?} != 0 ]; then echo 'unknown'; fi)
 ROOT = $(CURDIR)
+DIR_TSO := $(PWD)/tso
+TSO_LIB := $(DIR_TSO)/tso.so
 
 CC ?= cc
 
 DWARF := $(shell $(CC) -Wall -Wextra -O2 -o /tmp/asflags_$${$$} src/flags.c; \
 		/tmp/asflags_$${$$}; rm /tmp/asflags_$${$$})
-CFLAGS += -std=gnu99 $(DWARF) -O2 -flto -fno-common -fno-strict-aliasing \
+CFLAGS += -std=gnu99 $(DWARF) -O2 -fno-common -fno-strict-aliasing \
 		-Wall -Wextra -Wconversion -Wsign-conversion -Wmissing-declarations \
 		-Wno-implicit-fallthrough -Wno-unused-result -Wno-typedef-redefinition \
 		-D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_FORTIFY_SOURCE=2 -DMARCH_$(ARCH) \
 		-DTOOL_VERSION=\"$(VERSION)\"
-CXXFLAGS := -std=c++14 $(DWARF) -O2 -flto -fno-common -fno-strict-aliasing \
+CXXFLAGS := -std=c++14 $(DWARF) -O2 -fno-common -fno-strict-aliasing \
 		-Wall -Wextra -Wconversion -Wsign-conversion -Wmissing-declarations \
 		-Wno-implicit-fallthrough -Wno-unused-result \
 		-D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_FORTIFY_SOURCE=2 -DMARCH_$(ARCH) \
@@ -67,6 +69,24 @@ TEST_CXXFLAGS := -std=c++14 $(DWARF) -g -O2 -fno-common -fno-strict-aliasing \
 		-D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_FORTIFY_SOURCE=2 -DMARCH_$(ARCH) \
 		-DTOOL_VERSION=\"$(VERSION)\"
 TEST_LDFLAGS := $(LDFLAGS) -fprofile-arcs -lcheck
+
+ifeq ($(ARCH),aarch64)
+  # Plugin configuration.
+  PLUGIN_ENABLE = yes
+  PLUGIN_FIX_ASM = yes
+  PLUGIN_FIX_BUILT_IN = yes
+  PLUGIN_PROFILING = no
+
+  TSO_FLAGS = -mcpu=neoverse-n1 -fplugin=$(TSO_LIB) -fplugin-arg-tso-enable=$(PLUGIN_ENABLE) \
+				-fplugin-arg-tso-exclude=$(DIR_TSO)/exclude_ce.txt -fplugin-arg-tso-exclude=$(DIR_TSO)/exclude_ce.txt \
+				-fplugin-arg-tso-track-deps=yes -fplugin-arg-tso-fix-asm=$(PLUGIN_FIX_ASM) \
+				-fplugin-arg-tso-fix-built-in=$(PLUGIN_FIX_BUILT_IN) -fplugin-arg-tso-profiling=$(PLUGIN_PROFILING)
+  
+  CFLAGS += $(TSO_FLAGS)
+  CXXFLAGS += $(TSO_FLAGS)
+  TEST_CFLAGS += $(TSO_FLAGS)
+  TEST_CXXFLAGS += $(TSO_FLAGS)
+endif
 
 ifeq ($(EVENT_LIB),libev)
   CFLAGS += -DAS_USE_LIBEV
@@ -243,7 +263,7 @@ TOML := $(DIR_TOML)/libtoml.a
 SRCS := $(BACKUP_SRC) $(RESTORE_SRC)
 OBJS := $(BACKUP_OBJ) $(RESTORE_OBJ)
 DEPS := $(BACKUP_DEP) $(RESTORE_DEP)
-BINS := $(TOML) $(BACKUP) $(RESTORE)
+BINS := $(TOML) $(TSO_LIB) $(BACKUP) $(RESTORE)
 
 # sort removes duplicates
 SRCS := $(sort $(SRCS))
@@ -285,6 +305,7 @@ all: $(BINS)
 clean:
 	$(MAKE) -C $(DIR_TOML) clean
 	$(MAKE) -C $(DIR_C_CLIENT) clean
+	$(MAKE) -C $(DIR_TSO) clean
 	rm -f $(DEPS) $(OBJS) $(BINS) $(TEST_OBJS) $(TEST_DEPS) $(TEST_BINS)
 	if [ -d $(DIR_OBJ) ]; then rmdir $(DIR_OBJ); fi
 	if [ -d $(DIR_BIN) ]; then rmdir $(DIR_BIN); fi
@@ -333,10 +354,10 @@ $(DIR_OBJ)/%_c.o: $(DIR_SRC)/%.c | $(DIR_OBJ)
 $(DIR_OBJ)/%_cc.o: $(DIR_SRC)/%.cc | $(DIR_OBJ)
 	$(CXX) $(CXXFLAGS) -MMD -o $@ -c $(INCLUDES) $<
 
-$(BACKUP): $(BACKUP_OBJ) $(TOML) $(C_CLIENT_LIB) | $(DIR_BIN)
+$(BACKUP): $(BACKUP_OBJ) $(TOML) $(C_CLIENT_LIB) $(TSO_LIB) | $(DIR_BIN)
 	$(CXX) $(LDFLAGS) -o $(BACKUP) $(BACKUP_OBJ) $(LIBRARIES)
 
-$(RESTORE): $(RESTORE_OBJ) $(TOML) $(C_CLIENT_LIB) | $(DIR_BIN)
+$(RESTORE): $(RESTORE_OBJ) $(TOML) $(C_CLIENT_LIB) $(TSO_LIB) | $(DIR_BIN)
 	$(CXX) $(LDFLAGS) -o $(RESTORE) $(RESTORE_OBJ) $(LIBRARIES)
 
 $(TOML):
@@ -344,6 +365,13 @@ $(TOML):
 
 $(C_CLIENT_LIB):
 	$(MAKE) -C $(DIR_C_CLIENT)
+
+
+
+$(TSO_LIB):
+	if [ $(ARCH) == "aarch64" ]; then \
+		$(MAKE) -C $(DIR_TSO); \
+	fi
 
 -include $(BACKUP_DEP)
 -include $(RESTORE_DEP)
@@ -359,7 +387,7 @@ unit: $(DIR_TEST_BIN)/test
 .PHONY: integration
 integration: $(TEST_INTEGRATION_TESTS)
 
-run_%: $(TEST_BINS) FORCE | coverage-init
+run_%: $(TEST_BINS) FORCE
 	@./tests.sh $(DIR_ENV) $(patsubst run_%,$(DIR_INTEGRATION_TEST)/%.py,$@)
 
 FORCE:
@@ -388,29 +416,29 @@ $(DIR_TEST_OBJ)/src/%_cc.o: src/%.cc | $(DIR_TEST_OBJ)/src
 $(DIR_TEST_BIN)/test: $(TEST_OBJ) $(DIR_C_CLIENT)/target/$(PLATFORM)/lib/libaerospike.a $(TOML) | $(DIR_TEST_BIN)
 	$(CXX) -o $@ $(TEST_OBJ) $(DIR_C_CLIENT)/target/$(PLATFORM)/lib/libaerospike.a $(TEST_LDFLAGS) $(LIBRARIES)
 
-$(TEST_BACKUP): $(TEST_BACKUP_OBJ) $(TOML) $(C_CLIENT_LIB) | $(DIR_TEST_BIN)
+$(TEST_BACKUP): $(TEST_BACKUP_OBJ) $(TOML) $(C_CLIENT_LIB) $(TSO_LIB) | $(DIR_TEST_BIN)
 	$(CXX) $(TEST_LDFLAGS) -o $(TEST_BACKUP) $(TEST_BACKUP_OBJ) $(LIBRARIES)
 
-$(TEST_RESTORE): $(TEST_RESTORE_OBJ) $(TOML) $(C_CLIENT_LIB) | $(DIR_TEST_BIN)
+$(TEST_RESTORE): $(TEST_RESTORE_OBJ) $(TOML) $(C_CLIENT_LIB) $(TSO_LIB) | $(DIR_TEST_BIN)
 	$(CXX) $(TEST_LDFLAGS) -o $(TEST_RESTORE) $(TEST_RESTORE_OBJ) $(LIBRARIES)
 
 -include $(TEST_DEPS)
 
 # Requires the lcov tool to be installed
-$(DIR_TEST_BIN)/aerospike-tools-backup.info: FORCE
-	lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup-test.info --capture --directory $(DIR_TEST_BIN)
-	lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup-test.info --quiet --extract $(DIR_TEST_BIN)/aerospike-tools-backup-test.info '$(DIR_SRC)/*' '$(DIR_INC)/*'
-	lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup.info --quiet -a $(DIR_TEST_BIN)/aerospike-tools-backup-baseline.info -a $(DIR_TEST_BIN)/aerospike-tools-backup-test.info
+# $(DIR_TEST_BIN)/aerospike-tools-backup.info: FORCE
+# 	lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup-test.info --capture --directory $(DIR_TEST_BIN)
+# 	lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup-test.info --quiet --extract $(DIR_TEST_BIN)/aerospike-tools-backup-test.info '$(DIR_SRC)/*' '$(DIR_INC)/*'
+# 	lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup.info --quiet -a $(DIR_TEST_BIN)/aerospike-tools-backup-baseline.info -a $(DIR_TEST_BIN)/aerospike-tools-backup-test.info
 
-.PHONY: coverage
-coverage: | $(DIR_TEST_BIN)/aerospike-tools-backup.info
-	@lcov --summary $(DIR_TEST_BIN)/aerospike-tools-backup.info
+#.PHONY: coverage
+#coverage: | $(DIR_TEST_BIN)/aerospike-tools-backup.info
+#	@lcov --summary $(DIR_TEST_BIN)/aerospike-tools-backup.info
 
-.PHONY: coverage-init
-coverage-init: $(TEST_BINS)
-	@lcov --zerocounters --directory $(DIR_TEST_BIN)
-	@lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup-baseline.info --directory $(DIR_TEST_BIN) --capture --initial
-	@lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup-baseline.info --quiet --extract $(DIR_TEST_BIN)/aerospike-tools-backup-baseline.info '$(DIR_SRC)/*' '$(DIR_INC)/*'
+#.PHONY: coverage-init
+#coverage-init: $(TEST_BINS)
+#	@lcov --zerocounters --directory $(DIR_TEST_BIN)
+#	@lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup-baseline.info --directory $(DIR_TEST_BIN) --capture --initial
+#	@lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup-baseline.info --quiet --extract $(DIR_TEST_BIN)/aerospike-tools-backup-baseline.info '$(DIR_SRC)/*' '$(DIR_INC)/*'
 
 .PHONY: do-test
 do-test: | coverage-init
@@ -426,4 +454,3 @@ report-display: | $(DIR_TEST_BIN)/aerospike-tools-backup.info
 	@rm -rf $(DIR_TEST_BIN)/html
 	@mkdir -p $(DIR_TEST_BIN)/html
 	@genhtml --prefix $(DIR_TEST_BIN)/html --ignore-errors source $(DIR_TEST_BIN)/aerospike-tools-backup.info --legend --title "test lcov" --output-directory $(DIR_TEST_BIN)/html
-
