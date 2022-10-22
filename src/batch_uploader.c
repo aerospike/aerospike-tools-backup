@@ -1058,7 +1058,8 @@ _key_put_submit_callback(as_error* ae, void* udata, as_event_loop* event_loop)
 			break;
 	}
 
-	if (as_aaf_uint64(&tracker->outstanding_calls, -1lu) == 0) {
+	if (as_aaf_uint64_rls(&tracker->outstanding_calls, -1lu) == 0) {
+		as_fence_seq();
 		_key_put_submit_finish(tracker);
 	}
 }
@@ -1103,10 +1104,11 @@ _do_key_recs_write(batch_uploader_t* uploader, record_batch_tracker_t* tracker)
 				// number that failed to initialize (this one and all succeeding
 				// ones). If we happen to decrease this value to 0, free the
 				// tracker and release our hold on an async batch slot.
-				if (as_aaf_uint64(&tracker->outstanding_calls,
+				if (as_aaf_uint64_rls(&tracker->outstanding_calls,
 							(uint64_t) -(n_records - i)) == 0) {
 					// if this is the last record, we can make the upload_batch
 					// callback.
+					as_fence_seq();
 					if (uploader->upload_cb != NULL) {
 						uploader->upload_cb(&tracker->status, uploader->udata);
 					}
@@ -1119,7 +1121,8 @@ _do_key_recs_write(batch_uploader_t* uploader, record_batch_tracker_t* tracker)
 			}
 		}
 		else {
-			if (as_aaf_uint64(&tracker->outstanding_calls, -1lu) == 0) {
+			if (as_aaf_uint64_rls(&tracker->outstanding_calls, -1lu) == 0) {
+				as_fence_seq();
 				// if this is the last record, we can make the upload_batch
 				// callback.
 				_key_put_submit_finish(tracker);
