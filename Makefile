@@ -387,7 +387,7 @@ unit: $(DIR_TEST_BIN)/test
 .PHONY: integration
 integration: $(TEST_INTEGRATION_TESTS)
 
-run_%: $(TEST_BINS) FORCE
+run_%: $(TEST_BINS) FORCE | coverage-init
 	@./tests.sh $(DIR_ENV) $(patsubst run_%,$(DIR_INTEGRATION_TEST)/%.py,$@)
 
 FORCE:
@@ -424,21 +424,21 @@ $(TEST_RESTORE): $(TEST_RESTORE_OBJ) $(TOML) $(C_CLIENT_LIB) $(TSO_LIB) | $(DIR_
 
 -include $(TEST_DEPS)
 
-# Requires the lcov tool to be installed
-# $(DIR_TEST_BIN)/aerospike-tools-backup.info: FORCE
-# 	lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup-test.info --capture --directory $(DIR_TEST_BIN)
-# 	lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup-test.info --quiet --extract $(DIR_TEST_BIN)/aerospike-tools-backup-test.info '$(DIR_SRC)/*' '$(DIR_INC)/*'
-# 	lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup.info --quiet -a $(DIR_TEST_BIN)/aerospike-tools-backup-baseline.info -a $(DIR_TEST_BIN)/aerospike-tools-backup-test.info
+Requires the lcov tool to be installed
+$(DIR_TEST_BIN)/aerospike-tools-backup.info: FORCE
+	lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup-test.info --capture --directory $(DIR_TEST_BIN)
+	lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup-test.info --quiet --extract $(DIR_TEST_BIN)/aerospike-tools-backup-test.info '$(DIR_SRC)/*' '$(DIR_INC)/*'
+	lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup.info --quiet -a $(DIR_TEST_BIN)/aerospike-tools-backup-baseline.info -a $(DIR_TEST_BIN)/aerospike-tools-backup-test.info
 
-#.PHONY: coverage
-#coverage: | $(DIR_TEST_BIN)/aerospike-tools-backup.info
-#	@lcov --summary $(DIR_TEST_BIN)/aerospike-tools-backup.info
+.PHONY: coverage
+coverage: | $(DIR_TEST_BIN)/aerospike-tools-backup.info
+	@lcov --summary $(DIR_TEST_BIN)/aerospike-tools-backup.info
 
-#.PHONY: coverage-init
-#coverage-init: $(TEST_BINS)
-#	@lcov --zerocounters --directory $(DIR_TEST_BIN)
-#	@lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup-baseline.info --directory $(DIR_TEST_BIN) --capture --initial
-#	@lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup-baseline.info --quiet --extract $(DIR_TEST_BIN)/aerospike-tools-backup-baseline.info '$(DIR_SRC)/*' '$(DIR_INC)/*'
+.PHONY: coverage-init
+coverage-init: $(TEST_BINS)
+	@lcov --zerocounters --directory $(DIR_TEST_BIN)
+	@lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup-baseline.info --directory $(DIR_TEST_BIN) --capture --initial
+	@lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup-baseline.info --quiet --extract $(DIR_TEST_BIN)/aerospike-tools-backup-baseline.info '$(DIR_SRC)/*' '$(DIR_INC)/*'
 
 .PHONY: do-test
 do-test: | coverage-init
