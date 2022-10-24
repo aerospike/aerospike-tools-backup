@@ -424,7 +424,7 @@ $(TEST_RESTORE): $(TEST_RESTORE_OBJ) $(TOML) $(C_CLIENT_LIB) $(TSO_LIB) | $(DIR_
 
 -include $(TEST_DEPS)
 
-Requires the lcov tool to be installed
+# Requires the lcov tool to be installed
 $(DIR_TEST_BIN)/aerospike-tools-backup.info: FORCE
 	lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup-test.info --capture --directory $(DIR_TEST_BIN)
 	lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup-test.info --quiet --extract $(DIR_TEST_BIN)/aerospike-tools-backup-test.info '$(DIR_SRC)/*' '$(DIR_INC)/*'
