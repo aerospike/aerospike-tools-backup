@@ -15,3 +15,18 @@ astools.conf
 test_dir
 .vscode/
 null.d
+
+# Compiled source #
+###################
+*.com
+*.class
+*.exe
+*.o
+*.so
+*.suo
+*.pyc
+*.a
+
+# Security Credentials #
+########################
+*.pem

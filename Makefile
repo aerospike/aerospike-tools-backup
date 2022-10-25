@@ -366,10 +366,8 @@ $(TOML):
 $(C_CLIENT_LIB):
 	$(MAKE) -C $(DIR_C_CLIENT)
 
-
-
 $(TSO_LIB):
-	if [ $(ARCH) == "aarch64" ]; then \
+	if [ $(ARCH) = "aarch64" ]; then \
 		$(MAKE) -C $(DIR_TSO); \
 	fi
 
