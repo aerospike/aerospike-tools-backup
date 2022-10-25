@@ -378,12 +378,12 @@ $(TSO_LIB):
 test: unit integration
 
 .PHONY: unit
-unit: $(DIR_TEST_BIN)/test
+unit: $(DIR_TEST_BIN)/test | $(TSO_LIB)
 	@$<
 	@#valgrind --tool=memcheck --leak-check=full --track-origins=yes --show-leak-kinds=all $<
 
 .PHONY: integration
-integration: $(TEST_INTEGRATION_TESTS)
+integration: $(TEST_INTEGRATION_TESTS) | $(TSO_LIB)
 
 run_%: $(TEST_BINS) FORCE | coverage-init
 	@./tests.sh $(DIR_ENV) $(patsubst run_%,$(DIR_INTEGRATION_TEST)/%.py,$@)
@@ -402,22 +402,22 @@ $(DIR_TEST_OBJ)/unit: | $(DIR_TEST_OBJ)
 $(DIR_TEST_OBJ)/src: | $(DIR_TEST_OBJ)
 	mkdir $@
 
-$(DIR_TEST_OBJ)/unit/%.o: test/unit/%.c | $(DIR_TEST_OBJ)/unit
+$(DIR_TEST_OBJ)/unit/%.o: test/unit/%.c | $(TSO_LIB) $(DIR_TEST_OBJ)/unit
 	$(CC) $(TEST_CFLAGS) -MMD $(INCLUDES) -o $@ -c $<
 
-$(DIR_TEST_OBJ)/src/%_c.o: src/%.c | $(DIR_TEST_OBJ)/src
+$(DIR_TEST_OBJ)/src/%_c.o: src/%.c | $(TSO_LIB) $(DIR_TEST_OBJ)/src
 	$(CC) $(TEST_CFLAGS) -MMD $(INCLUDES) -fprofile-arcs -ftest-coverage -o $@ -c $<
 
-$(DIR_TEST_OBJ)/src/%_cc.o: src/%.cc | $(DIR_TEST_OBJ)/src
+$(DIR_TEST_OBJ)/src/%_cc.o: src/%.cc | $(TSO_LIB) $(DIR_TEST_OBJ)/src
 	$(CXX) $(TEST_CXXFLAGS) -MMD $(INCLUDES) -fprofile-arcs -ftest-coverage -o $@ -c $<
 
 $(DIR_TEST_BIN)/test: $(TEST_OBJ) $(DIR_C_CLIENT)/target/$(PLATFORM)/lib/libaerospike.a $(TOML) | $(DIR_TEST_BIN)
 	$(CXX) -o $@ $(TEST_OBJ) $(DIR_C_CLIENT)/target/$(PLATFORM)/lib/libaerospike.a $(TEST_LDFLAGS) $(LIBRARIES)
 
-$(TEST_BACKUP): $(TEST_BACKUP_OBJ) $(TOML) $(C_CLIENT_LIB) $(TSO_LIB) | $(DIR_TEST_BIN)
+$(TEST_BACKUP): $(TEST_BACKUP_OBJ) $(TOML) $(C_CLIENT_LIB) | $(DIR_TEST_BIN)
 	$(CXX) $(TEST_LDFLAGS) -o $(TEST_BACKUP) $(TEST_BACKUP_OBJ) $(LIBRARIES)
 
-$(TEST_RESTORE): $(TEST_RESTORE_OBJ) $(TOML) $(C_CLIENT_LIB) $(TSO_LIB) | $(DIR_TEST_BIN)
+$(TEST_RESTORE): $(TEST_RESTORE_OBJ) $(TOML) $(C_CLIENT_LIB) | $(DIR_TEST_BIN)
 	$(CXX) $(TEST_LDFLAGS) -o $(TEST_RESTORE) $(TEST_RESTORE_OBJ) $(LIBRARIES)
 
 -include $(TEST_DEPS)
