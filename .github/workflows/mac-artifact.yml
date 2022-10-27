@@ -39,21 +39,6 @@ jobs:
       id: install-gcc
       run: |
         brew install gcc
-    - name: set gcc as default
-      id: set-gcc
-      run: |
-        ln -s $(brew --prefix gcc)/bin/gcc-?? $(brew --prefix gcc)/bin/gcc
-        ln -s $(brew --prefix gcc)/bin/gcc-?? $(brew --prefix gcc)/bin/cc
-        export PATH=$(brew --prefix gcc)/bin:$PATH
-        echo "PATH=$PATH" >> $GITHUB_ENV
-        export CC=$(brew --prefix gcc)/bin/gcc
-        echo "CC=$CC" >> $GITHUB_ENV
-        export CXX=$(brew --prefix gcc)/bin/gcc
-        echo "CXX=$CXX" >> $GITHUB_ENV
-        echo $($(brew --prefix gcc)/bin/gcc --version)
-        echo $($(brew --prefix gcc)/bin/cc --version)
-        echo $(gcc --version)
-        echo $(cc --version)
     - name: install libuv
       id: install-libuv
       run: |
@@ -228,6 +213,24 @@ jobs:
       run: |
         sudo make install
       working-directory: aws-sdk-cpp-${{ env.AWS_SDK_CPP_VERSION }}/build_static
+    - name: set gcc as default
+      id: set-gcc
+      run: |
+        ln -s $(brew --prefix gcc)/bin/gcc-?? $(brew --prefix gcc)/bin/gcc
+        ln -s $(brew --prefix gcc)/bin/gcc-?? $(brew --prefix gcc)/bin/cc
+        export PATH=$(brew --prefix gcc)/bin:$PATH
+        echo "PATH=$PATH" >> $GITHUB_ENV
+        export CC=$(brew --prefix gcc)/bin/gcc
+        echo "CC=$CC" >> $GITHUB_ENV
+        export CXX=$(brew --prefix gcc)/bin/gcc
+        echo "CXX=$CXX" >> $GITHUB_ENV
+    - name: show compilers
+      id: show-cc
+      run: |
+        echo $($(brew --prefix gcc)/bin/gcc --version)
+        echo $($(brew --prefix gcc)/bin/cc --version)
+        echo $(gcc --version)
+        echo $(cc --version)
     - name: Build asbackup with static link to zstd and aws-sdk-cpp
       if: steps.cache-asbackup.outputs.cache-hit != 'true'
       run: |
