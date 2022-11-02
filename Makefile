@@ -33,7 +33,7 @@ ARCH := $(shell uname -m)
 PLATFORM := $(OS)-$(ARCH)
 VERSION := $(shell git describe 2>/dev/null; if [ $${?} != 0 ]; then echo 'unknown'; fi)
 ROOT = $(CURDIR)
-DIR_TSO := $(PWD)/tso
+DIR_TSO := $(ROOT)/tso
 TSO_LIB := $(DIR_TSO)/tso.so
 
 CC ?= cc
