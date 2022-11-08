@@ -285,8 +285,8 @@ typedef struct server_version {
 	uint32_t build_id;
 } server_version_t;
 
-extern bool g_verbose;
-extern bool g_silent;
+extern _Atomic bool g_verbose;
+extern _Atomic bool g_silent;
 extern const uint8_t b64map[256];
 
 

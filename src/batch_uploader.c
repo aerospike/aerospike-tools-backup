@@ -19,7 +19,7 @@
 // Includes.
 //
 
-#include <batch_uploader.h>
+#include <stdatomic.h>
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wconversion"
@@ -31,6 +31,7 @@
 #pragma GCC diagnostic pop
 
 #include <restore_status.h>
+#include <batch_uploader.h>
 
 
 //==========================================================
@@ -62,7 +63,7 @@ typedef struct key_put_info {
 	// transaction is a part of.
 	struct record_batch_tracker* tracker;
 	// set to true by the callback if the key_put failed and should be retried.
-	bool should_retry;
+	_Atomic bool should_retry;
 } key_put_info_t;
 
 /*
@@ -76,7 +77,7 @@ typedef struct record_batch_tracker {
 	// tracker for the current number of oustanding async aerospike_key_put_async calls
 	uint64_t outstanding_calls;
 	// set if any sub transaction failed in a retriable manner.
-	bool should_retry;
+	_Atomic bool should_retry;
 	// the batch_status_t struct that tracks the counts of record statuses
 	// (inserted, failed, etc).
 	batch_status_t status;
@@ -217,13 +218,13 @@ batch_uploader_set_callback(batch_uploader_t* uploader,
 uint64_t
 batch_uploader_retry_count(const batch_uploader_t* uploader)
 {
-	return as_load_uint64(&uploader->retry_count);
+	return atomic_load(&uploader->retry_count);
 }
 
 bool
 batch_uploader_has_error(const batch_uploader_t* uploader)
 {
-	return as_load_bool(&uploader->error);
+	return atomic_load(&uploader->error);
 }
 
 void
@@ -738,7 +739,7 @@ _await_async_calls(batch_uploader_t* uploader)
 	struct timespec timeout;
 
 	pthread_mutex_lock(&uploader->async_lock);
-	while (as_load_uint64(&uploader->async_calls) != 0) {
+	while (atomic_load(&uploader->async_calls) != 0) {
 		if (batch_uploader_has_error(uploader) &&
 				priority_queue_size(&uploader->retry_queue) > 0) {
 			_queue_clear(uploader);
@@ -774,7 +775,7 @@ _reserve_async_slot(batch_uploader_t* uploader)
 	uint64_t max_async = (uint64_t) uploader->max_async;
 
 	pthread_mutex_lock(&uploader->async_lock);
-	if (as_load_uint64(&uploader->async_calls) == max_async) {
+	if (atomic_load(&uploader->async_calls) == max_async) {
 
 		for (;;) {
 			if (priority_queue_size(&uploader->retry_queue) > 0) {
@@ -793,7 +794,7 @@ _reserve_async_slot(batch_uploader_t* uploader)
 				exit(EXIT_FAILURE);
 			}
 
-			if (as_load_uint64(&uploader->async_calls) != max_async) {
+			if (atomic_load(&uploader->async_calls) != max_async) {
 				break;
 			}
 
@@ -984,8 +985,8 @@ _key_put_submit_finish(record_batch_tracker_t* tracker)
 {
 	batch_uploader_t* uploader = tracker->uploader;
 
-	if (!as_load_bool(&tracker->status.has_error) &&
-			as_load_bool(&tracker->should_retry) &&
+	if (!atomic_load(&tracker->status.has_error) &&
+			atomic_load(&tracker->should_retry) &&
 			!batch_uploader_has_error(uploader)) {
 
 		_record_batch_tracker_reset(tracker);
@@ -1092,7 +1093,7 @@ _do_key_recs_write(batch_uploader_t* uploader, record_batch_tracker_t* tracker)
 
 		key_put_info_t* key_info = &tracker->key_infos[i];
 
-		if (as_load_bool(&key_info->should_retry)) {
+		if (atomic_load(&key_info->should_retry)) {
 			const as_policy_write* policy = _get_key_put_policy(uploader,
 					key->valuep != NULL);
 

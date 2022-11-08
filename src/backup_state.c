@@ -22,6 +22,7 @@
 #include <backup_state.h>
 
 #include <errno.h>
+#include <stdatomic.h>
 #include <stdlib.h>
 
 #pragma GCC diagnostic push
@@ -276,15 +277,18 @@ backup_state_set_global_status(backup_state_t* state,
 	state->backup_global_status.index_count = status->index_count;
 	state->backup_global_status.udf_count = status->udf_count;
 
-	state->backup_global_status.file_count = as_load_uint64(&status->file_count);
+	state->backup_global_status.file_count =
+		atomic_load_explicit(&status->file_count, memory_order_relaxed);
 	state->backup_global_status.rec_count_total =
-		as_load_uint64(&status->rec_count_total);
+		atomic_load_explicit(&status->rec_count_total, memory_order_relaxed);
 	state->backup_global_status.byte_count_total =
-		as_load_uint64(&status->byte_count_total);
+		atomic_load_explicit(&status->byte_count_total, memory_order_relaxed);
 	state->backup_global_status.rec_count_total_committed =
-		as_load_uint64(&status->rec_count_total_committed);
+		atomic_load_explicit(&status->rec_count_total_committed, memory_order_relaxed);
+	// one statement with sequential ordering to ensure nothing is reordered around
+	// this function on arm CPUs
 	state->backup_global_status.byte_count_total_committed =
-		as_load_uint64(&status->byte_count_total_committed);
+		atomic_load(&status->byte_count_total_committed);
 }
 
 void

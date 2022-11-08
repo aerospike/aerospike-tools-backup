@@ -40,7 +40,7 @@ CC ?= cc
 
 DWARF := $(shell $(CC) -Wall -Wextra -O2 -o /tmp/asflags_$${$$} src/flags.c; \
 		/tmp/asflags_$${$$}; rm /tmp/asflags_$${$$})
-CFLAGS += -std=gnu99 $(DWARF) -O2 -fno-common -fno-strict-aliasing \
+CFLAGS += -std=gnu11 $(DWARF) -O2 -fno-common -fno-strict-aliasing \
 		-Wall -Wextra -Wconversion -Wsign-conversion -Wmissing-declarations \
 		-Wno-implicit-fallthrough -Wno-unused-result -Wno-typedef-redefinition \
 		-D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_FORTIFY_SOURCE=2 -DMARCH_$(ARCH) \
@@ -58,7 +58,7 @@ ifeq ($(OS), Linux)
 LDFLAGS += -pthread
 endif
 
-TEST_CFLAGS := -std=gnu99 $(DWARF) -g -O2 -fno-common -fno-strict-aliasing \
+TEST_CFLAGS := -std=gnu11 $(DWARF) -g -O2 -fno-common -fno-strict-aliasing \
 		-Wall -Wextra -Wconversion -Wsign-conversion -Wmissing-declarations \
 		-Wno-implicit-fallthrough -Wno-unused-result -Wno-typedef-redefinition \
 		-D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_FORTIFY_SOURCE=2 -DMARCH_$(ARCH) \
@@ -77,7 +77,7 @@ ifeq ($(ARCH),aarch64)
   PLUGIN_FIX_BUILT_IN = yes
   PLUGIN_PROFILING = no
 
-  TSO_FLAGS = -mcpu=neoverse-n1 -fplugin=$(TSO_LIB) -fplugin-arg-tso-enable=$(PLUGIN_ENABLE) \
+  TSO_FLAGS = -fplugin=$(TSO_LIB) -fplugin-arg-tso-enable=$(PLUGIN_ENABLE) \
 				-fplugin-arg-tso-exclude=$(DIR_TSO)/exclude_ce.txt -fplugin-arg-tso-exclude=$(DIR_TSO)/exclude_ce.txt \
 				-fplugin-arg-tso-track-deps=yes -fplugin-arg-tso-fix-asm=$(PLUGIN_FIX_ASM) \
 				-fplugin-arg-tso-fix-built-in=$(PLUGIN_FIX_BUILT_IN) -fplugin-arg-tso-profiling=$(PLUGIN_PROFILING)

@@ -19,6 +19,8 @@
 // Includes.
 //
 
+#include <stdatomic.h>
+
 #include <backup_status.h>
 
 #include <backup_state.h>
@@ -539,19 +541,19 @@ backup_status_set_n_threads(backup_status_t* status, const backup_config_t* conf
 bool
 backup_status_has_started(backup_status_t* status)
 {
-	return as_load_bool(&status->started);
+	return atomic_load(&status->started);
 }
 
 void
 backup_status_start(backup_status_t* status)
 {
-	as_store_bool(&status->started, true);
+	atomic_store(&status->started, true);
 }
 
 bool
 backup_status_one_shot_done(const backup_status_t* status)
 {
-	return as_load_uint8((uint8_t*) &status->one_shot_done);
+	return atomic_load(&status->one_shot_done);
 }
 
 void
@@ -580,7 +582,7 @@ backup_status_signal_one_shot(backup_status_t* status)
 bool
 backup_status_has_stopped(const backup_status_t* status)
 {
-	return as_load_uint8((uint8_t*) &status->stop);
+	return atomic_load(&status->stop);
 }
 
 void
@@ -605,7 +607,7 @@ backup_status_stop(const backup_config_t* conf, backup_status_t* status)
 bool
 backup_status_has_finished(const backup_status_t* status)
 {
-	return (bool) as_load_uint8((uint8_t*) &status->finished);
+	return atomic_load(&status->finished);
 }
 
 void
@@ -686,7 +688,7 @@ backup_status_init_backup_state_file(const char* backup_state_path,
 		return false;
 	}
 
-	backup_state_t* cur_backup_state = as_load_ptr(&status->backup_state);
+	backup_state_t* cur_backup_state = atomic_load(&status->backup_state);
 	if (cur_backup_state != NULL) {
 		// a backup state alrady exists, or we've aborted the backup, do nothing
 		return false;
@@ -724,7 +726,7 @@ backup_status_init_backup_state_file(const char* backup_state_path,
 backup_state_t*
 backup_status_get_backup_state(backup_status_t* status)
 {
-	return (backup_state_t*) as_load_ptr(&status->backup_state);
+	return (backup_state_t*) atomic_load(&status->backup_state);
 }
 
 void
@@ -733,7 +735,7 @@ backup_status_save_scan_state(backup_status_t* status,
 {
 	pthread_mutex_lock(&status->stop_lock);
 
-	backup_state_t* state = as_load_ptr(&status->backup_state);
+	backup_state_t* state = atomic_load(&status->backup_state);
 
 	if (state == BACKUP_STATE_ABORTED) {
 		pthread_mutex_unlock(&status->stop_lock);

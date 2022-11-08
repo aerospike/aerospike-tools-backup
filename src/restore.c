@@ -19,6 +19,8 @@
 // Includes.
 //
 
+#include <stdatomic.h>
+
 #include <restore.h>
 
 #include <conf.h>
@@ -824,8 +826,8 @@ restore_thread_func(void *cont)
 				if (ptc.conf->bandwidth > 0 && ptc.conf->tps > 0) {
 					safe_lock(&ptc.status->limit_mutex);
 
-					while ((as_load_uint64(&ptc.status->total_bytes) >= ptc.status->bytes_limit ||
-								as_load_uint64(&ptc.status->total_records) >= ptc.status->records_limit) &&
+					while ((atomic_load(&ptc.status->total_bytes) >= ptc.status->bytes_limit ||
+								atomic_load(&ptc.status->total_records) >= ptc.status->records_limit) &&
 							!restore_status_has_stopped(ptc.status)) {
 						safe_wait(&ptc.status->limit_cond, &ptc.status->limit_mutex);
 					}
@@ -887,9 +889,9 @@ counter_thread_func(void *cont)
 
 	uint32_t iter = 0;
 	cf_clock print_prev_ms = prev_ms;
-	uint64_t prev_bytes = as_load_uint64(&status->total_bytes);
+	uint64_t prev_bytes = atomic_load_explicit(&status->total_bytes, memory_order_relaxed);
 	uint64_t mach_prev_bytes = prev_bytes;
-	uint64_t prev_records = as_load_uint64(&status->total_records);
+	uint64_t prev_records = atomic_load_explicit(&status->total_records, memory_order_relaxed);
 
 	while (true) {
 		restore_status_sleep_for(status, 1, true);
@@ -899,18 +901,18 @@ counter_thread_func(void *cont)
 		uint32_t ms = (uint32_t) (now_ms - prev_ms);
 		prev_ms = now_ms;
 
-		uint64_t now_bytes = as_load_uint64(&status->total_bytes);
-		uint64_t now_records = as_load_uint64(&status->total_records);
+		uint64_t now_bytes = atomic_load_explicit(&status->total_bytes, memory_order_relaxed);
+		uint64_t now_records = atomic_load_explicit(&status->total_records, memory_order_relaxed);
 
-		uint64_t expired_records = as_load_uint64(&status->expired_records);
-		uint64_t skipped_records = as_load_uint64(&status->skipped_records);
-		uint64_t ignored_records = as_load_uint64(&status->ignored_records);
-		uint64_t inserted_records = as_load_uint64(&status->inserted_records);
-		uint64_t existed_records = as_load_uint64(&status->existed_records);
-		uint64_t fresher_records = as_load_uint64(&status->fresher_records);
+		uint64_t expired_records = atomic_load_explicit(&status->expired_records, memory_order_relaxed);
+		uint64_t skipped_records = atomic_load_explicit(&status->skipped_records, memory_order_relaxed);
+		uint64_t ignored_records = atomic_load_explicit(&status->ignored_records, memory_order_relaxed);
+		uint64_t inserted_records = atomic_load_explicit(&status->inserted_records, memory_order_relaxed);
+		uint64_t existed_records = atomic_load_explicit(&status->existed_records, memory_order_relaxed);
+		uint64_t fresher_records = atomic_load_explicit(&status->fresher_records, memory_order_relaxed);
 		uint64_t retry_count = batch_uploader_retry_count(&status->batch_uploader);
-		uint32_t index_count = as_load_uint32(&status->index_count);
-		uint32_t udf_count = as_load_uint32(&status->udf_count);
+		uint32_t index_count = atomic_load_explicit(&status->index_count, memory_order_relaxed);
+		uint32_t udf_count = atomic_load_explicit(&status->udf_count, memory_order_relaxed);
 
 		int32_t percent = status->estimated_bytes == 0 ? -1 :
 			(int32_t) (now_bytes * 100 / (uint64_t) status->estimated_bytes);
@@ -1394,9 +1396,9 @@ restore_indexes(aerospike *as, as_vector *index_vec, as_vector *set_vec, restore
 		}
 	}
 
-	uint32_t skipped = as_load_uint32(&args->status->skipped_indexes);
-	uint32_t matched = as_load_uint32(&args->status->matched_indexes);
-	uint32_t mismatched = as_load_uint32(&args->status->mismatched_indexes);
+	uint32_t skipped = atomic_load_explicit(&args->status->skipped_indexes, memory_order_relaxed);
+	uint32_t matched = atomic_load_explicit(&args->status->matched_indexes, memory_order_relaxed);
+	uint32_t mismatched = atomic_load_explicit(&args->status->mismatched_indexes, memory_order_relaxed);
 
 	if (skipped > 0) {
 		inf("Skipped %d index(es) with unwanted set(s)", skipped);
