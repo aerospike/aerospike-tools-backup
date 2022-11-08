@@ -83,7 +83,7 @@ static uint64_t directory_backup_remaining_estimate(const backup_config_t* conf,
 static int update_file_pos(io_write_proxy_t* fd, uint64_t* byte_count_file,
 		uint64_t* byte_count_job, uint64_t* byte_count_total);
 static int update_shared_file_pos(io_write_proxy_t* fd,
-		uint64_t* byte_count_total);
+		_Atomic uint64_t* byte_count_total);
 static bool queue_file(backup_job_context_t* bjc);
 static bool close_file(io_write_proxy_t *fd);
 static bool open_file(const char *file_path, const char *ns,
@@ -328,8 +328,8 @@ run_backup(backup_config_t* conf)
 		// set the byte count limit "conf->bandwidth" bytes above the current
 		// byte count so we don't have to wait for byte_count_limit to surpass
 		// byte_count_total
-		as_store_uint64(&status->byte_count_limit,
-				status->byte_count_total + conf->bandwidth);
+		atomic_store_explicit(&status->byte_count_limit,
+				status->byte_count_total + conf->bandwidth, memory_order_relaxed);
 
 		if (conf->max_records > 0) {
 			// If we are resuming with --max-records, subtract the number of
@@ -411,7 +411,7 @@ run_backup(backup_config_t* conf)
 			bool cur_silent_val = atomic_load(&g_silent);
 			atomic_store(&g_silent, true);
 			backup_status_t* estimate_status = run_backup(estimate_conf);
-			as_store_bool(&g_silent, cur_silent_val);
+			atomic_store(&g_silent, cur_silent_val);
 
 			backup_config_destroy(estimate_conf);
 			cf_free(estimate_conf);
@@ -928,7 +928,7 @@ set_global_status(backup_status_t* status)
 {
 	backup_globals_t* cur_globals =
 		(backup_globals_t*) as_vector_get(&g_globals, g_globals.size - 1);
-	as_store_ptr(&cur_globals->status, status);
+	atomic_store(&cur_globals->status, status);
 }
 
 /*
@@ -996,7 +996,7 @@ update_file_pos(io_write_proxy_t* fd, uint64_t* byte_count_file,
  * known that this thread is the only one modifying byte_count_total.
  */
 static int
-update_shared_file_pos(io_write_proxy_t* fd, uint64_t* byte_count_total)
+update_shared_file_pos(io_write_proxy_t* fd, _Atomic uint64_t* byte_count_total)
 {
 	int64_t pos = io_write_proxy_bytes_written(fd);
 	if (pos < 0) {
@@ -1004,7 +1004,7 @@ update_shared_file_pos(io_write_proxy_t* fd, uint64_t* byte_count_total)
 		return -1;
 	}
 
-	as_store_uint64(byte_count_total, (uint64_t) pos);
+	atomic_store(byte_count_total, (uint64_t) pos);
 
 	return 0;
 }
@@ -1261,7 +1261,7 @@ open_dir_file(backup_job_context_t *bjc)
 			return false;
 		}
 
-		as_store_int64(&bjc->status->file_count, file_count + 1);
+		atomic_store(&bjc->status->file_count, file_count + 1);
 		pthread_mutex_unlock(&bjc->status->dir_file_init_mutex);
 	}
 
@@ -1427,7 +1427,7 @@ scan_callback(const as_val *val, void *cont)
 		// should never happen, but just to ensure we don't write past the end
 		// of the sample buffer, check that we don't exceed estimate_samples
 		if (sample_idx >= bjc->conf->n_estimate_samples) {
-			as_store_uint32(bjc->n_samples, bjc->conf->n_estimate_samples);
+			atomic_store(bjc->n_samples, bjc->conf->n_estimate_samples);
 			safe_unlock(&bjc->status->file_write_mutex);
 			// don't abort the scan, as this will cause a broken pipe error on
 			// the server. Let the scan gracefully terminate.

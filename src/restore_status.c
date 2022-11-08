@@ -228,21 +228,21 @@ restore_status_init(restore_status_t* status, const restore_config_t* conf)
 			status);
 
 	status->estimated_bytes = 0;
-	as_store_uint64(&status->total_bytes, 0);
-	as_store_uint64(&status->total_records, 0);
-	as_store_uint64(&status->expired_records, 0);
-	as_store_uint64(&status->skipped_records, 0);
-	as_store_uint64(&status->ignored_records, 0);
-	as_store_uint64(&status->inserted_records, 0);
-	as_store_uint64(&status->existed_records, 0);
-	as_store_uint64(&status->fresher_records, 0);
-	as_store_uint32(&status->index_count, 0);
-	as_store_uint32(&status->skipped_indexes, 0);
-	as_store_uint32(&status->matched_indexes, 0);
-	as_store_uint32(&status->mismatched_indexes, 0);
-	as_store_uint32(&status->udf_count, 0);
-	as_store_bool(&status->finished, false);
-	as_store_bool(&status->stop, false);
+	atomic_store_explicit(&status->total_bytes, 0, memory_order_relaxed);
+	atomic_store_explicit(&status->total_records, 0, memory_order_relaxed);
+	atomic_store_explicit(&status->expired_records, 0, memory_order_relaxed);
+	atomic_store_explicit(&status->skipped_records, 0, memory_order_relaxed);
+	atomic_store_explicit(&status->ignored_records, 0, memory_order_relaxed);
+	atomic_store_explicit(&status->inserted_records, 0, memory_order_relaxed);
+	atomic_store_explicit(&status->existed_records, 0, memory_order_relaxed);
+	atomic_store_explicit(&status->fresher_records, 0, memory_order_relaxed);
+	atomic_store_explicit(&status->index_count, 0, memory_order_relaxed);
+	atomic_store_explicit(&status->skipped_indexes, 0, memory_order_relaxed);
+	atomic_store_explicit(&status->matched_indexes, 0, memory_order_relaxed);
+	atomic_store_explicit(&status->mismatched_indexes, 0, memory_order_relaxed);
+	atomic_store_explicit(&status->udf_count, 0, memory_order_relaxed);
+	atomic_store_explicit(&status->finished, false, memory_order_relaxed);
+	atomic_store_explicit(&status->stop, false, memory_order_relaxed);
 
 	return true;
 
@@ -336,7 +336,7 @@ restore_status_finish(restore_status_t* status)
 {
 	// sets the finished variable. No need to grab a lock since condidition
 	// variables all used timed waits, so deadlock is impossible.
-	as_store_bool(&status->finished, true);
+	atomic_store(&status->finished, true);
 
 	// wakes all threads waiting on the stop condition
 	pthread_cond_broadcast(&status->stop_cond);
@@ -355,7 +355,7 @@ restore_status_stop(restore_status_t* status)
 {
 	// sets the stop variable. No need to grab a lock since condidition
 	// variables all used timed waits, so deadlock is impossible.
-	as_store_bool(&status->stop, true);
+	atomic_store(&status->stop, true);
 
 	// wakes all threads waiting on the stop condition
 	pthread_cond_broadcast(&status->stop_cond);

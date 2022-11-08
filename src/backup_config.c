@@ -19,6 +19,8 @@
 // Includes.
 //
 
+#include <stdatomic.h>
+
 #include <backup_config.h>
 
 #include <getopt.h>
@@ -339,7 +341,7 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 
 		case 'v':
 			as_log_set_level(AS_LOG_LEVEL_TRACE);
-			as_store_bool(&g_verbose, true);
+			atomic_store_explicit(&g_verbose, true, memory_order_relaxed);
 			break;
 
 		case 'x':

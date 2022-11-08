@@ -19,6 +19,8 @@
 // Includes.
 //
 
+#include <stdatomic.h>
+
 #include <restore_config.h>
 
 #include <getopt.h>
@@ -329,8 +331,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 			break;
 
 		case 'v':
-			as_store_bool(&g_verbose, true);
-
+			atomic_store_explicit(&g_verbose, true, memory_order_relaxed);
 			break;
 
 		case 'm':

@@ -383,7 +383,7 @@ update_shared_file_pos(per_thread_context_t* ptc)
 		return -1;
 	}
 
-	as_store_uint64(&ptc->status->total_bytes, (uint64_t) pos);
+	atomic_store(&ptc->status->total_bytes, (uint64_t) pos);
 
 	return 0;
 }
