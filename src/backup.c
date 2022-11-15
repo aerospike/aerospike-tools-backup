@@ -81,7 +81,7 @@ static void set_global_status(backup_status_t* status);
 static uint64_t directory_backup_remaining_estimate(const backup_config_t* conf,
 		backup_status_t* status);
 static int update_file_pos(io_write_proxy_t* fd, uint64_t* byte_count_file,
-		uint64_t* byte_count_job, uint64_t* byte_count_total);
+		uint64_t* byte_count_job, _Atomic uint64_t* byte_count_total);
 static int update_shared_file_pos(io_write_proxy_t* fd,
 		_Atomic uint64_t* byte_count_total);
 static bool queue_file(backup_job_context_t* bjc);
@@ -972,7 +972,7 @@ directory_backup_remaining_estimate(const backup_config_t* conf,
  */
 static int
 update_file_pos(io_write_proxy_t* fd, uint64_t* byte_count_file,
-		uint64_t* byte_count_job, uint64_t* byte_count_total)
+		uint64_t* byte_count_job, _Atomic uint64_t* byte_count_total)
 {
 	int64_t pos = io_write_proxy_bytes_written(fd);
 	if (pos < 0) {
@@ -983,7 +983,7 @@ update_file_pos(io_write_proxy_t* fd, uint64_t* byte_count_file,
 
 	*byte_count_file = (uint64_t) pos;
 	*byte_count_job += diff;
-	as_add_uint64(byte_count_total, diff);
+	atomic_fetch_add(byte_count_total, diff);
 
 	return 0;
 }
@@ -1161,8 +1161,8 @@ close_dir_file(backup_job_context_t *bjc)
 	}
 
 	pthread_mutex_lock(&bjc->status->committed_count_mutex);
-	as_add_uint64(&bjc->status->rec_count_total_committed, (int64_t) bjc->rec_count_file);
-	as_add_uint64(&bjc->status->byte_count_total_committed, file_size);
+	atomic_fetch_add_explicit(&bjc->status->rec_count_total_committed, (int64_t) bjc->rec_count_file, memory_order_relaxed); // TODO refresh brain do sequential atomics also flush to other threads? does it matter?
+	atomic_fetch_add_explicit(&bjc->status->byte_count_total_committed, file_size, memory_order_relaxed);
 	pthread_mutex_unlock(&bjc->status->committed_count_mutex);
 
 	ver("File size is %" PRId64 " for %s", file_size, io_proxy_file_path(bjc->fd));
@@ -1423,7 +1423,7 @@ scan_callback(const as_val *val, void *cont)
 
 	bool ok;
 	if (bjc->conf->estimate) {
-		uint32_t sample_idx = as_faa_uint32(bjc->n_samples, 1);
+		uint32_t sample_idx = atomic_fetch_add_explicit(bjc->n_samples, 1, memory_order_relaxed);
 		// should never happen, but just to ensure we don't write past the end
 		// of the sample buffer, check that we don't exceed estimate_samples
 		if (sample_idx >= bjc->conf->n_estimate_samples) {
@@ -1451,7 +1451,7 @@ scan_callback(const as_val *val, void *cont)
 
 	++bjc->rec_count_file;
 	++bjc->rec_count_job;
-	as_incr_uint64(&bjc->status->rec_count_total);
+	atomic_fetch_add_explicit(&bjc->status->rec_count_total, 1, memory_order_relaxed);
 
 	if (bjc->conf->output_file != NULL || bjc->conf->estimate) {
 		if (update_shared_file_pos(bjc->fd, &bjc->status->byte_count_total) < 0) {

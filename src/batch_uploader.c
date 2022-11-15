@@ -693,7 +693,7 @@ _batch_status_submit(batch_status_t* status,
 		case AEROSPIKE_ERR_FAIL_FORBIDDEN:
 		case AEROSPIKE_ERR_BIN_INCOMPATIBLE_TYPE:
 		case AEROSPIKE_ERR_BIN_NOT_FOUND:
-			as_incr_uint64(&status->ignored_records);
+			atomic_fetch_add(&status->ignored_records, 1);
 
 			if (!conf->ignore_rec_error) {
 				err("Error while storing record - code %d", write_status);
@@ -703,15 +703,15 @@ _batch_status_submit(batch_status_t* status,
 
 		// Conditional error based on input config. No retries.
 		case AEROSPIKE_ERR_RECORD_GENERATION:
-			as_incr_uint64(&status->fresher_records);
+			atomic_fetch_add_explicit(&status->fresher_records, 1, memory_order_relaxed);
 			break;
 
 		case AEROSPIKE_ERR_RECORD_EXISTS:
-			as_incr_uint64(&status->existed_records);
+			atomic_fetch_add_explicit(&status->existed_records, 1, memory_order_relaxed);
 			break;
 
 		case AEROSPIKE_OK:
-			as_incr_uint64(&status->inserted_records);
+			atomic_fetch_add_explicit(&status->inserted_records, 1, memory_order_relaxed);
 			break;
 
 		default:
@@ -843,7 +843,7 @@ _batch_submit_callback(as_error* ae, as_batch_records* batch, void* udata,
 			break;
 
 		case WRITE_RESULT_RETRY:
-			as_incr_uint64(&uploader->retry_count);
+			atomic_fetch_add(&uploader->retry_count, 1);
 			if (batch_uploader_has_error(uploader)) {
 				break;
 			}
@@ -1040,7 +1040,7 @@ _key_put_submit_callback(as_error* ae, void* udata, as_event_loop* event_loop)
 			break;
 
 		case WRITE_RESULT_RETRY:
-			as_incr_uint64(&uploader->retry_count);
+			atomic_fetch_add(&uploader->retry_count, 1);
 			atomic_store(&tracker->should_retry, true);
 			break;
 
@@ -1066,8 +1066,7 @@ _key_put_submit_callback(as_error* ae, void* udata, as_event_loop* event_loop)
 	// when this thread is picked up again the out of order access to tracker results in
 	// a use after free. TODO Changes like this will have to be made in all applicable areas
 	// or another solution like porting to c11 atomics, or the tso GCC plugin must be used.
-	if (as_aaf_uint64_rls(&tracker->outstanding_calls, -1lu) == 0) {
-		as_fence_acq();
+	if (atomic_fetch_add(&tracker->outstanding_calls, -1lu) + -1lu == 0) {
 		_key_put_submit_finish(tracker);
 	}
 }
@@ -1112,8 +1111,8 @@ _do_key_recs_write(batch_uploader_t* uploader, record_batch_tracker_t* tracker)
 				// number that failed to initialize (this one and all succeeding
 				// ones). If we happen to decrease this value to 0, free the
 				// tracker and release our hold on an async batch slot.
-				if (as_aaf_uint64_rls(&tracker->outstanding_calls,
-							(uint64_t) -(n_records - i)) == 0) {
+				if (atomic_fetch_add(&tracker->outstanding_calls,
+							(uint64_t) -(n_records - i)) + ((uint64_t) -(n_records - i)) == 0) {
 					// if this is the last record, we can make the upload_batch
 					// callback.
 					as_fence_acq();
@@ -1128,9 +1127,8 @@ _do_key_recs_write(batch_uploader_t* uploader, record_batch_tracker_t* tracker)
 				return;
 			}
 		}
-		else {
-			if (as_aaf_uint64_rls(&tracker->outstanding_calls, -1lu) == 0) {
-				as_fence_acq();
+		else { // atomic_fetch_add_explicit(&tracker->outstanding_calls, -1lu, memory_order_release) + -1lu
+			if (atomic_fetch_add(&tracker->outstanding_calls, -1lu) + -1lu == 0) {
 				// if this is the last record, we can make the upload_batch
 				// callback.
 				_key_put_submit_finish(tracker);
