@@ -22,7 +22,7 @@ N_NODES = 2
 
 WORK_DIRECTORY = lib.WORK_DIRECTORY
 
-SERVER_IMAGE = "aerospike"
+SERVER_IMAGE = "aerospike/aerospike-server:6.0.0.8"
 
 
 STATE_DIRECTORIES = ["state-%d" % i for i in range(1, N_NODES+1)]
