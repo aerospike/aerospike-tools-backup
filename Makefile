@@ -33,17 +33,19 @@ ARCH := $(shell uname -m)
 PLATFORM := $(OS)-$(ARCH)
 VERSION := $(shell git describe 2>/dev/null; if [ $${?} != 0 ]; then echo 'unknown'; fi)
 ROOT = $(CURDIR)
+DIR_TSO := $(ROOT)/tso
+TSO_LIB := $(DIR_TSO)/tso.so
 
 CC ?= cc
 
 DWARF := $(shell $(CC) -Wall -Wextra -O2 -o /tmp/asflags_$${$$} src/flags.c; \
 		/tmp/asflags_$${$$}; rm /tmp/asflags_$${$$})
-CFLAGS += -std=gnu99 $(DWARF) -O2 -flto -march=nocona -fno-common -fno-strict-aliasing \
+CFLAGS += -std=gnu99 $(DWARF) -O2 -fno-common -fno-strict-aliasing \
 		-Wall -Wextra -Wconversion -Wsign-conversion -Wmissing-declarations \
 		-Wno-implicit-fallthrough -Wno-unused-result -Wno-typedef-redefinition \
 		-D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_FORTIFY_SOURCE=2 -DMARCH_$(ARCH) \
 		-DTOOL_VERSION=\"$(VERSION)\"
-CXXFLAGS := -std=c++14 $(DWARF) -O2 -flto -march=nocona -fno-common -fno-strict-aliasing \
+CXXFLAGS := -std=c++14 $(DWARF) -O2 -fno-common -fno-strict-aliasing \
 		-Wall -Wextra -Wconversion -Wsign-conversion -Wmissing-declarations \
 		-Wno-implicit-fallthrough -Wno-unused-result \
 		-D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_FORTIFY_SOURCE=2 -DMARCH_$(ARCH) \
@@ -56,17 +58,35 @@ ifeq ($(OS), Linux)
 LDFLAGS += -pthread
 endif
 
-TEST_CFLAGS := -std=gnu99 $(DWARF) -g -O2 -march=nocona -fno-common -fno-strict-aliasing \
+TEST_CFLAGS := -std=gnu99 $(DWARF) -g -O2 -fno-common -fno-strict-aliasing \
 		-Wall -Wextra -Wconversion -Wsign-conversion -Wmissing-declarations \
 		-Wno-implicit-fallthrough -Wno-unused-result -Wno-typedef-redefinition \
 		-D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_FORTIFY_SOURCE=2 -DMARCH_$(ARCH) \
 		-DTOOL_VERSION=\"$(VERSION)\"
-TEST_CXXFLAGS := -std=c++14 $(DWARF) -g -O2 -march=nocona -fno-common -fno-strict-aliasing \
+TEST_CXXFLAGS := -std=c++14 $(DWARF) -g -O2 -fno-common -fno-strict-aliasing \
 		-Wall -Wextra -Wconversion -Wsign-conversion -Wmissing-declarations \
 		-Wno-implicit-fallthrough -Wno-unused-result \
 		-D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_FORTIFY_SOURCE=2 -DMARCH_$(ARCH) \
 		-DTOOL_VERSION=\"$(VERSION)\"
 TEST_LDFLAGS := $(LDFLAGS) -fprofile-arcs -lcheck
+
+ifeq ($(ARCH),aarch64)
+  # Plugin configuration.
+  PLUGIN_ENABLE = yes
+  PLUGIN_FIX_ASM = yes
+  PLUGIN_FIX_BUILT_IN = yes
+  PLUGIN_PROFILING = no
+
+  TSO_FLAGS = -fplugin=$(TSO_LIB) -fplugin-arg-tso-enable=$(PLUGIN_ENABLE) \
+				-fplugin-arg-tso-exclude=$(DIR_TSO)/exclude_ce.txt -fplugin-arg-tso-exclude=$(DIR_TSO)/exclude_ce.txt \
+				-fplugin-arg-tso-track-deps=yes -fplugin-arg-tso-fix-asm=$(PLUGIN_FIX_ASM) \
+				-fplugin-arg-tso-fix-built-in=$(PLUGIN_FIX_BUILT_IN) -fplugin-arg-tso-profiling=$(PLUGIN_PROFILING)
+  
+  CFLAGS += $(TSO_FLAGS)
+  CXXFLAGS += $(TSO_FLAGS)
+  TEST_CFLAGS += $(TSO_FLAGS)
+  TEST_CXXFLAGS += $(TSO_FLAGS)
+endif
 
 ifeq ($(EVENT_LIB),libev)
   CFLAGS += -DAS_USE_LIBEV
@@ -243,7 +263,7 @@ TOML := $(DIR_TOML)/libtoml.a
 SRCS := $(BACKUP_SRC) $(RESTORE_SRC)
 OBJS := $(BACKUP_OBJ) $(RESTORE_OBJ)
 DEPS := $(BACKUP_DEP) $(RESTORE_DEP)
-BINS := $(TOML) $(BACKUP) $(RESTORE)
+BINS := $(TOML) $(TSO_LIB) $(BACKUP) $(RESTORE)
 
 # sort removes duplicates
 SRCS := $(sort $(SRCS))
@@ -285,6 +305,7 @@ all: $(BINS)
 clean:
 	$(MAKE) -C $(DIR_TOML) clean
 	$(MAKE) -C $(DIR_C_CLIENT) clean
+	$(MAKE) -C $(DIR_TSO) clean
 	rm -f $(DEPS) $(OBJS) $(BINS) $(TEST_OBJS) $(TEST_DEPS) $(TEST_BINS)
 	if [ -d $(DIR_OBJ) ]; then rmdir $(DIR_OBJ); fi
 	if [ -d $(DIR_BIN) ]; then rmdir $(DIR_BIN); fi
@@ -333,10 +354,10 @@ $(DIR_OBJ)/%_c.o: $(DIR_SRC)/%.c | $(DIR_OBJ)
 $(DIR_OBJ)/%_cc.o: $(DIR_SRC)/%.cc | $(DIR_OBJ)
 	$(CXX) $(CXXFLAGS) -MMD -o $@ -c $(INCLUDES) $<
 
-$(BACKUP): $(BACKUP_OBJ) $(TOML) $(C_CLIENT_LIB) | $(DIR_BIN)
+$(BACKUP): $(BACKUP_OBJ) $(TOML) $(C_CLIENT_LIB) $(TSO_LIB) | $(DIR_BIN)
 	$(CXX) $(LDFLAGS) -o $(BACKUP) $(BACKUP_OBJ) $(LIBRARIES)
 
-$(RESTORE): $(RESTORE_OBJ) $(TOML) $(C_CLIENT_LIB) | $(DIR_BIN)
+$(RESTORE): $(RESTORE_OBJ) $(TOML) $(C_CLIENT_LIB) $(TSO_LIB) | $(DIR_BIN)
 	$(CXX) $(LDFLAGS) -o $(RESTORE) $(RESTORE_OBJ) $(LIBRARIES)
 
 $(TOML):
@@ -345,6 +366,11 @@ $(TOML):
 $(C_CLIENT_LIB):
 	$(MAKE) -C $(DIR_C_CLIENT)
 
+$(TSO_LIB):
+	if [ $(ARCH) = "aarch64" ]; then \
+		$(MAKE) -C $(DIR_TSO); \
+	fi
+
 -include $(BACKUP_DEP)
 -include $(RESTORE_DEP)
 
@@ -352,12 +378,12 @@ $(C_CLIENT_LIB):
 test: unit integration
 
 .PHONY: unit
-unit: $(DIR_TEST_BIN)/test
+unit: $(DIR_TEST_BIN)/test | $(TSO_LIB)
 	@$<
 	@#valgrind --tool=memcheck --leak-check=full --track-origins=yes --show-leak-kinds=all $<
 
 .PHONY: integration
-integration: $(TEST_INTEGRATION_TESTS)
+integration: $(TEST_INTEGRATION_TESTS) | $(TSO_LIB)
 
 run_%: $(TEST_BINS) FORCE | coverage-init
 	@./tests.sh $(DIR_ENV) $(patsubst run_%,$(DIR_INTEGRATION_TEST)/%.py,$@)
@@ -376,13 +402,13 @@ $(DIR_TEST_OBJ)/unit: | $(DIR_TEST_OBJ)
 $(DIR_TEST_OBJ)/src: | $(DIR_TEST_OBJ)
 	mkdir $@
 
-$(DIR_TEST_OBJ)/unit/%.o: test/unit/%.c | $(DIR_TEST_OBJ)/unit
+$(DIR_TEST_OBJ)/unit/%.o: test/unit/%.c | $(TSO_LIB) $(DIR_TEST_OBJ)/unit
 	$(CC) $(TEST_CFLAGS) -MMD $(INCLUDES) -o $@ -c $<
 
-$(DIR_TEST_OBJ)/src/%_c.o: src/%.c | $(DIR_TEST_OBJ)/src
+$(DIR_TEST_OBJ)/src/%_c.o: src/%.c | $(TSO_LIB) $(DIR_TEST_OBJ)/src
 	$(CC) $(TEST_CFLAGS) -MMD $(INCLUDES) -fprofile-arcs -ftest-coverage -o $@ -c $<
 
-$(DIR_TEST_OBJ)/src/%_cc.o: src/%.cc | $(DIR_TEST_OBJ)/src
+$(DIR_TEST_OBJ)/src/%_cc.o: src/%.cc | $(TSO_LIB) $(DIR_TEST_OBJ)/src
 	$(CXX) $(TEST_CXXFLAGS) -MMD $(INCLUDES) -fprofile-arcs -ftest-coverage -o $@ -c $<
 
 $(DIR_TEST_BIN)/test: $(TEST_OBJ) $(DIR_C_CLIENT)/target/$(PLATFORM)/lib/libaerospike.a $(TOML) | $(DIR_TEST_BIN)
@@ -426,4 +452,3 @@ report-display: | $(DIR_TEST_BIN)/aerospike-tools-backup.info
 	@rm -rf $(DIR_TEST_BIN)/html
 	@mkdir -p $(DIR_TEST_BIN)/html
 	@genhtml --prefix $(DIR_TEST_BIN)/html --ignore-errors source $(DIR_TEST_BIN)/aerospike-tools-backup.info --legend --title "test lcov" --output-directory $(DIR_TEST_BIN)/html
-

@@ -766,18 +766,18 @@ io_proxy_getc_unlocked(io_read_proxy_t* io)
 char*
 io_proxy_gets(io_read_proxy_t* io, char* str, int n)
 {
-	char c;
+	int32_t c;
 	int i;
 
 	for (i = 0; i < n - 1; i++) {
-		c = (char) io_proxy_getc(io);
+		c = io_proxy_getc(io);
 		if (c == EOF) {
 			if (i == 0) {
 				return NULL;
 			}
 			break;
 		}
-		str[i] = c;
+		str[i] = (char) c;
 		if (c == '\n') {
 			i++;
 			break;
@@ -916,18 +916,10 @@ _consumer_buffer_free(consumer_buffer_t* cb)
 static void
 __zero_if_eq(uint64_t* pos_ptr, uint64_t* dpos_ptr)
 {
-	uint64_t zero = 0;
-	uint64_t pos = *pos_ptr;
-	uint64_t dpos = *dpos_ptr;
-	__asm__("cmp %[pos], %[dpos]\n\t"
-			"cmove %[zero], %[pos]\n\t"
-			"cmove %[zero], %[dpos]\n\t"
-			: [pos] "+r" (pos),
-			  [dpos] "+r" (dpos)
-			: [zero] "r" (zero)
-			: "cc");
-	*pos_ptr = pos;
-	*dpos_ptr = dpos;
+	if (*pos_ptr == *dpos_ptr) {
+		*pos_ptr = 0;
+		*dpos_ptr = 0;
+	}
 }
 
 static int
@@ -1319,23 +1311,17 @@ static void
 _ctr128_add_to(uint8_t dst[AES_BLOCK_SIZE], const uint8_t src[AES_BLOCK_SIZE],
 		uint64_t val)
 {
-	uint64_t v1 = htobe64(*(const uint64_t*) &src[0]);
-	uint64_t v2 = htobe64(*(const uint64_t*) &src[8]);
-	__asm__("addq %[val], %[v2]\n\t"
-			"adcq $0, %[v1]"
-			: [v1] "+r" (v1),
-			  [v2] "+&r" (v2)
-			: [val] "r" (val)
-			: "cc");
-	v1 = be64toh(v1);
-	v2 = be64toh(v2);
-	__asm__("movq %[v1], (%[dst])\n\t"
-			"movq %[v2], 0x8(%[dst])"
-			:
-			: [v1] "r" (v1),
-			  [v2] "r" (v2),
-			  [dst] "r" (dst)
-			: "memory");
+	uint64_t v1 = be64toh(*(const uint64_t*) &src[0]);
+	uint64_t v2 = be64toh(*(const uint64_t*) &src[8]);
+
+	v2 += val;
+	v1 += v2 < val;
+
+	v1 = htobe64(v1);
+	v2 = htobe64(v2);
+
+	*((uint64_t*) &dst[0]) = v1;
+	*((uint64_t*) &dst[8]) = v2;
 }
 
 /*
@@ -1348,23 +1334,18 @@ static void
 _ctr128_sub_from(uint8_t dst[AES_BLOCK_SIZE], const uint8_t src[AES_BLOCK_SIZE],
 		uint64_t val)
 {
-	uint64_t v1 = htobe64(*(const uint64_t*) &src[0]);
-	uint64_t v2 = htobe64(*(const uint64_t*) &src[8]);
-	__asm__("subq %[val], %[v2]\n\t"
-			"sbbq $0, %[v1]"
-			: [v1] "+r" (v1),
-			  [v2] "+&r" (v2)
-			: [val] "r" (val)
-			: "cc");
-	v1 = be64toh(v1);
-	v2 = be64toh(v2);
-	__asm__("movq %[v1], (%[dst])\n\t"
-			"movq %[v2], 0x8(%[dst])"
-			:
-			: [v1] "r" (v1),
-			  [v2] "r" (v2),
-			  [dst] "r" (dst)
-			: "memory");
+	uint64_t v1 = be64toh(*(const uint64_t*) &src[0]);
+	uint64_t v2 = be64toh(*(const uint64_t*) &src[8]);
+	uint64_t carry = val > v2;
+
+	v2 -= val;
+	v1 -= carry;
+
+	v1 = htobe64(v1);
+	v2 = htobe64(v2);
+
+	*((uint64_t*) &dst[0]) = v1;
+	*((uint64_t*) &dst[8]) = v2;
 }
 
 static int

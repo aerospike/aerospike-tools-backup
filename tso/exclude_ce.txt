@@ -1,0 +1,34 @@
+# Note: submodules are all excluded, so their .c files are not instrumented.
+# However naming .h files will exempt their inlines. And yes, we're specifically
+# NOT exempting the as_atomic headers in common.
+
+as_aerospike.h
+as_boolean.h
+as_bytes.h
+as_double.h
+as_geojson.h
+as_integer.h
+as_iterator.h
+as_list.h
+as_log.h
+as_map.h
+as_msgpack.h
+as_random.h
+as_rec.h
+as_serializer.h
+as_stream.h
+as_string.h
+as_val.h
+
+cf_b64.h
+cf_byte_order.h
+cf_clock.h
+cf_digest.h
+cf_hash_math.h
+cf_ll.h
+cf_queue.h
+
+jansson.h
+lookup3.h
+
+#------------------------------
