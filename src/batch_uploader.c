@@ -157,7 +157,11 @@ static bool _submit_key_recs(batch_uploader_t*, as_vector* records);
 void
 batch_status_init(batch_status_t* status)
 {
-	memset(status, 0, sizeof(batch_status_t));
+	atomic_init(&status->has_error, false);
+	atomic_init(&status->ignored_records, 0);
+	atomic_init(&status->inserted_records, 0);
+	atomic_init(&status->existed_records, 0);
+	atomic_init(&status->fresher_records, 0);
 }
 
 int
@@ -183,10 +187,10 @@ batch_uploader_init(batch_uploader_t* uploader, aerospike* as,
 
 	uploader->as = as;
 	uploader->max_async = conf->max_async_batches;
-	uploader->error = false;
+	atomic_init(&uploader->error, false);
 	uploader->batch_enabled = batch_writes_enabled;
-	uploader->retry_count = 0;
-	uploader->async_calls = 0;
+	atomic_init(&uploader->retry_count, 0);
+	atomic_init(&uploader->async_calls, 0);
 	uploader->conf = conf;
 	get_current_time(&uploader->start_time);
 	// Default to 150ms and 5 retries max
@@ -306,8 +310,8 @@ _record_batch_tracker_alloc(batch_uploader_t* uploader, as_vector* records)
 		(record_batch_tracker_t*) cf_malloc(sizeof(record_batch_tracker_t) +
 				n_records * sizeof(key_put_info_t));
 	tracker->uploader = uploader;
-	tracker->outstanding_calls = n_records;
-	tracker->should_retry = false;
+	atomic_init(&tracker->outstanding_calls, n_records);
+	atomic_init(&tracker->should_retry, false);
 	batch_status_init(&tracker->status);
 	retry_status_init(&tracker->retry_status);
 
@@ -319,7 +323,7 @@ _record_batch_tracker_alloc(batch_uploader_t* uploader, as_vector* records)
 	for (uint32_t i = 0; i < n_records; i++) {
 		tracker->key_infos[i].tracker = tracker;
 		// initialize to true on first pass so all transactions are triggered
-		tracker->key_infos[i].should_retry = true;
+		atomic_init(&(tracker->key_infos[i].should_retry), true);
 	}
 
 	return tracker;

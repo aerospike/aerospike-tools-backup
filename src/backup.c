@@ -910,9 +910,15 @@ set_sigaction(void (*sig_hand)(int))
 static void
 push_backup_globals(backup_config_t* conf, backup_status_t* status)
 {
+	backup_config_t* _Atomic atom_conf;
+	atomic_init(&atom_conf, conf);
+
+	backup_status_t* _Atomic atom_status;
+	atomic_init(&atom_status, status);
+
 	backup_globals_t cur_globals = {
-		.conf = conf,
-		.status = status
+		.conf = atom_conf,
+		.status = atom_status
 	};
 	as_vector_append(&g_globals, &cur_globals);
 }
@@ -1793,7 +1799,7 @@ backup_thread_func(void *cont)
 		bjc.rec_count_job = 0;
 		bjc.byte_count_job = 0;
 		bjc.samples = args.samples;
-		bjc.n_samples = args.n_samples;
+		atomic_init(&bjc.n_samples, args.n_samples);
 
 		if (args.filter.digest.init) {
 			uint32_t id = as_partition_getid(args.filter.digest.value,

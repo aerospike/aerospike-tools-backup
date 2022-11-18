@@ -29,7 +29,6 @@
 #pragma GCC diagnostic ignored "-Wconversion"
 #pragma GCC diagnostic ignored "-Wsign-conversion"
 
-#include <aerospike/as_atomic.h>
 #include <aerospike/as_partition.h>
 
 #pragma GCC diagnostic pop

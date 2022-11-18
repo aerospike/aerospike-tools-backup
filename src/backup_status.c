@@ -91,23 +91,23 @@ backup_status_init(backup_status_t* status, backup_config_t* conf)
 	};
 
 	status->rec_count_estimate = 0;
-	status->rec_count_total = 0;
-	status->byte_count_total = 0;
-	status->file_count = 0;
+	atomic_init(&status->rec_count_total, 0);
+	atomic_init(&status->byte_count_total, 0);
+	atomic_init(&status->file_count, 0);
 
-	status->rec_count_total_committed = 0;
-	status->byte_count_total_committed = 0;
-	status->byte_count_limit = 0;
+	atomic_init(&status->rec_count_total_committed, 0);
+	atomic_init(&status->byte_count_total_committed, 0);
+	atomic_init(&status->byte_count_limit, 0);
 	status->index_count = 0;
 	status->udf_count = 0;
 
 	as_vector_init(&status->partition_filters, sizeof(as_partition_filter), 1);
 
-	status->started = false;
-	status->finished = false;
-	status->stop = false;
-	status->backup_state = NULL;
-	status->one_shot_done = false;
+	atomic_init(&status->started, false);
+	atomic_init(&status->finished, false);
+	atomic_init(&status->stop, false);
+	atomic_init(&status->backup_state, NULL);
+	atomic_init(&status->one_shot_done, false);
 
 	status->n_estimate_samples = 0;
 	if (conf->estimate) {

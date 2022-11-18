@@ -228,21 +228,21 @@ restore_status_init(restore_status_t* status, const restore_config_t* conf)
 			status);
 
 	status->estimated_bytes = 0;
-	atomic_store_explicit(&status->total_bytes, 0, memory_order_relaxed);
-	atomic_store_explicit(&status->total_records, 0, memory_order_relaxed);
-	atomic_store_explicit(&status->expired_records, 0, memory_order_relaxed);
-	atomic_store_explicit(&status->skipped_records, 0, memory_order_relaxed);
-	atomic_store_explicit(&status->ignored_records, 0, memory_order_relaxed);
-	atomic_store_explicit(&status->inserted_records, 0, memory_order_relaxed);
-	atomic_store_explicit(&status->existed_records, 0, memory_order_relaxed);
-	atomic_store_explicit(&status->fresher_records, 0, memory_order_relaxed);
-	atomic_store_explicit(&status->index_count, 0, memory_order_relaxed);
-	atomic_store_explicit(&status->skipped_indexes, 0, memory_order_relaxed);
-	atomic_store_explicit(&status->matched_indexes, 0, memory_order_relaxed);
-	atomic_store_explicit(&status->mismatched_indexes, 0, memory_order_relaxed);
-	atomic_store_explicit(&status->udf_count, 0, memory_order_relaxed);
-	atomic_store_explicit(&status->finished, false, memory_order_relaxed);
-	atomic_store_explicit(&status->stop, false, memory_order_relaxed);
+	atomic_init(&status->total_bytes, 0);
+	atomic_init(&status->total_records, 0);
+	atomic_init(&status->expired_records, 0);
+	atomic_init(&status->skipped_records, 0);
+	atomic_init(&status->ignored_records, 0);
+	atomic_init(&status->inserted_records, 0);
+	atomic_init(&status->existed_records, 0);
+	atomic_init(&status->fresher_records, 0);
+	atomic_init(&status->index_count, 0);
+	atomic_init(&status->skipped_indexes, 0);
+	atomic_init(&status->matched_indexes, 0);
+	atomic_init(&status->mismatched_indexes, 0);
+	atomic_init(&status->udf_count, 0);
+	atomic_init(&status->finished, false);
+	atomic_init(&status->stop, false);
 
 	return true;
 
