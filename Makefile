@@ -38,7 +38,7 @@ TSO_LIB := $(DIR_TSO)/tso.so
 
 CC ?= cc
 
-DWARF := $(shell $(CC) -Wall -Wextra -g -O0 -o /tmp/asflags_$${$$} src/flags.c; \
+DWARF := $(shell $(CC) -Wall -Wextra -O2 -o /tmp/asflags_$${$$} src/flags.c; \
 		/tmp/asflags_$${$$}; rm /tmp/asflags_$${$$})
 CFLAGS += -std=gnu99 $(DWARF) -O2 -fno-common -fno-strict-aliasing \
 		-Wall -Wextra -Wconversion -Wsign-conversion -Wmissing-declarations \
