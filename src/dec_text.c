@@ -1548,11 +1548,17 @@ text_parse_index(io_read_proxy_t *fd, as_vector *ns_vec, uint32_t *line_no,
 			goto cleanup3;
 		}
 
-		if (!expect_char(fd, line_no, col_no, ' ')) {
+		if (i != n_paths - 1 && !expect_char(fd, line_no, col_no, ' ')) {
 			goto cleanup3;
 		}
 
 		as_vector_append(&index->path_vec, &path);
+	}
+
+	if (peek_char(fd, line_no, col_no) != (int) '\n') {
+		if (!expect_char(fd, line_no, col_no, ' ')) {
+			goto cleanup3;
+		}
 	}
 
 	if (!text_nul_read_token(fd, false, line_no, col_no, ctx, sizeof ctx, "\n")) {
