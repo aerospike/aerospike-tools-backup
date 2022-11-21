@@ -1510,7 +1510,7 @@ text_parse_index(io_read_proxy_t *fd, as_vector *ns_vec, uint32_t *line_no,
 
 	// This loop parses n_path path specs from sindex entries in the
 	// backup file. These include the space after n_paths to the path type.
-	// The code supports multiple path specs, but currently there is only ever one.
+	// The code supports multiple path specs, but there is only ever one.
 	for (size_t i = 0; i < n_paths; ++i) {
 		if (!expect_char(fd, line_no, col_no, ' ')) {
 			goto cleanup2;
@@ -1560,12 +1560,9 @@ text_parse_index(io_read_proxy_t *fd, as_vector *ns_vec, uint32_t *line_no,
 		as_vector_append(&index->path_vec, &path);
 	}
 
-	// If this is a pre asbackup 3.12.0 (has not whitespace after final path spec)
-	// then leave the newline to delimit the ctx. 
+	// If this is asbackup 3.12.0 (has whitespace after final path spec)
+	// then consume the extra whitespace.
 	if (peek_char(fd, line_no, col_no) != (int) '\n') {
-		// If there is no newline, the character must be a whitespace
-		// from asbackup 3.12.0 or greater. Consume it, the next character
-		// should be a newline or start of ctx.
 		if (!expect_char(fd, line_no, col_no, ' ')) {
 			goto cleanup3;
 		}
