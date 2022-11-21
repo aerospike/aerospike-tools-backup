@@ -1560,7 +1560,7 @@ text_parse_index(io_read_proxy_t *fd, as_vector *ns_vec, uint32_t *line_no,
 		as_vector_append(&index->path_vec, &path);
 	}
 
-	// If this is asbackup 3.12.0 (has whitespace after final path spec)
+	// If this is asbackup 3.12.0 or greater and sindex has a ctx then consume the delim
 	// then consume the extra whitespace.
 	if (peek_char(fd, line_no, col_no) != (int) '\n') {
 		if (!expect_char(fd, line_no, col_no, ' ')) {
