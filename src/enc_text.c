@@ -522,7 +522,6 @@ text_put_secondary_index(io_write_proxy_t *fd,
 			return false;
 		}
 	}
-	
 
 	if (io_proxy_printf(fd, "\n") < 0) {
 		err("Error while writing secondary index to backup file [4]");
