@@ -632,10 +632,10 @@ backup_status_abort_backup(backup_status_t* status)
 	// sets the stop variable
 	atomic_store(&status->stop, 1);
 
-	// TODO this cast to (uint64_t _Atomic *) seems pretty hacky.
+	// TODO this cast to (_Atomic(uint64_t)*) seems pretty hacky.
 	// will the alignment always work?
 	backup_state_t* prev_state =
-		(backup_state_t*) atomic_exchange((uint64_t _Atomic *) &status->backup_state,
+		(backup_state_t*) atomic_exchange((_Atomic(uint64_t)*) &status->backup_state,
 				(uint64_t) BACKUP_STATE_ABORTED);
 
 	if (prev_state != NULL && prev_state != BACKUP_STATE_ABORTED) {
@@ -700,27 +700,27 @@ backup_status_init_backup_state_file(const char* backup_state_path,
 	if (state == NULL) {
 		err("Unable to allocate %zu bytes for backup state struct",
 				sizeof(backup_state_t));
-		// TODO this cast to (uint64_t _Atomic *) seems pretty hacky.
+		// TODO this cast to (_Atomic(uint64_t)*)) seems pretty hacky.
 		// will the alignment always work?
-		atomic_compare_exchange_strong((uint64_t _Atomic *) &status->backup_state, (uint64_t) NULL,
+		atomic_compare_exchange_strong((_Atomic(uint64_t)*) &status->backup_state, (uint64_t) NULL,
 				(uint64_t) BACKUP_STATE_ABORTED);
 		return false;
 	}
 
 	if (backup_state_init(state, backup_state_path) != 0) {
 		cf_free(state);
-		// TODO this cast to (uint64_t _Atomic *) seems pretty hacky.
+		// TODO this cast to (_Atomic(uint64_t)*) seems pretty hacky.
 		// will the alignment always work?
-		atomic_compare_exchange_strong((uint64_t _Atomic *) &status->backup_state, (uint64_t) NULL,
+		atomic_compare_exchange_strong((_Atomic(uint64_t)*) &status->backup_state, (uint64_t) NULL,
 				(uint64_t) BACKUP_STATE_ABORTED);
 		return false;
 	}
 
-	// TODO this cast to (uint64_t _Atomic *) seems pretty hacky.
+	// TODO this cast to (_Atomic(uint64_t)*) seems pretty hacky.
 	// will the alignment always work?
 	// compare and swap backup_state from NULL to state, so if backup_state
 	// was anything but NULL before, it won't be overwritten
-	if (!atomic_compare_exchange_strong((uint64_t _Atomic *) &status->backup_state, (uint64_t) NULL, (uint64_t) state)) {
+	if (!atomic_compare_exchange_strong((_Atomic(uint64_t)*) &status->backup_state, (uint64_t) NULL, (uint64_t) state)) {
 		backup_state_free(state);
 		cf_free(state);
 		return false;

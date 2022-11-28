@@ -41,8 +41,8 @@
 // Pointers to the backup_config_t/backup_status_t structs of the currently
 // running backup job.
 typedef struct backup_globals {
-	backup_config_t* _Atomic conf;
-	backup_status_t* _Atomic status;
+	_Atomic(backup_config_t*) conf;
+	_Atomic(backup_status_t*) status;
 } backup_globals_t;
 
 // A list of all global backup states of all jobs. When jobs are run within
@@ -81,9 +81,9 @@ static void set_global_status(backup_status_t* status);
 static uint64_t directory_backup_remaining_estimate(const backup_config_t* conf,
 		backup_status_t* status);
 static int update_file_pos(io_write_proxy_t* fd, uint64_t* byte_count_file,
-		uint64_t* byte_count_job, _Atomic uint64_t* byte_count_total);
+		uint64_t* byte_count_job, _Atomic(uint64_t)* byte_count_total);
 static int update_shared_file_pos(io_write_proxy_t* fd,
-		_Atomic uint64_t* byte_count_total);
+		_Atomic(uint64_t)* byte_count_total);
 static bool queue_file(backup_job_context_t* bjc);
 static bool close_file(io_write_proxy_t *fd);
 static bool open_file(const char *file_path, const char *ns,
@@ -910,10 +910,10 @@ set_sigaction(void (*sig_hand)(int))
 static void
 push_backup_globals(backup_config_t* conf, backup_status_t* status)
 {
-	backup_config_t* _Atomic atom_conf;
+	_Atomic(backup_config_t*) atom_conf;
 	atomic_init(&atom_conf, conf);
 
-	backup_status_t* _Atomic atom_status;
+	_Atomic(backup_status_t*) atom_status;
 	atomic_init(&atom_status, status);
 
 	backup_globals_t cur_globals = {
@@ -978,7 +978,7 @@ directory_backup_remaining_estimate(const backup_config_t* conf,
  */
 static int
 update_file_pos(io_write_proxy_t* fd, uint64_t* byte_count_file,
-		uint64_t* byte_count_job, _Atomic uint64_t* byte_count_total)
+		uint64_t* byte_count_job, _Atomic(uint64_t)* byte_count_total)
 {
 	int64_t pos = io_write_proxy_bytes_written(fd);
 	if (pos < 0) {
@@ -1002,7 +1002,7 @@ update_file_pos(io_write_proxy_t* fd, uint64_t* byte_count_file,
  * known that this thread is the only one modifying byte_count_total.
  */
 static int
-update_shared_file_pos(io_write_proxy_t* fd, _Atomic uint64_t* byte_count_total)
+update_shared_file_pos(io_write_proxy_t* fd, _Atomic(uint64_t)* byte_count_total)
 {
 	int64_t pos = io_write_proxy_bytes_written(fd);
 	if (pos < 0) {
@@ -1799,7 +1799,7 @@ backup_thread_func(void *cont)
 		bjc.rec_count_job = 0;
 		bjc.byte_count_job = 0;
 		bjc.samples = args.samples;
-		atomic_init(&bjc.n_samples, args.n_samples);
+		atomic_init(bjc.n_samples, args.n_samples);
 
 		if (args.filter.digest.init) {
 			uint32_t id = as_partition_getid(args.filter.digest.value,

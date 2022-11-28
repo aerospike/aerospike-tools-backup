@@ -151,7 +151,7 @@ typedef struct backup_job_context {
 	uint64_t *samples;
 	// The number of record size samples that fit into the samples array. Copied
 	// from backup_thread_args.n_samples.
-	_Atomic uint32_t *n_samples;
+	_Atomic(uint32_t)* n_samples;
 } backup_job_context_t;
 
 

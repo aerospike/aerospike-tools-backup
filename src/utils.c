@@ -39,11 +39,9 @@
 #endif
 
 // Enables verbose logging.
-_Atomic bool g_verbose;
-atomic_init(&g_verbose, false);
+atomic_bool g_verbose;
 // Disables all logging output except for errors.
-_Atomic bool g_silent = false;
-atomic_init(&g_silent, false);
+atomic_bool g_silent;
 
 // Lookup table for base-64 decoding. Invalid characters yield 0xff. '=' (0x3d) yields 0x00 to
 // make it a legal character.

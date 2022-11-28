@@ -33,6 +33,7 @@ extern "C" {
 //
 
 #include <ctype.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -285,8 +286,8 @@ typedef struct server_version {
 	uint32_t build_id;
 } server_version_t;
 
-extern _Atomic bool g_verbose;
-extern _Atomic bool g_silent;
+extern atomic_bool g_verbose;
+extern atomic_bool g_silent;
 extern const uint8_t b64map[256];
 
 

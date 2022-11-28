@@ -63,7 +63,7 @@ typedef struct key_put_info {
 	// transaction is a part of.
 	struct record_batch_tracker* tracker;
 	// set to true by the callback if the key_put failed and should be retried.
-	_Atomic bool should_retry;
+	_Atomic(bool) should_retry;
 } key_put_info_t;
 
 /*
@@ -75,9 +75,9 @@ typedef struct record_batch_tracker {
 	// the vector of records uploaded in this batch write.
 	as_vector records;
 	// tracker for the current number of oustanding async aerospike_key_put_async calls
-	_Atomic uint64_t outstanding_calls;
+	_Atomic(uint64_t) outstanding_calls;
 	// set if any sub transaction failed in a retriable manner.
-	_Atomic bool should_retry;
+	_Atomic(bool) should_retry;
 	// the batch_status_t struct that tracks the counts of record statuses
 	// (inserted, failed, etc).
 	batch_status_t status;
