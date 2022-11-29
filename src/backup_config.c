@@ -341,7 +341,7 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 
 		case 'v':
 			as_log_set_level(AS_LOG_LEVEL_TRACE);
-			atomic_store_explicit(&g_verbose, true, memory_order_relaxed);
+			g_verbose = true;
 			break;
 
 		case 'x':

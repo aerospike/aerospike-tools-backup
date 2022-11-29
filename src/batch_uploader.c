@@ -234,7 +234,7 @@ batch_uploader_has_error(const batch_uploader_t* uploader)
 void
 batch_uploader_signal_error(batch_uploader_t* uploader)
 {
-	atomic_store(&uploader->error, true);
+	uploader->error = true;
 	pthread_cond_broadcast(&uploader->async_cond);
 }
 
@@ -347,8 +347,8 @@ _record_batch_tracker_destroy(record_batch_tracker_t* tracker)
 static void
 _record_batch_tracker_reset(record_batch_tracker_t* tracker)
 {
-	atomic_store_explicit(&tracker->should_retry, false, memory_order_relaxed);
-	atomic_store(&tracker->outstanding_calls, tracker->records.size);
+	tracker->should_retry = false;
+	tracker->outstanding_calls = tracker->records.size;
 }
 
 static void
@@ -595,7 +595,7 @@ _queue_clear(batch_uploader_t* uploader)
 		else {
 			record_batch_tracker_t* tracker =
 				(record_batch_tracker_t*) priority_queue_pop(&uploader->retry_queue);
-			atomic_store(&tracker->status.has_error, true);
+			tracker->status.has_error = true;
 
 			if (uploader->upload_cb != NULL) {
 				uploader->upload_cb(&tracker->status, uploader->udata);
@@ -1017,7 +1017,7 @@ _key_put_submit_finish(record_batch_tracker_t* tracker)
 		}
 
 		batch_uploader_signal_error(uploader);
-		atomic_store(&tracker->status.has_error, true);
+		tracker->status.has_error = true;
 	}
 
 	// since this is the last record, we can make the upload_batch callback.
@@ -1040,12 +1040,12 @@ _key_put_submit_callback(as_error* ae, void* udata, as_event_loop* event_loop)
 	switch (_categorize_write_result(ae, uploader->conf)) {
 		case WRITE_RESULT_PERMFAIL:
 			batch_uploader_signal_error(uploader);
-			atomic_store(&tracker->status.has_error, true);
+			tracker->status.has_error = true;
 			break;
 
 		case WRITE_RESULT_RETRY:
 			atomic_fetch_add(&uploader->retry_count, 1);
-			atomic_store(&tracker->should_retry, true);
+			tracker->should_retry = true;
 			break;
 
 		case WRITE_RESULT_OK:
@@ -1053,12 +1053,12 @@ _key_put_submit_callback(as_error* ae, void* udata, as_event_loop* event_loop)
 						ae == NULL ? AEROSPIKE_OK : ae->code,
 						uploader->conf)) {
 				batch_uploader_signal_error(uploader);
-				atomic_store(&tracker->status.has_error, true);
+				tracker->status.has_error = true;
 			}
 			else {
 				// now that the transaction has completely succeeded, we can
 				// disable retries on it.
-				atomic_store(&key_info->should_retry, false);
+				key_info->should_retry = false;
 			}
 			break;
 	}
@@ -1108,7 +1108,7 @@ _do_key_recs_write(batch_uploader_t* uploader, record_batch_tracker_t* tracker)
 						"code %d: %s at %s:%d",
 						ae.code, ae.message, ae.file, ae.line);
 				batch_uploader_signal_error(uploader);
-				atomic_store(&tracker->status.has_error, true);
+				tracker->status.has_error = true;
 
 				// Since there may have been some calls that succeeded before
 				// this one, decrement the number of outstanding calls by the

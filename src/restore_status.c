@@ -336,7 +336,7 @@ restore_status_finish(restore_status_t* status)
 {
 	// sets the finished variable. No need to grab a lock since condidition
 	// variables all used timed waits, so deadlock is impossible.
-	atomic_store(&status->finished, true);
+	status->finished = true;
 
 	// wakes all threads waiting on the stop condition
 	pthread_cond_broadcast(&status->stop_cond);
@@ -355,7 +355,7 @@ restore_status_stop(restore_status_t* status)
 {
 	// sets the stop variable. No need to grab a lock since condidition
 	// variables all used timed waits, so deadlock is impossible.
-	atomic_store(&status->stop, true);
+	status->stop = true;
 
 	// wakes all threads waiting on the stop condition
 	pthread_cond_broadcast(&status->stop_cond);

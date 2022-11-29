@@ -297,13 +297,11 @@ backup_state_load_global_status(const backup_state_t* state,
 	status->index_count = state->backup_global_status.index_count;
 	status->udf_count = state->backup_global_status.udf_count;
 
-	atomic_store_explicit(&status->file_count, state->backup_global_status.file_count, memory_order_relaxed);
-	atomic_store_explicit(&status->rec_count_total, state->backup_global_status.rec_count_total, memory_order_relaxed);
-	atomic_store_explicit(&status->byte_count_total, state->backup_global_status.byte_count_total, memory_order_relaxed);
-	atomic_store_explicit(&status->rec_count_total_committed,
-			state->backup_global_status.rec_count_total_committed, memory_order_relaxed);
-	atomic_store(&status->byte_count_total_committed,
-			state->backup_global_status.byte_count_total_committed);
+	status->file_count = state->backup_global_status.file_count;
+	status->rec_count_total = state->backup_global_status.rec_count_total;
+	status->byte_count_total = state->backup_global_status.byte_count_total;
+	status->rec_count_total_committed = state->backup_global_status.rec_count_total_committed;
+	status->byte_count_total_committed = state->backup_global_status.byte_count_total_committed;
 }
 
 bool

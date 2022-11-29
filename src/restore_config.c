@@ -331,7 +331,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 			break;
 
 		case 'v':
-			atomic_store_explicit(&g_verbose, true, memory_order_relaxed);
+			g_verbose = true, memory_order_relaxed;
 			break;
 
 		case 'm':

@@ -547,7 +547,7 @@ backup_status_has_started(backup_status_t* status)
 void
 backup_status_start(backup_status_t* status)
 {
-	atomic_store(&status->started, true);
+	status->started = true;
 }
 
 bool
@@ -574,7 +574,7 @@ void
 backup_status_signal_one_shot(backup_status_t* status)
 {
 	safe_lock(&status->stop_lock);
-	atomic_store(&status->one_shot_done, 1);
+	status->one_shot_done = 1;
 	safe_signal(&status->stop_cond);
 	safe_unlock(&status->stop_lock);
 }
@@ -593,11 +593,11 @@ backup_status_stop(const backup_config_t* conf, backup_status_t* status)
 		backup_status_init_backup_state_file(conf->state_file_dst, status);
 	}
 	else {
-		atomic_store(&status->backup_state, BACKUP_STATE_ABORTED);
+		status->backup_state = BACKUP_STATE_ABORTED;
 	}
 
 	// sets the stop variable
-	atomic_store(&status->stop, 1);
+	status->stop = 1;
 
 	// wakes all threads waiting on the stop condition
 	pthread_cond_broadcast(&status->stop_cond);
@@ -616,7 +616,7 @@ backup_status_finish(backup_status_t* status)
 	pthread_mutex_lock(&status->stop_lock);
 
 	// sets the stop variable
-	atomic_store(&status->finished, 1);
+	status->finished = 1;
 
 	// wakes all threads waiting on the stop condition
 	pthread_cond_broadcast(&status->stop_cond);
@@ -630,7 +630,7 @@ backup_status_abort_backup(backup_status_t* status)
 	pthread_mutex_lock(&status->stop_lock);
 
 	// sets the stop variable
-	atomic_store(&status->stop, 1);
+	status->stop = 1;
 
 	// TODO this cast to (_Atomic(uint64_t)*) seems pretty hacky.
 	// will the alignment always work?
@@ -652,7 +652,7 @@ backup_status_abort_backup(backup_status_t* status)
 void
 backup_status_abort_backup_unsafe(backup_status_t* status)
 {
-	atomic_store(&status->backup_state, BACKUP_STATE_ABORTED);
+	status->backup_state = BACKUP_STATE_ABORTED;
 }
 
 void
