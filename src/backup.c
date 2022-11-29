@@ -67,6 +67,55 @@ typedef struct distr_stats {
 } distr_stats_t;
 
 /*
+ * The context for information about the currently processed partition. Each backup
+ * thread creates one of these for each scan call that it makes.
+ */
+typedef struct backup_job_context {
+	// Task description. 
+	char desc[128];
+	// The global backup configuration.
+	const backup_config_t *conf;
+	// The global backup stats. Copied from backup_thread_args.status.
+	backup_status_t *status;
+	// The scan configuration to be used.
+	as_scan scan;
+	// Set if the backup job terminated a scan early for any reason.
+	bool interrupted;
+
+	union {
+		// When backing up to a single file, the file descriptor of that file.
+		// Copied from backup_thread_args.shared_fd.
+		io_write_proxy_t* shared_fd;
+
+		// When backing up to a directory, the queue of backup files which have
+		// not been completely filled yet
+		cf_queue* file_queue;
+	};
+
+	// The file descriptor of the current backup file for the current job.
+	io_write_proxy_t* fd;
+
+	// When backing up to a directory, counts the number of records in the
+	// current backup file for the current job.
+	uint64_t rec_count_file;
+	// When backing up to a directory, tracks the size of the current backup
+	// file for the currently processed partition filter.
+	uint64_t byte_count_file;
+	// Counts the number of records read from the currently processed partition
+	// filter.
+	uint64_t rec_count_job;
+	// Counts the number of bytes written to all backup files for the current
+	// job.
+	uint64_t byte_count_job;
+	// When estimating the average record size, the array that receives the
+	// record size samples. Copied from backup_thread_args.samples.
+	uint64_t *samples;
+	// The number of record size samples that fit into the samples array. Copied
+	// from backup_thread_args.n_samples.
+	_Atomic(uint32_t)* n_samples;
+} backup_job_context_t;
+
+/*
  * To be used by signal handlers, call the corresponding backup_status_* methods
  * with g_backup_status as a first parameter.
  */
