@@ -1166,7 +1166,7 @@ close_dir_file(backup_job_context_t *bjc)
 	}
 
 	pthread_mutex_lock(&bjc->status->committed_count_mutex);
-	bjc->status->rec_count_total_committed += (int64_t) bjc->rec_count_file; // TODO refresh brain do sequential atomics also flush to other threads? does it matter?
+	bjc->status->rec_count_total_committed += (int64_t) bjc->rec_count_file;
 	bjc->status->byte_count_total_committed += file_size;
 	pthread_mutex_unlock(&bjc->status->committed_count_mutex);
 
