@@ -1009,7 +1009,7 @@ update_shared_file_pos(io_write_proxy_t* fd, _Atomic(uint64_t)* byte_count_total
 		return -1;
 	}
 
-	byte_count_total = (uint64_t) pos;
+	*byte_count_total = (uint64_t) pos;
 
 	return 0;
 }
