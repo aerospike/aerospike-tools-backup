@@ -707,15 +707,15 @@ _batch_status_submit(batch_status_t* status,
 
 		// Conditional error based on input config. No retries.
 		case AEROSPIKE_ERR_RECORD_GENERATION:
-			status->fresher_records += 1;
+			status->fresher_records++;
 			break;
 
 		case AEROSPIKE_ERR_RECORD_EXISTS:
-			status->existed_records += 1;
+			status->existed_records++;
 			break;
 
 		case AEROSPIKE_OK:
-			status->inserted_records += 1;
+			status->inserted_records++;
 			break;
 
 		default:
@@ -1044,7 +1044,7 @@ _key_put_submit_callback(as_error* ae, void* udata, as_event_loop* event_loop)
 			break;
 
 		case WRITE_RESULT_RETRY:
-			uploader->retry_count += 1;
+			uploader->retry_count++;
 			tracker->should_retry = true;
 			break;
 

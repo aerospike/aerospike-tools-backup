@@ -952,10 +952,8 @@ directory_backup_remaining_estimate(const backup_config_t* conf,
 	}
 
 	pthread_mutex_lock(&status->committed_count_mutex);
-	uint64_t rec_count_total_committed =
-		status->rec_count_total_committed;
-	uint64_t byte_count_total_committed =
-		(&status->byte_count_total_committed, memory_order_relaxed);
+	uint64_t rec_count_total_committed = status->rec_count_total_committed;
+	uint64_t byte_count_total_committed = status->byte_count_total_committed;
 	pthread_mutex_unlock(&status->committed_count_mutex);
 
 	uint64_t rec_remain = rec_count_total > rec_count_estimate ? 0 :
@@ -1428,11 +1426,11 @@ scan_callback(const as_val *val, void *cont)
 
 	bool ok;
 	if (bjc->conf->estimate) {
-		uint32_t sample_idx = (*bjc->n_samples)++;
+		uint32_t sample_idx = atomic_fetch_add(bjc->n_samples, 1);
 		// should never happen, but just to ensure we don't write past the end
 		// of the sample buffer, check that we don't exceed estimate_samples
 		if (sample_idx >= bjc->conf->n_estimate_samples) {
-			*bjc->n_samples = bjc->conf->n_estimate_samples;
+			atomic_store(bjc->n_samples, bjc->conf->n_estimate_samples);
 			safe_unlock(&bjc->status->file_write_mutex);
 			// don't abort the scan, as this will cause a broken pipe error on
 			// the server. Let the scan gracefully terminate.
@@ -1456,7 +1454,7 @@ scan_callback(const as_val *val, void *cont)
 
 	++bjc->rec_count_file;
 	++bjc->rec_count_job;
-	bjc->status->rec_count_total += 1;
+	++bjc->status->rec_count_total;
 
 	if (bjc->conf->output_file != NULL || bjc->conf->estimate) {
 		if (update_shared_file_pos(bjc->fd, &bjc->status->byte_count_total) < 0) {

@@ -780,7 +780,7 @@ restore_thread_func(void *cont)
 				as_vector_append(&args.status->index_vec, &index);
 				pthread_mutex_unlock(&args.status->idx_udf_lock);
 
-				args.status->index_count += 1;
+				args.status->index_count++;
 				continue;
 			}
 
@@ -799,7 +799,7 @@ restore_thread_func(void *cont)
 				as_vector_append(&args.status->udf_vec, &udf);
 				pthread_mutex_unlock(&args.status->idx_udf_lock);
 
-				args.status->udf_count += 1;
+				args.status->udf_count++;
 				continue;
 			}
 
@@ -809,10 +809,10 @@ restore_thread_func(void *cont)
 				}
 
 				if (expired) {
-					ptc.status->expired_records += 1;
+					ptc.status->expired_records++;
 					as_record_destroy(&rec);
 				} else if (rec.bins.size == 0 || !check_set(rec.key.set, ptc.set_vec)) {
-					ptc.status->skipped_records += 1;
+					ptc.status->skipped_records++;
 					as_record_destroy(&rec);
 				} else {
 					if (!record_uploader_put(&record_uploader, &rec)) {
@@ -821,7 +821,7 @@ restore_thread_func(void *cont)
 					}
 				}
 
-				ptc.status->total_records += 1;
+				ptc.status->total_records++;
 
 				if (ptc.conf->bandwidth > 0 && ptc.conf->tps > 0) {
 					safe_lock(&ptc.status->limit_mutex);
@@ -1203,7 +1203,7 @@ restore_index(aerospike *as, index_param *index, as_vector *set_vec,
 	if (!check_set(index->set, set_vec)) {
 		ver("Skipping index with unwanted set %s:%s:%s (%s)", index->ns, index->set,
 				index->name, path->path);
-		args->status->skipped_indexes += 1;
+		args->status->skipped_indexes++;
 
 		index->task.as = as;
 		memcpy(index->task.ns, index->ns, sizeof(as_namespace));
@@ -1306,10 +1306,10 @@ restore_index(aerospike *as, index_param *index, as_vector *set_vec,
 					path->path);
 
 			if (orig_stat == INDEX_STATUS_DIFFERENT) {
-				args->status->mismatched_indexes += 1;
+				args->status->mismatched_indexes++;
 			}
 			else {
-				args->status->matched_indexes += 1;
+				args->status->matched_indexes++;
 			}
 
 			index->task.as = as;

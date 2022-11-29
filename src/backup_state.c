@@ -284,8 +284,6 @@ backup_state_set_global_status(backup_state_t* state,
 		status->byte_count_total;
 	state->backup_global_status.rec_count_total_committed =
 		status->rec_count_total_committed;
-	// one statement with sequential ordering to ensure nothing is reordered around
-	// this function on arm CPUs
 	state->backup_global_status.byte_count_total_committed =
 		status->byte_count_total_committed;
 }
