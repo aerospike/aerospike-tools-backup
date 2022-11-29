@@ -165,7 +165,7 @@ get_g_backup_conf(void)
 {
 	backup_globals_t* cur_globals =
 		(backup_globals_t*) as_vector_get(&g_globals, g_globals.size - 1);
-	return (backup_config_t*) atomic_load(&cur_globals->conf);
+	return (backup_config_t*) cur_globals->conf;
 }
 
 backup_status_t*
@@ -173,7 +173,7 @@ get_g_backup_status(void)
 {
 	backup_globals_t* cur_globals =
 		(backup_globals_t*) as_vector_get(&g_globals, g_globals.size - 1);
-	return (backup_status_t*) atomic_load(&cur_globals->status);
+	return (backup_status_t*) cur_globals->status;
 }
 
 
@@ -407,7 +407,7 @@ run_backup(backup_config_t* conf)
 			// don't parallelize the estimate
 			estimate_conf->parallel = 0;
 
-			bool cur_silent_val = atomic_load(&g_silent);
+			bool cur_silent_val = g_silent;
 			g_silent = true;
 			backup_status_t* estimate_status = run_backup(estimate_conf);
 			g_silent = cur_silent_val;
@@ -841,8 +841,8 @@ save_backup_state:
 		loaded_backup_state = NULL;
 	}
 
-	uint64_t records = atomic_load_explicit(&status->rec_count_total, memory_order_relaxed);
-	uint64_t bytes = atomic_load_explicit(&status->byte_count_total, memory_order_relaxed);
+	uint64_t records = status->rec_count_total;
+	uint64_t bytes = status->byte_count_total;
 	inf("Backed up %" PRIu64 " record(s), %u secondary index(es), %u UDF file(s), "
 			"%" PRIu64 " byte(s) in total (~%" PRIu64 " B/rec)", records,
 			status->index_count, status->udf_count, bytes,
@@ -945,7 +945,7 @@ directory_backup_remaining_estimate(const backup_config_t* conf,
 		backup_status_t* status)
 {
 	uint64_t rec_count_estimate = status->rec_count_estimate;
-	uint64_t rec_count_total = atomic_load_explicit(&status->rec_count_total, memory_order_relaxed);
+	uint64_t rec_count_total = status->rec_count_total;
 
 	if (rec_count_total == 0) {
 		return conf->file_limit;
@@ -953,7 +953,7 @@ directory_backup_remaining_estimate(const backup_config_t* conf,
 
 	pthread_mutex_lock(&status->committed_count_mutex);
 	uint64_t rec_count_total_committed =
-		atomic_load_explicit(&status->rec_count_total_committed, memory_order_relaxed);
+		status->rec_count_total_committed;
 	uint64_t byte_count_total_committed =
 		(&status->byte_count_total_committed, memory_order_relaxed);
 	pthread_mutex_unlock(&status->committed_count_mutex);
@@ -1241,7 +1241,7 @@ open_dir_file(backup_job_context_t *bjc)
 		}
 
 		pthread_mutex_lock(&bjc->status->dir_file_init_mutex);
-		int64_t file_count = atomic_load_explicit(&bjc->status->file_count, memory_order_relaxed);
+		int64_t file_count = bjc->status->file_count;
 
 		snprintf(file_path, file_path_size + 1, "%s/%s_%05" PRId64 ".asb",
 				bjc->conf->directory,
@@ -1487,8 +1487,8 @@ scan_callback(const as_val *val, void *cont)
 		safe_lock(&bjc->status->bandwidth_mutex);
 
 		// TODO could these be relaxed?
-		while (atomic_load(&bjc->status->byte_count_total) >=
-				atomic_load(&bjc->status->byte_count_limit) &&
+		while (bjc->status->byte_count_total >=
+				bjc->status->byte_count_limit &&
 				!backup_status_has_stopped(bjc->status)) {
 			safe_wait(&bjc->status->bandwidth_cond,
 					&bjc->status->bandwidth_mutex);
@@ -1964,7 +1964,7 @@ backup_thread_func(void *cont)
 		}
 
 		if (bjc.conf->output_file != NULL || bjc.conf->estimate) {
-			backup_file_size = atomic_load_explicit(&bjc.status->byte_count_total, memory_order_relaxed);
+			backup_file_size = bjc.status->byte_count_total;
 		}
 		else {
 			backup_file_size = bjc.byte_count_job;
@@ -2062,8 +2062,8 @@ counter_thread_func(void *cont)
 
 	uint32_t iter = 0;
 	cf_clock print_prev_ms = prev_ms;
-	uint64_t print_prev_bytes = atomic_load_explicit(&status->byte_count_total, memory_order_relaxed);
-	uint64_t print_prev_recs = atomic_load_explicit(&status->rec_count_total, memory_order_relaxed);
+	uint64_t print_prev_bytes = status->byte_count_total;
+	uint64_t print_prev_recs = status->rec_count_total;
 
 	uint64_t mach_prev_recs = print_prev_recs;
 
@@ -2078,8 +2078,8 @@ counter_thread_func(void *cont)
 			status->rec_count_estimate;
 
 		if (n_recs > 0) {
-			uint64_t now_bytes = atomic_load_explicit(&status->byte_count_total, memory_order_relaxed);
-			uint64_t now_recs = atomic_load_explicit(&status->rec_count_total, memory_order_relaxed);
+			uint64_t now_bytes = status->byte_count_total;
+			uint64_t now_recs = status->rec_count_total;
 
 			int32_t percent = (int32_t)(now_recs * 100 / n_recs);
 

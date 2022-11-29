@@ -328,7 +328,7 @@ restore_status_destroy(restore_status_t* status)
 bool
 restore_status_has_finished(const restore_status_t* status)
 {
-	return atomic_load(&status->finished);
+	return status->finished;
 }
 
 void
@@ -347,7 +347,7 @@ restore_status_finish(restore_status_t* status)
 bool
 restore_status_has_stopped(const restore_status_t* status)
 {
-	return atomic_load(&status->stop);
+	return status->stop;
 }
 
 void
@@ -458,13 +458,13 @@ _batch_complete_cb(batch_status_t* batch_status, void* restore_status_ptr)
 	restore_status_t* status = (restore_status_t*) restore_status_ptr;
 
 	atomic_fetch_add_explicit(&status->ignored_records,
-			atomic_load_explicit(&batch_status->ignored_records, memory_order_relaxed), memory_order_relaxed);
+			batch_status->ignored_records, memory_order_relaxed);
 	atomic_fetch_add_explicit(&status->inserted_records,
-			atomic_load_explicit(&batch_status->inserted_records, memory_order_relaxed), memory_order_relaxed);
+			batch_status->inserted_records, memory_order_relaxed);
 	atomic_fetch_add_explicit(&status->existed_records,
-			atomic_load_explicit(&batch_status->existed_records, memory_order_relaxed), memory_order_relaxed);
+			batch_status->existed_records, memory_order_relaxed);
 	atomic_fetch_add(&status->fresher_records,
-			atomic_load(&batch_status->fresher_records));
+			batch_status->fresher_records);
 }
 
 static bool

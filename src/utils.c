@@ -152,7 +152,7 @@ _ver_fn(const char *format, ...)
 {
 	va_list args;
 
-	if (!atomic_load(&g_silent)) {
+	if (!g_silent) {
 		va_start(args, format);
 		log_line("VER", "", format, args, false);
 		va_end(args);
@@ -169,7 +169,7 @@ inf(const char *format, ...)
 {
 	va_list args;
 
-	if (!atomic_load(&g_silent)) {
+	if (!g_silent) {
 		va_start(args, format);
 		log_line("INF", "", format, args, false);
 		va_end(args);
@@ -384,7 +384,7 @@ log_callback(as_log_level level, const char *func, const char *file, uint32_t li
 	case AS_LOG_LEVEL_INFO:
 		tag = "INF";
 
-		if (atomic_load(&g_silent)) {
+		if (g_silent) {
 			return true;
 		}
 		break;
@@ -393,7 +393,7 @@ log_callback(as_log_level level, const char *func, const char *file, uint32_t li
 	case AS_LOG_LEVEL_TRACE:
 		tag = "VER";
 
-		if (atomic_load(&g_silent)) {
+		if (g_silent) {
 			return true;
 		}
 		break;
@@ -1333,7 +1333,7 @@ get_node_names(as_cluster *clust, node_spec *node_specs, uint32_t n_node_specs,
 						keep = v4->sin_addr.s_addr == node_specs[m].ver.v4.s_addr &&
 								v4->sin_port == node_specs[m].port;
 
-						if (keep && pass == 2 && atomic_load(&g_verbose)) {
+						if (keep && pass == 2 && g_verbose) {
 							ver("Found node for %s:%d", node_specs[m].addr_string,
 									ntohs(node_specs[m].port));
 						}
@@ -1352,7 +1352,7 @@ get_node_names(as_cluster *clust, node_spec *node_specs, uint32_t n_node_specs,
 						keep = memcmp(&v6->sin6_addr, &node_specs[m].ver.v6, 16) == 0 &&
 								v6->sin6_port == node_specs[m].port;
 
-						if (keep && pass == 2 && atomic_load(&g_verbose)) {
+						if (keep && pass == 2 && g_verbose) {
 							ver("Found node for %s:%d", node_specs[m].addr_string,
 									ntohs(node_specs[m].port));
 						}
