@@ -55,7 +55,6 @@ extern "C" {
 // forward declare, as we can't include it in this file.
 typedef struct restore_status restore_status_t;
 
-// TODO should batch_status be an atomic struct?
 /*
  * The struct to keep track of the status of a batch upload, both for multiple
  * key-put uploads and for batch-write uploads.

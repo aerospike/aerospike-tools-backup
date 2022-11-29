@@ -1063,13 +1063,6 @@ _key_put_submit_callback(as_error* ae, void* udata, as_event_loop* event_loop)
 			break;
 	}
 
-	// NOTE: The relaxed memory model on arm means atomics no longer have the
-	// sequence memory fence effect we observed on x86. This means reference counting schemes
-	// like this can be dangerous if, for example, an instruction referencing tracker
-	// falls below the as_aaf_uint64, then tracker is destroyed in another thread,
-	// when this thread is picked up again the out of order access to tracker results in
-	// a use after free. TODO Changes like this will have to be made in all applicable areas
-	// or another solution like porting to c11 atomics, or the tso GCC plugin must be used.
 	if (--tracker->outstanding_calls == 0) {
 		_key_put_submit_finish(tracker);
 	}

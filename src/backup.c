@@ -1486,7 +1486,6 @@ scan_callback(const as_val *val, void *cont)
 	if (bjc->conf->bandwidth > 0) {
 		safe_lock(&bjc->status->bandwidth_mutex);
 
-		// TODO could these be relaxed?
 		while (bjc->status->byte_count_total >=
 				bjc->status->byte_count_limit &&
 				!backup_status_has_stopped(bjc->status)) {
