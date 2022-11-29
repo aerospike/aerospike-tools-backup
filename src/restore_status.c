@@ -457,14 +457,10 @@ _batch_complete_cb(batch_status_t* batch_status, void* restore_status_ptr)
 {
 	restore_status_t* status = (restore_status_t*) restore_status_ptr;
 
-	atomic_fetch_add_explicit(&status->ignored_records,
-			batch_status->ignored_records, memory_order_relaxed);
-	atomic_fetch_add_explicit(&status->inserted_records,
-			batch_status->inserted_records, memory_order_relaxed);
-	atomic_fetch_add_explicit(&status->existed_records,
-			batch_status->existed_records, memory_order_relaxed);
-	atomic_fetch_add(&status->fresher_records,
-			batch_status->fresher_records);
+	status->ignored_records += batch_status->ignored_records;
+	status->inserted_records += batch_status->inserted_records;
+	status->existed_records += batch_status->existed_records;
+	status->fresher_records += batch_status->fresher_records;
 }
 
 static bool

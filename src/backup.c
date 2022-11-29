@@ -988,7 +988,7 @@ update_file_pos(io_write_proxy_t* fd, uint64_t* byte_count_file,
 
 	*byte_count_file = (uint64_t) pos;
 	*byte_count_job += diff;
-	atomic_fetch_add(byte_count_total, diff);
+	*byte_count_total += diff;
 
 	return 0;
 }
@@ -1166,8 +1166,8 @@ close_dir_file(backup_job_context_t *bjc)
 	}
 
 	pthread_mutex_lock(&bjc->status->committed_count_mutex);
-	atomic_fetch_add_explicit(&bjc->status->rec_count_total_committed, (int64_t) bjc->rec_count_file, memory_order_relaxed); // TODO refresh brain do sequential atomics also flush to other threads? does it matter?
-	atomic_fetch_add_explicit(&bjc->status->byte_count_total_committed, file_size, memory_order_relaxed);
+	bjc->status->rec_count_total_committed += (int64_t) bjc->rec_count_file; // TODO refresh brain do sequential atomics also flush to other threads? does it matter?
+	bjc->status->byte_count_total_committed += file_size;
 	pthread_mutex_unlock(&bjc->status->committed_count_mutex);
 
 	ver("File size is %" PRId64 " for %s", file_size, io_proxy_file_path(bjc->fd));
@@ -1428,7 +1428,7 @@ scan_callback(const as_val *val, void *cont)
 
 	bool ok;
 	if (bjc->conf->estimate) {
-		uint32_t sample_idx = atomic_fetch_add_explicit(bjc->n_samples, 1, memory_order_relaxed);
+		uint32_t sample_idx = (*bjc->n_samples)++;
 		// should never happen, but just to ensure we don't write past the end
 		// of the sample buffer, check that we don't exceed estimate_samples
 		if (sample_idx >= bjc->conf->n_estimate_samples) {
@@ -1456,7 +1456,7 @@ scan_callback(const as_val *val, void *cont)
 
 	++bjc->rec_count_file;
 	++bjc->rec_count_job;
-	atomic_fetch_add_explicit(&bjc->status->rec_count_total, 1, memory_order_relaxed);
+	bjc->status->rec_count_total += 1;
 
 	if (bjc->conf->output_file != NULL || bjc->conf->estimate) {
 		if (update_shared_file_pos(bjc->fd, &bjc->status->byte_count_total) < 0) {

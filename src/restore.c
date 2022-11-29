@@ -365,7 +365,7 @@ update_file_pos(per_thread_context_t* ptc)
 	uint64_t diff = (uint64_t) pos - ptc->byte_count_file;
 
 	ptc->byte_count_file = (uint64_t) pos;
-	atomic_fetch_add(&ptc->status->total_bytes, diff);
+	ptc->status->total_bytes += diff;
 
 	return 0;
 }
@@ -780,7 +780,7 @@ restore_thread_func(void *cont)
 				as_vector_append(&args.status->index_vec, &index);
 				pthread_mutex_unlock(&args.status->idx_udf_lock);
 
-				atomic_fetch_add_explicit(&args.status->index_count, 1, memory_order_relaxed);
+				args.status->index_count += 1;
 				continue;
 			}
 
@@ -799,7 +799,7 @@ restore_thread_func(void *cont)
 				as_vector_append(&args.status->udf_vec, &udf);
 				pthread_mutex_unlock(&args.status->idx_udf_lock);
 
-				atomic_fetch_add_explicit(&args.status->udf_count, 1, memory_order_relaxed);
+				args.status->udf_count += 1;
 				continue;
 			}
 
@@ -809,10 +809,10 @@ restore_thread_func(void *cont)
 				}
 
 				if (expired) {
-					atomic_fetch_add_explicit(&ptc.status->expired_records, 1, memory_order_relaxed);
+					ptc.status->expired_records += 1;
 					as_record_destroy(&rec);
 				} else if (rec.bins.size == 0 || !check_set(rec.key.set, ptc.set_vec)) {
-					atomic_fetch_add_explicit(&ptc.status->skipped_records, 1, memory_order_relaxed);
+					ptc.status->skipped_records += 1;
 					as_record_destroy(&rec);
 				} else {
 					if (!record_uploader_put(&record_uploader, &rec)) {
@@ -821,7 +821,7 @@ restore_thread_func(void *cont)
 					}
 				}
 
-				atomic_fetch_add_explicit(&ptc.status->total_records, 1, memory_order_relaxed);
+				ptc.status->total_records += 1;
 
 				if (ptc.conf->bandwidth > 0 && ptc.conf->tps > 0) {
 					safe_lock(&ptc.status->limit_mutex);
@@ -1203,7 +1203,7 @@ restore_index(aerospike *as, index_param *index, as_vector *set_vec,
 	if (!check_set(index->set, set_vec)) {
 		ver("Skipping index with unwanted set %s:%s:%s (%s)", index->ns, index->set,
 				index->name, path->path);
-		atomic_fetch_add_explicit(&args->status->skipped_indexes, 1, memory_order_relaxed);
+		args->status->skipped_indexes += 1;
 
 		index->task.as = as;
 		memcpy(index->task.ns, index->ns, sizeof(as_namespace));
@@ -1306,10 +1306,10 @@ restore_index(aerospike *as, index_param *index, as_vector *set_vec,
 					path->path);
 
 			if (orig_stat == INDEX_STATUS_DIFFERENT) {
-				atomic_fetch_add_explicit(&args->status->mismatched_indexes, 1, memory_order_relaxed);
+				args->status->mismatched_indexes += 1;
 			}
 			else {
-				atomic_fetch_add_explicit(&args->status->matched_indexes, 1, memory_order_relaxed);
+				args->status->matched_indexes += 1;
 			}
 
 			index->task.as = as;
