@@ -435,9 +435,10 @@ s3_scan_directory(const backup_config_t* conf, const backup_status_t* status,
 		return false;
 	}
 
-	if (static_cast<uint64_t>(obj_count + upload_req_count) != status->file_count) {
+	uint64_t file_count = backup_status_get_file_count(status);
+	if (static_cast<uint64_t>(obj_count + upload_req_count) != file_count) {
 		err("Expected %" PRIu64 " backup files, but found %" PRIu64,
-				status->file_count, obj_count + upload_req_count);
+				file_count, obj_count + upload_req_count);
 		return false;
 	}
 

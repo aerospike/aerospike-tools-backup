@@ -776,6 +776,10 @@ backup_status_save_scan_state(backup_status_t* status,
 	pthread_mutex_unlock(&status->stop_lock);
 }
 
+uint64_t backup_status_get_file_count(const backup_status_t* status) {
+	return status->file_count;
+}
+
 
 //==========================================================
 // Local helpers.

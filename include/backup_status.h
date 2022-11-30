@@ -25,14 +25,15 @@
 #pragma once
 
 #ifdef __cplusplus
+typedef struct backup_status backup_status_t;
 extern "C" {
+#else
+#include <stdatomic.h>
 #endif
 
 //==========================================================
 // Includes.
 //
-
-#include <stdatomic.h>
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wconversion"
@@ -62,6 +63,8 @@ extern "C" {
 /*
  * The backup_status_t struct is used to manage the status of a full backup job.
  */
+#ifdef __cplusplus
+#else
 typedef struct backup_status {
 	node_spec* node_specs;
 	uint32_t n_node_specs;
@@ -156,6 +159,7 @@ typedef struct backup_status {
 	// Cumulative total number of samples collected.
 	uint32_t n_estimate_samples;
 } backup_status_t;
+#endif
 
 
 //==========================================================
@@ -257,6 +261,15 @@ backup_state_t* backup_status_get_backup_state(backup_status_t* status);
  */
 void backup_status_save_scan_state(backup_status_t* status,
 		const as_partitions_status* parts);
+
+/*
+ * Returns the file_count member of status.
+ * This is usefull for calling from C++ because
+ * backup_status_t's use of C11 _Atomic() means
+ * C++ can only use it as an opaque pointer
+ * and can not access its members.
+ */
+uint64_t backup_status_get_file_count(const backup_status_t* status);
 
 #ifdef __cplusplus
 }
