@@ -63,8 +63,6 @@ extern "C" {
 /*
  * The backup_status_t struct is used to manage the status of a full backup job.
  */
-#ifdef __cplusplus
-#else
 typedef struct backup_status {
 	node_spec* node_specs;
 	uint32_t n_node_specs;
@@ -157,9 +155,8 @@ typedef struct backup_status {
 	uint64_t header_size;
 	uint64_t* estimate_samples;
 	// Cumulative total number of samples collected.
-	uint32_t n_estimate_samples;
+	_Atomic(uint32_t) n_estimate_samples;
 } backup_status_t;
-#endif
 
 
 //==========================================================

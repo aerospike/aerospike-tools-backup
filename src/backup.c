@@ -67,6 +67,39 @@ typedef struct distr_stats {
 } distr_stats_t;
 
 /*
+ * The per partition filter information pushed to the job queue and picked up
+ * by the backup threads.
+ */
+typedef struct backup_thread_args {
+	// The global backup configuration.
+	const backup_config_t *conf;
+	// The global backup stats.
+	backup_status_t *status;
+	// Partition ranges/digest to be backed up. 
+	as_partition_filter filter;
+
+	// A queue of all completed backup jobs
+	cf_queue* complete_queue;
+
+	union {
+		// When backing up to a single file, the file descriptor of that file.
+		io_write_proxy_t* shared_fd;
+
+		// When backing up to a directory, the queue of backup files which have
+		// not been completely filled yet
+		cf_queue* file_queue;
+	};
+	// This is the first job in the job queue. It'll take care of backing up
+	// secondary indexes and UDF files.
+	bool first;
+	// When estimating the average records size, the array that receives the
+	// record size samples.
+	uint64_t *samples;
+	// The number of record size samples that fit into the samples array.
+	_Atomic(uint32_t) *n_samples;
+} backup_thread_args_t;
+
+/*
  * The context for information about the currently processed partition. Each backup
  * thread creates one of these for each scan call that it makes.
  */
@@ -1844,7 +1877,7 @@ backup_thread_func(void *cont)
 		bjc.rec_count_job = 0;
 		bjc.byte_count_job = 0;
 		bjc.samples = args.samples;
-		atomic_init(bjc.n_samples, args.n_samples);
+		bjc.n_samples = args.n_samples;
 
 		if (args.filter.digest.init) {
 			uint32_t id = as_partition_getid(args.filter.digest.value,

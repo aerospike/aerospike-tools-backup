@@ -109,14 +109,14 @@ backup_status_init(backup_status_t* status, backup_config_t* conf)
 	atomic_init(&status->backup_state, NULL);
 	atomic_init(&status->one_shot_done, false);
 
-	status->n_estimate_samples = 0;
+	atomic_init(&status->n_estimate_samples, 0);
 	if (conf->estimate) {
 		status->estimate_samples = (uint64_t*)
-			cf_calloc(conf->n_estimate_samples, sizeof(uint64_t));
+			cf_calloc(conf->n_estimate_samples, sizeof(_Atomic(uint64_t)));
 
 		if (status->estimate_samples == NULL) {
 			err("Failed to calloc %zu bytes for estimate samples",
-					conf->n_estimate_samples * sizeof(uint64_t));
+					conf->n_estimate_samples * sizeof(_Atomic(uint64_t)));
 			goto cleanup1;
 		}
 	}

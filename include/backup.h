@@ -72,39 +72,6 @@ extern "C" {
 #define BACKUP_FILE_ESTIMATE_CONFIDENCE_LEVEL 0.999
 
 /*
- * The per partition filter information pushed to the job queue and picked up
- * by the backup threads.
- */
-typedef struct backup_thread_args {
-	// The global backup configuration.
-	const backup_config_t *conf;
-	// The global backup stats.
-	backup_status_t *status;
-	// Partition ranges/digest to be backed up. 
-	as_partition_filter filter;
-
-	// A queue of all completed backup jobs
-	cf_queue* complete_queue;
-
-	union {
-		// When backing up to a single file, the file descriptor of that file.
-		io_write_proxy_t* shared_fd;
-
-		// When backing up to a directory, the queue of backup files which have
-		// not been completely filled yet
-		cf_queue* file_queue;
-	};
-	// This is the first job in the job queue. It'll take care of backing up
-	// secondary indexes and UDF files.
-	bool first;
-	// When estimating the average records size, the array that receives the
-	// record size samples.
-	uint64_t *samples;
-	// The number of record size samples that fit into the samples array.
-	uint32_t *n_samples;
-} backup_thread_args_t;
-
-/*
  * The struct used to maintain state information about a backup file which was
  * not completely filled from a backup task
  */
