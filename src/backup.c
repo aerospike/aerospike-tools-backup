@@ -247,7 +247,7 @@ get_g_backup_conf(void)
 {
 	backup_globals_t* cur_globals =
 		(backup_globals_t*) as_vector_get(&g_globals, g_globals.size - 1);
-	return (backup_config_t*) cur_globals->conf;
+	return cur_globals->conf;
 }
 
 backup_status_t*
@@ -255,7 +255,7 @@ get_g_backup_status(void)
 {
 	backup_globals_t* cur_globals =
 		(backup_globals_t*) as_vector_get(&g_globals, g_globals.size - 1);
-	return (backup_status_t*) cur_globals->status;
+	return cur_globals->status;
 }
 
 
@@ -1508,11 +1508,11 @@ scan_callback(const as_val *val, void *cont)
 
 	bool ok;
 	if (bjc->conf->estimate) {
-		uint32_t sample_idx = atomic_fetch_add(bjc->n_samples, 1);
+		uint32_t sample_idx = *bjc->n_samples++;
 		// should never happen, but just to ensure we don't write past the end
 		// of the sample buffer, check that we don't exceed estimate_samples
 		if (sample_idx >= bjc->conf->n_estimate_samples) {
-			atomic_store(bjc->n_samples, bjc->conf->n_estimate_samples);
+			*bjc->n_samples = bjc->conf->n_estimate_samples;
 			safe_unlock(&bjc->status->file_write_mutex);
 			// don't abort the scan, as this will cause a broken pipe error on
 			// the server. Let the scan gracefully terminate.

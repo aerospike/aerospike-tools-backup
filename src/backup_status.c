@@ -112,11 +112,11 @@ backup_status_init(backup_status_t* status, backup_config_t* conf)
 	atomic_init(&status->n_estimate_samples, 0);
 	if (conf->estimate) {
 		status->estimate_samples = (uint64_t*)
-			cf_calloc(conf->n_estimate_samples, sizeof(_Atomic(uint64_t)));
+			cf_calloc(conf->n_estimate_samples, sizeof(uint64_t));
 
 		if (status->estimate_samples == NULL) {
 			err("Failed to calloc %zu bytes for estimate samples",
-					conf->n_estimate_samples * sizeof(_Atomic(uint64_t)));
+					conf->n_estimate_samples * sizeof(uint64_t));
 			goto cleanup1;
 		}
 	}
@@ -574,7 +574,7 @@ void
 backup_status_signal_one_shot(backup_status_t* status)
 {
 	safe_lock(&status->stop_lock);
-	status->one_shot_done = 1;
+	status->one_shot_done = true;
 	safe_signal(&status->stop_cond);
 	safe_unlock(&status->stop_lock);
 }
@@ -597,7 +597,7 @@ backup_status_stop(const backup_config_t* conf, backup_status_t* status)
 	}
 
 	// sets the stop variable
-	status->stop = 1;
+	status->stop = true;
 
 	// wakes all threads waiting on the stop condition
 	pthread_cond_broadcast(&status->stop_cond);
@@ -616,7 +616,7 @@ backup_status_finish(backup_status_t* status)
 	pthread_mutex_lock(&status->stop_lock);
 
 	// sets the stop variable
-	status->finished = 1;
+	status->finished = true;
 
 	// wakes all threads waiting on the stop condition
 	pthread_cond_broadcast(&status->stop_cond);
@@ -630,10 +630,10 @@ backup_status_abort_backup(backup_status_t* status)
 	pthread_mutex_lock(&status->stop_lock);
 
 	// sets the stop variable
-	status->stop = 1;
+	status->stop = true;
 
-	backup_state_t* prev_state = status->backup_state;
-	status->backup_state = BACKUP_STATE_ABORTED;
+	backup_state_t* prev_state =
+			atomic_exchange(&status->backup_state, BACKUP_STATE_ABORTED);
 
 	if (prev_state != NULL && prev_state != BACKUP_STATE_ABORTED) {
 		backup_state_free(prev_state);
@@ -731,7 +731,7 @@ backup_status_init_backup_state_file(const char* backup_state_path,
 backup_state_t*
 backup_status_get_backup_state(backup_status_t* status)
 {
-	return (backup_state_t*) status->backup_state;
+	return status->backup_state;
 }
 
 void

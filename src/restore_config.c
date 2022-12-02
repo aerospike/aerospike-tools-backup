@@ -19,8 +19,6 @@
 // Includes.
 //
 
-#include <stdatomic.h>
-
 #include <restore_config.h>
 
 #include <getopt.h>
@@ -331,7 +329,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 			break;
 
 		case 'v':
-			g_verbose = true, memory_order_relaxed;
+			g_verbose = true;
 			break;
 
 		case 'm':

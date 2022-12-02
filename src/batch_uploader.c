@@ -1109,8 +1109,8 @@ _do_key_recs_write(batch_uploader_t* uploader, record_batch_tracker_t* tracker)
 				// ones). If we happen to decrease this value to 0, free the
 				// tracker and release our hold on an async batch slot.
 				if ( atomic_fetch_add(&tracker->outstanding_calls,
-						(uint64_t) -(n_records - i)) -
-								(uint64_t) (n_records - i) == 0) {
+						(uint64_t) -(n_records - i)) +
+								(uint64_t) -(n_records - i) == 0) {
 					// if this is the last record, we can make the upload_batch
 					// callback.
 					as_fence_acq();

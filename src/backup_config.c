@@ -19,8 +19,6 @@
 // Includes.
 //
 
-#include <stdatomic.h>
-
 #include <backup_config.h>
 
 #include <getopt.h>
