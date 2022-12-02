@@ -1508,7 +1508,7 @@ scan_callback(const as_val *val, void *cont)
 
 	bool ok;
 	if (bjc->conf->estimate) {
-		uint32_t sample_idx = *bjc->n_samples++;
+		uint32_t sample_idx = (*bjc->n_samples)++;
 		// should never happen, but just to ensure we don't write past the end
 		// of the sample buffer, check that we don't exceed estimate_samples
 		if (sample_idx >= bjc->conf->n_estimate_samples) {
