@@ -34,6 +34,20 @@ PLATFORM := $(OS)-$(ARCH)
 VERSION := $(shell git describe 2>/dev/null; if [ $${?} != 0 ]; then echo 'unknown'; fi)
 ROOT = $(CURDIR)
 
+M1_HOME_BREW =
+ifeq ($(OS),Darwin)
+  ifneq ($(wildcard /opt/homebrew),)
+    M1_HOME_BREW = true
+  endif
+endif
+
+# M1 macs brew install openssl under /opt/homebrew/opt/openssl
+# set OPENSSL_PREFIX to the prefix for your openssl if it installed elsewhere
+OPENSSL_PREFIX ?= /usr/local/opt/openssl
+ifdef M1_HOME_BREW
+  OPENSSL_PREFIX = /opt/homebrew/opt/openssl
+endif
+
 CC ?= cc
 
 DWARF := $(shell $(CC) -Wall -Wextra -O2 -o /tmp/asflags_$${$$} src/flags.c; \
@@ -111,7 +125,7 @@ INCLUDES := -I$(DIR_INC)
 INCLUDES += -I$(DIR_TOML)
 INCLUDES += -I$(DIR_C_CLIENT)/src/include
 INCLUDES += -I$(DIR_C_CLIENT)/modules/common/src/include
-INCLUDES += -I/usr/local/opt/openssl/include
+INCLUDES += -I$(OPENSSL_PREFIX)/include
 
 LIBRARIES := $(C_CLIENT_LIB)
 LIBRARIES += -L/usr/local/lib
@@ -160,7 +174,7 @@ else
 endif
 
 ifeq ($(OPENSSL_STATIC_PATH),)
-  LIBRARIES += -L/usr/local/opt/openssl/lib
+  LIBRARIES += -L$(OPENSSL_PREFIX)/lib
   LIBRARIES += -lssl
   LIBRARIES += -lcrypto
 else
@@ -212,6 +226,15 @@ LIBRARIES += -ldl -lrt
 LIBRARIES += -L$(DIR_TOML) -Wl,-l,:libtoml.a
 else
 LIBRARIES += $(DIR_TOML)/libtoml.a
+endif
+
+# if this is an m1 mac using homebrew
+# add the new homebrew lib and include path
+# incase dependencies are installed there
+# NOTE: /usr/local/include will be checked first
+ifdef M1_HOME_BREW
+  LIBRARIES += -L/opt/homebrew/lib
+  INCLUDES += -I/opt/homebrew/include
 endif
 
 src_to_obj = $(filter $(DIR_OBJ)/%.o,$(1:$(DIR_SRC)/%.c=$(DIR_OBJ)/%_c.o) $(1:$(DIR_SRC)/%.cc=$(DIR_OBJ)/%_cc.o))
