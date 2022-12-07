@@ -42,7 +42,7 @@ ifeq ($(OS),Darwin)
 endif
 
 # M1 macs brew install openssl under /opt/homebrew/opt/openssl
-# set OPENSSL_PREFIX to the prefix for your openssl if it installed elsewhere
+# set OPENSSL_PREFIX to the prefix for your openssl if it is installed elsewhere
 OPENSSL_PREFIX ?= /usr/local/opt/openssl
 ifdef M1_HOME_BREW
   OPENSSL_PREFIX = /opt/homebrew/opt/openssl
