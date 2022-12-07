@@ -24,8 +24,18 @@
 
 #pragma once
 
+// used to make sure C++ understands
+// atomic_bool see https://gcc.gnu.org/bugzilla/show_bug.cgi?id=60932
 #ifdef __cplusplus
 extern "C" {
+#else
+// defined here so that C++ doesn't see atomic_bool
+// it won't recognize it and will throw a compile time error
+#include <stdatomic.h>
+// Enables verbose logging.
+extern atomic_bool g_verbose;
+// Disables all logging output except for errors.
+extern atomic_bool g_silent;
 #endif
 
 //==========================================================
@@ -285,8 +295,6 @@ typedef struct server_version {
 	uint32_t build_id;
 } server_version_t;
 
-extern bool g_verbose;
-extern bool g_silent;
 extern const uint8_t b64map[256];
 
 

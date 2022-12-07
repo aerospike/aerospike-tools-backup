@@ -329,8 +329,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 			break;
 
 		case 'v':
-			as_store_bool(&g_verbose, true);
-
+			g_verbose = true;
 			break;
 
 		case 'm':

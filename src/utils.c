@@ -21,6 +21,7 @@
 
 #include <float.h>
 #include <math.h>
+#include <stdatomic.h>
 
 #include <utils.h>
 
@@ -38,9 +39,9 @@
 #endif
 
 // Enables verbose logging.
-bool g_verbose = false;
+atomic_bool g_verbose;
 // Disables all logging output except for errors.
-bool g_silent = false;
+atomic_bool g_silent;
 
 // Lookup table for base-64 decoding. Invalid characters yield 0xff. '=' (0x3d) yields 0x00 to
 // make it a legal character.
@@ -151,7 +152,7 @@ _ver_fn(const char *format, ...)
 {
 	va_list args;
 
-	if (!as_load_bool(&g_silent)) {
+	if (!g_silent) {
 		va_start(args, format);
 		log_line("VER", "", format, args, false);
 		va_end(args);
@@ -168,7 +169,7 @@ inf(const char *format, ...)
 {
 	va_list args;
 
-	if (!as_load_bool(&g_silent)) {
+	if (!g_silent) {
 		va_start(args, format);
 		log_line("INF", "", format, args, false);
 		va_end(args);
@@ -383,7 +384,7 @@ log_callback(as_log_level level, const char *func, const char *file, uint32_t li
 	case AS_LOG_LEVEL_INFO:
 		tag = "INF";
 
-		if (as_load_bool(&g_silent)) {
+		if (g_silent) {
 			return true;
 		}
 		break;
@@ -392,7 +393,7 @@ log_callback(as_log_level level, const char *func, const char *file, uint32_t li
 	case AS_LOG_LEVEL_TRACE:
 		tag = "VER";
 
-		if (as_load_bool(&g_silent)) {
+		if (g_silent) {
 			return true;
 		}
 		break;
@@ -1332,7 +1333,7 @@ get_node_names(as_cluster *clust, node_spec *node_specs, uint32_t n_node_specs,
 						keep = v4->sin_addr.s_addr == node_specs[m].ver.v4.s_addr &&
 								v4->sin_port == node_specs[m].port;
 
-						if (keep && pass == 2 && as_load_bool(&g_verbose)) {
+						if (keep && pass == 2 && g_verbose) {
 							ver("Found node for %s:%d", node_specs[m].addr_string,
 									ntohs(node_specs[m].port));
 						}
@@ -1351,7 +1352,7 @@ get_node_names(as_cluster *clust, node_spec *node_specs, uint32_t n_node_specs,
 						keep = memcmp(&v6->sin6_addr, &node_specs[m].ver.v6, 16) == 0 &&
 								v6->sin6_port == node_specs[m].port;
 
-						if (keep && pass == 2 && as_load_bool(&g_verbose)) {
+						if (keep && pass == 2 && g_verbose) {
 							ver("Found node for %s:%d", node_specs[m].addr_string,
 									ntohs(node_specs[m].port));
 						}
@@ -1805,6 +1806,8 @@ as_key_move(as_key* dst, as_key* src)
 		return true;
 	}
 	
+	// can't change the definition of as_key so
+	// leaving this as an as_atomic instead of a c11 atomic
 	if (as_load_uint32(&src->valuep->integer._.count) > 1) {
 		//inf("Couldn't move record key values (reference count > 1).");
 		return false;
@@ -1820,6 +1823,8 @@ as_key_move(as_key* dst, as_key* src)
 bool
 as_record_move(as_record* dst, as_record* src)
 {
+	// can't change the definition of as_record so
+	// leaving this as an as_atomic instead of a c11 atomic
 	if (as_load_uint32(&src->_._.count) > 1) {
 		return false;
 	}

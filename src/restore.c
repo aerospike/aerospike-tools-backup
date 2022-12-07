@@ -19,6 +19,8 @@
 // Includes.
 //
 
+#include <stdatomic.h>
+
 #include <restore.h>
 
 #include <conf.h>
@@ -363,7 +365,7 @@ update_file_pos(per_thread_context_t* ptc)
 	uint64_t diff = (uint64_t) pos - ptc->byte_count_file;
 
 	ptc->byte_count_file = (uint64_t) pos;
-	as_add_uint64(&ptc->status->total_bytes, diff);
+	ptc->status->total_bytes += diff;
 
 	return 0;
 }
@@ -381,7 +383,7 @@ update_shared_file_pos(per_thread_context_t* ptc)
 		return -1;
 	}
 
-	as_store_uint64(&ptc->status->total_bytes, (uint64_t) pos);
+	ptc->status->total_bytes = (uint64_t) pos;
 
 	return 0;
 }
@@ -778,7 +780,7 @@ restore_thread_func(void *cont)
 				as_vector_append(&args.status->index_vec, &index);
 				pthread_mutex_unlock(&args.status->idx_udf_lock);
 
-				as_incr_uint32(&args.status->index_count);
+				args.status->index_count++;
 				continue;
 			}
 
@@ -797,7 +799,7 @@ restore_thread_func(void *cont)
 				as_vector_append(&args.status->udf_vec, &udf);
 				pthread_mutex_unlock(&args.status->idx_udf_lock);
 
-				as_incr_uint32(&args.status->udf_count);
+				args.status->udf_count++;
 				continue;
 			}
 
@@ -807,10 +809,10 @@ restore_thread_func(void *cont)
 				}
 
 				if (expired) {
-					as_incr_uint64(&ptc.status->expired_records);
+					ptc.status->expired_records++;
 					as_record_destroy(&rec);
 				} else if (rec.bins.size == 0 || !check_set(rec.key.set, ptc.set_vec)) {
-					as_incr_uint64(&ptc.status->skipped_records);
+					ptc.status->skipped_records++;
 					as_record_destroy(&rec);
 				} else {
 					if (!record_uploader_put(&record_uploader, &rec)) {
@@ -819,13 +821,13 @@ restore_thread_func(void *cont)
 					}
 				}
 
-				as_incr_uint64(&ptc.status->total_records);
+				ptc.status->total_records++;
 
 				if (ptc.conf->bandwidth > 0 && ptc.conf->tps > 0) {
 					safe_lock(&ptc.status->limit_mutex);
 
-					while ((as_load_uint64(&ptc.status->total_bytes) >= ptc.status->bytes_limit ||
-								as_load_uint64(&ptc.status->total_records) >= ptc.status->records_limit) &&
+					while (ptc.status->total_bytes >= ptc.status->bytes_limit ||
+								ptc.status->total_records >= ptc.status->records_limit &&
 							!restore_status_has_stopped(ptc.status)) {
 						safe_wait(&ptc.status->limit_cond, &ptc.status->limit_mutex);
 					}
@@ -887,9 +889,9 @@ counter_thread_func(void *cont)
 
 	uint32_t iter = 0;
 	cf_clock print_prev_ms = prev_ms;
-	uint64_t prev_bytes = as_load_uint64(&status->total_bytes);
+	uint64_t prev_bytes = status->total_bytes;
 	uint64_t mach_prev_bytes = prev_bytes;
-	uint64_t prev_records = as_load_uint64(&status->total_records);
+	uint64_t prev_records = status->total_records;
 
 	while (true) {
 		restore_status_sleep_for(status, 1, true);
@@ -899,18 +901,18 @@ counter_thread_func(void *cont)
 		uint32_t ms = (uint32_t) (now_ms - prev_ms);
 		prev_ms = now_ms;
 
-		uint64_t now_bytes = as_load_uint64(&status->total_bytes);
-		uint64_t now_records = as_load_uint64(&status->total_records);
+		uint64_t now_bytes = status->total_bytes;
+		uint64_t now_records = status->total_records;
 
-		uint64_t expired_records = as_load_uint64(&status->expired_records);
-		uint64_t skipped_records = as_load_uint64(&status->skipped_records);
-		uint64_t ignored_records = as_load_uint64(&status->ignored_records);
-		uint64_t inserted_records = as_load_uint64(&status->inserted_records);
-		uint64_t existed_records = as_load_uint64(&status->existed_records);
-		uint64_t fresher_records = as_load_uint64(&status->fresher_records);
+		uint64_t expired_records = status->expired_records;
+		uint64_t skipped_records = status->skipped_records;
+		uint64_t ignored_records = status->ignored_records;
+		uint64_t inserted_records = status->inserted_records;
+		uint64_t existed_records = status->existed_records;
+		uint64_t fresher_records = status->fresher_records;
 		uint64_t retry_count = batch_uploader_retry_count(&status->batch_uploader);
-		uint32_t index_count = as_load_uint32(&status->index_count);
-		uint32_t udf_count = as_load_uint32(&status->udf_count);
+		uint32_t index_count = status->index_count;
+		uint32_t udf_count = status->udf_count;
 
 		int32_t percent = status->estimated_bytes == 0 ? -1 :
 			(int32_t) (now_bytes * 100 / (uint64_t) status->estimated_bytes);
@@ -1201,7 +1203,7 @@ restore_index(aerospike *as, index_param *index, as_vector *set_vec,
 	if (!check_set(index->set, set_vec)) {
 		ver("Skipping index with unwanted set %s:%s:%s (%s)", index->ns, index->set,
 				index->name, path->path);
-		as_incr_uint32(&args->status->skipped_indexes);
+		args->status->skipped_indexes++;
 
 		index->task.as = as;
 		memcpy(index->task.ns, index->ns, sizeof(as_namespace));
@@ -1304,10 +1306,10 @@ restore_index(aerospike *as, index_param *index, as_vector *set_vec,
 					path->path);
 
 			if (orig_stat == INDEX_STATUS_DIFFERENT) {
-				as_incr_uint32(&args->status->mismatched_indexes);
+				args->status->mismatched_indexes++;
 			}
 			else {
-				as_incr_uint32(&args->status->matched_indexes);
+				args->status->matched_indexes++;
 			}
 
 			index->task.as = as;
@@ -1394,9 +1396,9 @@ restore_indexes(aerospike *as, as_vector *index_vec, as_vector *set_vec, restore
 		}
 	}
 
-	uint32_t skipped = as_load_uint32(&args->status->skipped_indexes);
-	uint32_t matched = as_load_uint32(&args->status->matched_indexes);
-	uint32_t mismatched = as_load_uint32(&args->status->mismatched_indexes);
+	uint32_t skipped = args->status->skipped_indexes;
+	uint32_t matched = args->status->matched_indexes;
+	uint32_t mismatched = args->status->mismatched_indexes;
 
 	if (skipped > 0) {
 		inf("Skipped %d index(es) with unwanted set(s)", skipped);

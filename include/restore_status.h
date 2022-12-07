@@ -82,26 +82,26 @@ typedef struct restore_status {
 	// The total size of all backup files to be restored.
 	off_t estimated_bytes;
 	// The total number of bytes read from the backup file(s) so far.
-	uint64_t total_bytes;
+	_Atomic(uint64_t) total_bytes;
 	// The total number of records read from the backup file(s) so far.
-	uint64_t total_records;
+	_Atomic(uint64_t) total_records;
 	// The number of records dropped because they were expired.
-	uint64_t expired_records;
+	_Atomic(uint64_t) expired_records;
 	// The number of records dropped because they didn't contain any of the
 	// selected bins or didn't belong to any of the the selected sets.
-	uint64_t skipped_records;
+	_Atomic(uint64_t) skipped_records;
 	// The number of records ignored because of record level permanent error while
 	// restoring. e.g RECORD_TOO_BIG Enabled or disabled using
 	// --ignore-record-error flag.
-	uint64_t ignored_records;
+	_Atomic(uint64_t) ignored_records;
 	// The number of successfully restored records.
-	uint64_t inserted_records;
+	_Atomic(uint64_t) inserted_records;
 	// The number of records dropped because they already existed in the
 	// database.
-	uint64_t existed_records;
+	_Atomic(uint64_t) existed_records;
 	// The number of records dropped because the database already contained the
 	// records with a higher generation count.
-	uint64_t fresher_records;
+	_Atomic(uint64_t) fresher_records;
 	// The current limit for total_bytes for throttling. This is periodically
 	// increased by the counter thread to raise the limit according to the
 	// bandwidth limit.
@@ -111,19 +111,19 @@ typedef struct restore_status {
 	// according to the TPS limit.
 	volatile uint64_t records_limit;
 	// The number of successfully created secondary indexes.
-	uint32_t index_count;
+	_Atomic(uint32_t) index_count;
 	// counts of the number of inserted/skipped/matched/mismatched secondary indexes
-	uint32_t skipped_indexes;
-	uint32_t matched_indexes;
-	uint32_t mismatched_indexes;
+	_Atomic(uint32_t) skipped_indexes;
+	_Atomic(uint32_t) matched_indexes;
+	_Atomic(uint32_t) mismatched_indexes;
 	// The number of successfully stored UDF files.
-	uint32_t udf_count;
+	_Atomic(uint32_t) udf_count;
 
 	// Set when the restore has finished running
-	bool finished;
+	_Atomic(bool) finished;
 
 	// Set when the restore has encountered an error and should stop.
-	bool stop;
+	_Atomic(bool) stop;
 
 	// Used when sleeping to ensure immediate awakening when the restore job
 	// finishes.

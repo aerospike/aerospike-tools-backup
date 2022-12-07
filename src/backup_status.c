@@ -19,6 +19,8 @@
 // Includes.
 //
 
+#include <stdatomic.h>
+
 #include <backup_status.h>
 
 #include <backup_state.h>
@@ -89,25 +91,25 @@ backup_status_init(backup_status_t* status, backup_config_t* conf)
 	};
 
 	status->rec_count_estimate = 0;
-	status->rec_count_total = 0;
-	status->byte_count_total = 0;
-	status->file_count = 0;
+	atomic_init(&status->rec_count_total, 0);
+	atomic_init(&status->byte_count_total, 0);
+	atomic_init(&status->file_count, 0);
 
-	status->rec_count_total_committed = 0;
-	status->byte_count_total_committed = 0;
-	status->byte_count_limit = 0;
+	atomic_init(&status->rec_count_total_committed, 0);
+	atomic_init(&status->byte_count_total_committed, 0);
+	atomic_init(&status->byte_count_limit, 0);
 	status->index_count = 0;
 	status->udf_count = 0;
 
 	as_vector_init(&status->partition_filters, sizeof(as_partition_filter), 1);
 
-	status->started = false;
-	status->finished = false;
-	status->stop = false;
-	status->backup_state = NULL;
-	status->one_shot_done = false;
+	atomic_init(&status->started, false);
+	atomic_init(&status->finished, false);
+	atomic_init(&status->stop, false);
+	atomic_init(&status->backup_state, NULL);
+	atomic_init(&status->one_shot_done, false);
 
-	status->n_estimate_samples = 0;
+	atomic_init(&status->n_estimate_samples, 0);
 	if (conf->estimate) {
 		status->estimate_samples = (uint64_t*)
 			cf_calloc(conf->n_estimate_samples, sizeof(uint64_t));
@@ -539,19 +541,19 @@ backup_status_set_n_threads(backup_status_t* status, const backup_config_t* conf
 bool
 backup_status_has_started(backup_status_t* status)
 {
-	return as_load_bool(&status->started);
+	return status->started;
 }
 
 void
 backup_status_start(backup_status_t* status)
 {
-	as_store_bool(&status->started, true);
+	status->started = true;
 }
 
 bool
 backup_status_one_shot_done(const backup_status_t* status)
 {
-	return as_load_uint8((uint8_t*) &status->one_shot_done);
+	return status->one_shot_done;
 }
 
 void
@@ -572,7 +574,7 @@ void
 backup_status_signal_one_shot(backup_status_t* status)
 {
 	safe_lock(&status->stop_lock);
-	as_store_uint8((uint8_t*) &status->one_shot_done, 1);
+	status->one_shot_done = true;
 	safe_signal(&status->stop_cond);
 	safe_unlock(&status->stop_lock);
 }
@@ -580,7 +582,7 @@ backup_status_signal_one_shot(backup_status_t* status)
 bool
 backup_status_has_stopped(const backup_status_t* status)
 {
-	return as_load_uint8((uint8_t*) &status->stop);
+	return status->stop;
 }
 
 void
@@ -591,11 +593,11 @@ backup_status_stop(const backup_config_t* conf, backup_status_t* status)
 		backup_status_init_backup_state_file(conf->state_file_dst, status);
 	}
 	else {
-		as_store_ptr(&status->backup_state, BACKUP_STATE_ABORTED);
+		status->backup_state = BACKUP_STATE_ABORTED;
 	}
 
 	// sets the stop variable
-	as_store_uint8((uint8_t*) &status->stop, 1);
+	status->stop = true;
 
 	// wakes all threads waiting on the stop condition
 	pthread_cond_broadcast(&status->stop_cond);
@@ -605,7 +607,7 @@ backup_status_stop(const backup_config_t* conf, backup_status_t* status)
 bool
 backup_status_has_finished(const backup_status_t* status)
 {
-	return (bool) as_load_uint8((uint8_t*) &status->finished);
+	return status->finished;
 }
 
 void
@@ -614,7 +616,7 @@ backup_status_finish(backup_status_t* status)
 	pthread_mutex_lock(&status->stop_lock);
 
 	// sets the stop variable
-	as_store_uint8((uint8_t*) &status->finished, 1);
+	status->finished = true;
 
 	// wakes all threads waiting on the stop condition
 	pthread_cond_broadcast(&status->stop_cond);
@@ -628,11 +630,10 @@ backup_status_abort_backup(backup_status_t* status)
 	pthread_mutex_lock(&status->stop_lock);
 
 	// sets the stop variable
-	as_store_uint8((uint8_t*) &status->stop, 1);
+	status->stop = true;
 
 	backup_state_t* prev_state =
-		(backup_state_t*) as_fas_uint64((uint64_t*) &status->backup_state,
-				(uint64_t) BACKUP_STATE_ABORTED);
+			atomic_exchange(&status->backup_state, BACKUP_STATE_ABORTED);
 
 	if (prev_state != NULL && prev_state != BACKUP_STATE_ABORTED) {
 		backup_state_free(prev_state);
@@ -648,7 +649,7 @@ backup_status_abort_backup(backup_status_t* status)
 void
 backup_status_abort_backup_unsafe(backup_status_t* status)
 {
-	as_store_ptr(&status->backup_state, BACKUP_STATE_ABORTED);
+	status->backup_state = BACKUP_STATE_ABORTED;
 }
 
 void
@@ -686,31 +687,37 @@ backup_status_init_backup_state_file(const char* backup_state_path,
 		return false;
 	}
 
-	backup_state_t* cur_backup_state = as_load_ptr(&status->backup_state);
+	backup_state_t* cur_backup_state = status->backup_state;
 	if (cur_backup_state != NULL) {
 		// a backup state alrady exists, or we've aborted the backup, do nothing
 		return false;
 	}
 
+	// used to check for NULL in atomic_compare_exchange_strong without a warning
+	// NOTE null_state might be overwritten by a failed atomic_compare_exchange_strong
+	// check, make sure it has the intended value before using it again
+	backup_state_t* null_state = NULL;
+
 	backup_state_t* state = (backup_state_t*) cf_malloc(sizeof(backup_state_t));
 	if (state == NULL) {
 		err("Unable to allocate %zu bytes for backup state struct",
 				sizeof(backup_state_t));
-		as_cas_uint64((uint64_t*) &status->backup_state, (uint64_t) NULL,
-				(uint64_t) BACKUP_STATE_ABORTED);
+		
+		atomic_compare_exchange_strong(&status->backup_state, &null_state,
+				BACKUP_STATE_ABORTED);
 		return false;
 	}
 
 	if (backup_state_init(state, backup_state_path) != 0) {
 		cf_free(state);
-		as_cas_uint64((uint64_t*) &status->backup_state, (uint64_t) NULL,
-				(uint64_t) BACKUP_STATE_ABORTED);
+		atomic_compare_exchange_strong(&status->backup_state, &null_state,
+				BACKUP_STATE_ABORTED);
 		return false;
 	}
 
 	// compare and swap backup_state from NULL to state, so if backup_state
 	// was anything but NULL before, it won't be overwritten
-	if (!as_cas_uint64((uint64_t*) &status->backup_state, (uint64_t) NULL, (uint64_t) state)) {
+	if (!atomic_compare_exchange_strong(&status->backup_state, &null_state, state)) {
 		backup_state_free(state);
 		cf_free(state);
 		return false;
@@ -724,7 +731,7 @@ backup_status_init_backup_state_file(const char* backup_state_path,
 backup_state_t*
 backup_status_get_backup_state(backup_status_t* status)
 {
-	return (backup_state_t*) as_load_ptr(&status->backup_state);
+	return status->backup_state;
 }
 
 void
@@ -733,7 +740,7 @@ backup_status_save_scan_state(backup_status_t* status,
 {
 	pthread_mutex_lock(&status->stop_lock);
 
-	backup_state_t* state = as_load_ptr(&status->backup_state);
+	backup_state_t* state = status->backup_state;
 
 	if (state == BACKUP_STATE_ABORTED) {
 		pthread_mutex_unlock(&status->stop_lock);
@@ -767,6 +774,10 @@ backup_status_save_scan_state(backup_status_t* status,
 		}
 	}
 	pthread_mutex_unlock(&status->stop_lock);
+}
+
+uint64_t backup_status_get_file_count(const backup_status_t* status) {
+	return status->file_count;
 }
 
 

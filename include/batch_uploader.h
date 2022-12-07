@@ -32,6 +32,8 @@ extern "C" {
 // Includes.
 //
 
+#include <stdatomic.h>
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wconversion"
 #pragma GCC diagnostic ignored "-Wsign-conversion"
@@ -59,20 +61,20 @@ typedef struct restore_status restore_status_t;
  */
 typedef struct batch_status {
 	// set to true if any of the transactions have failed.
-	bool has_error;
+	_Atomic(bool) has_error;
 
 	// The number of records ignored because of record level permanent error while
 	// restoring, e.g RECORD_TOO_BIG. Enabled or disabled using
 	// --ignore-record-error flag.
-	uint64_t ignored_records;
+	_Atomic(uint64_t) ignored_records;
 	// The number of successfully restored records.
-	uint64_t inserted_records;
+	_Atomic(uint64_t) inserted_records;
 	// The number of records not inserted because they already existed in the
 	// database.
-	uint64_t existed_records;
+	_Atomic(uint64_t) existed_records;
 	// The number of records not inserted because the database already contained
 	// the records with a higher generation count.
-	uint64_t fresher_records;
+	_Atomic(uint64_t) fresher_records;
 } batch_status_t;
 
 /*
@@ -93,15 +95,15 @@ typedef struct batch_uploader {
 	aerospike* as;
 	uint32_t max_async;
 	// Set whenever an error has occurred.
-	bool error;
+	_Atomic(bool) error;
 	// Set when batch writes are available.
 	bool batch_enabled;
 
 	// The total number of retries made across all batch transactions.
-	uint64_t retry_count;
+	_Atomic(uint64_t) retry_count;
 
 	// The current number of oustanding record batches.
-	uint64_t async_calls;
+	_Atomic(uint64_t) async_calls;
 
 	// Lock/condition variable pair used to access all shared resources in the
 	// batch_uploader struct.
