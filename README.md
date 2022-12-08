@@ -37,7 +37,7 @@ Debian and Ubuntu
     # Install C client dependencies...
 
     # asbackup dependencies
-    apt-get install build-essential libssl-dev libuv1-dev curl libzstd-dev
+    apt-get install build-essential libssl-dev libuv1-dev libcurl4-openssl-dev libzstd-dev
 
     # for aws-sdk-cpp build
     apt-get install cmake
@@ -45,7 +45,6 @@ Debian and Ubuntu
     # download aws sdk
     git clone https://github.com/aws/aws-sdk-cpp.git
     cd aws-sdk-cpp
-    git checkout $AWS_SDK_VERSION
     git submodule update --init --recursive
 
     # build aws sdk dynamic
@@ -54,7 +53,7 @@ Debian and Ubuntu
     make -C build
 
     # install aws static sdk
-    cd build_static
+    cd build
     make install
     cd ../..
 
@@ -62,15 +61,26 @@ Debian and Ubuntu
 
 Red Hat Enterprise Linux or CentOS
 
-    apt-get update
+    yum update
 
     # Install C client dependencies...
 
     # asbackup dependencies
-    apt-get install build-essential libssl-dev libuv1-dev curl libzstd-dev
+    yum groupinstall 'Development Tools'
+    yum install openssl-devel libuv libcurl-devel libzstd-devel
+
+    # build libuv from source since the headers
+    # aren't in the libuv yum package
+    git clone https://github.com/libuv/libuv
+    cd libuv
+    sh autogen.sh
+    ./configure
+    make
+    make install
+    cd ..
 
     # for aws-sdk-cpp build
-    apt-get install cmake
+    yum install cmake
 
     # download aws sdk
     git clone https://github.com/aws/aws-sdk-cpp.git
@@ -84,11 +94,11 @@ Red Hat Enterprise Linux or CentOS
     make -C build
 
     # install aws static sdk
-    cd build_static
+    cd build
     make install
     cd ../..
 
-    make EVENT_LIB=libuv    
+    make EVENT_LIB=libuv     
 
 MacOS
 
