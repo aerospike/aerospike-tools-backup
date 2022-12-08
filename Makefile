@@ -133,6 +133,17 @@ LIBRARIES += -L/usr/local/lib
 ifeq ($(AWS_SDK_STATIC_PATH),)
   LIBRARIES += -laws-cpp-sdk-s3
   LIBRARIES += -laws-cpp-sdk-core
+  LIBRARIES += -laws-crt-cpp
+  LIBRARIES += -laws-c-s3
+  LIBRARIES += -laws-c-auth
+  LIBRARIES += -laws-c-mqtt
+  LIBRARIES += -laws-c-http
+  LIBRARIES += -laws-c-event-stream
+  LIBRARIES += -laws-c-io
+  LIBRARIES += -laws-c-compression
+  LIBRARIES += -laws-checksums
+  LIBRARIES += -laws-c-cal
+  LIBRARIES += -laws-c-common
 else
   # do not change the order of these
   LIBRARIES += $(AWS_SDK_STATIC_PATH)/libaws-cpp-sdk-s3.a

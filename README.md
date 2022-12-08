@@ -7,6 +7,16 @@ This is the developer documentation. For user documentation, please consult http
 
 ## Building
 
+Make sure you have all dependencies installed for the Aerospike C client and asbackup.
+See https://github.com/aerospike/aerospike-client-c#build-prerequisites for more C client information.
+Below are dependencies for asbackup only.
+- openssl (1.1 or 3)
+- An event library: libuv, libevent, or libev
+- zstd
+- libssh2
+- aws-sdk-cpp
+- curl
+
 Clone the source code of the Aerospike backup tools from GitHub.
 
     git clone https://github.com/aerospike/aerospike-tools-backup
@@ -17,6 +27,75 @@ Then build the backup tools.
     make
 
 This gives you two binaries in the `bin` subdirectory -- `asbackup` and `asrestore`.
+
+## Build examples
+
+Debian and Ubuntu
+
+    apt-get update
+
+    # Install C client dependencies...
+
+    # asbackup dependencies
+    apt-get install build-essential libssl-dev libuv1-dev curl libzstd-dev
+
+    # for aws-sdk-cpp build
+    apt-get install cmake
+
+    # download aws sdk
+    git clone https://github.com/aws/aws-sdk-cpp.git
+    cd aws-sdk-cpp
+    git checkout $AWS_SDK_VERSION
+    git submodule update --init --recursive
+
+    # build aws sdk dynamic
+    mkdir build
+    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=ON -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib
+    make -C build
+
+    # install aws static sdk
+    cd build_static
+    make install
+    cd ../..
+
+    make EVENT_LIB=libuv
+
+Red Hat Enterprise Linux or CentOS
+
+    apt-get update
+
+    # Install C client dependencies...
+
+    # asbackup dependencies
+    apt-get install build-essential libssl-dev libuv1-dev curl libzstd-dev
+
+    # for aws-sdk-cpp build
+    apt-get install cmake
+
+    # download aws sdk
+    git clone https://github.com/aws/aws-sdk-cpp.git
+    cd aws-sdk-cpp
+    git checkout $AWS_SDK_VERSION
+    git submodule update --init --recursive
+
+    # build aws sdk dynamic
+    mkdir build
+    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=ON -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib
+    make -C build
+
+    # install aws static sdk
+    cd build_static
+    make install
+    cd ../..
+
+    make EVENT_LIB=libuv    
+
+MacOS
+
+    brew install openssl libuv curl zstd libssh2 aws-sdk-cpp
+    make EVENT_LIB=libuv
+
+## Tests
 
 In order to run the tests that come with the code, you need `docker` installed. The tests spin up an Aerospike Cluster using docker containers for each node.
 
