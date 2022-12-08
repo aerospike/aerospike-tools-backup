@@ -28,7 +28,7 @@ Then build the backup tools.
 
 This gives you two binaries in the `bin` subdirectory -- `asbackup` and `asrestore`.
 
-## Build examples
+## Build Examples
 
 Debian and Ubuntu
 
@@ -67,7 +67,7 @@ Red Hat Enterprise Linux or CentOS
 
     # asbackup dependencies
     yum groupinstall 'Development Tools'
-    yum install openssl-devel libuv libcurl-devel libzstd-devel
+    yum install openssl-devel libcurl-devel libzstd-devel
 
     # build libuv from source since the headers
     # aren't in the libuv yum package
@@ -101,6 +101,8 @@ Red Hat Enterprise Linux or CentOS
     make EVENT_LIB=libuv     
 
 MacOS
+
+    # Install C client dependencies...
 
     brew install openssl libuv curl zstd libssh2 aws-sdk-cpp
     make EVENT_LIB=libuv
