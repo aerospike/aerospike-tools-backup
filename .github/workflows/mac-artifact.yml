@@ -91,10 +91,6 @@ jobs:
         cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=OFF -DBUILD_CURL_EXE=OFF -DOPENSSL_ROOT_DIR=/usr/local/opt/openssl OPENSSL_USE_STATIC_LIBS=TRUE -DHTTP_ONLY=ON
         make -C build
       working-directory: curl-${{ env.LIBCURL_VERSION }}
-    - name: Install AWS C++ sdk shared library
-      run: |
-        sudo make install
-      working-directory: aws-sdk-cpp-${{ env.AWS_SDK_CPP_VERSION }}/build
     - name: Install libcurl
       run: |
         sudo make install
