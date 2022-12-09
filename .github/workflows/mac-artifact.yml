@@ -1,7 +1,7 @@
 name: Mac Artifact
 on:
   push:
-    branches: [ master, test-ready ]
+    branches: [ master, test-ready, simplify-mac-build]
   workflow_call:
     inputs:
       submodule:
@@ -42,33 +42,7 @@ jobs:
     - name: install AWS requirements
       id: install-aws-requirements
       run: |
-        brew install openssl@1.1 readline
-    - name: Download cmake
-      uses: actions/checkout@v2
-      with:
-        repository: Kitware/CMake
-        submodules: recursive
-        ref: v${{ env.CMAKE_VERSION }}
-        path: CMake-${{ env.CMAKE_VERSION }}
-    - name: Cache cmake
-      id: cache-cmake
-      uses: actions/cache@v2
-      env:
-        cache-name: cmake
-      with:
-        path: CMake-${{ env.CMAKE_VERSION }}
-        key: cmake-${{ env.CMAKE_VERSION }}-${{ runner.os }}
-    - name: Build cmake
-      id: build-cmake
-      if: steps.cache-cmake.outputs.cache-hit != 'true'
-      run: |
-        ./bootstrap 
-        make
-      working-directory: CMake-${{ env.CMAKE_VERSION }}
-    - name: install cmake
-      run: |
-       sudo make install
-      working-directory: CMake-${{ env.CMAKE_VERSION }}
+        brew install openssl@1.1 readline cmake
     - name: Cache AWS C++ sdk
       id: cache-aws-sdk-cpp
       uses: actions/cache@v2
@@ -86,13 +60,6 @@ jobs:
         submodules: recursive
         ref: ${{ env.AWS_SDK_CPP_VERSION }}
         path: aws-sdk-cpp-${{ env.AWS_SDK_CPP_VERSION }}
-    - name: Build AWS C++ sdk shared library
-      if: steps.cache-aws-sdk-cpp.outputs.cache-hit != 'true'
-      run: |
-        mkdir build
-        cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=ON -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib
-        make -C build
-      working-directory: aws-sdk-cpp-${{ env.AWS_SDK_CPP_VERSION }}
     - name: Build AWS C++ sdk static library
       if: steps.cache-aws-sdk-cpp.outputs.cache-hit != 'true'
       run: |
@@ -188,22 +155,6 @@ jobs:
         path: |
           ${{ steps.working-dir.outputs.value }}/binaries
         key: ${{ env.cache-name }}-${{ env.cache-index }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.system-info.outputs.release }}-${{ env.AWS_SDK_CPP_VERSION }}-${{ env.ZSTD_VERSION }}-${{ steps.sha.outputs.sha }}
-    - name: Build asbackup
-      if: steps.cache-asbackup.outputs.cache-hit != 'true'
-      run: |
-        make
-        mkdir -p binaries
-        cp -r bin binaries/dyn_bin
-        make clean
-      working-directory: ${{ steps.working-dir.outputs.value }}
-    - name: Sanity test dynamic lib backup artifacts
-      run: |
-        ./asbackup -n test -d backupdir 2>&1 | grep "Failed to connect"
-        ./asrestore -n test -d backupdir 2>&1 | grep "Failed to connect"
-      working-directory:  ${{ steps.working-dir.outputs.value }}/binaries/dyn_bin
-    - name: Uninstall AWS C++ sdk shared library
-      run: |
-          sudo rm /usr/local/lib/libaws-cpp-*
     - name: Install AWS C++ sdk static library
       if: steps.cache-asbackup.outputs.cache-hit != 'true'
       run: |
@@ -222,18 +173,6 @@ jobs:
         ./asbackup -n test -d backupdir 2>&1 | grep "Failed to connect"
         ./asrestore -n test -d backupdir 2>&1 | grep "Failed to connect"
       working-directory:  ${{ steps.working-dir.outputs.value }}/binaries/static_bin
-    - name: Upload asbackup artifact
-      uses: actions/upload-artifact@v2
-      with: 
-        name: ${{ steps.system-info.outputs.platform }}-${{ runner.arch }}-${{ runner.os }}-${{ steps.system-info.outputs.release }}-asbackup
-        path: ${{ steps.working-dir.outputs.value }}/binaries/dyn_bin/asbackup
-        if-no-files-found: error
-    - name: Upload asrestore artifact
-      uses: actions/upload-artifact@v2
-      with: 
-        name: ${{ steps.system-info.outputs.platform }}-${{ runner.arch }}-${{ runner.os }}-${{ steps.system-info.outputs.release }}-asrestore
-        path: ${{ steps.working-dir.outputs.value }}/binaries/dyn_bin/asrestore
-        if-no-files-found: error
     - name: Upload static asbackup artifact
       uses: actions/upload-artifact@v2
       with: 
