@@ -100,7 +100,7 @@ Red Hat Enterprise Linux or CentOS
 
     make EVENT_LIB=libuv     
 
-MacOS
+### MacOS
 
     # Install C client dependencies...
 
