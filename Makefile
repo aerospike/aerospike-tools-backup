@@ -132,6 +132,7 @@ LIBRARIES := $(C_CLIENT_LIB)
 LIBRARIES += -L/usr/local/lib
 
 ifeq ($(AWS_SDK_STATIC_PATH),)
+  # do not change the order of these
   LIBRARIES += -laws-cpp-sdk-s3
   LIBRARIES += -laws-cpp-sdk-core
   LIBRARIES += -laws-crt-cpp
