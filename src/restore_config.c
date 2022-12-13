@@ -897,7 +897,6 @@ usage(const char *name)
 	fprintf(stdout, "                      (INTERNAL, EXTERNAL, EXTERNAL_INSECURE, PKI) and the default is INTERNAL.\n");
 	fprintf(stdout, "                      This mode must be set EXTERNAL when using LDAP\n");
 	fprintf(stdout, " --tls-enable         Enable TLS on connections. By default TLS is disabled.\n");
-	//fprintf(stdout, " --tls-encrypt-only   Disable TLS certificate verification.\n");
 	fprintf(stdout, " --tls-name           The default tls-name to use to authenticate each TLS socket connection.\n");
 	fprintf(stdout, " --tls-cafile=TLS_CAFILE\n");
 	fprintf(stdout, "                      Path to a trusted CA certificate file.\n");
