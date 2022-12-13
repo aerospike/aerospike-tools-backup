@@ -59,7 +59,7 @@ This gives you two binaries in the `bin` subdirectory -- `asbackup` and `asresto
 
     make EVENT_LIB=libuv
 
-Red Hat Enterprise Linux or CentOS
+### Red Hat Enterprise Linux or CentOS
 
     yum update
 
