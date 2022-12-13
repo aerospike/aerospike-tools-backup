@@ -126,6 +126,7 @@ INCLUDES += -I$(DIR_TOML)
 INCLUDES += -I$(DIR_C_CLIENT)/src/include
 INCLUDES += -I$(DIR_C_CLIENT)/modules/common/src/include
 INCLUDES += -I$(OPENSSL_PREFIX)/include
+INCLUDES += -I/usr/local/include
 
 LIBRARIES := $(C_CLIENT_LIB)
 LIBRARIES += -L/usr/local/lib
@@ -136,6 +137,7 @@ ifeq ($(AWS_SDK_STATIC_PATH),)
   LIBRARIES += -laws-crt-cpp
   LIBRARIES += -laws-c-s3
   LIBRARIES += -laws-c-auth
+  LIBRARIES += -laws-c-sdkutils
   LIBRARIES += -laws-c-mqtt
   LIBRARIES += -laws-c-http
   LIBRARIES += -laws-c-event-stream
@@ -151,6 +153,7 @@ else
   LIBRARIES += $(AWS_SDK_STATIC_PATH)/libaws-crt-cpp.a
   LIBRARIES += $(AWS_SDK_STATIC_PATH)/libaws-c-s3.a
   LIBRARIES += $(AWS_SDK_STATIC_PATH)/libaws-c-auth.a
+  LIBRARIES += $(AWS_SDK_STATIC_PATH)/libaws-c-sdkutils.a
   LIBRARIES += $(AWS_SDK_STATIC_PATH)/libaws-c-mqtt.a
   LIBRARIES += $(AWS_SDK_STATIC_PATH)/libaws-c-http.a
   LIBRARIES += $(AWS_SDK_STATIC_PATH)/libaws-c-event-stream.a
