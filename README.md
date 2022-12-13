@@ -11,7 +11,7 @@ Make sure you have all dependencies installed for the Aerospike C client and asb
 See https://github.com/aerospike/aerospike-client-c#build-prerequisites for more C client information.
 Below are dependencies for asbackup only.
 - openssl (1.1 or 3)
-- An event library: libuv, libevent, or libev
+- An event library: libuv, libevent, or libev (also used by the C client submodule)
 - zstd
 - libssh2
 - aws-sdk-cpp
@@ -30,82 +30,147 @@ This gives you two binaries in the `bin` subdirectory -- `asbackup` and `asresto
 
 ## Build Examples
 
-### Debian and Ubuntu
+### Debian and Ubuntu (dynamic linking)
 
-    apt-get update
+```shell
+apt-get update
 
-    # Install C client dependencies...
+# Install C client dependencies...
 
-    # asbackup dependencies
-    apt-get install build-essential libssl-dev libuv1-dev libcurl4-openssl-dev libzstd-dev
+# asbackup dependencies
+apt-get install build-essential libssl-dev libuv1-dev libcurl4-openssl-dev libzstd-dev
 
-    # for aws-sdk-cpp build
-    apt-get install cmake
+# for aws-sdk-cpp build
+apt-get install cmake
 
-    # download aws sdk
-    git clone https://github.com/aws/aws-sdk-cpp.git
-    cd aws-sdk-cpp
-    git submodule update --init --recursive
+# download aws sdk
+git clone https://github.com/aws/aws-sdk-cpp.git
+cd aws-sdk-cpp
+git submodule update --init --recursive
 
-    # build aws sdk dynamic
-    mkdir build
-    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=ON -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib
-    make -C build
+# build aws sdk dynamic
+mkdir build
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=ON -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib
+make -C build
 
-    # install aws static sdk
-    cd build
-    make install
-    cd ../..
+# install aws static sdk
+cd build
+make install
+cd ../..
 
-    make EVENT_LIB=libuv
+make EVENT_LIB=libuv
+```
 
-### Red Hat Enterprise Linux or CentOS
+### Red Hat Enterprise Linux or CentOS (dynamic linking)
 
-    yum update
+```shell
+yum update
 
-    # Install C client dependencies...
+# Install C client dependencies...
 
-    # asbackup dependencies
-    yum groupinstall 'Development Tools'
-    yum install openssl-devel libcurl-devel libzstd-devel
+# asbackup dependencies
+yum groupinstall 'Development Tools'
+yum install openssl-devel libcurl-devel libzstd-devel
 
-    # build libuv from source since the headers
-    # aren't in the libuv yum package
-    git clone https://github.com/libuv/libuv
-    cd libuv
-    sh autogen.sh
-    ./configure
-    make
-    make install
-    cd ..
+# build libuv from source since the headers
+# aren't in the libuv yum package
+git clone https://github.com/libuv/libuv
+cd libuv
+sh autogen.sh
+./configure
+make
+make install
+cd ..
 
-    # for aws-sdk-cpp build
-    yum install cmake
+# for aws-sdk-cpp build
+yum install cmake
 
-    # download aws sdk
-    git clone https://github.com/aws/aws-sdk-cpp.git
-    cd aws-sdk-cpp
-    git checkout $AWS_SDK_VERSION
-    git submodule update --init --recursive
+# download aws sdk
+git clone https://github.com/aws/aws-sdk-cpp.git
+cd aws-sdk-cpp
+git checkout $AWS_SDK_VERSION
+git submodule update --init --recursive
 
-    # build aws sdk dynamic
-    mkdir build
-    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=ON -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib
-    make -C build
+# build aws sdk dynamic
+mkdir build
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=ON -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib
+make -C build
 
-    # install aws static sdk
-    cd build
-    make install
-    cd ../..
+# install aws static sdk
+cd build
+make install
+cd ../..
 
-    make EVENT_LIB=libuv     
+make EVENT_LIB=libuv
+```
 
-### MacOS
+### MacOS (dynamic linking)
 
-    # Install C client dependencies...
+```shell
+# Install C client dependencies...
 
-    brew install openssl libuv curl zstd libssh2 aws-sdk-cpp
-    make EVENT_LIB=libuv
+brew install openssl libuv curl zstd libssh2 aws-sdk-cpp
+make EVENT_LIB=libuv
+```
+
+### MacOS (static linking example script)
+Note: Some brew installs don't come with static libraries so source install are needed.
+
+```shell
+# Install C client dependencies...
+
+# curl and aws don't come with static objects so get those later, from source
+# brew install libssh2 currently depends on openssl1.1.1. Source install it to link with openssl 3.
+brew install libuv cmake zstd openssl
+
+# download libssh2
+git clone https://github.com/libssh2/libssh2.git
+cd libssh2
+git submodule update --init --recursive
+
+# build libssh2
+mkdir build_static
+cd build_static
+cmake -DOPENSSL_ROOT_DIR=/opt/homebrew/opt/openssl/ -DCMAKE_BUILD_TYPE=Release ..
+cmake --build .
+
+# install libssh2
+sudo make install
+cd ../..
+
+# downlad curl
+git clone https://github.com/curl/curl.git
+cd curl
+git submodule update --init --recursive
+
+# build curl
+mkdir build
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=OFF -DBUILD_CURL_EXE=OFF -DOPENSSL_ROOT_DIR=/opt/homebrew/opt/openssl OPENSSL_USE_STATIC_LIBS=TRUE -DHTTP_ONLY=ON
+make -C build
+
+# install curl
+cd build
+sudo make install
+cd ../..
+
+# download aws sdk
+git clone https://github.com/aws/aws-sdk-cpp.git
+cd aws-sdk-cpp
+git submodule update --init --recursive
+
+# build aws sdk static
+mkdir build_static
+cmake -S . -B build_static -DOPENSSL_ROOT_DIR=/opt/homebrew/opt/openssl/ -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib
+make -C build_static
+
+# install aws static sdk
+cd build_static
+sudo make install
+cd ../..
+
+# build asbackup
+make EVENT_LIB=libuv ZSTD_STATIC_PATH=/opt/homebrew/lib AWS_SDK_STATIC_PATH=/usr/local/lib CURL_STATIC_PATH=/usr/local/lib OPENSSL_STATIC_PATH=/opt/homebrew/opt/openssl/lib LIBSSH2_STATIC_PATH=/usr/local/lib LIBUV_STATIC_PATH=/opt/homebrew/lib
+```
 
 ## Tests
 
