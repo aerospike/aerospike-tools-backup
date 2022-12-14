@@ -44,7 +44,8 @@ jobs:
       id: install-aws-requirements
       run: |
         brew install openssl@1.1 readline cmake
-        echo "CMAKE_VERSION=$(brew info cmake | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+')" >> $GITHUB_ENV
+        CMAKE_VERSION=$(brew info cmake | grep -m 1 -Eo '[0-9]+\.[0-9]+\.[0-9]+')
+        echo "CMAKE_VERSION=$CMAKE_VERSION" >> $GITHUB_ENV
     - name: Cache AWS C++ sdk
       id: cache-aws-sdk-cpp
       uses: actions/cache@v2
