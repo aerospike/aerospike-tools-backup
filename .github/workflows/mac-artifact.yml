@@ -2,6 +2,8 @@ name: Mac Artifact
 on:
   push:
     branches: [ master, test-ready ]
+  pull_request:
+    branches: [ master, test-ready ]
   workflow_call:
     inputs:
       submodule:
