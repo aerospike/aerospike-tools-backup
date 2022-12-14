@@ -859,68 +859,66 @@ print_version(void)
 static void
 usage(const char *name)
 {
-	fprintf(stderr, "Usage: %s [OPTIONS]\n", name);
-	fprintf(stderr, "------------------------------------------------------------------------------");
-	fprintf(stderr, "\n");
-	fprintf(stderr, " -V, --version        Print ASRESTORE version information.\n");
-	fprintf(stderr, " -O, --options        Print command-line options message.\n");
-	fprintf(stderr, " -Z, --usage          Display this message.\n\n");
-	fprintf(stderr, " -v, --verbose        Enable verbose output. Default: disabled\n");
+	fprintf(stdout, "Usage: %s [OPTIONS]\n", name);
+	fprintf(stdout, "------------------------------------------------------------------------------");
+	fprintf(stdout, "\n");
+	fprintf(stdout, " -V, --version        Print ASRESTORE version information.\n");
+	fprintf(stdout, " -O, --options        Print command-line options message.\n");
+	fprintf(stdout, " -Z, --usage          Display this message.\n\n");
+	fprintf(stdout, " -v, --verbose        Enable verbose output. Default: disabled\n");
 
-	fprintf(stderr, "\n");
-	fprintf(stderr, "Configuration File Allowed Options\n");
-	fprintf(stderr, "----------------------------------\n\n");
+	fprintf(stdout, "\n");
+	fprintf(stdout, "Configuration File Allowed Options\n");
+	fprintf(stdout, "----------------------------------\n\n");
 
-	fprintf(stderr, "[cluster]\n");
-	fprintf(stderr, " -h HOST, --host=HOST\n");
-	fprintf(stderr, "                      HOST is \"<host1>[:<tlsname1>][:<port1>],...\" \n");
-	fprintf(stderr, "                      Server seed hostnames or IP addresses. The tlsname is \n");
-	fprintf(stderr, "                      only used when connecting with a secure TLS enabled \n");
-	fprintf(stderr, "                      server. Default: localhost:3000\n");
-	fprintf(stderr, "                      Examples:\n");
-	fprintf(stderr, "                        host1\n");
-	fprintf(stderr, "                        host1:3000,host2:3000\n");
-	fprintf(stderr, "                        192.168.1.10:cert1:3000,192.168.1.20:cert2:3000\n");
-	fprintf(stderr, " -S, --services-alternate\n");
-	fprintf(stderr, "                      Use to connect to alternate access address when the \n");
-	fprintf(stderr, "                      cluster's nodes publish IP addresses through access-address \n");
-	fprintf(stderr, "                      which are not accessible over WAN and alternate IP addresses \n");
-	fprintf(stderr, "                      accessible over WAN through alternate-access-address. Default: false.\n");
-	fprintf(stderr, " -p PORT, --port=PORT Server default port. Default: 3000\n");
-	fprintf(stderr, " -U USER, --user=USER User name used to authenticate with cluster. Default: none\n");
-	fprintf(stderr, " -P, --password\n");
-	fprintf(stderr, "                      Password used to authenticate with cluster. Default: none\n");
-	fprintf(stderr, "                      User will be prompted on command line if -P specified and no\n");
-	fprintf(stderr, "      	               password is given.\n");
+	fprintf(stdout, "[cluster]\n");
+	fprintf(stdout, " -h HOST, --host=HOST\n");
+	fprintf(stdout, "                      HOST is \"<host1>[:<tlsname1>][:<port1>],...\" \n");
+	fprintf(stdout, "                      Server seed hostnames or IP addresses. The tlsname is \n");
+	fprintf(stdout, "                      only used when connecting with a secure TLS enabled \n");
+	fprintf(stdout, "                      server. Default: localhost:3000\n");
+	fprintf(stdout, "                      Examples:\n");
+	fprintf(stdout, "                        host1\n");
+	fprintf(stdout, "                        host1:3000,host2:3000\n");
+	fprintf(stdout, "                        192.168.1.10:cert1:3000,192.168.1.20:cert2:3000\n");
+	fprintf(stdout, " -S, --services-alternate\n");
+	fprintf(stdout, "                      Use to connect to alternate access address when the \n");
+	fprintf(stdout, "                      cluster's nodes publish IP addresses through access-address \n");
+	fprintf(stdout, "                      which are not accessible over WAN and alternate IP addresses \n");
+	fprintf(stdout, "                      accessible over WAN through alternate-access-address. Default: false.\n");
+	fprintf(stdout, " -p PORT, --port=PORT Server default port. Default: 3000\n");
+	fprintf(stdout, " -U USER, --user=USER User name used to authenticate with cluster. Default: none\n");
+	fprintf(stdout, " -P, --password\n");
+	fprintf(stdout, "                      Password used to authenticate with cluster. Default: none\n");
+	fprintf(stdout, "                      User will be prompted on command line if -P specified and no\n");
+	fprintf(stdout, "      	               password is given.\n");
 	fprintf(stdout, " -A, --auth\n");
 	fprintf(stdout, "                      Set authentication mode when user/password is defined. Modes are\n");
 	fprintf(stdout, "                      (INTERNAL, EXTERNAL, EXTERNAL_INSECURE, PKI) and the default is INTERNAL.\n");
 	fprintf(stdout, "                      This mode must be set EXTERNAL when using LDAP\n");
-	fprintf(stderr, " --tls-enable         Enable TLS on connections. By default TLS is disabled.\n");
-	// Deprecated
-	//fprintf(stderr, " --tls-encrypt-only   Disable TLS certificate verification.\n");
-	fprintf(stderr, " --tls-name           The default tls-name to use to authenticate each TLS socket connection.\n");
-	fprintf(stderr, " --tls-cafile=TLS_CAFILE\n");
-	fprintf(stderr, "                      Path to a trusted CA certificate file.\n");
-	fprintf(stderr, " --tls-capath=TLS_CAPATH.\n");
-	fprintf(stderr, "                      Path to a directory of trusted CA certificates.\n");
-	fprintf(stderr, " --tls-protocols=TLS_PROTOCOLS\n");
-	fprintf(stderr, "                      Set the TLS protocol selection criteria. This format\n"
+	fprintf(stdout, " --tls-enable         Enable TLS on connections. By default TLS is disabled.\n");
+	fprintf(stdout, " --tls-name           The default tls-name to use to authenticate each TLS socket connection.\n");
+	fprintf(stdout, " --tls-cafile=TLS_CAFILE\n");
+	fprintf(stdout, "                      Path to a trusted CA certificate file.\n");
+	fprintf(stdout, " --tls-capath=TLS_CAPATH.\n");
+	fprintf(stdout, "                      Path to a directory of trusted CA certificates.\n");
+	fprintf(stdout, " --tls-protocols=TLS_PROTOCOLS\n");
+	fprintf(stdout, "                      Set the TLS protocol selection criteria. This format\n"
 					"                      is the same as Apache's SSLProtocol documented at http\n"
 					"                      s://httpd.apache.org/docs/current/mod/mod_ssl.html#ssl\n"
 					"                      protocol . If not specified the asrestore will use '-all\n"
 					"                      +TLSv1.2' if has support for TLSv1.2,otherwise it will\n"
 					"                      be '-all +TLSv1'.\n");
-	fprintf(stderr, " --tls-cipher-suite=TLS_CIPHER_SUITE\n");
-	fprintf(stderr, "                     Set the TLS cipher selection criteria. The format is\n"
+	fprintf(stdout, " --tls-cipher-suite=TLS_CIPHER_SUITE\n");
+	fprintf(stdout, "                     Set the TLS cipher selection criteria. The format is\n"
 					"                     the same as Open_sSL's Cipher List Format documented\n"
 					"                     at https://www.openssl.org/docs/man1.0.2/apps/ciphers.\n"
 					"                     html\n");
-	fprintf(stderr, " --tls-keyfile=TLS_KEYFILE\n");
-	fprintf(stderr, "                      Path to the key for mutual authentication (if\n"
+	fprintf(stdout, " --tls-keyfile=TLS_KEYFILE\n");
+	fprintf(stdout, "                      Path to the key for mutual authentication (if\n"
 					"                      Aerospike Cluster is supporting it).\n");
-	fprintf(stderr, " --tls-keyfile-password=TLS_KEYFILE_PASSWORD\n");
-	fprintf(stderr, "                      Password to load protected tls-keyfile.\n"
+	fprintf(stdout, " --tls-keyfile-password=TLS_KEYFILE_PASSWORD\n");
+	fprintf(stdout, "                      Password to load protected tls-keyfile.\n"
 					"                      It can be one of the following:\n"
 					"                      1) Environment varaible: 'env:<VAR>'\n"
 					"                      2) File: 'file:<PATH>'\n"
@@ -928,11 +926,11 @@ usage(const char *name)
 					"                      Default: none\n"
 					"                      User will be prompted on command line if --tls-keyfile-password\n"
 					"                      specified and no password is given.\n");
-	fprintf(stderr, " --tls-certfile=TLS_CERTFILE <path>\n");
-	fprintf(stderr, "                      Path to the chain file for mutual authentication (if\n"
+	fprintf(stdout, " --tls-certfile=TLS_CERTFILE <path>\n");
+	fprintf(stdout, "                      Path to the chain file for mutual authentication (if\n"
 					"                      Aerospike Cluster is supporting it).\n");
-	fprintf(stderr, " --tls-cert-blacklist <path>\n");
-	fprintf(stderr, "                      Path to a certificate blacklist file. The file should\n"
+	fprintf(stdout, " --tls-cert-blacklist <path>\n");
+	fprintf(stdout, "                      Path to a certificate blacklist file. The file should\n"
 					"                      contain one line for each blacklisted certificate.\n"
 					"                      Each line starts with the certificate serial number\n"
 					"                      expressed in hex. Each entry may optionally specify\n"
@@ -941,161 +939,161 @@ usage(const char *name)
 					"                      867EC87482B2\n"
 					"                      /C=US/ST=CA/O=Acme/OU=Engineering/CN=TestChainCA\n");
 
-	fprintf(stderr, " --tls-crl-check      Enable CRL checking for leaf certificate. An error\n"
+	fprintf(stdout, " --tls-crl-check      Enable CRL checking for leaf certificate. An error\n"
 					"                      occurs if a valid CRL files cannot be found in\n"
 					"                      tls_capath.\n");
-	fprintf(stderr, " --tls-crl-checkall   Enable CRL checking for entire certificate chain. An\n"
+	fprintf(stdout, " --tls-crl-checkall   Enable CRL checking for entire certificate chain. An\n"
 					"                      error occurs if a valid CRL files cannot be found in\n"
 					"                      tls_capath.\n");
-	fprintf(stderr, " --tls-log-session-info\n");
-	fprintf(stderr, "                      Enable logging session information for each TLS connection.\n");
+	fprintf(stdout, " --tls-log-session-info\n");
+	fprintf(stdout, "                      Enable logging session information for each TLS connection.\n");
 
 
-	fprintf(stderr, "[asrestore]\n");
-	fprintf(stderr, "  -n, --namespace <namespace>\n");
-	fprintf(stderr, "                      Used to restore to a different namespace.\n");
-	fprintf(stderr, "  -d, --directory <directory>\n");
-	fprintf(stderr, "                      The directory that holds the backup files. Required, \n");
-	fprintf(stderr, "                      unless -i is used.\n");
-	fprintf(stderr, "  -i, --input-file <file>\n");
-	fprintf(stderr, "                      Restore from a single backup file. Use - for stdin.\n");
-	fprintf(stderr, "                      Required, unless -d is used.\n");
-	fprintf(stderr, "  -z, --compress <compression_algorithm>\n");
-	fprintf(stderr, "                      Enables decompressing of backup files using the specified compression algorithm.\n");
-	fprintf(stderr, "                      This must match the compression mode used when backing up the data.\n");
-	fprintf(stderr, "                      Supported compression algorithms are: zstd\n");
-	fprintf(stderr, "  -y, --encrypt <encryption_algorithm>\n");
-	fprintf(stderr, "                      Enables decryption of backup files using the specified encryption algorithm.\n");
-	fprintf(stderr, "                      This must match the encryption mode used when backing up the data.\n");
-	fprintf(stderr, "                      A private key must be given, either via the --encryption-key-file option or\n");
-	fprintf(stderr, "                      the --encryption-key-env option.\n");
-	fprintf(stderr, "                      Supported encryption algorithms are: aes128, aes256\n");
-	fprintf(stderr, "      --encryption-key-file <path>\n");
-	fprintf(stderr, "                      Grabs the encryption key from the given file, which must be in PEM format.\n");
-	fprintf(stderr, "      --encryption-key-env <env_var_name>\n");
-	fprintf(stderr, "                      Grabs the encryption key from the given environment variable, which must be base-64 encoded.\n");
-	fprintf(stderr, "  -t, --parallel\n");
-	fprintf(stderr, "                      The number of restore threads. Default: 20.\n");
-	fprintf(stderr, "  -t, --threads\n");
-	fprintf(stderr, "                      The number of restore threads. DEPRECATED: use 'parallel' now. Default: 20.\n");
-	fprintf(stderr, "  -m, --machine <path>\n");
-	fprintf(stderr, "                      Output machine-readable status updates to the given path, \n");
-	fprintf(stderr,"                       typically a FIFO.\n");
-	fprintf(stderr, "  -B, --bin-list <bin 1>[,<bin 2>[,...]]\n");
-	fprintf(stderr, "                      Only restore the given bins in the backup.\n");
-	fprintf(stderr, "                      Default: restore all bins.\n");
+	fprintf(stdout, "[asrestore]\n");
+	fprintf(stdout, "  -n, --namespace <namespace>\n");
+	fprintf(stdout, "                      Used to restore to a different namespace.\n");
+	fprintf(stdout, "  -d, --directory <directory>\n");
+	fprintf(stdout, "                      The directory that holds the backup files. Required, \n");
+	fprintf(stdout, "                      unless -i is used.\n");
+	fprintf(stdout, "  -i, --input-file <file>\n");
+	fprintf(stdout, "                      Restore from a single backup file. Use - for stdin.\n");
+	fprintf(stdout, "                      Required, unless -d is used.\n");
+	fprintf(stdout, "  -z, --compress <compression_algorithm>\n");
+	fprintf(stdout, "                      Enables decompressing of backup files using the specified compression algorithm.\n");
+	fprintf(stdout, "                      This must match the compression mode used when backing up the data.\n");
+	fprintf(stdout, "                      Supported compression algorithms are: zstd\n");
+	fprintf(stdout, "  -y, --encrypt <encryption_algorithm>\n");
+	fprintf(stdout, "                      Enables decryption of backup files using the specified encryption algorithm.\n");
+	fprintf(stdout, "                      This must match the encryption mode used when backing up the data.\n");
+	fprintf(stdout, "                      A private key must be given, either via the --encryption-key-file option or\n");
+	fprintf(stdout, "                      the --encryption-key-env option.\n");
+	fprintf(stdout, "                      Supported encryption algorithms are: aes128, aes256\n");
+	fprintf(stdout, "      --encryption-key-file <path>\n");
+	fprintf(stdout, "                      Grabs the encryption key from the given file, which must be in PEM format.\n");
+	fprintf(stdout, "      --encryption-key-env <env_var_name>\n");
+	fprintf(stdout, "                      Grabs the encryption key from the given environment variable, which must be base-64 encoded.\n");
+	fprintf(stdout, "  -t, --parallel\n");
+	fprintf(stdout, "                      The number of restore threads. Default: 20.\n");
+	fprintf(stdout, "  -t, --threads\n");
+	fprintf(stdout, "                      The number of restore threads. DEPRECATED: use 'parallel' now. Default: 20.\n");
+	fprintf(stdout, "  -m, --machine <path>\n");
+	fprintf(stdout, "                      Output machine-readable status updates to the given path, \n");
+	fprintf(stdout,"                       typically a FIFO.\n");
+	fprintf(stdout, "  -B, --bin-list <bin 1>[,<bin 2>[,...]]\n");
+	fprintf(stdout, "                      Only restore the given bins in the backup.\n");
+	fprintf(stdout, "                      Default: restore all bins.\n");
 
-	fprintf(stderr, "  -s, --set-list <set 1>[,<set 2>[,...]]\n");
-	fprintf(stderr, "                      Only restore the given sets from the backup.\n");
-	fprintf(stderr, "                      Default: restore all sets.\n");
-	fprintf(stderr, "  --ignore-record-error\n");
-	fprintf(stderr, "                      Ignore permanent record specific error. e.g AEROSPIKE_RECORD_TOO_BIG.\n");
-	fprintf(stderr, "                      By default such errors are not ignored and asrestore terminates.\n");
-	fprintf(stderr, "                      Optional: Use verbose mode to see errors in detail. \n");
-	fprintf(stderr, "  -u, --unique\n");
-	fprintf(stderr, "                      Skip records that already exist in the namespace;\n");
-	fprintf(stderr, "                      Don't touch them.\n");
-	fprintf(stderr, "  -r, --replace\n");
-	fprintf(stderr, "                      Fully replace records that already exist in the \n");
-	fprintf(stderr, "                      namespace; don't update them.\n");
-	fprintf(stderr, "  -g, --no-generation\n");
-	fprintf(stderr, "                      Don't check the generation of records that already\n");
-	fprintf(stderr, "                      exist in the namespace.\n");
-	fprintf(stderr, "  -l, --extra-ttl\n");
-	fprintf(stderr, "                      For records with expirable void-times, add N seconds of extra-ttl to the\n");
-	fprintf(stderr, "                      recorded void-time.\n");
-	fprintf(stderr, "  -N, --nice <bandwidth>,<TPS>\n");
-	fprintf(stderr, "                      The limits for read storage bandwidth in MiB/s and \n");
-	fprintf(stderr, "                      write operations in TPS.\n");
-	fprintf(stderr, "  -R, --no-records\n");
-	fprintf(stderr, "                      Don't restore any records.\n");
-	fprintf(stderr, "  -I, --no-indexes\n");
-	fprintf(stderr, "                      Don't restore any secondary indexes.\n");
-	fprintf(stderr, "  -L, --indexes-last\n");
-	fprintf(stderr, "                      Restore secondary indexes only after UDFs and records \n");
-	fprintf(stderr, "                      have been restored.\n");
-	fprintf(stderr, "  -F, --no-udfs\n");
-	fprintf(stderr, "                      Don't restore any UDFs.\n");
-	fprintf(stderr, "  -w, --wait\n");
-	fprintf(stderr, "                      Wait for restored secondary indexes to finish building.\n");
-	fprintf(stderr, "                      Wait for restored UDFs to be distributed across the cluster.\n");
-	fprintf(stderr, "  -T TIMEOUT, --timeout=TIMEOUT\n");
-	fprintf(stderr, "                      Set the timeout (ms) for commands. Default: 10000\n");
-	fprintf(stderr, "      --socket-timeout <ms>\n");
-	fprintf(stderr, "                      Socket timeout for write transactions in milliseconds.\n");
-	fprintf(stderr, "                      Default is 10 seconds.\n");
-	fprintf(stderr, "                      If this value is 0, its set to total-timeout. If both are 0,\n");
-	fprintf(stderr, "                      there is no socket idle time limit.\n");
-	fprintf(stderr, "      --total-timeout <ms>\n");
-	fprintf(stderr, "                      Total socket timeout for write transactions in milliseconds.\n");
-	fprintf(stderr, "                      If this value is 0 and --timeout is set, then the --timeout\n");
-	fprintf(stderr, "                      value is used as the write transaction timeout.\n");
-	fprintf(stderr, "                      Default is 0, i.e. no timeout.\n");
-	fprintf(stderr, "      --max-retries <n>\n");
-	fprintf(stderr, "                      Maximum number of retries before aborting the current write transaction.\n");
-	fprintf(stderr, "                      The default is 5.\n");
-	fprintf(stderr, "      --retry-scale-factor <us>\n");
-	fprintf(stderr, "                      The scale factor to use in the exponential backoff retry\n");
-	fprintf(stderr, "                      strategy, in microseconds.\n");
-	fprintf(stderr, "                      Default is 150000 us (150 ms).\n");
-	fprintf(stderr, "      --disable-batch-writes\n");
-	fprintf(stderr, "                      Disables the use of batch writes when restoring records to the\n");
-	fprintf(stderr, "                      Aerospike cluster. By default, the cluster is checked for batch\n");
-	fprintf(stderr, "                      write support, so only set this flag if you explicitly don't want\n");
-	fprintf(stderr, "                      batch writes to be used or asrestore is failing to recognize that\n");
-	fprintf(stderr, "                      batch writes are disabled and is failing to work because of it.\n");
-	fprintf(stderr, "      --max-async-batches <n>\n");
-	fprintf(stderr, "                      The max number of outstanding async record batch write calls at a time.\n");
-	fprintf(stderr, "                      For pre-6.0 servers, \"batches\" are only a logical grouping of\n");
-	fprintf(stderr, "                      records, and each record is uploaded individually. The true max\n");
-	fprintf(stderr, "                      number of async aerospike calls would then be\n");
-	fprintf(stderr, "                      <max-async-batches> * <batch-size>\n");
-	fprintf(stderr, "                      Default is 32.\n");
-	fprintf(stderr, "      --batch-size <n>\n");
-	fprintf(stderr, "                      The max allowed number of records to simultaneously upload\n");
-	fprintf(stderr, "                      in an async batch write calls to make to aerospike at a time.\n");
-	fprintf(stderr, "                      Default is 128 with batch writes enabled, or 16 without batch writes.\n");
-	fprintf(stderr, "      --event-loops <n>\n");
-	fprintf(stderr, "                      The number of c-client event loops to initialize for\n");
-	fprintf(stderr, "                      processing of asynchronous Aerospike transactions.\n");
-	fprintf(stderr, "                      Default is 1.\n");
-	fprintf(stderr, "      --s3-region <region>\n");
-	fprintf(stderr, "                      The S3 region that the bucket(s) exist in.\n");
-	fprintf(stderr, "      --s3-bucket <bucket>\n");
-	fprintf(stderr, "                      The S3 bucket to use for all S3 objects. With this option\n");
-	fprintf(stderr, "                      given, S3 paths are then interpreted as \"s3://<key>\",\n");
-	fprintf(stderr, "                      i.e. the bucket name should be omitted from the path.\n");
-	fprintf(stderr, "      --s3-profile <profile_name>\n");
-	fprintf(stderr, "                      The S3 profile to use for credentials (the default is \"default\").\n");
-	fprintf(stderr, "      --s3-endpoint-override <url>\n");
-	fprintf(stderr, "                      An alternate url endpoint to send S3 API calls to.\n");
-	fprintf(stderr, "      --s3-max-async-downloads <n>\n");
-	fprintf(stderr, "                      The maximum number of simultaneous download requests from S3.\n");
-	fprintf(stderr, "      --s3-log-level <n>\n");
-	fprintf(stderr, "                      The log level of the AWS S3 C++ SDK. The possible levels are,\n");
-	fprintf(stderr, "                      from least to most granular:\n");
-	fprintf(stderr, "                       - Off\n");
-	fprintf(stderr, "                       - Fatal\n");
-	fprintf(stderr, "                       - Error\n");
-	fprintf(stderr, "                       - Warn\n");
-	fprintf(stderr, "                       - Info\n");
-	fprintf(stderr, "                       - Debug\n");
-	fprintf(stderr, "                       - Trace\n");
-	fprintf(stderr, "                      The default is Fatal.\n\n");
+	fprintf(stdout, "  -s, --set-list <set 1>[,<set 2>[,...]]\n");
+	fprintf(stdout, "                      Only restore the given sets from the backup.\n");
+	fprintf(stdout, "                      Default: restore all sets.\n");
+	fprintf(stdout, "  --ignore-record-error\n");
+	fprintf(stdout, "                      Ignore permanent record specific error. e.g AEROSPIKE_RECORD_TOO_BIG.\n");
+	fprintf(stdout, "                      By default such errors are not ignored and asrestore terminates.\n");
+	fprintf(stdout, "                      Optional: Use verbose mode to see errors in detail. \n");
+	fprintf(stdout, "  -u, --unique\n");
+	fprintf(stdout, "                      Skip records that already exist in the namespace;\n");
+	fprintf(stdout, "                      Don't touch them.\n");
+	fprintf(stdout, "  -r, --replace\n");
+	fprintf(stdout, "                      Fully replace records that already exist in the \n");
+	fprintf(stdout, "                      namespace; don't update them.\n");
+	fprintf(stdout, "  -g, --no-generation\n");
+	fprintf(stdout, "                      Don't check the generation of records that already\n");
+	fprintf(stdout, "                      exist in the namespace.\n");
+	fprintf(stdout, "  -l, --extra-ttl\n");
+	fprintf(stdout, "                      For records with expirable void-times, add N seconds of extra-ttl to the\n");
+	fprintf(stdout, "                      recorded void-time.\n");
+	fprintf(stdout, "  -N, --nice <bandwidth>,<TPS>\n");
+	fprintf(stdout, "                      The limits for read storage bandwidth in MiB/s and \n");
+	fprintf(stdout, "                      write operations in TPS.\n");
+	fprintf(stdout, "  -R, --no-records\n");
+	fprintf(stdout, "                      Don't restore any records.\n");
+	fprintf(stdout, "  -I, --no-indexes\n");
+	fprintf(stdout, "                      Don't restore any secondary indexes.\n");
+	fprintf(stdout, "  -L, --indexes-last\n");
+	fprintf(stdout, "                      Restore secondary indexes only after UDFs and records \n");
+	fprintf(stdout, "                      have been restored.\n");
+	fprintf(stdout, "  -F, --no-udfs\n");
+	fprintf(stdout, "                      Don't restore any UDFs.\n");
+	fprintf(stdout, "  -w, --wait\n");
+	fprintf(stdout, "                      Wait for restored secondary indexes to finish building.\n");
+	fprintf(stdout, "                      Wait for restored UDFs to be distributed across the cluster.\n");
+	fprintf(stdout, "  -T TIMEOUT, --timeout=TIMEOUT\n");
+	fprintf(stdout, "                      Set the timeout (ms) for commands. Default: 10000\n");
+	fprintf(stdout, "      --socket-timeout <ms>\n");
+	fprintf(stdout, "                      Socket timeout for write transactions in milliseconds.\n");
+	fprintf(stdout, "                      Default is 10 seconds.\n");
+	fprintf(stdout, "                      If this value is 0, its set to total-timeout. If both are 0,\n");
+	fprintf(stdout, "                      there is no socket idle time limit.\n");
+	fprintf(stdout, "      --total-timeout <ms>\n");
+	fprintf(stdout, "                      Total socket timeout for write transactions in milliseconds.\n");
+	fprintf(stdout, "                      If this value is 0 and --timeout is set, then the --timeout\n");
+	fprintf(stdout, "                      value is used as the write transaction timeout.\n");
+	fprintf(stdout, "                      Default is 0, i.e. no timeout.\n");
+	fprintf(stdout, "      --max-retries <n>\n");
+	fprintf(stdout, "                      Maximum number of retries before aborting the current write transaction.\n");
+	fprintf(stdout, "                      The default is 5.\n");
+	fprintf(stdout, "      --retry-scale-factor <us>\n");
+	fprintf(stdout, "                      The scale factor to use in the exponential backoff retry\n");
+	fprintf(stdout, "                      strategy, in microseconds.\n");
+	fprintf(stdout, "                      Default is 150000 us (150 ms).\n");
+	fprintf(stdout, "      --disable-batch-writes\n");
+	fprintf(stdout, "                      Disables the use of batch writes when restoring records to the\n");
+	fprintf(stdout, "                      Aerospike cluster. By default, the cluster is checked for batch\n");
+	fprintf(stdout, "                      write support, so only set this flag if you explicitly don't want\n");
+	fprintf(stdout, "                      batch writes to be used or asrestore is failing to recognize that\n");
+	fprintf(stdout, "                      batch writes are disabled and is failing to work because of it.\n");
+	fprintf(stdout, "      --max-async-batches <n>\n");
+	fprintf(stdout, "                      The max number of outstanding async record batch write calls at a time.\n");
+	fprintf(stdout, "                      For pre-6.0 servers, \"batches\" are only a logical grouping of\n");
+	fprintf(stdout, "                      records, and each record is uploaded individually. The true max\n");
+	fprintf(stdout, "                      number of async aerospike calls would then be\n");
+	fprintf(stdout, "                      <max-async-batches> * <batch-size>\n");
+	fprintf(stdout, "                      Default is 32.\n");
+	fprintf(stdout, "      --batch-size <n>\n");
+	fprintf(stdout, "                      The max allowed number of records to simultaneously upload\n");
+	fprintf(stdout, "                      in an async batch write calls to make to aerospike at a time.\n");
+	fprintf(stdout, "                      Default is 128 with batch writes enabled, or 16 without batch writes.\n");
+	fprintf(stdout, "      --event-loops <n>\n");
+	fprintf(stdout, "                      The number of c-client event loops to initialize for\n");
+	fprintf(stdout, "                      processing of asynchronous Aerospike transactions.\n");
+	fprintf(stdout, "                      Default is 1.\n");
+	fprintf(stdout, "      --s3-region <region>\n");
+	fprintf(stdout, "                      The S3 region that the bucket(s) exist in.\n");
+	fprintf(stdout, "      --s3-bucket <bucket>\n");
+	fprintf(stdout, "                      The S3 bucket to use for all S3 objects. With this option\n");
+	fprintf(stdout, "                      given, S3 paths are then interpreted as \"s3://<key>\",\n");
+	fprintf(stdout, "                      i.e. the bucket name should be omitted from the path.\n");
+	fprintf(stdout, "      --s3-profile <profile_name>\n");
+	fprintf(stdout, "                      The S3 profile to use for credentials (the default is \"default\").\n");
+	fprintf(stdout, "      --s3-endpoint-override <url>\n");
+	fprintf(stdout, "                      An alternate url endpoint to send S3 API calls to.\n");
+	fprintf(stdout, "      --s3-max-async-downloads <n>\n");
+	fprintf(stdout, "                      The maximum number of simultaneous download requests from S3.\n");
+	fprintf(stdout, "      --s3-log-level <n>\n");
+	fprintf(stdout, "                      The log level of the AWS S3 C++ SDK. The possible levels are,\n");
+	fprintf(stdout, "                      from least to most granular:\n");
+	fprintf(stdout, "                       - Off\n");
+	fprintf(stdout, "                       - Fatal\n");
+	fprintf(stdout, "                       - Error\n");
+	fprintf(stdout, "                       - Warn\n");
+	fprintf(stdout, "                       - Info\n");
+	fprintf(stdout, "                       - Debug\n");
+	fprintf(stdout, "                       - Trace\n");
+	fprintf(stdout, "                      The default is Fatal.\n\n");
 
-	fprintf(stderr, "\n\n");
-	fprintf(stderr, "Default configuration files are read from the following files in the given order:\n");
-	fprintf(stderr, "/etc/aerospike/astools.conf ~/.aerospike/astools.conf\n");
-	fprintf(stderr, "The following sections are read: (cluster asrestore include)\n");
-	fprintf(stderr, "The following options effect configuration file behavior\n");
-	fprintf(stderr, " --no-config-file \n");
-	fprintf(stderr, "                      Do not read any config file. Default: disabled\n");
-	fprintf(stderr, " --instance <name>\n");
-	fprintf(stderr, "                      Section with these instance is read. e.g in case instance `a` is specified\n");
-	fprintf(stderr, "                      sections cluster_a, asrestore_a is read.\n");
-	fprintf(stderr, " --config-file <path>\n");
-	fprintf(stderr, "                      Read this file after default configuration file.\n");
-	fprintf(stderr, " --only-config-file <path>\n");
-	fprintf(stderr, "                      Read only this configuration file.\n");
+	fprintf(stdout, "\n\n");
+	fprintf(stdout, "Default configuration files are read from the following files in the given order:\n");
+	fprintf(stdout, "/etc/aerospike/astools.conf ~/.aerospike/astools.conf\n");
+	fprintf(stdout, "The following sections are read: (cluster asrestore include)\n");
+	fprintf(stdout, "The following options effect configuration file behavior\n");
+	fprintf(stdout, " --no-config-file \n");
+	fprintf(stdout, "                      Do not read any config file. Default: disabled\n");
+	fprintf(stdout, " --instance <name>\n");
+	fprintf(stdout, "                      Section with these instance is read. e.g in case instance `a` is specified\n");
+	fprintf(stdout, "                      sections cluster_a, asrestore_a is read.\n");
+	fprintf(stdout, " --config-file <path>\n");
+	fprintf(stdout, "                      Read this file after default configuration file.\n");
+	fprintf(stdout, " --only-config-file <path>\n");
+	fprintf(stdout, "                      Read only this configuration file.\n");
 }
 
