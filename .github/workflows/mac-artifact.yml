@@ -12,7 +12,7 @@ jobs:
   build:
     runs-on: macos-11
     env:
-      AWS_SDK_CPP_VERSION: 1.10.24
+      AWS_SDK_CPP_VERSION: 1.9.177
       LIBCURL_VERSION: curl-7_83_1
       ZSTD_VERSION: 1.4.9
       LD_LIBRARY_PATH: /usr/local/lib

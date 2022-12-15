@@ -14,7 +14,7 @@ Below are dependencies for asbackup only.
 - An event library: libuv, libevent, or libev (also used by the C client submodule)
 - zstd
 - libssh2
-- aws-sdk-cpp
+- aws-sdk-cpp version 1.9.177
 - curl
 
 Clone the source code of the Aerospike backup tools from GitHub.

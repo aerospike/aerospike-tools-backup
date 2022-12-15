@@ -6,7 +6,7 @@ jobs:
   build-libraries:
     runs-on: ubuntu-20.04
     env:
-      AWS_SDK_CPP_VERSION: 1.10.24
+      AWS_SDK_CPP_VERSION: 1.9177
       EVENT_LIB: libuv
       ZSTD_VERSION: 1.4.9
       LD_LIBRARY_PATH: /usr/local/lib
