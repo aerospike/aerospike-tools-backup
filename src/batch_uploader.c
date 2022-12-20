@@ -630,6 +630,11 @@ _categorize_write_result(as_error* ae, const restore_config_t* conf)
 
 		// Cases that we don't treat as errors:
 		case AEROSPIKE_BATCH_FAILED:
+			ver("Write error treated as AEROSPIKE_OK code %d: %s at %s:%d",
+					ae->code, ae->message, ae->file, ae->line);
+			return WRITE_RESULT_OK;
+
+		// OK
 		case AEROSPIKE_OK:
 			return WRITE_RESULT_OK;
 
@@ -669,6 +674,8 @@ _categorize_write_result(as_error* ae, const restore_config_t* conf)
 
 		default: 
 			// Default to retrying the transaction.
+			ver("Retrying unhandled write error - code %d: %s at %s:%d",
+					ae->code, ae->message, ae->file, ae->line);
 			return WRITE_RESULT_RETRY;
 	}
 }
