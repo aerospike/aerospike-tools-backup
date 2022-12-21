@@ -19,6 +19,8 @@
 // Includes.
 //
 
+#include <stdatomic.h>
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wconversion"
 #pragma GCC diagnostic ignored "-Wsign-conversion"
@@ -39,8 +41,8 @@
 // Pointers to the backup_config_t/backup_status_t structs of the currently
 // running backup job.
 typedef struct backup_globals {
-	backup_config_t* conf;
-	backup_status_t* status;
+	_Atomic(backup_config_t*) conf;
+	_Atomic(backup_status_t*) status;
 } backup_globals_t;
 
 // A list of all global backup states of all jobs. When jobs are run within
@@ -65,6 +67,88 @@ typedef struct distr_stats {
 } distr_stats_t;
 
 /*
+ * The per partition filter information pushed to the job queue and picked up
+ * by the backup threads.
+ */
+typedef struct backup_thread_args {
+	// The global backup configuration.
+	const backup_config_t *conf;
+	// The global backup stats.
+	backup_status_t *status;
+	// Partition ranges/digest to be backed up. 
+	as_partition_filter filter;
+
+	// A queue of all completed backup jobs
+	cf_queue* complete_queue;
+
+	union {
+		// When backing up to a single file, the file descriptor of that file.
+		io_write_proxy_t* shared_fd;
+
+		// When backing up to a directory, the queue of backup files which have
+		// not been completely filled yet
+		cf_queue* file_queue;
+	};
+	// This is the first job in the job queue. It'll take care of backing up
+	// secondary indexes and UDF files.
+	bool first;
+	// When estimating the average records size, the array that receives the
+	// record size samples.
+	uint64_t *samples;
+	// The number of record size samples that fit into the samples array.
+	_Atomic(uint32_t) *n_samples;
+} backup_thread_args_t;
+
+/*
+ * The context for information about the currently processed partition. Each backup
+ * thread creates one of these for each scan call that it makes.
+ */
+typedef struct backup_job_context {
+	// Task description. 
+	char desc[128];
+	// The global backup configuration.
+	const backup_config_t *conf;
+	// The global backup stats. Copied from backup_thread_args.status.
+	backup_status_t *status;
+	// The scan configuration to be used.
+	as_scan scan;
+	// Set if the backup job terminated a scan early for any reason.
+	bool interrupted;
+
+	union {
+		// When backing up to a single file, the file descriptor of that file.
+		// Copied from backup_thread_args.shared_fd.
+		io_write_proxy_t* shared_fd;
+
+		// When backing up to a directory, the queue of backup files which have
+		// not been completely filled yet
+		cf_queue* file_queue;
+	};
+
+	// The file descriptor of the current backup file for the current job.
+	io_write_proxy_t* fd;
+
+	// When backing up to a directory, counts the number of records in the
+	// current backup file for the current job.
+	uint64_t rec_count_file;
+	// When backing up to a directory, tracks the size of the current backup
+	// file for the currently processed partition filter.
+	uint64_t byte_count_file;
+	// Counts the number of records read from the currently processed partition
+	// filter.
+	uint64_t rec_count_job;
+	// Counts the number of bytes written to all backup files for the current
+	// job.
+	uint64_t byte_count_job;
+	// When estimating the average record size, the array that receives the
+	// record size samples. Copied from backup_thread_args.samples.
+	uint64_t *samples;
+	// The number of record size samples that fit into the samples array. Copied
+	// from backup_thread_args.n_samples.
+	_Atomic(uint32_t)* n_samples;
+} backup_job_context_t;
+
+/*
  * To be used by signal handlers, call the corresponding backup_status_* methods
  * with g_backup_status as a first parameter.
  */
@@ -79,9 +163,9 @@ static void set_global_status(backup_status_t* status);
 static uint64_t directory_backup_remaining_estimate(const backup_config_t* conf,
 		backup_status_t* status);
 static int update_file_pos(io_write_proxy_t* fd, uint64_t* byte_count_file,
-		uint64_t* byte_count_job, uint64_t* byte_count_total);
+		uint64_t* byte_count_job, _Atomic(uint64_t)* byte_count_total);
 static int update_shared_file_pos(io_write_proxy_t* fd,
-		uint64_t* byte_count_total);
+		_Atomic(uint64_t)* byte_count_total);
 static bool queue_file(backup_job_context_t* bjc);
 static bool close_file(io_write_proxy_t *fd);
 static bool open_file(const char *file_path, const char *ns,
@@ -163,7 +247,7 @@ get_g_backup_conf(void)
 {
 	backup_globals_t* cur_globals =
 		(backup_globals_t*) as_vector_get(&g_globals, g_globals.size - 1);
-	return (backup_config_t*) as_load_ptr(&cur_globals->conf);
+	return cur_globals->conf;
 }
 
 backup_status_t*
@@ -171,7 +255,7 @@ get_g_backup_status(void)
 {
 	backup_globals_t* cur_globals =
 		(backup_globals_t*) as_vector_get(&g_globals, g_globals.size - 1);
-	return (backup_status_t*) as_load_ptr(&cur_globals->status);
+	return cur_globals->status;
 }
 
 
@@ -326,8 +410,7 @@ run_backup(backup_config_t* conf)
 		// set the byte count limit "conf->bandwidth" bytes above the current
 		// byte count so we don't have to wait for byte_count_limit to surpass
 		// byte_count_total
-		as_store_uint64(&status->byte_count_limit,
-				status->byte_count_total + conf->bandwidth);
+		status->byte_count_limit = status->byte_count_total + conf->bandwidth;
 
 		if (conf->max_records > 0) {
 			// If we are resuming with --max-records, subtract the number of
@@ -406,10 +489,10 @@ run_backup(backup_config_t* conf)
 			// don't parallelize the estimate
 			estimate_conf->parallel = 0;
 
-			bool cur_silent_val = as_load_bool(&g_silent);
-			as_store_bool(&g_silent, true);
+			bool cur_silent_val = g_silent;
+			g_silent = true;
 			backup_status_t* estimate_status = run_backup(estimate_conf);
-			as_store_bool(&g_silent, cur_silent_val);
+			g_silent = cur_silent_val;
 
 			backup_config_destroy(estimate_conf);
 			cf_free(estimate_conf);
@@ -840,8 +923,8 @@ save_backup_state:
 		loaded_backup_state = NULL;
 	}
 
-	uint64_t records = as_load_uint64(&status->rec_count_total);
-	uint64_t bytes = as_load_uint64(&status->byte_count_total);
+	uint64_t records = status->rec_count_total;
+	uint64_t bytes = status->byte_count_total;
 	inf("Backed up %" PRIu64 " record(s), %u secondary index(es), %u UDF file(s), "
 			"%" PRIu64 " byte(s) in total (~%" PRIu64 " B/rec)", records,
 			status->index_count, status->udf_count, bytes,
@@ -908,9 +991,15 @@ set_sigaction(void (*sig_hand)(int))
 static void
 push_backup_globals(backup_config_t* conf, backup_status_t* status)
 {
+	_Atomic(backup_config_t*) atom_conf;
+	atomic_init(&atom_conf, conf);
+
+	_Atomic(backup_status_t*) atom_status;
+	atomic_init(&atom_status, status);
+
 	backup_globals_t cur_globals = {
-		.conf = conf,
-		.status = status
+		.conf = atom_conf,
+		.status = atom_status
 	};
 	as_vector_append(&g_globals, &cur_globals);
 }
@@ -926,7 +1015,7 @@ set_global_status(backup_status_t* status)
 {
 	backup_globals_t* cur_globals =
 		(backup_globals_t*) as_vector_get(&g_globals, g_globals.size - 1);
-	as_store_ptr(&cur_globals->status, status);
+	cur_globals->status = status;
 }
 
 /*
@@ -938,17 +1027,15 @@ directory_backup_remaining_estimate(const backup_config_t* conf,
 		backup_status_t* status)
 {
 	uint64_t rec_count_estimate = status->rec_count_estimate;
-	uint64_t rec_count_total = as_load_uint64(&status->rec_count_total);
+	uint64_t rec_count_total = status->rec_count_total;
 
 	if (rec_count_total == 0) {
 		return conf->file_limit;
 	}
 
 	pthread_mutex_lock(&status->committed_count_mutex);
-	uint64_t rec_count_total_committed =
-		as_load_uint64(&status->rec_count_total_committed);
-	uint64_t byte_count_total_committed =
-		as_load_uint64(&status->byte_count_total_committed);
+	uint64_t rec_count_total_committed = status->rec_count_total_committed;
+	uint64_t byte_count_total_committed = status->byte_count_total_committed;
 	pthread_mutex_unlock(&status->committed_count_mutex);
 
 	uint64_t rec_remain = rec_count_total > rec_count_estimate ? 0 :
@@ -970,7 +1057,7 @@ directory_backup_remaining_estimate(const backup_config_t* conf,
  */
 static int
 update_file_pos(io_write_proxy_t* fd, uint64_t* byte_count_file,
-		uint64_t* byte_count_job, uint64_t* byte_count_total)
+		uint64_t* byte_count_job, _Atomic(uint64_t)* byte_count_total)
 {
 	int64_t pos = io_write_proxy_bytes_written(fd);
 	if (pos < 0) {
@@ -981,7 +1068,7 @@ update_file_pos(io_write_proxy_t* fd, uint64_t* byte_count_file,
 
 	*byte_count_file = (uint64_t) pos;
 	*byte_count_job += diff;
-	as_add_uint64(byte_count_total, diff);
+	*byte_count_total += diff;
 
 	return 0;
 }
@@ -994,7 +1081,7 @@ update_file_pos(io_write_proxy_t* fd, uint64_t* byte_count_file,
  * known that this thread is the only one modifying byte_count_total.
  */
 static int
-update_shared_file_pos(io_write_proxy_t* fd, uint64_t* byte_count_total)
+update_shared_file_pos(io_write_proxy_t* fd, _Atomic(uint64_t)* byte_count_total)
 {
 	int64_t pos = io_write_proxy_bytes_written(fd);
 	if (pos < 0) {
@@ -1002,7 +1089,7 @@ update_shared_file_pos(io_write_proxy_t* fd, uint64_t* byte_count_total)
 		return -1;
 	}
 
-	as_store_uint64(byte_count_total, (uint64_t) pos);
+	*byte_count_total = (uint64_t) pos;
 
 	return 0;
 }
@@ -1159,8 +1246,8 @@ close_dir_file(backup_job_context_t *bjc)
 	}
 
 	pthread_mutex_lock(&bjc->status->committed_count_mutex);
-	as_add_uint64(&bjc->status->rec_count_total_committed, (int64_t) bjc->rec_count_file);
-	as_add_uint64(&bjc->status->byte_count_total_committed, file_size);
+	bjc->status->rec_count_total_committed += (int64_t) bjc->rec_count_file;
+	bjc->status->byte_count_total_committed += file_size;
 	pthread_mutex_unlock(&bjc->status->committed_count_mutex);
 
 	ver("File size is %" PRId64 " for %s", file_size, io_proxy_file_path(bjc->fd));
@@ -1234,7 +1321,7 @@ open_dir_file(backup_job_context_t *bjc)
 		}
 
 		pthread_mutex_lock(&bjc->status->dir_file_init_mutex);
-		int64_t file_count = as_load_int64(&bjc->status->file_count);
+		int64_t file_count = bjc->status->file_count;
 
 		snprintf(file_path, file_path_size + 1, "%s/%s_%05" PRId64 ".asb",
 				bjc->conf->directory,
@@ -1259,7 +1346,7 @@ open_dir_file(backup_job_context_t *bjc)
 			return false;
 		}
 
-		as_store_int64(&bjc->status->file_count, file_count + 1);
+		bjc->status->file_count = file_count + 1;
 		pthread_mutex_unlock(&bjc->status->dir_file_init_mutex);
 	}
 
@@ -1421,11 +1508,11 @@ scan_callback(const as_val *val, void *cont)
 
 	bool ok;
 	if (bjc->conf->estimate) {
-		uint32_t sample_idx = as_faa_uint32(bjc->n_samples, 1);
+		uint32_t sample_idx = (*bjc->n_samples)++;
 		// should never happen, but just to ensure we don't write past the end
 		// of the sample buffer, check that we don't exceed estimate_samples
 		if (sample_idx >= bjc->conf->n_estimate_samples) {
-			as_store_uint32(bjc->n_samples, bjc->conf->n_estimate_samples);
+			*bjc->n_samples = bjc->conf->n_estimate_samples;
 			safe_unlock(&bjc->status->file_write_mutex);
 			// don't abort the scan, as this will cause a broken pipe error on
 			// the server. Let the scan gracefully terminate.
@@ -1449,7 +1536,7 @@ scan_callback(const as_val *val, void *cont)
 
 	++bjc->rec_count_file;
 	++bjc->rec_count_job;
-	as_incr_uint64(&bjc->status->rec_count_total);
+	++bjc->status->rec_count_total;
 
 	if (bjc->conf->output_file != NULL || bjc->conf->estimate) {
 		if (update_shared_file_pos(bjc->fd, &bjc->status->byte_count_total) < 0) {
@@ -1479,8 +1566,8 @@ scan_callback(const as_val *val, void *cont)
 	if (bjc->conf->bandwidth > 0) {
 		safe_lock(&bjc->status->bandwidth_mutex);
 
-		while (as_load_uint64(&bjc->status->byte_count_total) >=
-				as_load_uint64(&bjc->status->byte_count_limit) &&
+		while (bjc->status->byte_count_total >=
+				bjc->status->byte_count_limit &&
 				!backup_status_has_stopped(bjc->status)) {
 			safe_wait(&bjc->status->bandwidth_cond,
 					&bjc->status->bandwidth_mutex);
@@ -1956,7 +2043,7 @@ backup_thread_func(void *cont)
 		}
 
 		if (bjc.conf->output_file != NULL || bjc.conf->estimate) {
-			backup_file_size = as_load_uint64(&bjc.status->byte_count_total);
+			backup_file_size = bjc.status->byte_count_total;
 		}
 		else {
 			backup_file_size = bjc.byte_count_job;
@@ -2054,8 +2141,8 @@ counter_thread_func(void *cont)
 
 	uint32_t iter = 0;
 	cf_clock print_prev_ms = prev_ms;
-	uint64_t print_prev_bytes = as_load_uint64(&status->byte_count_total);
-	uint64_t print_prev_recs = as_load_uint64(&status->rec_count_total);
+	uint64_t print_prev_bytes = status->byte_count_total;
+	uint64_t print_prev_recs = status->rec_count_total;
 
 	uint64_t mach_prev_recs = print_prev_recs;
 
@@ -2070,8 +2157,8 @@ counter_thread_func(void *cont)
 			status->rec_count_estimate;
 
 		if (n_recs > 0) {
-			uint64_t now_bytes = as_load_uint64(&status->byte_count_total);
-			uint64_t now_recs = as_load_uint64(&status->rec_count_total);
+			uint64_t now_bytes = status->byte_count_total;
+			uint64_t now_recs = status->rec_count_total;
 
 			int32_t percent = (int32_t)(now_recs * 100 / n_recs);
 
@@ -2131,8 +2218,8 @@ counter_thread_func(void *cont)
 
 		if (conf->bandwidth > 0) {
 			if (ms > 0) {
-				as_store_uint64(&status->byte_count_limit,
-						status->byte_count_limit + conf->bandwidth * 1000 / ms);
+				status->byte_count_limit = 
+					status->byte_count_limit + conf->bandwidth * 1000 / ms;
 			}
 
 			safe_signal(&status->bandwidth_cond);

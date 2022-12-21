@@ -22,13 +22,13 @@
 #include <backup_state.h>
 
 #include <errno.h>
+#include <stdatomic.h>
 #include <stdlib.h>
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wconversion"
 #pragma GCC diagnostic ignored "-Wsign-conversion"
 
-#include <aerospike/as_atomic.h>
 #include <aerospike/as_partition.h>
 
 #pragma GCC diagnostic pop
@@ -276,15 +276,16 @@ backup_state_set_global_status(backup_state_t* state,
 	state->backup_global_status.index_count = status->index_count;
 	state->backup_global_status.udf_count = status->udf_count;
 
-	state->backup_global_status.file_count = as_load_uint64(&status->file_count);
+	state->backup_global_status.file_count =
+		status->file_count;
 	state->backup_global_status.rec_count_total =
-		as_load_uint64(&status->rec_count_total);
+		status->rec_count_total;
 	state->backup_global_status.byte_count_total =
-		as_load_uint64(&status->byte_count_total);
+		status->byte_count_total;
 	state->backup_global_status.rec_count_total_committed =
-		as_load_uint64(&status->rec_count_total_committed);
+		status->rec_count_total_committed;
 	state->backup_global_status.byte_count_total_committed =
-		as_load_uint64(&status->byte_count_total_committed);
+		status->byte_count_total_committed;
 }
 
 void
@@ -294,13 +295,11 @@ backup_state_load_global_status(const backup_state_t* state,
 	status->index_count = state->backup_global_status.index_count;
 	status->udf_count = state->backup_global_status.udf_count;
 
-	as_store_uint64(&status->file_count, state->backup_global_status.file_count);
-	as_store_uint64(&status->rec_count_total, state->backup_global_status.rec_count_total);
-	as_store_uint64(&status->byte_count_total, state->backup_global_status.byte_count_total);
-	as_store_uint64(&status->rec_count_total_committed,
-			state->backup_global_status.rec_count_total_committed);
-	as_store_uint64(&status->byte_count_total_committed,
-			state->backup_global_status.byte_count_total_committed);
+	status->file_count = state->backup_global_status.file_count;
+	status->rec_count_total = state->backup_global_status.rec_count_total;
+	status->byte_count_total = state->backup_global_status.byte_count_total;
+	status->rec_count_total_committed = state->backup_global_status.rec_count_total_committed;
+	status->byte_count_total_committed = state->backup_global_status.byte_count_total_committed;
 }
 
 bool

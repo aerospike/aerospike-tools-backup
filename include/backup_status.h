@@ -25,7 +25,10 @@
 #pragma once
 
 #ifdef __cplusplus
+typedef struct backup_status backup_status_t;
 extern "C" {
+#else
+#include <stdatomic.h>
 #endif
 
 //==========================================================
@@ -60,6 +63,7 @@ extern "C" {
 /*
  * The backup_status_t struct is used to manage the status of a full backup job.
  */
+#ifndef __cplusplus
 typedef struct backup_status {
 	node_spec* node_specs;
 	uint32_t n_node_specs;
@@ -80,23 +84,23 @@ typedef struct backup_status {
 	// so it's just treated as an estimate.
 	uint64_t rec_count_estimate;
 	// The total number of records backed up so far.
-	uint64_t rec_count_total;
+	_Atomic(uint64_t) rec_count_total;
 	// The total number of bytes written to the backup file(s) so far.
-	uint64_t byte_count_total;
+	_Atomic(uint64_t) byte_count_total;
 	// When backing up to a directory, counts the number of backup files
 	// created
-	uint64_t file_count;
+	_Atomic(uint64_t) file_count;
 
 	// The total number of records backed up in files that have already been
 	// written and closed.
-	uint64_t rec_count_total_committed;
+	_Atomic(uint64_t) rec_count_total_committed;
 	// The total number of bytes backed up in files that have already been
 	// written and closed.
-	uint64_t byte_count_total_committed;
+	_Atomic(uint64_t) byte_count_total_committed;
 	// The current limit for byte_count_total for throttling. This is
 	// periodically increased by the counter thread to raise the limit according
 	// to the bandwidth limit.
-	uint64_t byte_count_limit;
+	_Atomic(uint64_t) byte_count_limit;
 	// The number of secondary indexes backed up.
 	volatile uint32_t index_count;
 	// The number of UDF files backed up.
@@ -107,14 +111,14 @@ typedef struct backup_status {
 
 	// Set when the backup has started running. Before this point, any attempts
 	// to interrupt the backup will just abort the backup.
-	bool started;
+	_Atomic(bool) started;
 
 	// Set when the backup has finished running.
-	bool finished;
+	_Atomic(bool) finished;
 
 	// Set when the backup has encountered an error and should stop, causes all
 	// threads to immediately exit and backup state saving to begin.
-	bool stop;
+	_Atomic(bool) stop;
 
 	// Used when sleeping to ensure immediate awakening when the backup job
 	// finishes.
@@ -123,12 +127,12 @@ typedef struct backup_status {
 
 	// The backup state struct to save the backup state to. Initialized if this
 	// backup job fails.
-	backup_state_t* backup_state;
+	_Atomic(backup_state_t*) backup_state;
 
 	// Indicates that the one-time work (secondary indexes and UDF files) is complete.
 	// This variable shares the stop lock/condvar so that stop() calls will interrupt
 	// threads waiting on the one shot condition.
-	bool one_shot_done;
+	_Atomic(bool) one_shot_done;
 
 	// Used by threads when initializing a file. This ensures that no file names
 	// will be skipped, and that file_count always equals the total number of
@@ -152,9 +156,9 @@ typedef struct backup_status {
 	uint64_t header_size;
 	uint64_t* estimate_samples;
 	// Cumulative total number of samples collected.
-	uint32_t n_estimate_samples;
+	_Atomic(uint32_t) n_estimate_samples;
 } backup_status_t;
-
+#endif
 
 //==========================================================
 // Public API.
@@ -255,6 +259,15 @@ backup_state_t* backup_status_get_backup_state(backup_status_t* status);
  */
 void backup_status_save_scan_state(backup_status_t* status,
 		const as_partitions_status* parts);
+
+/*
+ * Returns the file_count member of status.
+ * This is usefull for calling from C++ because
+ * backup_status_t's use of C11 _Atomic() means
+ * C++ can only use it as an opaque pointer
+ * and can not access its members.
+ */
+uint64_t backup_status_get_file_count(const backup_status_t* status);
 
 #ifdef __cplusplus
 }

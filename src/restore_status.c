@@ -228,21 +228,21 @@ restore_status_init(restore_status_t* status, const restore_config_t* conf)
 			status);
 
 	status->estimated_bytes = 0;
-	as_store_uint64(&status->total_bytes, 0);
-	as_store_uint64(&status->total_records, 0);
-	as_store_uint64(&status->expired_records, 0);
-	as_store_uint64(&status->skipped_records, 0);
-	as_store_uint64(&status->ignored_records, 0);
-	as_store_uint64(&status->inserted_records, 0);
-	as_store_uint64(&status->existed_records, 0);
-	as_store_uint64(&status->fresher_records, 0);
-	as_store_uint32(&status->index_count, 0);
-	as_store_uint32(&status->skipped_indexes, 0);
-	as_store_uint32(&status->matched_indexes, 0);
-	as_store_uint32(&status->mismatched_indexes, 0);
-	as_store_uint32(&status->udf_count, 0);
-	as_store_bool(&status->finished, false);
-	as_store_bool(&status->stop, false);
+	atomic_init(&status->total_bytes, 0);
+	atomic_init(&status->total_records, 0);
+	atomic_init(&status->expired_records, 0);
+	atomic_init(&status->skipped_records, 0);
+	atomic_init(&status->ignored_records, 0);
+	atomic_init(&status->inserted_records, 0);
+	atomic_init(&status->existed_records, 0);
+	atomic_init(&status->fresher_records, 0);
+	atomic_init(&status->index_count, 0);
+	atomic_init(&status->skipped_indexes, 0);
+	atomic_init(&status->matched_indexes, 0);
+	atomic_init(&status->mismatched_indexes, 0);
+	atomic_init(&status->udf_count, 0);
+	atomic_init(&status->finished, false);
+	atomic_init(&status->stop, false);
 
 	return true;
 
@@ -328,7 +328,7 @@ restore_status_destroy(restore_status_t* status)
 bool
 restore_status_has_finished(const restore_status_t* status)
 {
-	return as_load_bool(&status->finished);
+	return status->finished;
 }
 
 void
@@ -336,7 +336,7 @@ restore_status_finish(restore_status_t* status)
 {
 	// sets the finished variable. No need to grab a lock since condidition
 	// variables all used timed waits, so deadlock is impossible.
-	as_store_bool(&status->finished, true);
+	status->finished = true;
 
 	// wakes all threads waiting on the stop condition
 	pthread_cond_broadcast(&status->stop_cond);
@@ -347,7 +347,7 @@ restore_status_finish(restore_status_t* status)
 bool
 restore_status_has_stopped(const restore_status_t* status)
 {
-	return as_load_bool(&status->stop);
+	return status->stop;
 }
 
 void
@@ -355,7 +355,7 @@ restore_status_stop(restore_status_t* status)
 {
 	// sets the stop variable. No need to grab a lock since condidition
 	// variables all used timed waits, so deadlock is impossible.
-	as_store_bool(&status->stop, true);
+	status->stop = true;
 
 	// wakes all threads waiting on the stop condition
 	pthread_cond_broadcast(&status->stop_cond);
@@ -457,14 +457,10 @@ _batch_complete_cb(batch_status_t* batch_status, void* restore_status_ptr)
 {
 	restore_status_t* status = (restore_status_t*) restore_status_ptr;
 
-	as_add_uint64(&status->ignored_records,
-			as_load_uint64(&batch_status->ignored_records));
-	as_add_uint64(&status->inserted_records,
-			as_load_uint64(&batch_status->inserted_records));
-	as_add_uint64(&status->existed_records,
-			as_load_uint64(&batch_status->existed_records));
-	as_add_uint64(&status->fresher_records,
-			as_load_uint64(&batch_status->fresher_records));
+	status->ignored_records += batch_status->ignored_records;
+	status->inserted_records += batch_status->inserted_records;
+	status->existed_records += batch_status->existed_records;
+	status->fresher_records += batch_status->fresher_records;
 }
 
 static bool

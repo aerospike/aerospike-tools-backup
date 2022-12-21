@@ -1,7 +1,7 @@
 #
 # Aerospike Backup/Restore
 #
-# Copyright (c) 2008-2017 Aerospike, Inc. All rights reserved.
+# Copyright (c) 2008-2022 Aerospike, Inc. All rights reserved.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy of
 # this software and associated documentation files (the "Software"), to deal in
@@ -33,14 +33,26 @@ ARCH := $(shell uname -m)
 PLATFORM := $(OS)-$(ARCH)
 VERSION := $(shell git describe 2>/dev/null; if [ $${?} != 0 ]; then echo 'unknown'; fi)
 ROOT = $(CURDIR)
-DIR_TSO := $(ROOT)/tso
-TSO_LIB := $(DIR_TSO)/tso.so
+
+M1_HOME_BREW =
+ifeq ($(OS),Darwin)
+  ifneq ($(wildcard /opt/homebrew),)
+    M1_HOME_BREW = true
+  endif
+endif
+
+# M1 macs brew install openssl under /opt/homebrew/opt/openssl
+# set OPENSSL_PREFIX to the prefix for your openssl if it is installed elsewhere
+OPENSSL_PREFIX ?= /usr/local/opt/openssl
+ifdef M1_HOME_BREW
+  OPENSSL_PREFIX = /opt/homebrew/opt/openssl
+endif
 
 CC ?= cc
 
 DWARF := $(shell $(CC) -Wall -Wextra -O2 -o /tmp/asflags_$${$$} src/flags.c; \
 		/tmp/asflags_$${$$}; rm /tmp/asflags_$${$$})
-CFLAGS += -std=gnu99 $(DWARF) -O2 -fno-common -fno-strict-aliasing \
+CFLAGS += -std=gnu11 $(DWARF) -O2 -fno-common -fno-strict-aliasing \
 		-Wall -Wextra -Wconversion -Wsign-conversion -Wmissing-declarations \
 		-Wno-implicit-fallthrough -Wno-unused-result -Wno-typedef-redefinition \
 		-D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_FORTIFY_SOURCE=2 -DMARCH_$(ARCH) \
@@ -58,7 +70,7 @@ ifeq ($(OS), Linux)
 LDFLAGS += -pthread
 endif
 
-TEST_CFLAGS := -std=gnu99 $(DWARF) -g -O2 -fno-common -fno-strict-aliasing \
+TEST_CFLAGS := -std=gnu11 $(DWARF) -g -O2 -fno-common -fno-strict-aliasing \
 		-Wall -Wextra -Wconversion -Wsign-conversion -Wmissing-declarations \
 		-Wno-implicit-fallthrough -Wno-unused-result -Wno-typedef-redefinition \
 		-D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_FORTIFY_SOURCE=2 -DMARCH_$(ARCH) \
@@ -70,23 +82,6 @@ TEST_CXXFLAGS := -std=c++14 $(DWARF) -g -O2 -fno-common -fno-strict-aliasing \
 		-DTOOL_VERSION=\"$(VERSION)\"
 TEST_LDFLAGS := $(LDFLAGS) -fprofile-arcs -lcheck
 
-ifeq ($(ARCH),aarch64)
-  # Plugin configuration.
-  PLUGIN_ENABLE = yes
-  PLUGIN_FIX_ASM = yes
-  PLUGIN_FIX_BUILT_IN = yes
-  PLUGIN_PROFILING = no
-
-  TSO_FLAGS = -fplugin=$(TSO_LIB) -fplugin-arg-tso-enable=$(PLUGIN_ENABLE) \
-				-fplugin-arg-tso-exclude=$(DIR_TSO)/exclude_ce.txt -fplugin-arg-tso-exclude=$(DIR_TSO)/exclude_ce.txt \
-				-fplugin-arg-tso-track-deps=yes -fplugin-arg-tso-fix-asm=$(PLUGIN_FIX_ASM) \
-				-fplugin-arg-tso-fix-built-in=$(PLUGIN_FIX_BUILT_IN) -fplugin-arg-tso-profiling=$(PLUGIN_PROFILING)
-  
-  CFLAGS += $(TSO_FLAGS)
-  CXXFLAGS += $(TSO_FLAGS)
-  TEST_CFLAGS += $(TSO_FLAGS)
-  TEST_CXXFLAGS += $(TSO_FLAGS)
-endif
 
 ifeq ($(EVENT_LIB),libev)
   CFLAGS += -DAS_USE_LIBEV
@@ -130,14 +125,29 @@ INCLUDES := -I$(DIR_INC)
 INCLUDES += -I$(DIR_TOML)
 INCLUDES += -I$(DIR_C_CLIENT)/src/include
 INCLUDES += -I$(DIR_C_CLIENT)/modules/common/src/include
-INCLUDES += -I/usr/local/opt/openssl/include
+INCLUDES += -I$(OPENSSL_PREFIX)/include
+INCLUDES += -I/usr/local/include
 
 LIBRARIES := $(C_CLIENT_LIB)
 LIBRARIES += -L/usr/local/lib
 
 ifeq ($(AWS_SDK_STATIC_PATH),)
+  # do not change the order of these
   LIBRARIES += -laws-cpp-sdk-s3
   LIBRARIES += -laws-cpp-sdk-core
+  LIBRARIES += -laws-crt-cpp
+  LIBRARIES += -laws-c-s3
+  LIBRARIES += -laws-c-auth
+  # TODO upgrade aws sdk, used in newer aws sdk libs
+  # LIBRARIES += -laws-c-sdkutils
+  LIBRARIES += -laws-c-mqtt
+  LIBRARIES += -laws-c-http
+  LIBRARIES += -laws-c-event-stream
+  LIBRARIES += -laws-c-io
+  LIBRARIES += -laws-c-compression
+  LIBRARIES += -laws-checksums
+  LIBRARIES += -laws-c-cal
+  LIBRARIES += -laws-c-common
 else
   # do not change the order of these
   LIBRARIES += $(AWS_SDK_STATIC_PATH)/libaws-cpp-sdk-s3.a
@@ -145,6 +155,8 @@ else
   LIBRARIES += $(AWS_SDK_STATIC_PATH)/libaws-crt-cpp.a
   LIBRARIES += $(AWS_SDK_STATIC_PATH)/libaws-c-s3.a
   LIBRARIES += $(AWS_SDK_STATIC_PATH)/libaws-c-auth.a
+  # TODO upgrade aws sdk, used in newer aws sdk libs
+  # LIBRARIES += $(AWS_SDK_STATIC_PATH)/libaws-c-sdkutils.a
   LIBRARIES += $(AWS_SDK_STATIC_PATH)/libaws-c-mqtt.a
   LIBRARIES += $(AWS_SDK_STATIC_PATH)/libaws-c-http.a
   LIBRARIES += $(AWS_SDK_STATIC_PATH)/libaws-c-event-stream.a
@@ -179,7 +191,7 @@ else
 endif
 
 ifeq ($(OPENSSL_STATIC_PATH),)
-  LIBRARIES += -L/usr/local/opt/openssl/lib
+  LIBRARIES += -L$(OPENSSL_PREFIX)/lib
   LIBRARIES += -lssl
   LIBRARIES += -lcrypto
 else
@@ -233,6 +245,15 @@ else
 LIBRARIES += $(DIR_TOML)/libtoml.a
 endif
 
+# if this is an m1 mac using homebrew
+# add the new homebrew lib and include path
+# incase dependencies are installed there
+# NOTE: /usr/local/include will be checked first
+ifdef M1_HOME_BREW
+  LIBRARIES += -L/opt/homebrew/lib
+  INCLUDES += -I/opt/homebrew/include
+endif
+
 src_to_obj = $(filter $(DIR_OBJ)/%.o,$(1:$(DIR_SRC)/%.c=$(DIR_OBJ)/%_c.o) $(1:$(DIR_SRC)/%.cc=$(DIR_OBJ)/%_cc.o))
 obj_to_dep = $(1:%.o=%.d)
 src_to_lib =
@@ -263,7 +284,7 @@ TOML := $(DIR_TOML)/libtoml.a
 SRCS := $(BACKUP_SRC) $(RESTORE_SRC)
 OBJS := $(BACKUP_OBJ) $(RESTORE_OBJ)
 DEPS := $(BACKUP_DEP) $(RESTORE_DEP)
-BINS := $(TOML) $(TSO_LIB) $(BACKUP) $(RESTORE)
+BINS := $(TOML) $(BACKUP) $(RESTORE)
 
 # sort removes duplicates
 SRCS := $(sort $(SRCS))
@@ -305,7 +326,6 @@ all: $(BINS)
 clean:
 	$(MAKE) -C $(DIR_TOML) clean
 	$(MAKE) -C $(DIR_C_CLIENT) clean
-	$(MAKE) -C $(DIR_TSO) clean
 	rm -f $(DEPS) $(OBJS) $(BINS) $(TEST_OBJS) $(TEST_DEPS) $(TEST_BINS)
 	if [ -d $(DIR_OBJ) ]; then rmdir $(DIR_OBJ); fi
 	if [ -d $(DIR_BIN) ]; then rmdir $(DIR_BIN); fi
@@ -354,10 +374,10 @@ $(DIR_OBJ)/%_c.o: $(DIR_SRC)/%.c | $(DIR_OBJ)
 $(DIR_OBJ)/%_cc.o: $(DIR_SRC)/%.cc | $(DIR_OBJ)
 	$(CXX) $(CXXFLAGS) -MMD -o $@ -c $(INCLUDES) $<
 
-$(BACKUP): $(BACKUP_OBJ) $(TOML) $(C_CLIENT_LIB) $(TSO_LIB) | $(DIR_BIN)
+$(BACKUP): $(BACKUP_OBJ) $(TOML) $(C_CLIENT_LIB) | $(DIR_BIN)
 	$(CXX) $(LDFLAGS) -o $(BACKUP) $(BACKUP_OBJ) $(LIBRARIES)
 
-$(RESTORE): $(RESTORE_OBJ) $(TOML) $(C_CLIENT_LIB) $(TSO_LIB) | $(DIR_BIN)
+$(RESTORE): $(RESTORE_OBJ) $(TOML) $(C_CLIENT_LIB) | $(DIR_BIN)
 	$(CXX) $(LDFLAGS) -o $(RESTORE) $(RESTORE_OBJ) $(LIBRARIES)
 
 $(TOML):
@@ -366,11 +386,6 @@ $(TOML):
 $(C_CLIENT_LIB):
 	$(MAKE) -C $(DIR_C_CLIENT)
 
-$(TSO_LIB):
-	if [ $(ARCH) = "aarch64" ]; then \
-		$(MAKE) -C $(DIR_TSO); \
-	fi
-
 -include $(BACKUP_DEP)
 -include $(RESTORE_DEP)
 
@@ -378,12 +393,12 @@ $(TSO_LIB):
 test: unit integration
 
 .PHONY: unit
-unit: $(DIR_TEST_BIN)/test | $(TSO_LIB)
+unit: $(DIR_TEST_BIN)/test
 	@$<
 	@#valgrind --tool=memcheck --leak-check=full --track-origins=yes --show-leak-kinds=all $<
 
 .PHONY: integration
-integration: $(TEST_INTEGRATION_TESTS) | $(TSO_LIB)
+integration: $(TEST_INTEGRATION_TESTS)
 
 run_%: $(TEST_BINS) FORCE | coverage-init
 	@./tests.sh $(DIR_ENV) $(patsubst run_%,$(DIR_INTEGRATION_TEST)/%.py,$@)
@@ -402,13 +417,13 @@ $(DIR_TEST_OBJ)/unit: | $(DIR_TEST_OBJ)
 $(DIR_TEST_OBJ)/src: | $(DIR_TEST_OBJ)
 	mkdir $@
 
-$(DIR_TEST_OBJ)/unit/%.o: test/unit/%.c | $(TSO_LIB) $(DIR_TEST_OBJ)/unit
+$(DIR_TEST_OBJ)/unit/%.o: test/unit/%.c | $(DIR_TEST_OBJ)/unit
 	$(CC) $(TEST_CFLAGS) -MMD $(INCLUDES) -o $@ -c $<
 
-$(DIR_TEST_OBJ)/src/%_c.o: src/%.c | $(TSO_LIB) $(DIR_TEST_OBJ)/src
+$(DIR_TEST_OBJ)/src/%_c.o: src/%.c | $(DIR_TEST_OBJ)/src
 	$(CC) $(TEST_CFLAGS) -MMD $(INCLUDES) -fprofile-arcs -ftest-coverage -o $@ -c $<
 
-$(DIR_TEST_OBJ)/src/%_cc.o: src/%.cc | $(TSO_LIB) $(DIR_TEST_OBJ)/src
+$(DIR_TEST_OBJ)/src/%_cc.o: src/%.cc | $(DIR_TEST_OBJ)/src
 	$(CXX) $(TEST_CXXFLAGS) -MMD $(INCLUDES) -fprofile-arcs -ftest-coverage -o $@ -c $<
 
 $(DIR_TEST_BIN)/test: $(TEST_OBJ) $(DIR_C_CLIENT)/target/$(PLATFORM)/lib/libaerospike.a $(TOML) | $(DIR_TEST_BIN)

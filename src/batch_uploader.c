@@ -19,7 +19,7 @@
 // Includes.
 //
 
-#include <batch_uploader.h>
+#include <stdatomic.h>
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wconversion"
@@ -31,6 +31,7 @@
 #pragma GCC diagnostic pop
 
 #include <restore_status.h>
+#include <batch_uploader.h>
 
 
 //==========================================================
@@ -62,7 +63,7 @@ typedef struct key_put_info {
 	// transaction is a part of.
 	struct record_batch_tracker* tracker;
 	// set to true by the callback if the key_put failed and should be retried.
-	bool should_retry;
+	_Atomic(bool) should_retry;
 } key_put_info_t;
 
 /*
@@ -74,9 +75,9 @@ typedef struct record_batch_tracker {
 	// the vector of records uploaded in this batch write.
 	as_vector records;
 	// tracker for the current number of oustanding async aerospike_key_put_async calls
-	uint64_t outstanding_calls;
+	_Atomic(uint64_t) outstanding_calls;
 	// set if any sub transaction failed in a retriable manner.
-	bool should_retry;
+	_Atomic(bool) should_retry;
 	// the batch_status_t struct that tracks the counts of record statuses
 	// (inserted, failed, etc).
 	batch_status_t status;
@@ -156,7 +157,11 @@ static bool _submit_key_recs(batch_uploader_t*, as_vector* records);
 void
 batch_status_init(batch_status_t* status)
 {
-	memset(status, 0, sizeof(batch_status_t));
+	atomic_init(&status->has_error, false);
+	atomic_init(&status->ignored_records, 0);
+	atomic_init(&status->inserted_records, 0);
+	atomic_init(&status->existed_records, 0);
+	atomic_init(&status->fresher_records, 0);
 }
 
 int
@@ -182,10 +187,10 @@ batch_uploader_init(batch_uploader_t* uploader, aerospike* as,
 
 	uploader->as = as;
 	uploader->max_async = conf->max_async_batches;
-	uploader->error = false;
+	atomic_init(&uploader->error, false);
 	uploader->batch_enabled = batch_writes_enabled;
-	uploader->retry_count = 0;
-	uploader->async_calls = 0;
+	atomic_init(&uploader->retry_count, 0);
+	atomic_init(&uploader->async_calls, 0);
 	uploader->conf = conf;
 	get_current_time(&uploader->start_time);
 	// Default to 150ms and 5 retries max
@@ -217,19 +222,19 @@ batch_uploader_set_callback(batch_uploader_t* uploader,
 uint64_t
 batch_uploader_retry_count(const batch_uploader_t* uploader)
 {
-	return as_load_uint64(&uploader->retry_count);
+	return uploader->retry_count;
 }
 
 bool
 batch_uploader_has_error(const batch_uploader_t* uploader)
 {
-	return as_load_bool(&uploader->error);
+	return uploader->error;
 }
 
 void
 batch_uploader_signal_error(batch_uploader_t* uploader)
 {
-	as_store_bool(&uploader->error, true);
+	uploader->error = true;
 	pthread_cond_broadcast(&uploader->async_cond);
 }
 
@@ -305,8 +310,8 @@ _record_batch_tracker_alloc(batch_uploader_t* uploader, as_vector* records)
 		(record_batch_tracker_t*) cf_malloc(sizeof(record_batch_tracker_t) +
 				n_records * sizeof(key_put_info_t));
 	tracker->uploader = uploader;
-	tracker->outstanding_calls = n_records;
-	tracker->should_retry = false;
+	atomic_init(&tracker->outstanding_calls, n_records);
+	atomic_init(&tracker->should_retry, false);
 	batch_status_init(&tracker->status);
 	retry_status_init(&tracker->retry_status);
 
@@ -318,7 +323,7 @@ _record_batch_tracker_alloc(batch_uploader_t* uploader, as_vector* records)
 	for (uint32_t i = 0; i < n_records; i++) {
 		tracker->key_infos[i].tracker = tracker;
 		// initialize to true on first pass so all transactions are triggered
-		tracker->key_infos[i].should_retry = true;
+		atomic_init(&(tracker->key_infos[i].should_retry), true);
 	}
 
 	return tracker;
@@ -342,8 +347,8 @@ _record_batch_tracker_destroy(record_batch_tracker_t* tracker)
 static void
 _record_batch_tracker_reset(record_batch_tracker_t* tracker)
 {
-	as_store_bool(&tracker->should_retry, false);
-	as_store_uint64(&tracker->outstanding_calls, tracker->records.size);
+	tracker->should_retry = false;
+	tracker->outstanding_calls = tracker->records.size;
 }
 
 static void
@@ -590,7 +595,7 @@ _queue_clear(batch_uploader_t* uploader)
 		else {
 			record_batch_tracker_t* tracker =
 				(record_batch_tracker_t*) priority_queue_pop(&uploader->retry_queue);
-			as_store_bool(&tracker->status.has_error, true);
+			tracker->status.has_error = true;
 
 			if (uploader->upload_cb != NULL) {
 				uploader->upload_cb(&tracker->status, uploader->udata);
@@ -692,7 +697,7 @@ _batch_status_submit(batch_status_t* status,
 		case AEROSPIKE_ERR_FAIL_FORBIDDEN:
 		case AEROSPIKE_ERR_BIN_INCOMPATIBLE_TYPE:
 		case AEROSPIKE_ERR_BIN_NOT_FOUND:
-			as_incr_uint64(&status->ignored_records);
+			status->ignored_records++;
 
 			if (!conf->ignore_rec_error) {
 				err("Error while storing record - code %d", write_status);
@@ -702,15 +707,15 @@ _batch_status_submit(batch_status_t* status,
 
 		// Conditional error based on input config. No retries.
 		case AEROSPIKE_ERR_RECORD_GENERATION:
-			as_incr_uint64(&status->fresher_records);
+			status->fresher_records++;
 			break;
 
 		case AEROSPIKE_ERR_RECORD_EXISTS:
-			as_incr_uint64(&status->existed_records);
+			status->existed_records++;
 			break;
 
 		case AEROSPIKE_OK:
-			as_incr_uint64(&status->inserted_records);
+			status->inserted_records++;
 			break;
 
 		default:
@@ -738,7 +743,7 @@ _await_async_calls(batch_uploader_t* uploader)
 	struct timespec timeout;
 
 	pthread_mutex_lock(&uploader->async_lock);
-	while (as_load_uint64(&uploader->async_calls) != 0) {
+	while (uploader->async_calls != 0) {
 		if (batch_uploader_has_error(uploader) &&
 				priority_queue_size(&uploader->retry_queue) > 0) {
 			_queue_clear(uploader);
@@ -774,7 +779,7 @@ _reserve_async_slot(batch_uploader_t* uploader)
 	uint64_t max_async = (uint64_t) uploader->max_async;
 
 	pthread_mutex_lock(&uploader->async_lock);
-	if (as_load_uint64(&uploader->async_calls) == max_async) {
+	if (uploader->async_calls == max_async) {
 
 		for (;;) {
 			if (priority_queue_size(&uploader->retry_queue) > 0) {
@@ -793,7 +798,7 @@ _reserve_async_slot(batch_uploader_t* uploader)
 				exit(EXIT_FAILURE);
 			}
 
-			if (as_load_uint64(&uploader->async_calls) != max_async) {
+			if (uploader->async_calls != max_async) {
 				break;
 			}
 
@@ -842,7 +847,7 @@ _batch_submit_callback(as_error* ae, as_batch_records* batch, void* udata,
 			break;
 
 		case WRITE_RESULT_RETRY:
-			as_incr_uint64(&uploader->retry_count);
+			uploader->retry_count++;
 			if (batch_uploader_has_error(uploader)) {
 				break;
 			}
@@ -984,8 +989,8 @@ _key_put_submit_finish(record_batch_tracker_t* tracker)
 {
 	batch_uploader_t* uploader = tracker->uploader;
 
-	if (!as_load_bool(&tracker->status.has_error) &&
-			as_load_bool(&tracker->should_retry) &&
+	if (!tracker->status.has_error &&
+			tracker->should_retry &&
 			!batch_uploader_has_error(uploader)) {
 
 		_record_batch_tracker_reset(tracker);
@@ -1012,7 +1017,7 @@ _key_put_submit_finish(record_batch_tracker_t* tracker)
 		}
 
 		batch_uploader_signal_error(uploader);
-		as_store_bool(&tracker->status.has_error, true);
+		tracker->status.has_error = true;
 	}
 
 	// since this is the last record, we can make the upload_batch callback.
@@ -1035,12 +1040,12 @@ _key_put_submit_callback(as_error* ae, void* udata, as_event_loop* event_loop)
 	switch (_categorize_write_result(ae, uploader->conf)) {
 		case WRITE_RESULT_PERMFAIL:
 			batch_uploader_signal_error(uploader);
-			as_store_bool(&tracker->status.has_error, true);
+			tracker->status.has_error = true;
 			break;
 
 		case WRITE_RESULT_RETRY:
-			as_incr_uint64(&uploader->retry_count);
-			as_store_bool(&tracker->should_retry, true);
+			uploader->retry_count++;
+			tracker->should_retry = true;
 			break;
 
 		case WRITE_RESULT_OK:
@@ -1048,25 +1053,17 @@ _key_put_submit_callback(as_error* ae, void* udata, as_event_loop* event_loop)
 						ae == NULL ? AEROSPIKE_OK : ae->code,
 						uploader->conf)) {
 				batch_uploader_signal_error(uploader);
-				as_store_bool(&tracker->status.has_error, true);
+				tracker->status.has_error = true;
 			}
 			else {
 				// now that the transaction has completely succeeded, we can
 				// disable retries on it.
-				as_store_bool(&key_info->should_retry, false);
+				key_info->should_retry = false;
 			}
 			break;
 	}
 
-	// NOTE: The relaxed memory model on arm means atomics no longer have the
-	// sequence memory fence effect we observed on x86. This means reference counting schemes
-	// like this can be dangerous if, for example, an instruction referencing tracker
-	// falls below the as_aaf_uint64, then tracker is destroyed in another thread,
-	// when this thread is picked up again the out of order access to tracker results in
-	// a use after free. TODO Changes like this will have to be made in all applicable areas
-	// or another solution like porting to c11 atomics, or the tso GCC plugin must be used.
-	if (as_aaf_uint64_rls(&tracker->outstanding_calls, -1lu) == 0) {
-		as_fence_acq();
+	if (--tracker->outstanding_calls == 0) {
 		_key_put_submit_finish(tracker);
 	}
 }
@@ -1092,7 +1089,7 @@ _do_key_recs_write(batch_uploader_t* uploader, record_batch_tracker_t* tracker)
 
 		key_put_info_t* key_info = &tracker->key_infos[i];
 
-		if (as_load_bool(&key_info->should_retry)) {
+		if (key_info->should_retry) {
 			const as_policy_write* policy = _get_key_put_policy(uploader,
 					key->valuep != NULL);
 
@@ -1104,15 +1101,16 @@ _do_key_recs_write(batch_uploader_t* uploader, record_batch_tracker_t* tracker)
 						"code %d: %s at %s:%d",
 						ae.code, ae.message, ae.file, ae.line);
 				batch_uploader_signal_error(uploader);
-				as_store_bool(&tracker->status.has_error, true);
+				tracker->status.has_error = true;
 
 				// Since there may have been some calls that succeeded before
 				// this one, decrement the number of outstanding calls by the
 				// number that failed to initialize (this one and all succeeding
 				// ones). If we happen to decrease this value to 0, free the
 				// tracker and release our hold on an async batch slot.
-				if (as_aaf_uint64_rls(&tracker->outstanding_calls,
-							(uint64_t) -(n_records - i)) == 0) {
+				if ( atomic_fetch_add(&tracker->outstanding_calls,
+						(uint64_t) -(n_records - i)) +
+								(uint64_t) -(n_records - i) == 0) {
 					// if this is the last record, we can make the upload_batch
 					// callback.
 					as_fence_acq();
@@ -1128,8 +1126,7 @@ _do_key_recs_write(batch_uploader_t* uploader, record_batch_tracker_t* tracker)
 			}
 		}
 		else {
-			if (as_aaf_uint64_rls(&tracker->outstanding_calls, -1lu) == 0) {
-				as_fence_acq();
+			if (--tracker->outstanding_calls == 0) {
 				// if this is the last record, we can make the upload_batch
 				// callback.
 				_key_put_submit_finish(tracker);
