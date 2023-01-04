@@ -433,7 +433,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 
 		case TLS_OPT_CERT_BLACK_LIST:
 			conf->tls.cert_blacklist = safe_strdup(optarg);
-			inf("Warning: --tls-cert-blacklist is deprecated and will be removed in the next release. Use a crl instead");
+			inf("Warning: --tls-cert-blackList is deprecated and will be removed in the next release. Use a crl instead");
 			break;
 
 		case TLS_OPT_LOG_SESSION_INFO:
@@ -932,7 +932,7 @@ usage(const char *name)
 	fprintf(stdout, " --tls-certfile=TLS_CERTFILE <path>\n");
 	fprintf(stdout, "                      Path to the chain file for mutual authentication (if\n"
 					"                      Aerospike Cluster is supporting it).\n");
-	fprintf(stdout, " --tls-cert-blacklist <path> (DEPRECATED\n");
+	fprintf(stdout, " --tls-cert-blackList <path> (DEPRECATED\n");
 	fprintf(stdout, "                      Path to a certificate blacklist file. The file should\n"
 					"                      contain one line for each blacklisted certificate.\n"
 					"                      Each line starts with the certificate serial number\n"
