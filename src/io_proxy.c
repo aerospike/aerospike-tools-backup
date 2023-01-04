@@ -1064,7 +1064,7 @@ _consumer_buffer_fwrite(consumer_buffer_t* cb, file_proxy_t* file)
 	size_t n_bytes = file_proxy_write(file, cb->src + cb->data_pos,
 			cb->pos - cb->data_pos);
 	if (cb->pos > 0 && n_bytes == 0) {
-		err("Failed writing data to file");
+		err_code("Failed writing data to file");
 		return -1;
 	}
 

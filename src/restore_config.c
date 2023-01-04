@@ -82,6 +82,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 		{ "tlsCipherSuite", required_argument, NULL, TLS_OPT_CIPHER_SUITE },
 		{ "tlsCrlCheck", no_argument, NULL, TLS_OPT_CRL_CHECK },
 		{ "tlsCrlCheckAll", no_argument, NULL, TLS_OPT_CRL_CHECK_ALL },
+		// tlsCertBlackList is deprecated
 		{ "tlsCertBlackList", required_argument, NULL, TLS_OPT_CERT_BLACK_LIST },
 		{ "tlsLogSessionInfo", no_argument, NULL, TLS_OPT_LOG_SESSION_INFO },
 		{ "tlsKeyFile", required_argument, NULL, TLS_OPT_KEY_FILE },
@@ -95,6 +96,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 		{ "tls-cipher-suite", required_argument, NULL, TLS_OPT_CIPHER_SUITE },
 		{ "tls-crl-check", no_argument, NULL, TLS_OPT_CRL_CHECK },
 		{ "tls-crl-check-all", no_argument, NULL, TLS_OPT_CRL_CHECK_ALL },
+		// tls-cert-blackList is deprecated
 		{ "tls-cert-blackList", required_argument, NULL, TLS_OPT_CERT_BLACK_LIST },
 		{ "tls-log-session-info", no_argument, NULL, TLS_OPT_LOG_SESSION_INFO },
 		{ "tls-keyfile", required_argument, NULL, TLS_OPT_KEY_FILE },
@@ -431,6 +433,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 
 		case TLS_OPT_CERT_BLACK_LIST:
 			conf->tls.cert_blacklist = safe_strdup(optarg);
+			inf("Warning: --tls-cert-blacklist is deprecated and will be removed in the next release. Use a crl instead");
 			break;
 
 		case TLS_OPT_LOG_SESSION_INFO:
@@ -929,7 +932,7 @@ usage(const char *name)
 	fprintf(stdout, " --tls-certfile=TLS_CERTFILE <path>\n");
 	fprintf(stdout, "                      Path to the chain file for mutual authentication (if\n"
 					"                      Aerospike Cluster is supporting it).\n");
-	fprintf(stdout, " --tls-cert-blacklist <path>\n");
+	fprintf(stdout, " --tls-cert-blacklist <path> (DEPRECATED\n");
 	fprintf(stdout, "                      Path to a certificate blacklist file. The file should\n"
 					"                      contain one line for each blacklisted certificate.\n"
 					"                      Each line starts with the certificate serial number\n"

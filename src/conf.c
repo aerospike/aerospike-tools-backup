@@ -323,6 +323,7 @@ config_restore_cluster(toml_table_t *conftab, restore_config_t *c, const char *i
 
 		} else if (! strcasecmp("tls-cert-blacklist", name)) {
 			status = config_str(curtab, name, (void*)&c->tls.cert_blacklist);
+			fprintf(stderr, "Warning: --tls-cert-blacklist is deprecated and will be removed in the next release. Use a crl instead\n");
 
 		} else {
 			snprintf(errbuf, ERR_BUF_SIZE, "Unknown parameter `%s` in `%s` section.\n", name,
@@ -419,6 +420,7 @@ config_backup_cluster(toml_table_t *conftab, backup_config_t *c, const char *ins
 
 		} else if (! strcasecmp("tls-cert-blacklist", name)) {
 			status = config_str(curtab, name, (void*)&c->tls.cert_blacklist);
+			fprintf(stderr, "Warning: --tls-cert-blacklist is deprecated and will be removed in the next release. Use a crl instead\n");
 
 		} else {
 			snprintf(errbuf, ERR_BUF_SIZE, "Unknown parameter `%s` in `%s` section.\n", name,
