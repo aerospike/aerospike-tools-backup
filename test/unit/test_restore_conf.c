@@ -235,7 +235,7 @@ DEFINE_STR_TEST(test_init_tls_keyfile_pw, "tls-keyfile-password", tls.keyfile_pw
 DEFINE_STR_TEST(test_init_tls_cafile, "tls-cafile", tls.cafile, "cafile.ca");
 DEFINE_STR_TEST(test_init_tls_capath, "tls-capath", tls.capath, "/opt/aerospike");
 DEFINE_STR_TEST(test_init_tls_certfile, "tls-certfile", tls.certfile, "certfile.pem");
-EFINE_STR_TEST(test_init_tls_cert_blacklist, "tls-cert-blacklist", tls.cert_blacklist,
+DEFINE_STR_TEST(test_init_tls_cert_blacklist, "tls-cert-blacklist", tls.cert_blacklist,
 		"blacklist.txt");
 
 #undef DEFINE_BOOL_TEST
