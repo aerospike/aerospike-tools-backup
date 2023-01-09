@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Aerospike, Inc.
+ * Copyright 2023 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -123,6 +123,7 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 		{ "continue", required_argument, NULL, 'c' },
 		{ "state-file-dst", required_argument, NULL, '3' },
 		{ "file-limit", required_argument, NULL, 'F' },
+		{ "file-limit-kibibytes", required_argument, NULL, COMMAND_OPT_FILE_LIMIT_KIBIBYTES },
 		{ "remove-files", no_argument, NULL, 'r' },
 		{ "remove-artifacts", no_argument, NULL, COMMAND_OPT_REMOVE_ARTIFACTS },
 		{ "estimate-samples", required_argument, NULL, COMMAND_OPT_ESTIMATE_SAMPLES },

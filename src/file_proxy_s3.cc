@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Aerospike, Inc.
+ * Copyright 2023 Aerospike, Inc.
  *
  * Portions may be licensed to Aerospike, Inc. under one or more contributor
  * license agreements.
@@ -31,7 +31,7 @@
 #include <aws/s3/model/AbortMultipartUploadRequest.h>
 #include <aws/s3/model/HeadObjectRequest.h>
 #include <aws/s3/model/ListMultipartUploadsRequest.h>
-#include <aws/s3/model/ListObjectsRequest.h>
+#include <aws/s3/model/ListObjectsV2Request.h>
 #include <aws/s3/model/ListPartsRequest.h>
 
 #pragma GCC diagnostic pop
@@ -276,6 +276,32 @@ s3_delete_object(const char* file_path)
 	return del_buffer.Flush();
 }
 
+bool
+ListAllObjects(const Aws::S3::S3Client& client, Aws::S3::Model::ListObjectsV2Request& req, Aws::Vector<Aws::S3::Model::Object>& target) {
+
+	Aws::S3::Model::ListObjectsV2Outcome outcome;
+	do {
+		outcome = client.ListObjectsV2(req);
+		if (!outcome.IsSuccess()) {
+			err("%s", outcome.GetError().GetMessage().c_str());
+			return false;
+		}
+
+		Aws::S3::Model::ListObjectsV2Result res = outcome.GetResult();
+		if (res.GetIsTruncated()) {
+			const Aws::String& ct = res.GetNextContinuationToken();
+			req.SetContinuationToken(ct);
+		}
+
+		for (const Aws::S3::Model::Object& object : res.GetContents()) {
+			target.push_back(object);
+		}
+	}
+	while (outcome.GetResult().GetIsTruncated());
+
+	return true;
+}
+
 /*
  * Delete all S3 objects with given prefix ending in ".asb".
  */
@@ -297,17 +323,17 @@ s3_delete_directory(const char* dir_path)
 
 	DeleteObjectsBuffer del_buffer(client, path.GetBucket());
 
-	Aws::S3::Model::ListObjectsRequest req;
+	Aws::S3::Model::ListObjectsV2Request req;
 	req.SetBucket(path.GetBucket());
 	req.SetPrefix(path.GetKey());
 
-	Aws::S3::Model::ListObjectsOutcome res = client.ListObjects(req);
-	if (!res.IsSuccess()) {
-		err("%s", res.GetError().GetMessage().c_str());
+	Aws::Vector<Aws::S3::Model::Object> res;
+	bool success = ListAllObjects(client, req, res);
+	if (!success) {
 		return false;
 	}
 
-	for (const Aws::S3::Model::Object& object : res.GetResult().GetContents()) {
+	for (const Aws::S3::Model::Object& object : res) {
 		const Aws::String& obj_key = object.GetKey();
 
 		// check if the extension of the object is ".asb"
@@ -467,17 +493,17 @@ bool s3_get_backup_files(const char* prefix, as_vector* file_vec)
 
 	size_t prefix_len = strlen(S3_PREFIX) + path.GetBucket().size() + 1;
 
-	Aws::S3::Model::ListObjectsRequest req;
+	Aws::S3::Model::ListObjectsV2Request req;
 	req.SetBucket(path.GetBucket());
 	req.SetPrefix(path.GetKey());
 
-	Aws::S3::Model::ListObjectsOutcome res = client.ListObjects(req);
-	if (!res.IsSuccess()) {
-		err("%s", res.GetError().GetMessage().c_str());
+	Aws::Vector<Aws::S3::Model::Object> res;
+	bool success = ListAllObjects(client, req, res);
+	if (!success) {
 		return false;
 	}
 
-	for (const Aws::S3::Model::Object& object : res.GetResult().GetContents()) {
+	for (const Aws::S3::Model::Object& object : res) {
 		const Aws::String& obj_key = object.GetKey();
 
 		// check if the extension of the object is ".asb"
@@ -780,17 +806,17 @@ _scan_objects(const backup_config_t* conf, backup_state_t* backup_state,
 	DeleteObjectsBuffer del_buffer(client, bucket);
 	uint64_t file_count = 0;
 
-	Aws::S3::Model::ListObjectsRequest req;
+	Aws::S3::Model::ListObjectsV2Request req;
 	req.SetBucket(bucket);
 	req.SetPrefix(key);
 
-	Aws::S3::Model::ListObjectsOutcome res = client.ListObjects(req);
-	if (!res.IsSuccess()) {
-		err("%s", res.GetError().GetMessage().c_str());
-		return -1;
+	Aws::Vector<Aws::S3::Model::Object> res;
+	bool success = ListAllObjects(client, req, res);
+	if (!success) {
+		return false;
 	}
 
-	for (const Aws::S3::Model::Object& object : res.GetResult().GetContents()) {
+	for (const Aws::S3::Model::Object& object : res) {
 		const Aws::String& obj_key = object.GetKey();
 
 		// check if the extension of the object is ".asb"
