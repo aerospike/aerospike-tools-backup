@@ -123,8 +123,6 @@ def do_s3_backup(max_interrupts, n_records=10000, backup_opts=None,
 
 		# give database a second to update
 		lib.safe_sleep(1)
-		# print("PAUSING...")
-		# time.sleep(99999)
 
 		res = restore_async(path, env=env,
 				restore_opts=comp_enc_mode + restore_opts +

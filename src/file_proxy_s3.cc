@@ -813,7 +813,7 @@ _scan_objects(const backup_config_t* conf, backup_state_t* backup_state,
 	Aws::Vector<Aws::S3::Model::Object> res;
 	bool success = ListAllObjects(client, req, res);
 	if (!success) {
-		return false;
+		return -1;
 	}
 
 	for (const Aws::S3::Model::Object& object : res) {
