@@ -14,7 +14,7 @@ jobs:
   build:
     runs-on: macos-11
     env:
-      AWS_SDK_CPP_VERSION: 1.9.177
+      AWS_SDK_CPP_VERSION: 1.10.48
       LIBCURL_VERSION: curl-7_83_1
       ZSTD_VERSION: 1.4.9
       LD_LIBRARY_PATH: /usr/local/lib
@@ -43,7 +43,7 @@ jobs:
     - name: install AWS requirements
       id: install-aws-requirements
       run: |
-        brew install openssl@1.1 readline cmake
+        brew install openssl@3 readline cmake
         CMAKE_VERSION=$(brew info cmake | grep -m 1 -Eo '[0-9]+\.[0-9]+\.[0-9]+')
         echo "CMAKE_VERSION=$CMAKE_VERSION" >> $GITHUB_ENV
     - name: Cache AWS C++ sdk

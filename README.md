@@ -120,7 +120,7 @@ Note: Some brew installs don't come with static libraries so source install are 
 # Install C client dependencies...
 
 # curl and aws don't come with static objects so get those later, from source
-# brew install libssh2 currently depends on openssl1.1.1. Source install it to link with openssl 3.
+# brew install libssh2 currently depends on openssl 3. Source install it to link with a different openssl.
 brew install libuv cmake zstd openssl
 
 # download libssh2
