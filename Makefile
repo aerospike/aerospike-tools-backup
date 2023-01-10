@@ -138,6 +138,7 @@ ifeq ($(AWS_SDK_STATIC_PATH),)
   LIBRARIES += -laws-crt-cpp
   LIBRARIES += -laws-c-s3
   LIBRARIES += -laws-c-auth
+  LIBRARIES += -libaws-c-sdkutils
   # TODO upgrade aws sdk, used in newer aws sdk libs
   # LIBRARIES += -laws-c-sdkutils
   LIBRARIES += -laws-c-mqtt
@@ -155,6 +156,7 @@ else
   LIBRARIES += $(AWS_SDK_STATIC_PATH)/libaws-crt-cpp.a
   LIBRARIES += $(AWS_SDK_STATIC_PATH)/libaws-c-s3.a
   LIBRARIES += $(AWS_SDK_STATIC_PATH)/libaws-c-auth.a
+  LIBRARIES += $(AWS_SDK_STATIC_PATH)/libaws-c-sdkutils.a
   # TODO upgrade aws sdk, used in newer aws sdk libs
   # LIBRARIES += $(AWS_SDK_STATIC_PATH)/libaws-c-sdkutils.a
   LIBRARIES += $(AWS_SDK_STATIC_PATH)/libaws-c-mqtt.a
