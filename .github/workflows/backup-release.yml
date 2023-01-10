@@ -11,7 +11,7 @@ jobs:
 # artifacts between jobs but currently not 
 # possible so have to build again
   build-libraries:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     name: "Tagged Release"
     env:
       CLIENTREPO: ${GITHUB_WORKSPACE}/client
