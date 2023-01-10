@@ -91,6 +91,7 @@ jobs:
     - name: Build libssh2
       if: steps.cache-libssh2.outputs.cache-hit != 'true'
       run: |
+        mkdir build_static
         pushd build_static
         cmake -DOPENSSL_ROOT_DIR=$OPENSSL_PATH -DCMAKE_BUILD_TYPE=Release ..
         cmake --build_static .
