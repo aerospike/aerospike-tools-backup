@@ -94,7 +94,7 @@ jobs:
         mkdir build_static
         pushd build_static
         cmake -DOPENSSL_ROOT_DIR=$OPENSSL_PATH -DCMAKE_BUILD_TYPE=Release ..
-        cmake --build_static .
+        cmake --build .
       working-directory: libssh2-${{ env.LIBSSH2_VERSION }}
     - name: Install libssh2
       run: |
