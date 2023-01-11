@@ -99,7 +99,7 @@ jobs:
     - name: Install libssh2
       run: |
         sudo make install
-      working-directory: libssh2-${{ env.LIBCURL_VERSION }}/build_static
+      working-directory: libssh2-${{ env.LIBSSH2_VERSION }}/build_static
     - name: Cache libcurl
       id: cache-libcurl
       uses: actions/cache@v2
