@@ -519,6 +519,8 @@ file_proxy_write(file_proxy_t* f, const void* buf, size_t count)
 		return 0;
 	}
 
+	ver_code("file_proxy_write attempting fwrite of %zu bytes", count);
+
 	switch (file_proxy_get_type(f)) {
 		case FILE_PROXY_TYPE_LOCAL:
 			bytes_written = fwrite(buf, 1, count, f->local.fd);
@@ -530,6 +532,8 @@ file_proxy_write(file_proxy_t* f, const void* buf, size_t count)
 			err("Unknown file type %u", file_proxy_get_type(f));
 			return 0;
 	}
+	
+	ver_code("file_proxy_write bytes written: %zu", bytes_written);
 	f->fpos += bytes_written;
 	return bytes_written;
 }
@@ -586,6 +590,11 @@ file_proxy_flush(file_proxy_t* f)
 			err("Unknown file type %u", file_proxy_get_type(f));
 			return EOF;
 	}
+<<<<<<< Updated upstream
+=======
+
+	ver_code("file_proxy_flush fflush returned: %d", ret);
+>>>>>>> Stashed changes
 	return ret;
 }
 

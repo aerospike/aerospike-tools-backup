@@ -347,6 +347,7 @@ void _ver_fn(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
 void inf(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
 void err(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
 void err_code(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
+void ver_code(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
 const char* boolstr(bool val);
 void hex_dump_ver(const void *data, uint32_t len);
 void hex_dump_inf(const void *data, uint32_t len);

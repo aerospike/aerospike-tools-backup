@@ -207,6 +207,23 @@ err_code(const char *format, ...)
 }
 
 /*
+ * Logs a verbose message and includes errno information.
+ *
+ * @param format  The format string for the error message.
+ */
+void
+ver_code(const char *format, ...)
+{
+	if (g_verbose()) {
+		va_list args;
+
+		va_start(args, format);
+		log_line("VER", "", format, args, true);
+		va_end(args);
+	}
+}
+
+/*
  * returns a string representation of the boolean value
  */
 const char*
