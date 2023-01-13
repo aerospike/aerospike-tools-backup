@@ -214,7 +214,7 @@ err_code(const char *format, ...)
 void
 ver_code(const char *format, ...)
 {
-	if (g_verbose()) {
+	if (g_verbose) {
 		va_list args;
 
 		va_start(args, format);

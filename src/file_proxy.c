@@ -590,11 +590,8 @@ file_proxy_flush(file_proxy_t* f)
 			err("Unknown file type %u", file_proxy_get_type(f));
 			return EOF;
 	}
-<<<<<<< Updated upstream
-=======
 
 	ver_code("file_proxy_flush fflush returned: %d", ret);
->>>>>>> Stashed changes
 	return ret;
 }
 
