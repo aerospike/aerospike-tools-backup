@@ -328,8 +328,7 @@ s3_delete_directory(const char* dir_path)
 	req.SetPrefix(path.GetKey());
 
 	Aws::Vector<Aws::S3::Model::Object> res;
-	bool success = ListAllObjects(client, req, res);
-	if (!success) {
+	if (!ListAllObjects(client, req, res)) {
 		return false;
 	}
 
@@ -498,8 +497,7 @@ bool s3_get_backup_files(const char* prefix, as_vector* file_vec)
 	req.SetPrefix(path.GetKey());
 
 	Aws::Vector<Aws::S3::Model::Object> res;
-	bool success = ListAllObjects(client, req, res);
-	if (!success) {
+	if (!ListAllObjects(client, req, res)) {
 		return false;
 	}
 
@@ -811,8 +809,7 @@ _scan_objects(const backup_config_t* conf, backup_state_t* backup_state,
 	req.SetPrefix(key);
 
 	Aws::Vector<Aws::S3::Model::Object> res;
-	bool success = ListAllObjects(client, req, res);
-	if (!success) {
+	if (!ListAllObjects(client, req, res)) {
 		return -1;
 	}
 
