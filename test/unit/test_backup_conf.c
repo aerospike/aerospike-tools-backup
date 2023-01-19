@@ -229,7 +229,7 @@ DEFINE_STR_TEST(test_init_passwd, "password", password, "this is a bad password"
 DEFINE_STR_TEST(test_init_auth_mode, "auth", auth_mode, "none");
 
 DEFINE_BOOL_TEST(test_init_tls_enable, "tls-enable", tls.enable);
-DEFINE_STR_TEST(test_init_tls_protocols, "tls-protocols", tls.protocols, "-all +TLSv1.2");
+DEFINE_STR_TEST(test_init_tls_protocols, "tls-protocols", tls.protocols, "TLSv1.2");
 DEFINE_STR_TEST(test_init_tls_cipher_suite, "tls-cipher-suite", tls.cipher_suite, "NULL-MD5");
 DEFINE_BOOL_TEST(test_init_tls_crl_check, "tls-crl-check", tls.crl_check);
 DEFINE_BOOL_TEST(test_init_tls_crl_check_all, "tls-crl-check-all", tls.crl_check_all);
