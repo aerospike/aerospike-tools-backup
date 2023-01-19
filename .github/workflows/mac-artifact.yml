@@ -40,8 +40,8 @@ jobs:
       id: install-libuv
       run: |
         brew install libuv
-    - name: install openssl@1.1
-      id: install-openssl@1.1
+    - name: install openssl-1.1
+      id: install-openssl-1.1
       run: |
         brew install openssl@1.1
     - name: install libssh2
