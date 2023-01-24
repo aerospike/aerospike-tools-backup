@@ -263,8 +263,9 @@ S3API::_init_api(S3API& s3_api)
 	Aws::InitAPI(s3_api.options);
 
 	Aws::Client::ClientConfiguration conf;
-	if (s3_api.region.empty()) {
-		err("S3 API must be enabled by specifying a region.");
+	if (s3_api.region.empty() && s3_api.endpoint.empty()) {
+		err("S3 API must be enabled by specifying a region if no endpoint "
+				"override is given.");
 		Aws::ShutdownAPI(s3_api.options);
 		return;
 	}

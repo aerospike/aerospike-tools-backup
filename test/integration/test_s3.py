@@ -24,7 +24,7 @@ def do_s3_backup(max_interrupts, n_records=10000, backup_opts=None,
 	if restore_opts == None:
 		restore_opts = []
 	
-	common_s3_opts = ['--s3-endpoint-override', '127.0.0.1:9000', '--s3-region', S3_REGION]
+	common_s3_opts = ['--s3-endpoint-override', '127.0.0.1:9000']
 
 	as_srv.start_aerospike_servers()
 
@@ -154,7 +154,7 @@ def do_s3_backup(max_interrupts, n_records=10000, backup_opts=None,
 			backup_to_file(path, *common_s3_opts, '--remove-artifacts', env=env)
 
 def test_s3_backup_small():
-	do_s3_backup(0, n_records=100)
+	do_s3_backup(0, n_records=100, backup_opts=['--s3-region', S3_REGION])
 
 def test_s3_backup():
 	do_s3_backup(0)
