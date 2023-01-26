@@ -238,7 +238,6 @@ DEFINE_STR_TEST(test_init_tls_certfile, "tls-certfile", tls.certfile, "certfile.
 DEFINE_STR_TEST(test_init_tls_cert_blacklist, "tls-cert-blacklist", tls.cert_blacklist,
 		"blacklist.txt");
 
-
 #undef DEFINE_BOOL_TEST
 #undef DEFINE_INT_TEST_MULT
 #undef DEFINE_INT_TEST

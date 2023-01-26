@@ -207,7 +207,7 @@ typedef enum {
 	TLS_OPT_CRL_CHECK,
 	// The `--tls-crl-checkall` option.
 	TLS_OPT_CRL_CHECK_ALL,
-	// The `--tls-cert-blacklist` option.
+	// The `--tls-cert-blacklist` option. (DEPRECATED)
 	TLS_OPT_CERT_BLACK_LIST,
 	// The `--tlsLogSessionInfo` option.
 	TLS_OPT_LOG_SESSION_INFO,
