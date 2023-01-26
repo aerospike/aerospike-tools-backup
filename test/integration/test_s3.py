@@ -23,6 +23,8 @@ def do_s3_backup(max_interrupts, n_records=10000, backup_opts=None,
 		backup_opts = []
 	if restore_opts == None:
 		restore_opts = []
+	
+	common_s3_opts = ['--s3-endpoint-override', '127.0.0.1:9000']
 
 	as_srv.start_aerospike_servers()
 
@@ -83,7 +85,8 @@ def do_s3_backup(max_interrupts, n_records=10000, backup_opts=None,
 
 			if state_file_dir or state_file_explicit:
 				opts += ['--state-file-dst', state_path]
-			opts += ['--s3-endpoint-override', '127.0.0.1:9000']
+
+			opts += common_s3_opts
 
 			use_opts = opts
 			# don't throttle if we won't be interrupting the backup
@@ -124,9 +127,9 @@ def do_s3_backup(max_interrupts, n_records=10000, backup_opts=None,
 		# give database a second to update
 		lib.safe_sleep(1)
 
+		restore_opts += common_s3_opts
 		res = restore_async(path, env=env,
-				restore_opts=comp_enc_mode + restore_opts +
-				['--s3-endpoint-override', '127.0.0.1:9000'])
+				restore_opts=comp_enc_mode + restore_opts)
 		ret_code = lib.sync_wait(res.wait())
 		stdout, stderr = lib.sync_wait(res.communicate())
 		print(stderr.decode())
@@ -146,14 +149,12 @@ def do_s3_backup(max_interrupts, n_records=10000, backup_opts=None,
 
 		# remove backup artifacts
 		if lib.is_dir_mode():
-			backup_to_directory(path, '--s3-endpoint-override', '127.0.0.1:9000',
-					'--remove-artifacts', env=env)
+			backup_to_directory(path, *common_s3_opts, '--remove-artifacts', env=env)
 		else:
-			backup_to_file(path, '--s3-endpoint-override', '127.0.0.1:9000',
-					'--remove-artifacts', env=env)
+			backup_to_file(path, *common_s3_opts, '--remove-artifacts', env=env)
 
 def test_s3_backup_small():
-	do_s3_backup(0, n_records=100)
+	do_s3_backup(0, n_records=100, backup_opts=['--s3-region', S3_REGION])
 
 def test_s3_backup():
 	do_s3_backup(0)
