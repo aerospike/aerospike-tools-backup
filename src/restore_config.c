@@ -906,13 +906,13 @@ usage(const char *name)
 	fprintf(stdout, "                      Set the TLS protocol selection criteria. This format\n"
 					"                      is the same as Apache's SSLProtocol documented at http\n"
 					"                      s://httpd.apache.org/docs/current/mod/mod_ssl.html#ssl\n"
-					"                      protocol . If not specified the asrestore will use '-all\n"
-					"                      +TLSv1.2' if has support for TLSv1.2,otherwise it will\n"
-					"                      be '-all +TLSv1'.\n");
+					"                      protocol . If not specified the asrestore will use 'TLSv1.2'\n"
+					"                      if has support for TLSv1.2,otherwise it will\n"
+					"                      be 'TLSv1'.\n");
 	fprintf(stdout, " --tls-cipher-suite=TLS_CIPHER_SUITE\n");
 	fprintf(stdout, "                     Set the TLS cipher selection criteria. The format is\n"
 					"                     the same as Open_sSL's Cipher List Format documented\n"
-					"                     at https://www.openssl.org/docs/man1.0.2/apps/ciphers.\n"
+					"                     at https://www.openssl.org/docs/man3.0/man1/openssl-ciphers.html.\n"
 					"                     html\n");
 	fprintf(stdout, " --tls-keyfile=TLS_KEYFILE\n");
 	fprintf(stdout, "                      Path to the key for mutual authentication (if\n"

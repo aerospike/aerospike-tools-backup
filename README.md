@@ -10,11 +10,11 @@ This is the developer documentation. For user documentation, please consult http
 Make sure you have all dependencies installed for the Aerospike C client and asbackup.
 See https://github.com/aerospike/aerospike-client-c#build-prerequisites for more C client information.
 Below are dependencies for asbackup only.
-- openssl (1.1 or 3)
+- openssl 3
 - An event library: libuv, libevent, or libev (also used by the C client submodule)
 - zstd
 - libssh2
-- aws-sdk-cpp version 1.9.177
+- aws-sdk-cpp version 1.10.55
 - curl
 
 Clone the source code of the Aerospike backup tools from GitHub.
@@ -120,7 +120,7 @@ Note: Some brew installs don't come with static libraries so source install are 
 # Install C client dependencies...
 
 # curl and aws don't come with static objects so get those later, from source
-# brew install libssh2 currently depends on openssl1.1.1. Source install it to link with openssl 3.
+# brew install libssh2 currently depends on openssl 3. Source install it to link with a different openssl.
 brew install libuv cmake zstd openssl
 
 # download libssh2

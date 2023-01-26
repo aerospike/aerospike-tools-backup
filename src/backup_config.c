@@ -1136,7 +1136,7 @@ usage(const char *name)
 	fprintf(stdout, " --tls-cipher-suite=TLS_CIPHER_SUITE\n");
 	fprintf(stdout, "                     Set the TLS cipher selection criteria. The format is\n"
 					"                     the same as Open_sSL's Cipher List Format documented\n"
-					"                     at https://www.openssl.org/docs/man1.0.2/apps/ciphers.\n"
+					"                     at https://www.openssl.org/docs/man3.0/man1/openssl-ciphers.html.\n"
 					"                     html\n");
 	fprintf(stdout, " --tls-keyfile=TLS_KEYFILE\n");
 	fprintf(stdout, "                      Path to the key for mutual authentication (if\n"
