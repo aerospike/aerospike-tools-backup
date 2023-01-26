@@ -41,6 +41,14 @@ jobs:
       id: install-libuv
       run: |
         brew install libuv
+    - name: install openssl
+      id: install-openssl
+      run: |
+        brew install openssl@1.1
+    - name: install libssh2
+      id: install-libssh2
+      run: |
+        brew install libssh2
     - name: install AWS requirements
       id: install-aws-requirements
       run: |
