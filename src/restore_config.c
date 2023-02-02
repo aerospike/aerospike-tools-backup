@@ -277,6 +277,10 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 			conf->directory = safe_strdup(optarg);
 			break;
 
+		case COMMAND_OPT_DIRECTORY_LIST:
+			conf->directory_list = safe_strdup(optarg);
+			break;
+
 		case 'i':
 			conf->input_file = safe_strdup(optarg);
 			break;
@@ -600,6 +604,11 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 
 	if (conf->unique && (conf->replace || conf->no_generation)) {
 		err("Invalid options: --unique is mutually exclusive with --replace and --no-generation.");
+		return RESTORE_CONFIG_INIT_FAILURE;
+	}
+
+	if (conf->directory && conf->directory_list) {
+		err("Invalid options: --directory and --directory-list are mutually exclusive.");
 		return RESTORE_CONFIG_INIT_FAILURE;
 	}
 

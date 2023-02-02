@@ -153,13 +153,39 @@ restore_main(int32_t argc, char **argv)
 	}
 
 	uint32_t line_no;
+	as_vector directories;
+	as_vector_init(&directories, sizeof(char*), 1); // TODO free the dir entries
+
+	// restoring from multiple directories
+	if (conf.directory_list != NULL) {
+
+		uint32_t file_count = 0;
+
+		char *dir_clone = safe_strdup(conf.directory_list);
+		split_string(dir_clone, ',', false, &directories);
+		file_count = directories.size;
+
+		for (uint32_t i = 0; i < file_count; i++) {
+			char *dir = as_vector_get_ptr(&directories, i);
+
+			if (!get_backup_files(dir, &status.file_vec)) {
+				err("Error while getting backup files from directory_list entry: %lu", i);
+				goto cleanup5;
+			}
+		}
+	}
 
 	// restoring from a directory
 	if (conf.directory != NULL) {
-		if (!get_backup_files(conf.directory, &status.file_vec)) {
-			err("Error while getting backup files");
+
+		if (!get_backup_files(dir, &status.file_vec)) {
+			err("Error while getting backup files from directory");
 			goto cleanup5;
 		}
+	}
+
+	// directory and directory_list are mutually exclusive but share this logic
+	if (conf.directory != NULL || conf.directory_list != NULL) {
 
 		if (status.file_vec.size == 0) {
 			err("No backup files found");
@@ -294,6 +320,7 @@ cleanup6:
 
 cleanup5:
 	cf_queue_destroy(job_queue);
+	as_vector_destroy(&directories);
 
 cleanup4:
 	ver("Waiting for counter thread");

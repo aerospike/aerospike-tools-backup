@@ -116,6 +116,7 @@ assert_restore_config_eq(restore_config_t *c1, restore_config_t *c2)
 	CMP_STR_FIELD(c1->bin_list, c2->bin_list);
 
 	CMP_STR_FIELD(c1->directory, c2->directory);
+	CMP_STR_FIELD(c1->directory_list, c2->directory_list);
 	CMP_STR_FIELD(c1->input_file, c2->input_file);
 	CMP_STR_FIELD(c1->machine, c2->machine);
 	CMP_INT_FIELD(c1->compress_mode, c2->compress_mode);
@@ -618,6 +619,7 @@ DEFINE_BOOL_TEST(test_init_wait, "wait", wait);
 DEFINE_INT_TEST(test_init_timeout, "timeout", timeout);
 
 DEFINE_STR_TEST(test_init_directory, "directory", directory, "/home/test_guy/this_dir");
+DEFINE_STR_TEST(test_init_directory_list, "directory-list", directory_list, "/home/test_guy/this_dir,/another/dir");
 DEFINE_STR_TEST(test_init_input_file, "input-file", input_file, "test.asb");
 DEFINE_STR_TEST(test_init_machine, "machine", machine, "test.asb");
 DEFINE_BOOL_TEST(test_init_unique, "unique", unique);
@@ -676,6 +678,7 @@ Suite* restore_conf_suite()
 	tcase_add_test(tc_init, test_init_wait);
 	tcase_add_test(tc_init, test_init_timeout);
 	tcase_add_test(tc_init, test_init_directory);
+	tcase_add_test(tc_init, test_init_directory_list);
 	tcase_add_test(tc_init, test_init_input_file);
 	tcase_add_test(tc_init, test_init_machine);
 	tcase_add_test(tc_init, test_init_unique);

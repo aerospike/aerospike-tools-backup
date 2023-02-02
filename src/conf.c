@@ -912,6 +912,9 @@ config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance,
 		} else if (! strcasecmp("directory", name)) {
 			status = config_str(curtab, name, (void*)&c->directory);
 
+		} else if (! strcasecmp("directory-list", name)) {
+			status = config_str(curtab, name, (void*)&c->directory_list);
+
 		} else if (! strcasecmp("input-file", name)) {
 			status = config_str(curtab, name, (void*)&c->input_file);
 
