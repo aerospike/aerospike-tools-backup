@@ -154,7 +154,7 @@ restore_main(int32_t argc, char **argv)
 
 	uint32_t line_no;
 	as_vector directories;
-	as_vector_init(&directories, sizeof(char*), 1); // TODO free the dir entries
+	as_vector_init(&directories, sizeof(char*), 1);
 
 	// restoring from multiple directories
 	if (conf.directory_list != NULL) {
