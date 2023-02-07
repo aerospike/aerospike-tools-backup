@@ -163,6 +163,62 @@ def backup_and_restore(filler, preparer, checker, env={}, backup_opts=None,
 			raise
 	as_srv.reset_aerospike_servers()
 
+def multi_backup_and_restore(filler, preparer, checker, env={}, backup_opts=None,
+		restore_opts=None, restore_delay=0.5, do_compress_and_encrypt=True):
+	"""
+	Do one backup-restore cycle. Unlike backup_and_restore backup directory/file paths must be provided in backup/restore opts
+	multi_backup_and_restore only runs in dir-mode.
+	"""
+	if backup_opts is None:
+		backup_opts = [["--host=localhost"]]
+
+	if restore_opts is None:
+		restore_opts = ["--host=localhost"]
+
+	as_srv.start_aerospike_servers()
+
+	context = {}
+	# fill once, since we can just keep all data after running asrestore
+	filler(context)
+
+	for i, comp_enc_mode in enumerate([
+			[],
+			['--compress=zstd'],
+			['--encrypt=aes128', '--encryption-key-file=test/test_key.pem'],
+			['--compress=zstd', '--encrypt=aes128',
+				'--encryption-key-file=test/test_key.pem'],
+			]):
+
+		if not do_compress_and_encrypt and i > 0:
+			break
+
+		try:
+			for backup_opt in backup_opts:
+				backup("--namespace", lib.NAMESPACE, \
+			"--verbose", *(backup_opt + comp_enc_mode), env=env)
+
+			# keep metadata (sets/indexes) so they can be erased after
+			# asrestore runs
+			as_srv.reset_aerospike_servers(keep_metadata=True)
+
+			# give SMD time to get deleted
+			lib.safe_sleep(restore_delay)
+
+			if preparer is not None:
+				preparer(context)
+
+			restore("--namespace", lib.NAMESPACE, \
+			"--verbose", *(restore_opts + comp_enc_mode), env=env)
+			# give SMD time to be restored
+			lib.safe_sleep(restore_delay)
+
+			checker(context)
+
+		except Exception:
+			as_srv.reset_aerospike_servers()
+			raise
+	as_srv.reset_aerospike_servers()
+
 def run_backup_w_valgrind(filler, context={}, backup_options=None):
 	"""
 	Run asbackup command with given options using valgrind

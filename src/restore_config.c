@@ -106,6 +106,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 		// asrestore section in config file
 		{ "namespace", required_argument, NULL, 'n' },
 		{ "directory", required_argument, NULL, 'd' },
+		{ "directory-list", required_argument, NULL, COMMAND_OPT_DIRECTORY_LIST },
 		{ "input-file", required_argument, NULL, 'i' },
 		{ "compress", required_argument, NULL, 'z' },
 		{ "encrypt", required_argument, NULL, 'y' },
@@ -597,8 +598,8 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 		return RESTORE_CONFIG_INIT_FAILURE;
 	}
 
-	if (conf->directory == NULL && conf->input_file == NULL) {
-		err("Please specify a directory (-d option) or an input file (-i option)");
+	if (conf->directory == NULL && conf->input_file == NULL && conf->directory_list == NULL) {
+		err("Please specify a directory (-d option), directory list (--directlory-list option), or an input file (-i option)");
 		return RESTORE_CONFIG_INIT_FAILURE;
 	}
 
@@ -609,6 +610,11 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 
 	if (conf->directory && conf->directory_list) {
 		err("Invalid options: --directory and --directory-list are mutually exclusive.");
+		return RESTORE_CONFIG_INIT_FAILURE;
+	}
+
+	if (conf->input_file && conf->directory_list) {
+		err("Invalid options: --input-file and --directory-list are mutually exclusive.");
 		return RESTORE_CONFIG_INIT_FAILURE;
 	}
 
@@ -703,6 +709,7 @@ restore_config_default(restore_config_t *conf)
 	conf->wait = false;
 	conf->ns_list = NULL;
 	conf->directory = NULL;
+	conf->directory_list = NULL;
 	conf->input_file = NULL;
 	conf->machine = NULL;
 	conf->bin_list = NULL;
@@ -778,6 +785,10 @@ restore_config_destroy(restore_config_t *conf)
 
 	if (conf->directory != NULL) {
 		cf_free(conf->directory);
+	}
+
+	if (conf->directory_list != NULL) {
+		cf_free(conf->directory_list);
 	}
 
 	if (conf->input_file != NULL) {
@@ -966,10 +977,14 @@ usage(const char *name)
 	fprintf(stdout, "                      Used to restore to a different namespace.\n");
 	fprintf(stdout, "  -d, --directory <directory>\n");
 	fprintf(stdout, "                      The directory that holds the backup files. Required, \n");
-	fprintf(stdout, "                      unless -i is used.\n");
+	fprintf(stdout, "                      unless -i or --directory-list is used.\n");
 	fprintf(stdout, "  -i, --input-file <file>\n");
 	fprintf(stdout, "                      Restore from a single backup file. Use - for stdin.\n");
-	fprintf(stdout, "                      Required, unless -d is used.\n");
+	fprintf(stdout, "                      Required, unless -d or --directory-list is used.\n");
+	fprintf(stdout, "      --directory-list <path 1>[,<path2[,...]]\n");
+	fprintf(stdout, "                      A comma seperated list of paths to directories that hold the backup files. Required, \n");
+	fprintf(stdout, "                      unless -i or -d is used. The paths may not contain commas.\n");
+	fprintf(stdout, "                      Example: `asrestore --directory-list: /path/to/dir1/,/path/to/dir2`.\n");
 	fprintf(stdout, "  -z, --compress <compression_algorithm>\n");
 	fprintf(stdout, "                      Enables decompressing of backup files using the specified compression algorithm.\n");
 	fprintf(stdout, "                      This must match the compression mode used when backing up the data.\n");

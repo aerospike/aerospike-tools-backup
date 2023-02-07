@@ -170,15 +170,18 @@ restore_main(int32_t argc, char **argv)
 
 			if (!get_backup_files(dir, &status.file_vec)) {
 				err("Error while getting backup files from directory_list entry: %lu", i);
+				cf_free(dir_clone);
 				goto cleanup5;
 			}
 		}
+
+		cf_free(dir_clone);
 	}
 
 	// restoring from a directory
 	if (conf.directory != NULL) {
 
-		if (!get_backup_files(dir, &status.file_vec)) {
+		if (!get_backup_files(conf.directory, &status.file_vec)) {
 			err("Error while getting backup files from directory");
 			goto cleanup5;
 		}
@@ -310,7 +313,7 @@ cleanup7:
 	}
 
 cleanup6:
-	if (conf.directory == NULL) {
+	if (conf.directory == NULL && conf.directory_list == NULL) {
 		if (!close_file(restore_args.shared_fd)) {
 			err("Error while closing shared backup file");
 			res = EXIT_FAILURE;

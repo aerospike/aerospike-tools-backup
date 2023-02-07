@@ -10,21 +10,27 @@ import aerospike_servers as as_srv
 import lib
 import minio_servers as min_srv
 import record_gen
-from run_backup import backup_async, restore_async, backup_to_directory, backup_to_file
+from run_backup import backup_async, restore_async, backup_to_directory, backup_to_file, multi_backup_and_restore
 
 S3_BUCKET = "asbackup-test"
 S3_REGION = "us-west-1"
+S3_ENV = {
+	"AWS_ACCESS_KEY_ID": "key",
+	"AWS_SECRET_ACCESS_KEY": "secretkey"
+}
+
 
 MINIO_NAME = "asbackup-minio"
 
+COMMON_S3_OPTS = ['--s3-endpoint-override', '127.0.0.1:9000']
+
+
 def do_s3_backup(max_interrupts, n_records=10000, backup_opts=None,
-		restore_opts=None, state_file_dir=False, state_file_explicit=False):
+		restore_opts=None, state_file_dir=False, state_file_explicit=False, backup_cout=0):
 	if backup_opts == None:
 		backup_opts = []
 	if restore_opts == None:
 		restore_opts = []
-	
-	common_s3_opts = ['--s3-endpoint-override', '127.0.0.1:9000']
 
 	as_srv.start_aerospike_servers()
 
@@ -55,10 +61,7 @@ def do_s3_backup(max_interrupts, n_records=10000, backup_opts=None,
 		else:
 			path = "s3://" + S3_BUCKET + "/test_file.asb"
 
-		env = {
-			"AWS_ACCESS_KEY_ID": "key",
-			"AWS_SECRET_ACCESS_KEY": "secretkey"
-		}
+		env = S3_ENV
 
 		if state_file_dir:
 			state_path = lib.temporary_path("state_dir")
@@ -86,7 +89,7 @@ def do_s3_backup(max_interrupts, n_records=10000, backup_opts=None,
 			if state_file_dir or state_file_explicit:
 				opts += ['--state-file-dst', state_path]
 
-			opts += common_s3_opts
+			opts += COMMON_S3_OPTS
 
 			use_opts = opts
 			# don't throttle if we won't be interrupting the backup
@@ -127,7 +130,7 @@ def do_s3_backup(max_interrupts, n_records=10000, backup_opts=None,
 		# give database a second to update
 		lib.safe_sleep(1)
 
-		restore_opts += common_s3_opts
+		restore_opts += COMMON_S3_OPTS
 		res = restore_async(path, env=env,
 				restore_opts=comp_enc_mode + restore_opts)
 		ret_code = lib.sync_wait(res.wait())
@@ -149,9 +152,9 @@ def do_s3_backup(max_interrupts, n_records=10000, backup_opts=None,
 
 		# remove backup artifacts
 		if lib.is_dir_mode():
-			backup_to_directory(path, *common_s3_opts, '--remove-artifacts', env=env)
+			backup_to_directory(path, *COMMON_S3_OPTS, '--remove-artifacts', env=env)
 		else:
-			backup_to_file(path, *common_s3_opts, '--remove-artifacts', env=env)
+			backup_to_file(path, *COMMON_S3_OPTS, '--remove-artifacts', env=env)
 
 def test_s3_backup_small():
 	do_s3_backup(0, n_records=100, backup_opts=['--s3-region', S3_REGION])
@@ -168,3 +171,40 @@ def test_s3_backup_interrupt():
 def test_s3_backup_multiple_files_interrupt():
 	do_s3_backup(10, n_records=10000, backup_opts=['--file-limit', '1'])
 
+def test_s3_restore_directory_list():
+	as_srv.start_aerospike_servers()
+
+	backup_files_loc = lib.temporary_path("minio_dir")
+	os.mkdir(backup_files_loc, 0o755)
+	min_srv.start_minio_server(MINIO_NAME, backup_files_loc)
+
+	# make the buckets
+	backup_bucket_names = ["dir1", "dir2"]
+	paths = []
+	restore_dirs = ""
+	for bucket in backup_bucket_names:
+
+		path_string = backup_files_loc + "/" + bucket
+		os.mkdir(path_string, 0o755)
+
+		s3_path = "s3://" + bucket + "/test_dir"
+		restore_dirs += s3_path + ","
+		paths.append(s3_path)
+
+	# trim trailing comma
+	restore_dirs = restore_dirs[:-1]
+
+	n_records = 8000
+	filler = lambda context: record_gen.put_records(n_records, context, lib.SET, False, 0)
+	checker = lambda context: record_gen.check_records(n_records, context, lib.SET, False, 0)
+
+	backup_options1 = COMMON_S3_OPTS + ["-d", paths[0], "--partition-list", "0-2048"]
+	backup_options2 = COMMON_S3_OPTS + ["-d", paths[1], "--partition-list", "2048-2048"]
+	restore_options = COMMON_S3_OPTS + ["--directory-list", restore_dirs]
+
+	multi_backup_and_restore(filler, None, checker, backup_opts=[backup_options1, backup_options2],
+		 restore_opts=restore_options, env=S3_ENV, do_compress_and_encrypt=False)
+
+	# remove backup artifacts
+	for path in paths:
+		backup_to_directory(path, *COMMON_S3_OPTS, '--remove-artifacts', env=S3_ENV)
