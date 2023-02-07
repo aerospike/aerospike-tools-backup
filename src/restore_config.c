@@ -599,7 +599,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 	}
 
 	if (conf->directory == NULL && conf->input_file == NULL && conf->directory_list == NULL) {
-		err("Please specify a directory (-d option), directory list (--directlory-list option), or an input file (-i option)");
+		err("Please specify a directory (-d option), directory list (--directory-list option), or an input file (-i option)");
 		return RESTORE_CONFIG_INIT_FAILURE;
 	}
 
@@ -984,7 +984,7 @@ usage(const char *name)
 	fprintf(stdout, "      --directory-list <path 1>[,<path2[,...]]\n");
 	fprintf(stdout, "                      A comma seperated list of paths to directories that hold the backup files. Required, \n");
 	fprintf(stdout, "                      unless -i or -d is used. The paths may not contain commas.\n");
-	fprintf(stdout, "                      Example: `asrestore --directory-list: /path/to/dir1/,/path/to/dir2`.\n");
+	fprintf(stdout, "                      Example: `asrestore --directory-list /path/to/dir1/,/path/to/dir2`\n");
 	fprintf(stdout, "  -z, --compress <compression_algorithm>\n");
 	fprintf(stdout, "                      Enables decompressing of backup files using the specified compression algorithm.\n");
 	fprintf(stdout, "                      This must match the compression mode used when backing up the data.\n");
