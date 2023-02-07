@@ -15,15 +15,13 @@ DOCKER_CLIENT = docker.from_env()
 
 MINIO_SERVERS = {}
 
-GLOBALS = { "running": False }
-
 def start_minio_server(name, volume, base_port=9000, root_user_key="key",
 		root_user_password="secretkey"):
 	"""
 	Starts a MinIO docker server with given name and "volume" directory
 	backing the /data directory within the container.
 	"""
-	if not GLOBALS["running"]:
+	if not MINIO_SERVERS.get(name, False):
 		container = DOCKER_CLIENT.containers.run("quay.io/minio/minio",
 				command="server /data --console-address=\":9001\"",
 				ports={
@@ -38,15 +36,13 @@ def start_minio_server(name, volume, base_port=9000, root_user_key="key",
 		container.reload()
 		ip = container.attrs["NetworkSettings"]["Networks"]["bridge"]["IPAddress"]
 
+		# let the server initialize
+		lib.safe_sleep(1)
+
 		MINIO_SERVERS[name] = {
 			"container": container,
 			"ip": ip
 		}
-
-		# let the server initialize
-		lib.safe_sleep(1)
-
-		GLOBALS["running"] = True
 
 def stop_minio_server(name):
 	"""

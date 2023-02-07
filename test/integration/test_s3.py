@@ -155,6 +155,8 @@ def do_s3_backup(max_interrupts, n_records=10000, backup_opts=None,
 			backup_to_directory(path, *COMMON_S3_OPTS, '--remove-artifacts', env=env)
 		else:
 			backup_to_file(path, *COMMON_S3_OPTS, '--remove-artifacts', env=env)
+		
+	min_srv.stop_minio_server(MINIO_NAME)
 
 def test_s3_backup_small():
 	do_s3_backup(0, n_records=100, backup_opts=['--s3-region', S3_REGION])
@@ -208,3 +210,5 @@ def test_s3_restore_directory_list():
 	# remove backup artifacts
 	for path in paths:
 		backup_to_directory(path, *COMMON_S3_OPTS, '--remove-artifacts', env=S3_ENV)
+	
+	min_srv.stop_minio_server(MINIO_NAME)
