@@ -1002,7 +1002,7 @@ usage(const char *name)
 	fprintf(stdout, "                      Example: `asrestore --directory-list /path/to/dir1/,/path/to/dir2`\n");
 	fprintf(stdout, "      --parent-directory <directory>\n");
 	fprintf(stdout, "                      A common root path for all paths used in --directory-list.\n");
-	fprintf(stdout, "                      This path is prepended to all entries in --director-list.\n");
+	fprintf(stdout, "                      This path is prepended to all entries in --directory-list.\n");
 	fprintf(stdout, "                      Example: `asrestore --parent-directory /common/root/path --directory-list /path/to/dir1/,/path/to/dir2`\n");
 	fprintf(stdout, "  -z, --compress <compression_algorithm>\n");
 	fprintf(stdout, "                      Enables decompressing of backup files using the specified compression algorithm.\n");
