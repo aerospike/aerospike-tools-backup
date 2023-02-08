@@ -168,10 +168,26 @@ restore_main(int32_t argc, char **argv)
 		for (uint32_t i = 0; i < dir_count; i++) {
 			char *dir = as_vector_get_ptr(&directories, i);
 
+			if (conf.parent_directory) {
+				size_t path_size = strlen(conf.parent_directory) + strlen(dir) + 1;
+				char *tmp_dir = dir;
+				dir = cf_malloc(path_size);
+				snprintf(dir, path_size, "%s%s", conf.parent_directory, tmp_dir);
+			}
+
 			if (!get_backup_files(dir, &status.file_vec)) {
-				err("Error while getting backup files from directory_list entry: %lu", i);
+				err("Error while getting backup files from directory_list entry: %u", i);
 				cf_free(dir_clone);
+
+				if (conf.parent_directory) {
+					cf_free(dir);
+				}
+
 				goto cleanup5;
+			}
+
+			if (conf.parent_directory) {
+				cf_free(dir);
 			}
 		}
 
