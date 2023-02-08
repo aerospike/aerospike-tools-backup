@@ -107,6 +107,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 		{ "namespace", required_argument, NULL, 'n' },
 		{ "directory", required_argument, NULL, 'd' },
 		{ "directory-list", required_argument, NULL, COMMAND_OPT_DIRECTORY_LIST },
+		{ "parent-directory", required_argument, NULL, COMMAND_OPT_PARENT_DIRECTORY},
 		{ "input-file", required_argument, NULL, 'i' },
 		{ "compress", required_argument, NULL, 'z' },
 		{ "encrypt", required_argument, NULL, 'y' },
@@ -280,6 +281,10 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 
 		case COMMAND_OPT_DIRECTORY_LIST:
 			conf->directory_list = safe_strdup(optarg);
+			break;
+
+		case COMMAND_OPT_PARENT_DIRECTORY:
+			conf->parent_directory = safe_strdup(optarg);
 			break;
 
 		case 'i':
@@ -599,7 +604,12 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 	}
 
 	if (conf->directory == NULL && conf->input_file == NULL && conf->directory_list == NULL) {
-		err("Please specify a directory (-d option), directory list (--directory-list option), or an input file (-i option)");
+		err("Invalid options: please specify a directory (-d option), directory list (--directory-list option), or an input file (-i option).");
+		return RESTORE_CONFIG_INIT_FAILURE;
+	}
+
+	if (conf->parent_directory != NULL && conf->directory_list == NULL) {
+		err("Invalid options: --parent-directory should always be used with, and only applies to --directory-list.");
 		return RESTORE_CONFIG_INIT_FAILURE;
 	}
 
@@ -710,6 +720,7 @@ restore_config_default(restore_config_t *conf)
 	conf->ns_list = NULL;
 	conf->directory = NULL;
 	conf->directory_list = NULL;
+	conf->parent_directory = NULL;
 	conf->input_file = NULL;
 	conf->machine = NULL;
 	conf->bin_list = NULL;
@@ -789,6 +800,10 @@ restore_config_destroy(restore_config_t *conf)
 
 	if (conf->directory_list != NULL) {
 		cf_free(conf->directory_list);
+	}
+
+	if (conf->parent_directory != NULL) {
+		cf_free(conf->parent_directory);
 	}
 
 	if (conf->input_file != NULL) {
@@ -985,6 +1000,10 @@ usage(const char *name)
 	fprintf(stdout, "                      A comma seperated list of paths to directories that hold the backup files. Required, \n");
 	fprintf(stdout, "                      unless -i or -d is used. The paths may not contain commas.\n");
 	fprintf(stdout, "                      Example: `asrestore --directory-list /path/to/dir1/,/path/to/dir2`\n");
+	fprintf(stdout, "      --parent-directory <directory>\n");
+	fprintf(stdout, "                      A common root path for all paths used in --directory-list.\n");
+	fprintf(stdout, "                      This path is prepended to all entries in --director-list.\n");
+	fprintf(stdout, "                      Example: `asrestore --parent-directory /common/root/path --directory-list /path/to/dir1/,/path/to/dir2`\n");
 	fprintf(stdout, "  -z, --compress <compression_algorithm>\n");
 	fprintf(stdout, "                      Enables decompressing of backup files using the specified compression algorithm.\n");
 	fprintf(stdout, "                      This must match the compression mode used when backing up the data.\n");
