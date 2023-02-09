@@ -159,13 +159,10 @@ restore_main(int32_t argc, char **argv)
 	// restoring from multiple directories
 	if (conf.directory_list != NULL) {
 
-		uint32_t dir_count = 0;
-
 		char *dir_clone = safe_strdup(conf.directory_list);
 		split_string(dir_clone, ',', false, &directories);
-		dir_count = directories.size;
 
-		for (uint32_t i = 0; i < dir_count; i++) {
+		for (uint32_t i = 0; i < directories.size; i++) {
 			char *dir = as_vector_get_ptr(&directories, i);
 
 			if (conf.parent_directory) {
