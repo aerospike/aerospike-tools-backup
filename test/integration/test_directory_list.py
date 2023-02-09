@@ -51,7 +51,8 @@ def test_restore_from_multi_parent_dir():
     backup_options1 = get_basic_backup_options() + ["--directory", local_path1, "--partition-list", "0-2048"]
     backup_options2 = get_basic_backup_options() + ["--directory", local_path2, "--partition-list", "2048-2048"]
 
-    restore_options = ["--parent-directory", root_path, "--directory-list", local_path1[len(root_path):] + "," + local_path2[len(root_path):]]
+    # +1 to local_path1[len(root_path) + 1:] to test that --parent-directory appends a /
+    restore_options = ["--parent-directory", root_path, "--directory-list", local_path1[len(root_path) + 1:] + "," + local_path2[len(root_path):]]
 
     n_records = 5000
     filler = lambda context: record_gen.put_records(n_records, context, lib.SET, False, 0)

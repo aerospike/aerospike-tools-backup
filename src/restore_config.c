@@ -598,11 +598,6 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 		return RESTORE_CONFIG_INIT_FAILURE;
 	}
 
-	if (conf->directory != NULL && conf->input_file != NULL) {
-		err("Invalid options: --directory and --input-file are mutually exclusive.");
-		return RESTORE_CONFIG_INIT_FAILURE;
-	}
-
 	if (conf->directory == NULL && conf->input_file == NULL && conf->directory_list == NULL) {
 		err("Invalid options: please specify a directory (-d option), directory list (--directory-list option), or an input file (-i option).");
 		return RESTORE_CONFIG_INIT_FAILURE;
@@ -613,17 +608,22 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 		return RESTORE_CONFIG_INIT_FAILURE;
 	}
 
+	if (conf->directory != NULL && conf->input_file != NULL) {
+		err("Invalid options: --directory and --input-file are mutually exclusive.");
+		return RESTORE_CONFIG_INIT_FAILURE;
+	}
+
 	if (conf->unique && (conf->replace || conf->no_generation)) {
 		err("Invalid options: --unique is mutually exclusive with --replace and --no-generation.");
 		return RESTORE_CONFIG_INIT_FAILURE;
 	}
 
-	if (conf->directory && conf->directory_list) {
+	if (conf->directory != NULL && conf->directory_list != NULL) {
 		err("Invalid options: --directory and --directory-list are mutually exclusive.");
 		return RESTORE_CONFIG_INIT_FAILURE;
 	}
 
-	if (conf->input_file && conf->directory_list) {
+	if (conf->input_file != NULL && conf->directory_list != NULL) {
 		err("Invalid options: --input-file and --directory-list are mutually exclusive.");
 		return RESTORE_CONFIG_INIT_FAILURE;
 	}

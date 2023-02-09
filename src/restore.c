@@ -166,10 +166,20 @@ restore_main(int32_t argc, char **argv)
 			char *dir = as_vector_get_ptr(&directories, i);
 
 			if (conf.parent_directory) {
-				size_t path_size = strlen(conf.parent_directory) + strlen(dir) + 1;
+
+				size_t parent_dir_size = strlen(conf.parent_directory);
+				size_t path_size = parent_dir_size + strlen(dir) + 1;
+				char *fmt = "%s%s";
+
+
+				if (conf.parent_directory[parent_dir_size - 1] != '/') {
+					++path_size;
+					fmt = "%s/%s";
+				}
+
 				char *tmp_dir = dir;
 				dir = cf_malloc(path_size);
-				snprintf(dir, path_size, "%s%s", conf.parent_directory, tmp_dir);
+				snprintf(dir, path_size, fmt, conf.parent_directory, tmp_dir);
 			}
 
 			if (!get_backup_files(dir, &status.file_vec)) {
