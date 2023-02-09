@@ -995,7 +995,7 @@ usage(const char *name)
 	fprintf(stdout, "                      unless -i or --directory-list is used.\n");
 	fprintf(stdout, "  -i, --input-file <file>\n");
 	fprintf(stdout, "                      Restore from a single backup file. Use - for stdin.\n");
-	fprintf(stdout, "                      Required, unless -d or --directory-list is used.\n");
+	fprintf(stdout, "                      Required, unless --directory or --directory-list is used.\n");
 	fprintf(stdout, "      --directory-list <path 1>[,<path2[,...]]\n");
 	fprintf(stdout, "                      A comma seperated list of paths to directories that hold the backup files. Required, \n");
 	fprintf(stdout, "                      unless -i or -d is used. The paths may not contain commas.\n");
