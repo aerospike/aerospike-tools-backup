@@ -183,7 +183,7 @@ restore_main(int32_t argc, char **argv)
 			}
 
 			if (!get_backup_files(dir, &status.file_vec)) {
-				err("Error while getting backup files from directory_list entry: %u", i);
+				err("Error while getting backup files from directory_list entry: %s", dir);
 				cf_free(dir_clone);
 
 				if (conf.parent_directory) {
