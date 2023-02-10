@@ -1038,7 +1038,7 @@ backup_config_log_start(const backup_config_t* conf)
 	inf("Starting backup of %s (namespace: %s, set: [%s], bins: %s, "
 			"after: %s, before: %s, no ttl only: %s, limit: %" PRId64
 			") to %s",
-			conf->host, conf->ns,
+			conf->node_list ? conf->node_list : conf->host, conf->ns,
 			conf->set_list.size == 0 ? "all" : str_vector_tostring(&conf->set_list),
 			conf->bin_list == NULL ? "[all]" : conf->bin_list,
 			after, before, ttl_zero_msg, conf->max_records,
