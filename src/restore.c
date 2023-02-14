@@ -153,13 +153,65 @@ restore_main(int32_t argc, char **argv)
 	}
 
 	uint32_t line_no;
+	as_vector directories;
+	as_vector_init(&directories, sizeof(char*), 1);
+
+	// restoring from multiple directories
+	if (conf.directory_list != NULL) {
+
+		char *dir_clone = safe_strdup(conf.directory_list);
+		split_string(dir_clone, ',', false, &directories);
+
+		for (uint32_t i = 0; i < directories.size; i++) {
+			char *dir = as_vector_get_ptr(&directories, i);
+
+			if (conf.parent_directory) {
+
+				size_t parent_dir_size = strlen(conf.parent_directory);
+				size_t path_size = parent_dir_size + strlen(dir) + 1;
+				char *fmt = "%s%s";
+
+
+				if (conf.parent_directory[parent_dir_size - 1] != '/') {
+					++path_size;
+					fmt = "%s/%s";
+				}
+
+				char *tmp_dir = dir;
+				dir = cf_malloc(path_size);
+				snprintf(dir, path_size, fmt, conf.parent_directory, tmp_dir);
+			}
+
+			if (!get_backup_files(dir, &status.file_vec)) {
+				err("Error while getting backup files from directory_list entry: %s", dir);
+				cf_free(dir_clone);
+
+				if (conf.parent_directory) {
+					cf_free(dir);
+				}
+
+				goto cleanup5;
+			}
+
+			if (conf.parent_directory) {
+				cf_free(dir);
+			}
+		}
+
+		cf_free(dir_clone);
+	}
 
 	// restoring from a directory
 	if (conf.directory != NULL) {
+
 		if (!get_backup_files(conf.directory, &status.file_vec)) {
-			err("Error while getting backup files");
+			err("Error while getting backup files from directory");
 			goto cleanup5;
 		}
+	}
+
+	// directory and directory_list are mutually exclusive but share this logic
+	if (conf.directory != NULL || conf.directory_list != NULL) {
 
 		if (status.file_vec.size == 0) {
 			err("No backup files found");
@@ -284,7 +336,7 @@ cleanup7:
 	}
 
 cleanup6:
-	if (conf.directory == NULL) {
+	if (conf.directory == NULL && conf.directory_list == NULL) {
 		if (!close_file(restore_args.shared_fd)) {
 			err("Error while closing shared backup file");
 			res = EXIT_FAILURE;
@@ -294,6 +346,7 @@ cleanup6:
 
 cleanup5:
 	cf_queue_destroy(job_queue);
+	as_vector_destroy(&directories);
 
 cleanup4:
 	ver("Waiting for counter thread");

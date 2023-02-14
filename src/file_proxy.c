@@ -1058,6 +1058,7 @@ get_backup_files(const char *dir_path, as_vector *file_vec)
 				return false;
 			}
 
+			int file_count = 0;
 			while ((entry = readdir(dir)) != NULL) {
 				if (file_proxy_is_backup_file_path(entry->d_name)) {
 					char file_path[PATH_MAX];
@@ -1077,10 +1078,11 @@ get_backup_files(const char *dir_path, as_vector *file_vec)
 
 					memcpy(elem, file_path, length + 1);
 					as_vector_append(file_vec, &elem);
+					++file_count;
 				}
 			}
 
-			inf("Found %u backup file(s) in %s", file_vec->size, dir_path);
+			inf("Found %d backup file(s) in %s", file_count, dir_path);
 			res = true;
 
 cleanup:

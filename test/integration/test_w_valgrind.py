@@ -11,13 +11,13 @@ import record_gen
 path = lib.VAL_BACKUP_FILES
 
 def get_basic_backup_options():
-    backup_options = "--directory", path, \
+    backup_options = ["--directory", path, \
 			"--namespace", lib.NAMESPACE, \
-			"-r"
+			"-r"]
     return backup_options
 
 def get_basic_restore_options():
-    restore_options = "--directory", path,
+    restore_options = ["--directory", path]
     return restore_options
 
 def test_backup_to_dir():

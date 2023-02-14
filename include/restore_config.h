@@ -130,6 +130,10 @@ typedef struct restore_config {
 	char *ns_list;
 	// The directory to restore from. `NULL`, when restoring from a single file.
 	char *directory;
+	// A list of directories to restore from. `NULL`, when restoring from a single file or directory.
+	char *directory_list;
+	// A common path to be prepended to entries in directory_list.
+	char *parent_directory;
 	// The file to restore from. `NULL`, when restoring from a directory.
 	char *input_file;
 	// The path for the machine-readable output.
