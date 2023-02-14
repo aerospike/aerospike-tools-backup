@@ -198,7 +198,10 @@ backup_status_init(backup_status_t* status, backup_config_t* conf)
 						IP_ADDR_SIZE, host, IP_ADDR_SIZE - 3);
 				goto cleanup2;
 			}
-			snprintf(host, IP_ADDR_SIZE, "[%.*s]", IP_ADDR_SIZE - 3, host);
+
+			char tmp_ip[IP_ADDR_SIZE];
+			snprintf(tmp_ip, IP_ADDR_SIZE, "[%.*s]", IP_ADDR_SIZE - 3, host);
+			memcpy(host, tmp_ip, IP_ADDR_SIZE);
 		}
 
 		if (status->node_specs[0].tls_name_str != NULL &&
@@ -1060,7 +1063,7 @@ parse_node_list(const char *node_list, node_spec **node_specs, uint32_t *n_node_
 
 		if (family == AF_INET6) {
 			++node_str;
-			length -= 2;
+			length -= 2; // trim ":]"
 		}
 
 		if (length == 0 || length > IP_ADDR_SIZE - 1) {
