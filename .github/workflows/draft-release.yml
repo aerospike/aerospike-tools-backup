@@ -1,0 +1,43 @@
+---
+name: "Draft Release"
+
+on:
+  push:
+    tags:
+      - "*"
+
+jobs:
+  draft-release-notes:
+    needs: build-asbackup-mac
+    runs-on: ubuntu-latest
+    name: Draft Release
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+    - name: Get Latest Tag
+      run: |
+        LATEST_TAG=$(git describe --tags `git rev-list --tags --max-count=1`)
+        echo "LATEST_TAG=$LATEST_TAG" >> $GITHUB_ENV
+    # below steps are for downloading release artifacts
+    - name: Download Asbackup Mac Artifact
+      uses: actions/download-artifact@v3
+      with:
+        name: darwin-X64-macOS-11-asbackup-static
+        path: artifacts
+    - name: Download Asrestore Mac Artifact
+      uses: actions/download-artifact@v3
+      with:
+        name: darwin-X64-macOS-11-asrestore-static
+        path: artifacts
+    # finally create the release and upload artifacts
+    - name: Upload Artifacts to Release Draft
+      uses: "softprops/action-gh-release@v1"
+      with:
+        draft: true
+        generate_release_notes: true
+        files: |
+          artifacts/*
+  # workflows to pull release artifacts from
+  build-asbackup-mac:
+    uses: aerospike/aerospike-tools-backup/.github/workflows/mac-artifact.yml@auto-draft-release
