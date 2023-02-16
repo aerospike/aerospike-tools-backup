@@ -5,9 +5,8 @@ on:
   push:
     tags:
       - "*"
-  push:
     branches:
-      - "auto-draft-release"
+      - auto-draft-release
 
 jobs:
   draft-release-notes:
