@@ -6,7 +6,7 @@ on:
     tags:
       - "*"
   push:
-    tags:
+    branches:
       - "auto-draft-release"
 
 jobs:
