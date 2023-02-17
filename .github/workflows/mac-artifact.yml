@@ -181,7 +181,7 @@ jobs:
       working-directory: ${{ steps.working-dir.outputs.value }}
       id: sha
       run: |
-        echo "::set-output name=sha::$(git rev-parse head)"
+        echo "sha=$(git rev-parse head)" => $GITHUB_OUTPUT
     - name: Cache asbackup build
       id: cache-asbackup
       uses: actions/cache@v3
