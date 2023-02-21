@@ -1239,6 +1239,7 @@ usage(const char *name)
 	fprintf(stdout, "  -l, --node-list <IP addr 1>:<port 1>[,<IP addr 2>:<port 2>[,...]]\n");
 	fprintf(stdout, "                      <IP addr 1>:<TLS_NAME 1>:<port 1>[,<IP addr 2>:<TLS_NAME 2>:<port 2>[,...]]\n");
 	fprintf(stdout, "                      Backup the given cluster nodes only.\n");
+	fprintf(stdout, "                      The job is parallelized over 16 scans unless --parallel is set to another value.\n");
 	fprintf(stdout, "                      This argument is mutually exclusive to partition-list/after-digest arguments.\n");
 	fprintf(stdout, "                      Default: backup all nodes in the cluster\n");
 	fprintf(stdout, "  -w, --parallel <n>\n");
