@@ -166,6 +166,12 @@ s3_set_endpoint(const char* endpoint)
 }
 
 void
+s3_set_virtual_addresses(const bool use_virtual_adressing)
+{
+	g_api.SetVirtualAddresses(use_virtual_adressing);
+}
+
+void
 s3_set_max_async_downloads(uint32_t max_async_downloads)
 {
 	g_api.SetMaxAsyncDownloads(max_async_downloads);

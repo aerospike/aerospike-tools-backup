@@ -122,6 +122,8 @@ typedef struct restore_config {
 	uint32_t s3_max_async_downloads;
 	// Logging level of the AWS S3 C+ SDK.
 	s3_log_level_t s3_log_level;
+	// Force aws client to use virtual rather than path addresses.
+	bool s3_use_virtual_addresses;
 
 	as_config_tls tls;
 	char* tls_name;

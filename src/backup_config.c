@@ -150,6 +150,7 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 		{ "s3-bucket", required_argument, NULL, COMMAND_OPT_S3_BUCKET },
 		{ "s3-profile", required_argument, NULL, COMMAND_OPT_S3_PROFILE },
 		{ "s3-endpoint-override", required_argument, NULL, COMMAND_OPT_S3_ENDPOINT_OVERRIDE },
+		{ "s3-use-virtual-addresses", no_argument, NULL, COMMAND_OPT_S3_USE_VIRTUAL_ADDRESSES },
 		{ "s3-min-part-size", required_argument, NULL, COMMAND_OPT_S3_MIN_PART_SIZE },
 		{ "s3-max-async-downloads", required_argument, NULL, COMMAND_OPT_S3_MAX_ASYNC_DOWNLOADS },
 		{ "s3-max-async-uploads", required_argument, NULL, COMMAND_OPT_S3_MAX_ASYNC_UPLOADS },
@@ -601,6 +602,10 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 			conf->s3_endpoint_override = strdup(optarg);
 			break;
 
+		case COMMAND_OPT_S3_USE_VIRTUAL_ADDRESSES:
+			conf->s3_use_virtual_addresses = true;
+			break;
+
 		case COMMAND_OPT_S3_MIN_PART_SIZE:
 			if (!better_atoi(optarg, &tmp) || tmp <= 0 ||
 					((uint64_t) tmp) > ULONG_MAX / (1024 * 1024)) {
@@ -759,6 +764,7 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 	s3_set_max_async_downloads(conf->s3_max_async_downloads);
 	s3_set_max_async_uploads(conf->s3_max_async_uploads);
 	s3_set_log_level(conf->s3_log_level);
+	s3_set_virtual_addresses(conf->s3_use_virtual_addresses);
 
 	if (conf->estimate) {
 		if (conf->filter_exp != NULL || conf->node_list != NULL ||
@@ -795,6 +801,7 @@ backup_config_default(backup_config_t* conf)
 	conf->s3_max_async_downloads = S3_DEFAULT_MAX_ASYNC_DOWNLOADS;
 	conf->s3_max_async_uploads = S3_DEFAULT_MAX_ASYNC_UPLOADS;
 	conf->s3_log_level = S3_DEFAULT_LOG_LEVEL;
+	conf->s3_use_virtual_addresses = false;
 
 	memset(conf->ns, 0, sizeof(as_namespace));
 	conf->no_bins = false;
@@ -960,6 +967,7 @@ backup_config_clone(backup_config_t* conf)
 	clone->s3_max_async_downloads = conf->s3_max_async_downloads;
 	clone->s3_max_async_uploads = conf->s3_max_async_uploads;
 	clone->s3_log_level = conf->s3_log_level;
+	clone->s3_use_virtual_addresses = conf->s3_use_virtual_addresses;
 	memcpy(clone->ns, conf->ns, sizeof(as_namespace));
 	clone->no_bins = conf->no_bins;
 	clone->state_file = safe_strdup(conf->state_file);
@@ -1334,14 +1342,10 @@ usage(const char *name)
 	fprintf(stdout, "      --s3-log-level <n>\n");
 	fprintf(stdout, "                      The log level of the AWS S3 C++ SDK. The possible levels are,\n");
 	fprintf(stdout, "                      from least to most granular:\n");
-	fprintf(stdout, "                       - Off\n");
-	fprintf(stdout, "                       - Fatal\n");
-	fprintf(stdout, "                       - Error\n");
-	fprintf(stdout, "                       - Warn\n");
-	fprintf(stdout, "                       - Info\n");
-	fprintf(stdout, "                       - Debug\n");
-	fprintf(stdout, "                       - Trace\n");
-	fprintf(stdout, "                      The default is Fatal.\n\n");
+	fprintf(stdout, "      --s3-use-virtual-addresses\n");
+	fprintf(stdout, "                      Forces the internal aws client to treat all s3 addresses as virtual.\n");
+	fprintf(stdout, "                      This flag must be used when using an arn access point.\n");
+	fprintf(stdout, "                      See https://aws.amazon.com/blogs/aws/amazon-s3-path-deprecation-plan-the-rest-of-the-story/ for more details.");
 
 	fprintf(stdout, "\n\n");
 	fprintf(stdout, "Default configuration files are read from the following files in the given order:\n");

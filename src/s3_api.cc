@@ -120,6 +120,18 @@ S3API::SetEndpoint(const std::string& endpoint)
 }
 
 S3API&
+S3API::SetVirtualAddresses(const bool use_virtual_adressing)
+{
+	if (IsInitialized()) {
+		err("Cannot configure virtual adressing after initializing S3 API");
+	}
+	else {
+		this->virtual_addresses = use_virtual_adressing;
+	}
+	return *this;
+}
+
+S3API&
 S3API::SetLogLevel(Aws::Utils::Logging::LogLevel logLevel)
 {
 	if (IsInitialized()) {
@@ -285,7 +297,7 @@ S3API::_init_api(S3API& s3_api)
 
 	s3_api.client = new Aws::S3::S3Client(conf,
 			Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Always,
-			false);
+			s3_api.virtual_addresses);
 
 	s3_api.initialized = true;
 }

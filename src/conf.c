@@ -855,6 +855,10 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 				status = false;
 			}
 
+		} else if (! strcasecmp("s3-use-virtual-addresses", name)) {
+			status = config_bool(curtab, name,
+					(void*)&c->s3_use_virtual_addresses);
+
 		} else {
 			fprintf(stderr, "Unknown parameter `%s` in `%s` section\n", name,
 					asbackup);
@@ -1113,6 +1117,10 @@ config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance,
 				err("Invalid S3 log level \"%s\"", s);
 				status = false;
 			}
+
+		} else if (! strcasecmp("s3-use-virtual-addresses", name)) {
+			status = config_bool(curtab, name,
+					(void*)&c->s3_use_virtual_addresses);
 
 		} else {
 			fprintf(stderr, "Unknown parameter `%s` in `%s` section\n", name,

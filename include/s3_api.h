@@ -68,6 +68,9 @@ public:
 	// This must be called before TryInitialize()
 	S3API& SetEndpoint(const std::string& endpoint);
 
+	// This must be called before TryInitialize()
+	S3API& SetVirtualAddresses(const bool use_virtual_adressing);
+
 	S3API& SetLogLevel(Aws::Utils::Logging::LogLevel logLevel);
 
 	S3API& SetMaxAsyncDownloads(uint32_t max_async_downloads);
@@ -129,6 +132,7 @@ private:
 	std::string bucket;
 	std::string profile;
 	std::string endpoint;
+	bool virtual_addresses;
 	Aws::Utils::Logging::LogLevel logLevel;
 
 	Aws::S3::S3Client* client;

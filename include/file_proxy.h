@@ -176,6 +176,13 @@ void s3_set_profile(const char* profile);
 void s3_set_endpoint(const char* endpoint);
 
 /*
+ * Forces the s3 client to use virtual addressing for
+ * things like the bucket path. More info at https://aws.amazon.com/blogs/aws/amazon-s3-path-deprecation-plan-the-rest-of-the-story/
+ */
+void
+s3_set_virtual_addresses(const bool use_virtual_adressing);
+
+/*
  * Sets the respective max allowed simultaneous async downloads/uploads to S3.
  */
 void s3_set_max_async_downloads(uint32_t max_async_downloads);
