@@ -371,7 +371,8 @@ backup_status_init(backup_status_t* status, backup_config_t* conf)
 			&node_names, &n_node_names);
 
 	if (n_node_names < status->n_node_specs) {
-		err("Invalid node list. Potentially duplicate nodes or nodes from different clusters.");
+		err("Invalid node list. Potentially caused by duplicate nodes, nodes from different clusters, "
+			"or if --node-list entries are IPv6, Aerospike server nodes may not have IPv6 configured.");
 		goto cleanup3;
 	}
 
