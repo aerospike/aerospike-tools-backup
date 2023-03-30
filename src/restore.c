@@ -155,6 +155,7 @@ restore_main(int32_t argc, char **argv)
 	uint32_t line_no;
 	as_vector directories;
 	as_vector_init(&directories, sizeof(char*), 1);
+	off_t total_file_size = 0;
 
 	// restoring from multiple directories
 	if (conf.directory_list != NULL) {
@@ -182,7 +183,8 @@ restore_main(int32_t argc, char **argv)
 				snprintf(dir, path_size, fmt, conf.parent_directory, tmp_dir);
 			}
 
-			if (!get_backup_files(dir, &status.file_vec)) {
+			total_file_size = get_backup_files(dir, &status.file_vec);
+			if (total_file_size < 0) {
 				err("Error while getting backup files from directory_list entry: %s", dir);
 				cf_free(dir_clone);
 
@@ -204,7 +206,8 @@ restore_main(int32_t argc, char **argv)
 	// restoring from a directory
 	if (conf.directory != NULL) {
 
-		if (!get_backup_files(conf.directory, &status.file_vec)) {
+		total_file_size = get_backup_files(conf.directory, &status.file_vec);
+		if (total_file_size < 0) {
 			err("Error while getting backup files from directory");
 			goto cleanup5;
 		}
@@ -220,17 +223,8 @@ restore_main(int32_t argc, char **argv)
 
 		if (!conf.no_records) {
 			ver("Triaging %u backup file(s)", status.file_vec.size);
-
-			for (uint32_t i = 0; i < status.file_vec.size; ++i) {
-				char *path = as_vector_get_ptr(&status.file_vec, i);
-				off_t size = get_file_size(path);
-				if (size == -1) {
-					err("Failed to get the size of file %s", path);
-					goto cleanup5;
-				}
-
-				status.estimated_bytes += size;
-			}
+			status.estimated_bytes = total_file_size;
+			ver("Estimated total backup file size %lli bytes", status.estimated_bytes);
 		}
 
 		ver("Pushing %u exclusive job(s) to job queue", status.file_vec.size);

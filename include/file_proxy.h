@@ -198,13 +198,6 @@ void s3_disable_request_processing();
 void file_proxy_cloud_shutdown();
 
 /*
- * Returns the size of a file given just its path.
- *
- * Returns -1 on error.
- */
-off_t get_file_size(const char* path);
-
-/*
  * Delete a file given a path to the file. May be a local or cloud file.
  */
 bool file_proxy_delete_file(const char* path);
@@ -382,8 +375,10 @@ uint64_t disk_space_remaining(const char *dir);
 /*
  * Scans the given directory for backup files, populating file_vec with the
  * names of the files, as a vector of strings.
+ * It returns the total size of all files added together in bytes.
+ * Return values < 0 indicate an error.
  */
-bool get_backup_files(const char *dir_path, as_vector *file_vec);
+off_t get_backup_files(const char *dir_path, as_vector *file_vec);
 
 /*
  * Returns true if the given file path is a standard intput/output path (i.e.
