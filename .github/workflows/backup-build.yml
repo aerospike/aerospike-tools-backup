@@ -34,14 +34,14 @@ jobs:
         sudo apt install -y libcurl4-openssl-dev libssl-dev uuid-dev zlib1g-dev libpulse-dev
     - name: Cache AWS C++ sdk
       id: cache-aws-sdk-cpp
-      uses: actions/cache@v2
+      uses: actions/cache@v3
       env:
         cache-name: aws-sdk-cpp
       with:
         path: aws-sdk-cpp
         key: aws-sdk-cpp-build-and-test-${{ env.AWS_SDK_CPP_VERSION }}-${{ runner.os }}
     - name: Download AWS C++ sdk
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
       if: steps.cache-aws-sdk-cpp.outputs.cache-hit != 'true'
       with:
         repository: aws/aws-sdk-cpp
@@ -60,7 +60,7 @@ jobs:
         cd aws-sdk-cpp/build
         sudo make install
     - name: Download zstd
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
       with:
         repository: facebook/zstd
         submodules: recursive
@@ -68,7 +68,7 @@ jobs:
         path: zstd-${{ env.ZSTD_VERSION }}
     - name: Cache zstd
       id: cache-zstd
-      uses: actions/cache@v2
+      uses: actions/cache@v3
       env:
         cache-name: zstd
       with:
@@ -85,14 +85,14 @@ jobs:
         cd zstd-${{ env.ZSTD_VERSION }}
         sudo make install
     - name: Download libcheck
-      uses: dsaltares/fetch-gh-release-asset@0.0.5
+      uses: dsaltares/fetch-gh-release-asset@1.1.0
       with:
         repo: "libcheck/check"
         version: "tags/0.15.2"
         file: check-0.15.2.tar.gz
     - name: Cache libcheck
       id: cache-libcheck
-      uses: actions/cache@v2
+      uses: actions/cache@v3
       env:
         cache-name: libcheck
       with:
@@ -111,7 +111,7 @@ jobs:
         sudo make install
         sudo ldconfig
     - name: Checkout c client
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
       with:
         repository: aerospike/aerospike-client-c
         submodules: recursive
@@ -121,7 +121,7 @@ jobs:
       run: make
       working-directory: client
     - name: Checkout asbackup
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
       with: 
         path: main
         submodules: recursive
@@ -181,7 +181,7 @@ jobs:
         rm -rf client
         rm -rf main/target
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v1.0.15
+      uses: codecov/codecov-action@v3
       with:
         verbose: false
         directory: main/test_target
