@@ -35,7 +35,6 @@
  */
 extern void file_proxy_s3_shutdown();
 
-extern off_t s3_get_file_size(const char* path);
 extern bool s3_delete_object(const char* path);
 extern bool s3_delete_directory(const char* path);
 
@@ -44,7 +43,7 @@ extern bool s3_prepare_output_file(const backup_config_t* conf,
 extern bool s3_scan_directory(const backup_config_t* conf,
 		const backup_status_t* status, backup_state_t* backup_state,
 		const char* path);
-extern bool s3_get_backup_files(const char* path, as_vector* file_vec);
+extern off_t s3_get_backup_files(const char* path, as_vector* file_vec);
 
 extern int file_proxy_s3_write_init(file_proxy_t*, const char* path,
 		uint64_t max_file_size);
@@ -81,30 +80,6 @@ void
 file_proxy_cloud_shutdown()
 {
 	file_proxy_s3_shutdown();
-}
-
-off_t
-get_file_size(const char* path)
-{
-	off_t size;
-	uint8_t file_proxy_type = (uint8_t) file_proxy_path_type(path);
-	struct stat stat_buf;
-
-	switch (file_proxy_type) {
-		case FILE_PROXY_TYPE_S3:
-			size = s3_get_file_size(path);
-			break;
-		case FILE_PROXY_TYPE_LOCAL:
-			if (stat(path, &stat_buf) != 0) {
-				err_code("Failed to get stats of file %s", path);
-				return -1;
-			}
-
-			size = stat_buf.st_size;
-			break;
-	}
-
-	return size;
 }
 
 bool
@@ -1029,11 +1004,11 @@ disk_space_remaining(const char *dir)
 	}
 }
 
-bool
+off_t
 get_backup_files(const char *dir_path, as_vector *file_vec)
 {
 	uint8_t file_proxy_type = file_proxy_path_type(dir_path);
-	bool res;
+	off_t total_file_size = 0;
 	DIR* dir;
 	struct dirent* entry;
 
@@ -1041,21 +1016,20 @@ get_backup_files(const char *dir_path, as_vector *file_vec)
 
 	switch (file_proxy_type) {
 		case FILE_PROXY_TYPE_S3:
-			res = s3_get_backup_files(dir_path, file_vec);
+			total_file_size = s3_get_backup_files(dir_path, file_vec);
 			break;
 
 		case FILE_PROXY_TYPE_LOCAL:
-			res = false;
 			dir = opendir(dir_path);
 
 			if (dir == NULL) {
 				if (errno == ENOENT) {
 					err("Directory %s does not exist", dir_path);
-					return false;
+					return -1;
 				}
 
 				err_code("Error while opening directory %s", dir_path);
-				return false;
+				return -1;
 			}
 
 			int file_count = 0;
@@ -1067,31 +1041,42 @@ get_backup_files(const char *dir_path, as_vector *file_vec)
 					if ((length = (size_t)snprintf(file_path, sizeof(file_path),
 									"%s/%s", dir_path, entry->d_name)) >= sizeof(file_path)) {
 						err("File path too long (%s, %s)", dir_path, entry->d_name);
+						total_file_size = -1;
 						goto cleanup;
 					}
 
 					char *elem = safe_malloc(length + 1);
 					if (elem == NULL) {
 						err("Failed to malloc space for file name %s", file_path);
+						total_file_size = -1;
 						goto cleanup;
 					}
 
 					memcpy(elem, file_path, length + 1);
 					as_vector_append(file_vec, &elem);
 					++file_count;
+
+
+					struct stat stat_buf;
+					if (stat(file_path, &stat_buf) < 0) {
+						err_code("Failed to get stats of file %s", file_path);
+						total_file_size = -1;
+						goto cleanup;
+					}
+
+					total_file_size += stat_buf.st_size;
 				}
 			}
 
 			inf("Found %d backup file(s) in %s", file_count, dir_path);
-			res = true;
 
 cleanup:
 			if (closedir(dir) < 0) {
 				err_code("Error while closing directory handle for %s", dir_path);
-				res = false;
+				total_file_size = -1;
 			}
 
-			if (!res) {
+			if (total_file_size < 0) {
 				for (uint32_t i = 0; i < file_vec->size; ++i) {
 					cf_free(as_vector_get_ptr(file_vec, i));
 				}
@@ -1102,7 +1087,7 @@ cleanup:
 			break;
 	}
 
-	return res;
+	return total_file_size;
 }
 
 bool

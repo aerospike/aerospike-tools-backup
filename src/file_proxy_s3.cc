@@ -54,7 +54,6 @@ extern "C" {
 
 void file_proxy_s3_shutdown();
 
-off_t s3_get_file_size(const char* file_path);
 bool s3_delete_object(const char* file_path);
 bool s3_delete_directory(const char* dir_path);
 
@@ -62,7 +61,7 @@ bool s3_prepare_output_file(const backup_config_t* conf, const char* file_path);
 bool s3_scan_directory(const backup_config_t* conf,
 		const backup_status_t* status, backup_state_t* backup_state,
 		const char* dir_path);
-bool s3_get_backup_files(const char* prefix, as_vector* file_vec);
+off_t s3_get_backup_files(const char* prefix, as_vector* file_vec);
 
 extern int file_proxy_s3_write_init(file_proxy_t*, const char* file_path,
 		uint64_t max_file_size);
@@ -218,38 +217,6 @@ s3_disable_request_processing()
 	if (g_api.IsInitialized()) {
 		const_cast<Aws::S3::S3Client&>(g_api.GetS3Client()).DisableRequestProcessing();
 	}
-}
-
-/*
- * Return the size of the given S3 object in bytes, or -1 on error.
- */
-off_t
-s3_get_file_size(const char* file_path)
-{
-	// if this is the first thread to access S3, we have to initialize the AWS
-	// SDK
-	if (!g_api.TryInitialize()) {
-		return -1;
-	}
-
-	const Aws::S3::S3Client& client = g_api.GetS3Client();
-	const std::pair<S3API::S3Path, bool> path_res = g_api.ParseS3Path(file_path);
-	if (!path_res.second) {
-		return -1;
-	}
-	const S3API::S3Path& path = path_res.first;
-
-	Aws::S3::Model::HeadObjectRequest meta_req;
-	meta_req.SetBucket(path.GetBucket());
-	meta_req.SetKey(path.GetKey());
-
-	Aws::S3::Model::HeadObjectOutcome meta_res = client.HeadObject(meta_req);
-	if (!meta_res.IsSuccess()) {
-		err("%s", meta_res.GetError().GetMessage().c_str());
-		return -1;
-	}
-
-	return static_cast<off_t>(meta_res.GetResult().GetContentLength());
 }
 
 /*
@@ -473,18 +440,22 @@ s3_scan_directory(const backup_config_t* conf, const backup_status_t* status,
 /*
  * Scans the given bucket for all files with prefix "key" and populates file_vec
  * with the names of all files ending in ".asb" found.
+ * It returns the total size of all files added together in bytes.
+ * Return values < 0 indicate an error.
  */
-bool s3_get_backup_files(const char* prefix, as_vector* file_vec)
+off_t s3_get_backup_files(const char* prefix, as_vector* file_vec)
 {
 	// if this is the first thread to access S3, we have to initialize the AWS
 	// SDK
 	if (!g_api.TryInitialize()) {
-		return false;
+		return -1;
 	}
+
+	off_t total_file_size = 0;
 
 	const std::pair<S3API::S3Path, bool> path_res = g_api.ParseS3Path(prefix);
 	if (!path_res.second) {
-		return false;
+		return -1;
 	}
 	const S3API::S3Path& path = path_res.first;
 
@@ -498,7 +469,7 @@ bool s3_get_backup_files(const char* prefix, as_vector* file_vec)
 
 	Aws::Vector<Aws::S3::Model::Object> res;
 	if (!ListAllObjects(client, req, res)) {
-		return false;
+		return -1;
 	}
 
 	for (const Aws::S3::Model::Object& object : res) {
@@ -516,10 +487,12 @@ bool s3_get_backup_files(const char* prefix, as_vector* file_vec)
 			snprintf(elem, prefix_len + obj_key.size() + 1,
 					S3_PREFIX "%s/%s", path.GetBucket().c_str(), obj_key.c_str());
 			as_vector_append(file_vec, &elem);
+
+			total_file_size += object.GetSize();
 		}
 	}
 
-	return true;
+	return total_file_size;
 
 cleanup:
 	for (uint32_t i = 0; i < file_vec->size; ++i) {
@@ -528,7 +501,7 @@ cleanup:
 
 	as_vector_clear(file_vec);
 
-	return false;
+	return -1;
 }
 
 int
