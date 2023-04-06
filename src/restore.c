@@ -224,7 +224,7 @@ restore_main(int32_t argc, char **argv)
 		if (!conf.no_records) {
 			ver("Triaging %u backup file(s)", status.file_vec.size);
 			status.estimated_bytes = total_file_size;
-			ver("Estimated total backup file size %lli bytes", status.estimated_bytes);
+			ver("Estimated total backup file size: %lli bytes", status.estimated_bytes);
 		}
 
 		ver("Pushing %u exclusive job(s) to job queue", status.file_vec.size);
