@@ -187,7 +187,7 @@ jobs:
       uses: actions/cache@v3
       env:
         cache-name: cache-asbackup
-        cache-index: "1"
+        cache-index: "2"
       with:
         path: |
           ${{ steps.working-dir.outputs.value }}/binaries
