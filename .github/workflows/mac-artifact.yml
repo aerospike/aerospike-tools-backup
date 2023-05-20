@@ -173,15 +173,12 @@ jobs:
         git config --global url."https://github.com/".insteadOf "git@github.com:"
         git submodule update --init --recursive -- ${{ inputs.submodule || '.' }}
       working-directory: ${{ steps.checkout-dir.outputs.value }}
-    - name: Print version
+    - name: Print and get version
       working-directory: ${{ steps.working-dir.outputs.value }}
+      id: tag
       run: |
         git describe --tags --always
-    - name: Get SHA
-      working-directory: ${{ steps.working-dir.outputs.value }}
-      id: sha
-      run: |
-        echo "sha=$(git rev-parse head)" => $GITHUB_OUTPUT
+        echo "tag=$(git describe --tags --always)" >> $GITHUB_OUTPUT
     - name: Cache asbackup build
       id: cache-asbackup
       uses: actions/cache@v3
@@ -191,7 +188,7 @@ jobs:
       with:
         path: |
           ${{ steps.working-dir.outputs.value }}/binaries
-        key: ${{ env.cache-name }}-${{ env.cache-index }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.system-info.outputs.release }}-${{ env.AWS_SDK_CPP_VERSION }}-${{ env.ZSTD_VERSION }}-${{ steps.sha.outputs.sha }}
+        key: ${{ env.cache-name }}-${{ env.cache-index }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.system-info.outputs.release }}-${{ env.AWS_SDK_CPP_VERSION }}-${{ env.ZSTD_VERSION }}-${{ steps.tag.outputs.tag }}
     - name: Install AWS C++ sdk static library
       if: steps.cache-asbackup.outputs.cache-hit != 'true'
       run: |
