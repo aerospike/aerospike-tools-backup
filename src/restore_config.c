@@ -575,7 +575,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 			break;
 
 		case COMMAND_OPT_S3_CONNECT_TIMEOUT:
-			if (!better_atoi(optarg, &tmp) || tmp <= 0 || tmp > UINT_MAX) {
+			if (!better_atoi(optarg, &tmp) || tmp < 0 || tmp > UINT_MAX) {
 				err("Invalid S3 connect timeout value %s", optarg);
 				return RESTORE_CONFIG_INIT_FAILURE;
 			}
