@@ -171,6 +171,12 @@ s3_set_max_async_downloads(uint32_t max_async_downloads)
 }
 
 void
+s3_set_connect_timeout_ms(uint32_t connect_timeout_ms)
+{
+	g_api.SetConnectTimeoutMS(connect_timeout_ms);
+}
+
+void
 s3_set_max_async_uploads(uint32_t max_async_uploads)
 {
 	g_api.SetMaxAsyncUploads(max_async_uploads);

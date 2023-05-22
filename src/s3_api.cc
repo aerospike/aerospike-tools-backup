@@ -145,6 +145,13 @@ S3API::SetMaxAsyncUploads(uint32_t max_async_uploads)
 	return *this;
 }
 
+S3API&
+S3API::SetConnectTimeoutMS(uint32_t connect_timeout_ms)
+{
+	this->connect_timeout_ms = connect_timeout_ms;
+	return *this;
+}
+
 GroupDownloadManager*
 S3API::GetGroupDownloadManager()
 {
@@ -282,6 +289,8 @@ S3API::_init_api(S3API& s3_api)
 
 	conf.maxConnections = std::max(s3_api.max_async_downloads,
 			s3_api.max_async_uploads);
+	
+	conf.connectTimeoutMs = s3_api.connect_timeout_ms;
 
 	s3_api.client = new Aws::S3::S3Client(conf,
 			Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Always,
