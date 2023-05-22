@@ -1138,8 +1138,9 @@ usage(const char *name)
 	fprintf(stdout, "                       - Trace\n");
 	fprintf(stdout, "                      The default is Fatal.\n");
 	fprintf(stdout, "      --s3-connect-timeout <ms>\n");
-	fprintf(stdout, "                      The internal aws s3 client's connection timeout in milliseconds.\n");
-	fprintf(stdout, "                      Corresponds to the connectTimeoutMS aws-sdk-cpp client configuration.\n\n");
+	fprintf(stdout, "                      The AWS S3 client's connection timeout in milliseconds.\n");
+	fprintf(stdout, "                      This is equivalent to cli-connect-timeout in the AWS CLI,\n");
+	fprintf(stdout, "                      or connectTimeoutMS in the aws-sdk-cpp client configuration.\n\n");
 
 	fprintf(stdout, "\n\n");
 	fprintf(stdout, "Default configuration files are read from the following files in the given order:\n");
