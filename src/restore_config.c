@@ -150,6 +150,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 		{ "s3-endpoint-override", required_argument, NULL, COMMAND_OPT_S3_ENDPOINT_OVERRIDE },
 		{ "s3-max-async-downloads", required_argument, NULL, COMMAND_OPT_S3_MAX_ASYNC_DOWNLOADS },
 		{ "s3-log-level", required_argument, NULL, COMMAND_OPT_S3_LOG_LEVEL },
+		{ "s3-connect-timeout", required_argument, NULL, COMMAND_OPT_S3_CONNECT_TIMEOUT },
 		{ NULL, 0, NULL, 0 }
 	};
 
@@ -573,6 +574,14 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 			conf->s3_max_async_downloads = (uint32_t) tmp;
 			break;
 
+		case COMMAND_OPT_S3_CONNECT_TIMEOUT:
+			if (!better_atoi(optarg, &tmp) || tmp < 0 || tmp > UINT_MAX) {
+				err("Invalid S3 connect timeout value %s", optarg);
+				return RESTORE_CONFIG_INIT_FAILURE;
+			}
+			conf->s3_connect_timeout = (uint32_t) tmp;
+			break;
+
 		case COMMAND_OPT_S3_LOG_LEVEL:
 			if (!s3_parse_log_level(optarg, &s3_log_level)) {
 				err("Invalid S3 log level \"%s\"", optarg);
@@ -651,6 +660,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 	}
 
 	s3_set_max_async_downloads(conf->s3_max_async_downloads);
+	s3_set_connect_timeout_ms(conf->s3_connect_timeout);
 	s3_set_log_level(conf->s3_log_level);
 
 	if (conf->nice_list != NULL) {
@@ -708,6 +718,7 @@ restore_config_default(restore_config_t *conf)
 	conf->s3_profile = NULL;
 	conf->s3_endpoint_override = NULL;
 	conf->s3_max_async_downloads = S3_DEFAULT_MAX_ASYNC_DOWNLOADS;
+	conf->s3_connect_timeout = S3_DEFAULT_CONNECT_TIMEOUT_MS;
 	conf->s3_log_level = S3_DEFAULT_LOG_LEVEL;
 
 	conf->parallel = DEFAULT_THREADS;
@@ -1125,7 +1136,11 @@ usage(const char *name)
 	fprintf(stdout, "                       - Info\n");
 	fprintf(stdout, "                       - Debug\n");
 	fprintf(stdout, "                       - Trace\n");
-	fprintf(stdout, "                      The default is Fatal.\n\n");
+	fprintf(stdout, "                      The default is Fatal.\n");
+	fprintf(stdout, "      --s3-connect-timeout <ms>\n");
+	fprintf(stdout, "                      The AWS S3 client's connection timeout in milliseconds.\n");
+	fprintf(stdout, "                      This is equivalent to cli-connect-timeout in the AWS CLI,\n");
+	fprintf(stdout, "                      or connectTimeoutMS in the aws-sdk-cpp client configuration.\n\n");
 
 	fprintf(stdout, "\n\n");
 	fprintf(stdout, "Default configuration files are read from the following files in the given order:\n");

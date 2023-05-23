@@ -137,6 +137,14 @@ assert_restore_config_eq(restore_config_t *c1, restore_config_t *c2)
 	CMP_INT_FIELD(c1->extra_ttl, c2->extra_ttl);
 	CMP_INT_FIELD((int64_t) c1->bandwidth, (int64_t) c2->bandwidth);
 	CMP_INT_FIELD(c1->tps, c2->tps);
+
+	CMP_STR_FIELD(c1->s3_region, c2->s3_region);
+	CMP_STR_FIELD(c1->s3_bucket, c2->s3_bucket);
+	CMP_STR_FIELD(c1->s3_profile, c2->s3_profile);
+	CMP_STR_FIELD(c1->s3_endpoint_override, c2->s3_endpoint_override);
+	CMP_INT_FIELD(c1->s3_max_async_downloads, c2->s3_max_async_downloads);
+	CMP_INT_FIELD(c1->s3_connect_timeout, c2->s3_connect_timeout);
+	CMP_INT_FIELD(c1->s3_log_level, c2->s3_log_level);
 }
 
 
@@ -303,6 +311,24 @@ START_TEST(test_init_ns_list)
 }
 END_TEST
 
+START_TEST(test_init_s3_log_level)
+{
+	tmp_file_init("", "s3-log-level=\"Debug\"\n", "");
+	restore_config_t c1;
+	restore_config_t c2;
+	restore_config_default(&c1);
+	restore_config_default(&c2);
+
+	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, false), 0);
+
+	c2.s3_log_level = Debug;
+
+	assert_restore_config_eq(&c1, &c2);
+
+	restore_config_destroy(&c2);
+	restore_config_destroy(&c1);
+}
+END_TEST
 
 START_TEST(test_init_compress_mode)
 {
@@ -632,6 +658,14 @@ DEFINE_INT_TEST(test_init_extra_ttl, "extra-ttl", extra_ttl);
 DEFINE_STR_TEST(test_init_bandwidth, "nice", nice_list, "1024,100");
 DEFINE_INT_TEST(test_init_tps, "tps", tps);
 
+DEFINE_STR_TEST(test_init_s3_region, "s3-region", s3_region, "us-west-1");
+DEFINE_STR_TEST(test_init_s3_bucket, "s3-bucket", s3_bucket, "my-hosted-content");
+DEFINE_STR_TEST(test_init_s3_profile, "s3-profile", s3_profile, "default");
+DEFINE_STR_TEST(test_init_s3_endpoint_override, "s3-endpoint-override", s3_endpoint_override,
+		"https://<accountid>.r2.test.com");
+DEFINE_INT_TEST(test_init_s3_max_async_downloads, "s3-max-async-downloads", s3_max_async_downloads);
+DEFINE_INT_TEST(test_init_s3_connect_timeout, "s3-connect-timeout", s3_connect_timeout);
+
 
 Suite* restore_conf_suite()
 {
@@ -691,6 +725,15 @@ Suite* restore_conf_suite()
 	tcase_add_test(tc_init, test_init_extra_ttl);
 	tcase_add_test(tc_init, test_init_bandwidth);
 	tcase_add_test(tc_init, test_init_tps);
+	tcase_add_test(tc_init, test_init_compress_mode);
+
+	tcase_add_test(tc_init, test_init_s3_region);
+	tcase_add_test(tc_init, test_init_s3_bucket);
+	tcase_add_test(tc_init, test_init_s3_profile);
+	tcase_add_test(tc_init, test_init_s3_endpoint_override);
+	tcase_add_test(tc_init, test_init_s3_max_async_downloads);
+	tcase_add_test(tc_init, test_init_s3_connect_timeout);
+	tcase_add_test(tc_init, test_init_s3_log_level);
 	suite_add_tcase(s, tc_init);
 
 	return s;

@@ -87,12 +87,14 @@ typedef struct backup_config {
 	char* s3_profile;
 	// An alternative endpoint for S3 compatible storage to send all S3 requests to.
 	char* s3_endpoint_override;
-	// A user override of the minimum part size to use for S3 Multipart Uplaod parts.
+	// A user override of the minimum part size to use for S3 Multipart Upload parts.
 	uint64_t s3_min_part_size;
 	// Max simultaneous download requests from S3 allowed at a time.
 	uint32_t s3_max_async_downloads;
 	// Max simultaneous upload requests from S3 allowed at a time.
 	uint32_t s3_max_async_uploads;
+	// aws-sdk-cpp client connectTimeoutMS.
+	uint32_t s3_connect_timeout;
 	// Logging level of the AWS S3 C+ SDK.
 	s3_log_level_t s3_log_level;
 

@@ -60,6 +60,7 @@ typedef struct backup_state backup_state_t;
 
 #define S3_DEFAULT_MAX_ASYNC_UPLOADS 16
 #define S3_DEFAULT_MAX_ASYNC_DOWNLOADS 32
+#define S3_DEFAULT_CONNECT_TIMEOUT_MS 1000
 
 #define S3_DEFAULT_LOG_LEVEL ((s3_log_level_t) Fatal)
 
@@ -180,6 +181,12 @@ void s3_set_endpoint(const char* endpoint);
  */
 void s3_set_max_async_downloads(uint32_t max_async_downloads);
 void s3_set_max_async_uploads(uint32_t max_async_uploads);
+
+/*
+ * Sets the S3 client connectTimeoutMS client config field.
+ */
+void
+s3_set_connect_timeout_ms(uint32_t connect_timeout_ms);
 
 /*
  * Sets the logging level of the AWS c++ sdk.

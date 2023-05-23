@@ -847,6 +847,14 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 				status = false;
 			}
 
+		} else if (! strcasecmp("s3-connect-timeout", name)) {
+			status = config_int64(curtab, name, (void*)&i_val);
+			if (i_val >= 0 && i_val <= UINT_MAX) {
+				c->s3_connect_timeout = (uint32_t) i_val;
+			} else {
+				status = false;
+			}
+
 		} else if (! strcasecmp("s3-log-level", name)) {
 			s = NULL;
 			status = config_str(curtab, name, (void*)&s);
@@ -1097,6 +1105,14 @@ config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance,
 
 		} else if (! strcasecmp("s3-endpoint-override", name)) {
 			status = config_str(curtab, name, (void*)&c->s3_endpoint_override);
+
+		} else if (! strcasecmp("s3-connect-timeout", name)) {
+			status = config_int64(curtab, name, (void*)&i_val);
+			if (i_val >= 0 && i_val <= UINT_MAX) {
+				c->s3_connect_timeout = (uint32_t) i_val;
+			} else {
+				status = false;
+			}
 
 		} else if (! strcasecmp("s3-max-async-downloads", name)) {
 			status = config_int64(curtab, name, (void*)&i_val);

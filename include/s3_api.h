@@ -74,6 +74,8 @@ public:
 
 	S3API& SetMaxAsyncUploads(uint32_t max_async_uploads);
 
+	S3API& SetConnectTimeoutMS(uint32_t connect_timeout_ms);
+
 	GroupDownloadManager* GetGroupDownloadManager();
 
 	const std::string& GetRegion() const;
@@ -133,9 +135,10 @@ private:
 
 	Aws::S3::S3Client* client;
 
-	// must be initialized with SetMaxAsync... methods
+	// must be initialized with Set<var_name>... methods
 	uint32_t max_async_uploads;
 	uint32_t max_async_downloads;
+	uint32_t connect_timeout_ms;
 
 	// the current number of concurrent async uploads
 	std::atomic<uint32_t> async_uploads;

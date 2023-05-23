@@ -165,7 +165,7 @@ def test_s3_backup():
 	do_s3_backup(0)
 
 def test_s3_backup_multiple_files():
-	do_s3_backup(0, n_records=10000, backup_opts=['--file-limit', '1'])
+	do_s3_backup(0, n_records=10000, backup_opts=['--file-limit', '1', '--s3-connect-timeout', '2000'], restore_opts=['--s3-connect-timeout', '2000'])
 
 def test_s3_backup_interrupt():
 	do_s3_backup(1, n_records=10000, backup_opts=['--records-per-second', '200'])
