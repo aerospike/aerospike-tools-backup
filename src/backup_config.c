@@ -1221,7 +1221,7 @@ usage(const char *name)
 	fprintf(stdout, "                      value (in MiB) Only used when backing up to a directory.\n");
 	fprintf(stdout, "                      Default: 250.\n");
 	fprintf(stdout, "  -L, --records-per-second <rps>\n");
-	fprintf(stdout, "                      Limit returned records per second (rps) rate for each server.\n");
+	fprintf(stdout, "                      Limit total returned records per second (rps).\n");
 	fprintf(stdout, "                      Do not apply rps limit if records-per-second is zero.\n");
 	fprintf(stdout, "                      Default: 0.\n");
 	fprintf(stdout, "  -v, --verbose\n");
