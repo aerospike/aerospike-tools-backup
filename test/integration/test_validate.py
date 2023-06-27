@@ -5,26 +5,8 @@ Tests the representation of bin names in backup files.
 """
 
 import lib
+import aerospike
 from run_backup import backup_and_restore
-
-COMMENTS = lib.identifier_variations(100, False)
-
-def put_udf_files(context, comments):
-	"""
-	Creates UDF files with the given comments.
-	"""
-	for comment in comments:
-		content = "--[=======[\n" + comment + "\n--]=======]\n"
-		path = lib.put_udf_file(content)
-		context[os.path.basename(path)] = content
-
-def check_udf_files(context):
-	"""
-	Retrieves and verifies the UDF files referred to by the context.
-	"""
-	for path in context:
-		content = lib.get_udf_file(path)
-		assert lib.eq(content, context[path]), "UDF file %s has invalid content" % path
 
 SET_NAME = lib.SET
 BIN_NAME = "bin1"
@@ -41,9 +23,12 @@ def put_all(context):
 
 def check_all(context):
 	assert lib.test_record(SET_NAME, KEY) is False
-	lib.check_simple_index(SET_NAME, BIN_NAME)
-	content = lib.get_udf_file(UDF_PATH)
-	assert not content
+
+	with aerospike.exception.IndexNotFoundErr:
+		lib.check_simple_index(SET_NAME, BIN_NAME, VAL)
+
+	with aerospike.exception.UDFNotFoundErr:
+		lib.get_udf_file(UDF_PATH)
 
 def test_validate():
 	"""

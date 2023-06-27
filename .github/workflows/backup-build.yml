@@ -134,6 +134,9 @@ jobs:
     - name: Unit Test
       run: make unit
       working-directory: main
+    - name: Test Validate
+      run: make run_test_validate
+      working-directory: main
     - name: Test Bin Name
       run: make run_test_bin_name
       working-directory: main
