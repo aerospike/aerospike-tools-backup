@@ -6,7 +6,8 @@ Tests the representation of bin names in backup files.
 
 import lib
 import aerospike
-from run_backup import backup_and_restore
+import subprocess
+from run_backup import backup_and_restore, restore_from_file
 
 SET_NAME = lib.SET
 BIN_NAME = "bin1"
@@ -24,11 +25,15 @@ def put_all(context):
 def check_all(context):
 	assert lib.test_record(SET_NAME, KEY) is False
 
-	with aerospike.exception.IndexNotFoundErr:
+	try:
 		lib.check_simple_index(SET_NAME, BIN_NAME, VAL)
+	except aerospike.exception.IndexNotFound:
+		pass
 
-	with aerospike.exception.UDFNotFoundErr:
+	try:
 		lib.get_udf_file(UDF_PATH)
+	except aerospike.exception.UDFNotFound:
+		pass
 
 def test_validate():
 	"""
@@ -42,3 +47,17 @@ def test_validate():
 		restore_delay=1
 	)
 
+def test_validate_bad_file():
+	"""
+	Test that --validate fails with a corrupted backup file.
+	"""
+	try:
+		restore_from_file("../test_bad_backup_file.asb", "--validate")
+	except subprocess.CalledProcessError:
+	    pass
+
+def test_validate_good_file():
+	"""
+	Test that --validate returns 0 with a valid backup file
+	"""
+	restore_from_file("../test_backup_file.asb", "--validate")

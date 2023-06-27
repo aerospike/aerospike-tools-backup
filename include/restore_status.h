@@ -46,6 +46,7 @@ extern "C" {
  */
 typedef struct restore_status {
 	// The Aerospike client.
+	// NOTE this is NULL if validate is true
 	aerospike* as;
 	// Server version info struct.
 	server_version_t version_info;
@@ -61,6 +62,11 @@ typedef struct restore_status {
 	// The true batch size to use in the run, which will be set to the default
 	// if conf->batch_size is UNDEFINED.
 	uint32_t batch_size;
+
+	// true when asrestore is used with --validate
+	// in this case no records are written, as is NULL
+	// and batch_uploader is not initialised
+	bool validate;
 
 	// The list of backup files to restore.
 	as_vector file_vec;

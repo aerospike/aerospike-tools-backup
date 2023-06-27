@@ -101,12 +101,20 @@ restore_main(int32_t argc, char **argv)
 	signal(SIGINT, sig_hand);
 	signal(SIGTERM, sig_hand);
 
-	inf("Starting restore to %s (bins: %s, sets: %s) from %s", conf.host,
-			conf.bin_list == NULL ? "[all]" : conf.bin_list,
-			conf.set_list == NULL ? "[all]" : conf.set_list,
-			conf.input_file != NULL ?
-					file_proxy_is_std_path(conf.input_file) ? "[stdin]" : conf.input_file :
-					conf.directory);
+	if (conf.validate) {
+		inf("Starting validation of %s",
+				conf.input_file != NULL ?
+						file_proxy_is_std_path(conf.input_file) ? "[stdin]" : conf.input_file :
+						conf.directory);
+	}
+	else {
+		inf("Starting restore to %s (bins: %s, sets: %s) from %s", conf.host,
+				conf.bin_list == NULL ? "[all]" : conf.bin_list,
+				conf.set_list == NULL ? "[all]" : conf.set_list,
+				conf.input_file != NULL ?
+						file_proxy_is_std_path(conf.input_file) ? "[stdin]" : conf.input_file :
+						conf.directory);
+	}
 
 	FILE *mach_fd = NULL;
 
@@ -116,10 +124,13 @@ restore_main(int32_t argc, char **argv)
 	}
 
 	char (*node_names)[][AS_NODE_NAME_SIZE] = NULL;
-	uint32_t n_node_names;
-	get_node_names(status.as->cluster, NULL, 0, &node_names, &n_node_names);
+	uint32_t n_node_names = 0;
 
-	inf("Processing %u node(s)", n_node_names);
+	if (!conf.validate) {
+		get_node_names(status.as->cluster, NULL, 0, &node_names, &n_node_names);
+
+		inf("Processing %u node(s)", n_node_names);
+	}
 
 	pthread_t counter_thread;
 	counter_thread_args counter_args;
@@ -245,7 +256,11 @@ restore_main(int32_t argc, char **argv)
 	}
 	// restoring from a single backup file
 	else {
-		inf("Restoring %s", conf.input_file);
+		inf(
+			"%s %s", 
+			conf.validate ? "Validating" : "Restoring",
+			conf.input_file
+		);
 
 		restore_args.shared_fd =
 			(io_read_proxy_t*) cf_malloc(sizeof(io_read_proxy_t));
@@ -317,7 +332,7 @@ cleanup7:
 		}
 	}
 
-	if (!batch_uploader_await(&status.batch_uploader)) {
+	if (!conf.validate && !batch_uploader_await(&status.batch_uploader)) {
 		res = EXIT_FAILURE;
 	}
 
@@ -720,7 +735,7 @@ restore_thread_func(void *cont)
 			break;
 		}
 
-		if (!uploader_init) {
+		if (!uploader_init && !args.conf->validate) {
 			if (record_uploader_init(&record_uploader,
 						&args.status->batch_uploader, args.status->batch_size) != 0) {
 				err("Failed to initialize record uploader");
@@ -987,7 +1002,8 @@ counter_thread_func(void *cont)
 		uint64_t inserted_records = status->inserted_records;
 		uint64_t existed_records = status->existed_records;
 		uint64_t fresher_records = status->fresher_records;
-		uint64_t retry_count = batch_uploader_retry_count(&status->batch_uploader);
+		// no retires will ever occur if we are validating backup files because there are no writes
+		uint64_t retry_count = conf->validate ? 0 : batch_uploader_retry_count(&status->batch_uploader);
 		uint32_t index_count = status->index_count;
 		uint32_t udf_count = status->udf_count;
 
