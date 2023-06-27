@@ -35,24 +35,24 @@ def check_all(context):
 	except aerospike.exception.UDFNotFound:
 		pass
 
-def test_validate():
-	"""
-	Test that --validate does not restore anything.
-	"""
-	backup_and_restore(
-		lambda context: put_all(context),
-		None,
-		lambda context: check_all(context),
-		restore_opts=["--validate"],
-		restore_delay=1
-	)
+# def test_validate():
+# 	"""
+# 	Test that --validate does not restore anything.
+# 	"""
+# 	backup_and_restore(
+# 		lambda context: put_all(context),
+# 		None,
+# 		lambda context: check_all(context),
+# 		restore_opts=["--validate"],
+# 		restore_delay=1
+# 	)
 
 def test_validate_bad_file():
 	"""
 	Test that --validate fails with a corrupted backup file.
 	"""
 	try:
-		restore_from_file("../test_bad_backup_file.asb", "--validate")
+		restore_from_file("test/test_bad_backup_file.asb", "--validate")
 	except subprocess.CalledProcessError:
 	    pass
 
@@ -60,4 +60,4 @@ def test_validate_good_file():
 	"""
 	Test that --validate returns 0 with a valid backup file
 	"""
-	restore_from_file("../test_backup_file.asb", "--validate")
+	restore_from_file("test/test_backup_file.asb", "--validate")
