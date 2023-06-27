@@ -86,6 +86,7 @@ typedef struct restore_config {
 	bool indexes_last;
 	bool no_udfs;
 	bool wait;
+	bool validate;
 	// timeout for Aerospike commands.
 	uint32_t timeout;
 	// The max number of times a write transaction will be retried.

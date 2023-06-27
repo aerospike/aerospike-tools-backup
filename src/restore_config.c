@@ -124,6 +124,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 		{ "no-generation", no_argument, NULL, 'g' },
 		{ "extra-ttl", required_argument, NULL, 'l' },
 		{ "nice", required_argument, NULL, 'N' },
+		{ "validate", no_argument, NULL, COMMAND_OPT_VALIDATE },
 		{ "no-records", no_argument, NULL, 'R' },
 		{ "no-indexes", no_argument, NULL, 'I' },
 		{ "indexes-last", no_argument, NULL, 'L' },
@@ -384,6 +385,10 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 
 		case 'N':
 			conf->nice_list = safe_strdup(optarg);
+			break;
+
+		case COMMAND_OPT_VALIDATE:
+			conf->validate = true;
 			break;
 
 		case 'R':
@@ -724,6 +729,7 @@ restore_config_default(restore_config_t *conf)
 	conf->parallel = DEFAULT_THREADS;
 	conf->nice_list = NULL;
 	conf->no_records = false;
+	conf->validate = false;
 	conf->no_indexes = false;
 	conf->indexes_last = false;
 	conf->no_udfs = false;
@@ -1062,6 +1068,8 @@ usage(const char *name)
 	fprintf(stdout, "  -N, --nice <bandwidth>,<TPS>\n");
 	fprintf(stdout, "                      The limits for read storage bandwidth in MiB/s and \n");
 	fprintf(stdout, "                      write operations in TPS.\n");
+	fprintf(stdout, "      --validate\n");
+	fprintf(stdout, "                      Validate backup files but don't restore anything.\n");
 	fprintf(stdout, "  -R, --no-records\n");
 	fprintf(stdout, "                      Don't restore any records.\n");
 	fprintf(stdout, "  -I, --no-indexes\n");
