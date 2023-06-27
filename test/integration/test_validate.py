@@ -35,17 +35,17 @@ def check_all(context):
 	except aerospike.exception.UDFNotFound:
 		pass
 
-# def test_validate():
-# 	"""
-# 	Test that --validate does not restore anything.
-# 	"""
-# 	backup_and_restore(
-# 		lambda context: put_all(context),
-# 		None,
-# 		lambda context: check_all(context),
-# 		restore_opts=["--validate"],
-# 		restore_delay=1
-# 	)
+def test_validate():
+	"""
+	Test that --validate does not restore anything.
+	"""
+	backup_and_restore(
+		lambda context: put_all(context),
+		None,
+		lambda context: check_all(context),
+		restore_opts=["--validate"],
+		restore_delay=1
+	)
 
 def test_validate_bad_file():
 	"""
