@@ -397,6 +397,25 @@ def check_map_value_index(set_name, bin_name, value):
 	"""
 	check_complex_index(set_name, bin_name, aerospike.INDEX_TYPE_MAPVALUES, value)
 
+def index_found_in_info_res(response, set_name, bin_name, index_type):
+	"""
+	Test presense of a given secondary index in client's response to info cmd
+	"""
+	found = False
+	itype = {
+		aerospike.INDEX_TYPE_INTEGER : "integer",
+		aerospike.INDEX_TYPE_STRING : "string",
+	}
+	expected_values = {"ns": NAMESPACE, "set": set_name, "indexname": bin_name, "indextype": itype[index_type]}
+	for info_digest in response:
+		records = response[info_digest][1].split(";")
+		for sindex in records:
+			res_values = dict(p.split("=") for p in sindex.split(":"))
+			found = all(expected_values.get(key) == res_values.get(key) for key in expected_values.keys())
+			if found:
+				return found
+	return found
+
 def cdt_index_found_in_info_res(response, set_name, bin_name, index_type):
 	"""
 	Test presense of a given secondary index in client's response to info cmd
@@ -416,6 +435,23 @@ def cdt_index_found_in_info_res(response, set_name, bin_name, index_type):
 			if found:
 				found if res_values["context"] != None else False # context should have a value
 				return found
+	return found
+
+def check_index(set_name, bin_name, index_type):
+	"""
+	Test presense of a bin-name and index-type by calling an info command
+	on seconadary index(es)
+	"""
+	found = False
+	for _ in range (CLIENT_ATTEMPTS):
+		try:
+			responses = get_client().info_all("sindex-list:ns=", NAMESPACE)
+			if index_found_in_info_res(responses, set_name, bin_name, index_type):
+				found = True
+				break	
+		except:
+			safe_sleep(0.5)
+
 	return found
 
 def check_cdt_index(set_name, bin_name, index_type):
@@ -452,7 +488,7 @@ def create_integer_index(set_name, bin_name, index_name):
 	ret = -1
 	for _ in range(CLIENT_ATTEMPTS):
 		try:
-			ret = get_client().index_integer_create(NAMESPACE, set_name, bin_name, index_name)
+			ret = get_client().index_integer_create(NAMESPACE, set_name, bin_name, index_name, {"timeout": 900000000})
 			break
 		except aerospike.exception.IndexFoundError:
 			# found the index in the database, meaning it wasn't fully deleted, pause and try again

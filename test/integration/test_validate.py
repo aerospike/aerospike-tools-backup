@@ -24,11 +24,7 @@ def put_all(context):
 
 def check_all(context):
 	assert lib.test_record(SET_NAME, KEY) is False
-
-	try:
-		lib.check_simple_index(SET_NAME, BIN_NAME, VAL)
-	except aerospike.exception.IndexNotFound:
-		pass
+	assert lib.check_index(SET_NAME, BIN_NAME, aerospike.INDEX_TYPE_LIST) is False
 
 	try:
 		lib.get_udf_file(UDF_PATH)
