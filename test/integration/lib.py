@@ -488,7 +488,7 @@ def create_integer_index(set_name, bin_name, index_name):
 	ret = -1
 	for _ in range(CLIENT_ATTEMPTS):
 		try:
-			ret = get_client().index_integer_create(NAMESPACE, set_name, bin_name, index_name, {"timeout": 900000000})
+			ret = get_client().index_integer_create(NAMESPACE, set_name, bin_name, index_name)
 			break
 		except aerospike.exception.IndexFoundError:
 			# found the index in the database, meaning it wasn't fully deleted, pause and try again
