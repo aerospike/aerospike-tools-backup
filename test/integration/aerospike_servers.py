@@ -294,7 +294,7 @@ def reset_aerospike_servers(keep_metadata=False):
 		if set_name is not None:
 			set_name = set_name.strip()
 		print("truncating", set_name)
-		get_client().truncate(lib.NAMESPACE, None if not set_name else set_name, 0)
+		get_client().truncate(lib.NAMESPACE, None if not set_name else set_name, 0, {"timeout": 10000})
 	if not keep_metadata:
 		lib.GLOBALS["sets"] = []
 
