@@ -32,6 +32,7 @@ def do_s3_backup(max_interrupts, n_records=10000, backup_opts=None,
 		backup_opts = []
 	if restore_opts == None:
 		restore_opts = []
+	cleanup_opts = [*COMMON_S3_OPTS]
 
 	as_srv.start_aerospike_servers()
 
@@ -45,6 +46,7 @@ def do_s3_backup(max_interrupts, n_records=10000, backup_opts=None,
 	if s3_bucket:
 		backup_opts += ["--s3-bucket", S3_BUCKET]
 		restore_opts += ["--s3-bucket", S3_BUCKET]
+		cleanup_opts += ["--s3-bucket", S3_BUCKET]
 
 	for comp_enc_mode in [
 			[],
@@ -163,9 +165,9 @@ def do_s3_backup(max_interrupts, n_records=10000, backup_opts=None,
 
 		# remove backup artifacts
 		if lib.is_dir_mode():
-			backup_to_directory(path, *COMMON_S3_OPTS, '--remove-artifacts', env=env)
+			backup_to_directory(path, *cleanup_opts, '--remove-artifacts', env=env)
 		else:
-			backup_to_file(path, *COMMON_S3_OPTS, '--remove-artifacts', env=env)
+			backup_to_file(path, *cleanup_opts, '--remove-artifacts', env=env)
 		
 	min_srv.stop_minio_server(MINIO_NAME)
 
