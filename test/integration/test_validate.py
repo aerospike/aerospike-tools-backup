@@ -22,7 +22,6 @@ def put_all():
 	content = "--[=======[\n" + "TEST" + "\n--]=======]\n"
 	UDF_PATH = lib.put_udf_file(content)
 	# time for the index and udf to be created
-	lib.safe_sleep(2)
 
 def check_all():
 	assert lib.test_record(SET_NAME, KEY) is False
@@ -42,7 +41,7 @@ def test_validate():
 		None,
 		lambda context: check_all(),
 		restore_opts=["--validate"],
-		restore_delay=1
+		restore_delay=5
 	)
 
 def test_validate_bad_file():
