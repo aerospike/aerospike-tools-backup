@@ -403,7 +403,7 @@ def index_found_in_info_res(response, set_name, bin_name, index_type):
 	"""
 	found = False
 	itype = {
-		aerospike.INDEX_TYPE_INTEGER : "integer",
+		aerospike.INDEX_TYPE_NUMERIC : "numeric",
 		aerospike.INDEX_TYPE_STRING : "string",
 	}
 	expected_values = {"ns": NAMESPACE, "set": set_name, "indexname": bin_name, "indextype": itype[index_type]}
