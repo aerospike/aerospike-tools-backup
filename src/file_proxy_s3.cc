@@ -467,7 +467,7 @@ off_t s3_get_backup_files(const char* prefix, as_vector* file_vec)
 
 	const Aws::S3::S3Client& client = g_api.GetS3Client();
 
-	size_t prefix_len = strlen(S3_PREFIX) + 1;
+	size_t prefix_len = strlen(S3_PREFIX) + path.GetBucket().size() + 1;
 
 	Aws::S3::Model::ListObjectsV2Request req;
 	req.SetBucket(path.GetBucket());
@@ -491,7 +491,7 @@ off_t s3_get_backup_files(const char* prefix, as_vector* file_vec)
 			}
 
 			snprintf(elem, prefix_len + obj_key.size() + 1,
-					S3_PREFIX "%s", obj_key.c_str());
+					S3_PREFIX "%s/%s", path.GetBucket().c_str(), obj_key.c_str());
 
 			as_vector_append(file_vec, &elem);
 

@@ -26,7 +26,8 @@ COMMON_S3_OPTS = ['--s3-endpoint-override', '127.0.0.1:9000']
 
 
 def do_s3_backup(max_interrupts, n_records=10000, backup_opts=None,
-		restore_opts=None, state_file_dir=False, state_file_explicit=False, backup_cout=0):
+		restore_opts=None, state_file_dir=False, state_file_explicit=False,
+		backup_cout=0, s3_bucket=False):
 	if backup_opts == None:
 		backup_opts = []
 	if restore_opts == None:
@@ -40,6 +41,10 @@ def do_s3_backup(max_interrupts, n_records=10000, backup_opts=None,
 
 	# make the bucket
 	os.mkdir(backup_files_loc + "/" + S3_BUCKET, 0o755)
+
+	if s3_bucket:
+		backup_opts += ["--s3-bucket", S3_BUCKET]
+		restore_opts += ["--s3-bucket", S3_BUCKET]
 
 	for comp_enc_mode in [
 			[],
@@ -56,10 +61,16 @@ def do_s3_backup(max_interrupts, n_records=10000, backup_opts=None,
 		prev_rec_total = 0
 		prev_bytes_total = 0
 
-		if lib.is_dir_mode():
-			path = "s3://" + S3_BUCKET + "/test_dir"
+		if s3_bucket:
+			if lib.is_dir_mode():
+				path = "s3://" + "test_dir"
+			else:
+				path = "s3://" + "test_file.asb"
 		else:
-			path = "s3://" + S3_BUCKET + "/test_file.asb"
+			if lib.is_dir_mode():
+				path = "s3://" + S3_BUCKET + "/test_dir"
+			else:
+				path = "s3://" + S3_BUCKET + "/test_file.asb"
 
 		env = S3_ENV
 
@@ -161,14 +172,23 @@ def do_s3_backup(max_interrupts, n_records=10000, backup_opts=None,
 def test_s3_backup_small():
 	do_s3_backup(0, n_records=100, backup_opts=['--s3-region', S3_REGION])
 
+def test_s3_backup_small_s3_bucket_opt():
+	do_s3_backup(0, n_records=100, backup_opts=['--s3-region', S3_REGION], s3_bucket=True)
+
 def test_s3_backup():
 	do_s3_backup(0)
 
 def test_s3_backup_multiple_files():
 	do_s3_backup(0, n_records=10000, backup_opts=['--file-limit', '1', '--s3-connect-timeout', '2000'], restore_opts=['--s3-connect-timeout', '2000'])
 
+def test_s3_backup_multiple_files_s3_bucket_opt():
+	do_s3_backup(0, n_records=10000, backup_opts=['--file-limit', '1', '--s3-connect-timeout', '2000'], restore_opts=['--s3-connect-timeout', '2000'], s3_bucket=True)
+
 def test_s3_backup_interrupt():
 	do_s3_backup(1, n_records=10000, backup_opts=['--records-per-second', '200'])
+
+def test_s3_backup_interrupt_s3_bucket_opt():
+	do_s3_backup(1, n_records=10000, backup_opts=['--records-per-second', '200'], s3_bucket=True)
 
 def test_s3_backup_multiple_files_interrupt():
 	do_s3_backup(10, n_records=10000, backup_opts=['--file-limit', '1'])

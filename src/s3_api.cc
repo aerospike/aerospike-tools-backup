@@ -222,8 +222,9 @@ S3API::S3Path::GetBucket() const
 bool
 S3API::S3Path::ParsePath(const std::string& bucket, const std::string& path)
 {
+
+	// path must be in the format "s3://<bucket>/<key>"
 	if (bucket.size() == 0) {
-		// path is in the format "s3://<bucket>/<key>"
 		size_t delim = path.find('/', S3_PREFIX_LEN);
 
 		if (delim == std::string::npos) {
@@ -235,9 +236,19 @@ S3API::S3Path::ParsePath(const std::string& bucket, const std::string& path)
 		this->bucket = path.substr(S3_PREFIX_LEN, delim - S3_PREFIX_LEN);
 		this->key = path.substr(delim + 1);
 	}
+	// path could be in the format "s3://<bucket>/<key>" or "s3://<key>"
+	// we always want to omit the bucket from the key so that the s3 api
+	// doesn't repeat it when it concatenates this->bucket with this->key
 	else {
 		this->bucket = bucket;
-		this->key = path.substr(S3_PREFIX_LEN);
+		// if the path starts with s3://<bucket>/ then set the key to what comes after
+		std::string bucket_substring = bucket + "/";
+		if (path.compare(S3_PREFIX_LEN, bucket_substring.size(), bucket_substring) == 0) {
+			this->key = path.substr(S3_PREFIX_LEN + bucket_substring.size());
+		}
+		else {
+			this->key = path.substr(S3_PREFIX_LEN);
+		}
 	}
 
 	return true;
