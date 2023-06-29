@@ -16,15 +16,17 @@ KEY = "key"
 INDEX_NAME = "idx1"
 UDF_PATH = ""
 
-def put_all(context):
+def put_all():
 	lib.write_record(SET_NAME, KEY, BIN_NAME, VAL)
 	lib.create_integer_index(SET_NAME, BIN_NAME, INDEX_NAME)
 	content = "--[=======[\n" + "TEST" + "\n--]=======]\n"
 	UDF_PATH = lib.put_udf_file(content)
+	# time for the index and udf to be created
+	lib.safe_sleep(2)
 
-def check_all(context):
+def check_all():
 	assert lib.test_record(SET_NAME, KEY) is False
-	assert lib.check_index(SET_NAME, BIN_NAME, aerospike.INDEX_TYPE_LIST) is False
+	assert lib.check_index(SET_NAME, BIN_NAME, aerospike.INDEX_TYPE_INTEGER) is False
 
 	try:
 		lib.get_udf_file(UDF_PATH)
@@ -36,9 +38,9 @@ def test_validate():
 	Test that --validate does not restore anything.
 	"""
 	backup_and_restore(
-		lambda context: put_all(context),
+		lambda context: put_all(),
 		None,
-		lambda context: check_all(context),
+		lambda context: check_all(),
 		restore_opts=["--validate"],
 		restore_delay=1
 	)
