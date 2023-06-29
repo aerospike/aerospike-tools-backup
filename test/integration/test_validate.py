@@ -26,7 +26,7 @@ def put_all():
 
 def check_all():
 	assert lib.test_record(SET_NAME, KEY) is False
-	assert lib.check_index(SET_NAME, BIN_NAME, aerospike.INDEX_TYPE_NUMERIC) is False
+	assert lib.check_index(SET_NAME, BIN_NAME, aerospike.INDEX_NUMERIC) is False
 
 	try:
 		lib.get_udf_file(UDF_PATH)
