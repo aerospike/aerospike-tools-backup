@@ -41,7 +41,7 @@ def test_validate():
 		None,
 		lambda context: check_all(),
 		restore_opts=["--validate"],
-		restore_delay=5
+		restore_delay=10
 	)
 
 def test_validate_bad_file():
