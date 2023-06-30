@@ -856,7 +856,8 @@ _check_multipart_uploads_list(const backup_config_t* conf,
 				return false;
 			}
 
-			if (strncmp(full_path + (sizeof(S3_PREFIX) - 1), bucket, bucket_len) != 0) {
+			// if the original run used --s3-bucket, the bucket will not be in the path
+			if (!conf->s3_bucket && strncmp(full_path + (sizeof(S3_PREFIX) - 1), bucket, bucket_len) != 0) {
 				err("Expected bucket name \"%s\", but found \"%.*s\" in full "
 						"path %s",
 						bucket, (int) bucket_len,
@@ -864,7 +865,17 @@ _check_multipart_uploads_list(const backup_config_t* conf,
 				return false;
 			}
 
-			const char* request_key = full_path + sizeof(S3_PREFIX) + bucket_len;
+			if (conf->s3_bucket) {
+				bucket_len = 0;
+			} else {
+				// increment bucket_len
+				// to account for the '/'
+				// between key == <bucket>/<prefix>
+				bucket_len++;
+			}
+
+			const char* request_key = full_path + (sizeof(S3_PREFIX) - 1) + bucket_len;
+			inf("REQUEST_KEY: %s", request_key);
 
 			if (strncmp(request_key, key, key_len) != 0 || request_key[key_len] != '/') {
 				err("Expected key prefix \"%s/\", but found \"%.*s\" in full "
