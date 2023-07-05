@@ -161,11 +161,6 @@ bool s3_parse_log_level(const char* log_level_str, s3_log_level_t* log_level);
 void s3_set_region(const char* region);
 
 /*
- * Sets the S3 bucket to use.
- */
-void s3_set_bucket(const char* bucket);
-
-/*
  * Sets the AWS profile to use for credentials.
  */
 void s3_set_profile(const char* profile);

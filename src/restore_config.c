@@ -145,7 +145,6 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 		{ "event-loops", required_argument, NULL, COMMAND_OPT_EVENT_LOOPS },
 
 		{ "s3-region", required_argument, NULL, COMMAND_OPT_S3_REGION },
-		{ "s3-bucket", required_argument, NULL, COMMAND_OPT_S3_BUCKET },
 		{ "s3-profile", required_argument, NULL, COMMAND_OPT_S3_PROFILE },
 		{ "s3-endpoint-override", required_argument, NULL, COMMAND_OPT_S3_ENDPOINT_OVERRIDE },
 		{ "s3-max-async-downloads", required_argument, NULL, COMMAND_OPT_S3_MAX_ASYNC_DOWNLOADS },
@@ -554,10 +553,6 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 			conf->s3_region = strdup(optarg);
 			break;
 
-		case COMMAND_OPT_S3_BUCKET:
-			conf->s3_bucket = strdup(optarg);
-			break;
-
 		case COMMAND_OPT_S3_PROFILE:
 			conf->s3_profile = strdup(optarg);
 			break;
@@ -647,10 +642,6 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 		s3_set_region(conf->s3_region);
 	}
 
-	if (conf->s3_bucket != NULL) {
-		s3_set_bucket(conf->s3_bucket);
-	}
-
 	if (conf->s3_profile != NULL) {
 		s3_set_profile(conf->s3_profile);
 	}
@@ -714,7 +705,6 @@ restore_config_default(restore_config_t *conf)
 	conf->auth_mode = NULL;
 
 	conf->s3_region = NULL;
-	conf->s3_bucket = NULL;
 	conf->s3_profile = NULL;
 	conf->s3_endpoint_override = NULL;
 	conf->s3_max_async_downloads = S3_DEFAULT_MAX_ASYNC_DOWNLOADS;
@@ -783,10 +773,6 @@ restore_config_destroy(restore_config_t *conf)
 
 	if (conf->s3_region != NULL) {
 		cf_free(conf->s3_region);
-	}
-
-	if (conf->s3_bucket != NULL) {
-		cf_free(conf->s3_bucket);
 	}
 
 	if (conf->s3_profile != NULL) {
@@ -1116,10 +1102,6 @@ usage(const char *name)
 	fprintf(stdout, "                      Default is 1.\n");
 	fprintf(stdout, "      --s3-region <region>\n");
 	fprintf(stdout, "                      The S3 region that the bucket(s) exist in.\n");
-	fprintf(stdout, "      --s3-bucket <bucket>\n");
-	fprintf(stdout, "                      The S3 bucket to use for all S3 objects. With this option\n");
-	fprintf(stdout, "                      given, S3 paths are then interpreted as \"s3://<key>\",\n");
-	fprintf(stdout, "                      i.e. the bucket name should be omitted from the path.\n");
 	fprintf(stdout, "      --s3-profile <profile_name>\n");
 	fprintf(stdout, "                      The S3 profile to use for credentials (the default is \"default\").\n");
 	fprintf(stdout, "      --s3-endpoint-override <url>\n");
