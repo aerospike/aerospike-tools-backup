@@ -337,8 +337,7 @@ cleanup7:
 		res = EXIT_FAILURE;
 	}
 
-	// TODO do we need to restore all indexes twice?
-	// this is also done in restore_thread_func
+	// NOTE this is here to support the --indexes-last option
 	if (res == EXIT_SUCCESS && !conf.no_indexes && !conf.validate &&
 			!restore_indexes(status.as, &status.index_vec, &status.set_vec,
 				&restore_args, conf.wait, conf.timeout)) {
