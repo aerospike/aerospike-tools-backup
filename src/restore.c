@@ -238,6 +238,10 @@ restore_main(int32_t argc, char **argv)
 			ver("Estimated total backup file size: %lli bytes", status.estimated_bytes);
 		}
 
+		if (conf.validate) {
+			inf("Validating backup files");
+		}
+
 		ver("Pushing %u exclusive job(s) to job queue", status.file_vec.size);
 
 		// push a job for each backup file
@@ -292,10 +296,6 @@ restore_main(int32_t argc, char **argv)
 		inf("Restoring records");
 	}
 
-	if (conf.validate) {
-		inf("Validating backup files");
-	}
-
 	uint32_t threads_ok = 0;
 
 	ver("Creating %u restore thread(s)", conf.parallel);
@@ -309,11 +309,12 @@ restore_main(int32_t argc, char **argv)
 		++threads_ok;
 	}
 
-	if (conf.validate) {
-		inf("Finished validating backup files");
-	}
-
 	res = EXIT_SUCCESS;
+
+	inf(
+		"Finished %s backup file(s)",
+		conf.validate ? "validating" : "restoring"
+	);
 
 cleanup7:
 	ver("Waiting for %u restore thread(s)", threads_ok);
@@ -809,7 +810,7 @@ restore_thread_func(void *cont)
 
 			if (ptc.conf->input_file != NULL) {
 				if (update_shared_file_pos(&ptc) < 0) {
-					err("Error while decoding backup file %s (line %u)",
+					err("Error while parsing backup file %s (line %u)",
 							ptc.path, *ptc.line_no);
 					stop();
 				}
@@ -818,7 +819,7 @@ restore_thread_func(void *cont)
 			}
 			// only update the file pos in dir mode
 			else if (update_file_pos(&ptc) < 0) {
-				err("Error while decoding backup file %s (line %u)", ptc.path,
+				err("Error while parsing backup file %s (line %u)", ptc.path,
 						*ptc.line_no);
 				stop();
 			}
@@ -832,19 +833,19 @@ restore_thread_func(void *cont)
 			}
 
 			if (res == DECODER_ERROR) {
-				err("Error while decoding backup file %s (line %u)", ptc.path, *ptc.line_no);
+				err("Error while parsing backup file %s (line %u)", ptc.path, *ptc.line_no);
 				break;
 			}
 
 			if (res == DECODER_INDEX) {
-				if (args.conf->no_indexes) {
-					ver("Ignoring index block");
+				if (args.conf->validate) {
+					ver("Validated Secondary Index");
+					args.status->index_count++;
 					free_index(&index);
 					continue;
 				}
-				else if (args.conf->validate) {
-					ver("Validated Secondary Index");
-					args.status->index_count++;
+				else if (args.conf->no_indexes) {
+					ver("Ignoring index block");
 					free_index(&index);
 					continue;
 				}
@@ -864,14 +865,14 @@ restore_thread_func(void *cont)
 			}
 
 			if (res == DECODER_UDF) {
-				if (args.conf->no_udfs) {
-					ver("Ignoring UDF file block");
+				if (args.conf->validate) {
+					ver("Validated UDF");
+					args.status->udf_count++;
 					free_udf(&udf);
 					continue;
 				}
-				else if (args.conf->validate) {
-					ver("Validated UDF");
-					args.status->udf_count++;
+				else if (args.conf->no_udfs) {
+					ver("Ignoring UDF file block");
 					free_udf(&udf);
 					continue;
 				}
@@ -889,15 +890,15 @@ restore_thread_func(void *cont)
 			}
 
 			if (res == DECODER_RECORD) {
-				if (args.conf->no_records) {
-					// NOTE: not a continue because records come
-					// last in the backup file, if that ever changes this should too.
-					break;
-				}
-				else if (args.conf->validate) {
+				if (args.conf->validate) {
 					ptc.status->total_records++;
 					as_record_destroy(&rec);
 					continue;
+				}
+				else if (args.conf->no_records) {
+					// NOTE: not a continue because records come
+					// last in the backup file, if that ever changes this should too.
+					break;
 				}
 
 				if (expired) {

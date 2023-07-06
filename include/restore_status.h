@@ -64,7 +64,7 @@ typedef struct restore_status {
 	uint32_t batch_size;
 
 	// true when asrestore is used with --validate
-	// in this case no records are written, as is NULL
+	// in this case no records are written, aerospike client (as) is NULL
 	// and batch_uploader is not initialised
 	bool validate;
 
