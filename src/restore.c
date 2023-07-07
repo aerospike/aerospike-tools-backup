@@ -765,8 +765,8 @@ restore_thread_func(void *cont)
 		else {
 			inf(
 				"%s %s",
-				ptc.conf->validate ? "validating" : "restoring"
-				ptc.path,
+				ptc.conf->validate ? "validating" : "restoring",
+				ptc.path
 			);
 
 			ptc.byte_count_file = 0;
