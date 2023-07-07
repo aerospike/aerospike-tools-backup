@@ -206,6 +206,11 @@ batch_uploader_init(batch_uploader_t* uploader, aerospike* as,
 void
 batch_uploader_free(batch_uploader_t* uploader)
 {
+
+	if (uploader == NULL) {
+		return;
+	}
+
 	pthread_mutex_destroy(&uploader->async_lock);
 	pthread_cond_destroy(&uploader->async_cond);
 	priority_queue_free(&uploader->retry_queue);

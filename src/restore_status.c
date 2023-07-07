@@ -70,6 +70,24 @@ restore_status_init(restore_status_t* status, const restore_config_t* conf)
 	as_vector_init(&status->bin_vec, sizeof(void*), 25);
 	as_vector_init(&status->set_vec, sizeof(void*), 25);
 
+	status->estimated_bytes = 0;
+	status->validate = conf->validate;
+	atomic_init(&status->total_bytes, 0);
+	atomic_init(&status->total_records, 0);
+	atomic_init(&status->expired_records, 0);
+	atomic_init(&status->skipped_records, 0);
+	atomic_init(&status->ignored_records, 0);
+	atomic_init(&status->inserted_records, 0);
+	atomic_init(&status->existed_records, 0);
+	atomic_init(&status->fresher_records, 0);
+	atomic_init(&status->index_count, 0);
+	atomic_init(&status->skipped_indexes, 0);
+	atomic_init(&status->matched_indexes, 0);
+	atomic_init(&status->mismatched_indexes, 0);
+	atomic_init(&status->udf_count, 0);
+	atomic_init(&status->finished, false);
+	atomic_init(&status->stop, false);
+
 	status->bytes_limit = conf->bandwidth;
 	status->records_limit = conf->tps;
 
@@ -124,6 +142,11 @@ restore_status_init(restore_status_t* status, const restore_config_t* conf)
 				AS_SET_MAX_SIZE, conf->set_list, &status->set_vec)) {
 		err("Error while parsing set list");
 		goto cleanup2;
+	}
+
+	if (conf->validate) {
+		status->as = NULL;
+		return true;
 	}
 
 	as_config info_as_conf;
@@ -227,23 +250,6 @@ restore_status_init(restore_status_t* status, const restore_config_t* conf)
 	batch_uploader_set_callback(&status->batch_uploader, _batch_complete_cb,
 			status);
 
-	status->estimated_bytes = 0;
-	atomic_init(&status->total_bytes, 0);
-	atomic_init(&status->total_records, 0);
-	atomic_init(&status->expired_records, 0);
-	atomic_init(&status->skipped_records, 0);
-	atomic_init(&status->ignored_records, 0);
-	atomic_init(&status->inserted_records, 0);
-	atomic_init(&status->existed_records, 0);
-	atomic_init(&status->fresher_records, 0);
-	atomic_init(&status->index_count, 0);
-	atomic_init(&status->skipped_indexes, 0);
-	atomic_init(&status->matched_indexes, 0);
-	atomic_init(&status->mismatched_indexes, 0);
-	atomic_init(&status->udf_count, 0);
-	atomic_init(&status->finished, false);
-	atomic_init(&status->stop, false);
-
 	return true;
 
 cleanup7:
@@ -295,13 +301,20 @@ void
 restore_status_destroy(restore_status_t* status)
 {
 	as_error ae;
-	aerospike_close(status->as, &ae);
-	aerospike_destroy(status->as);
-	cf_free(status->as);
+
+	// the client is never created if
+	// restore is operating in validate mode
+	if (status->as != NULL) {
+		aerospike_close(status->as, &ae);
+		aerospike_destroy(status->as);
+		cf_free(status->as);
+	}
 
 	as_event_close_loops();
 
-	batch_uploader_free(&status->batch_uploader);
+	if (!status->validate) {
+		batch_uploader_free(&status->batch_uploader);
+	}
 
 	pthread_mutex_destroy(&status->idx_udf_lock);
 	pthread_mutex_destroy(&status->stop_lock);

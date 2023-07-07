@@ -1027,6 +1027,9 @@ config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance,
 
 		} else if (! strcasecmp("no-records", name)) {
 			status = config_bool(curtab, name, (void*)&c->no_records);
+		
+		} else if (! strcasecmp("validate", name)) {
+			status = config_bool(curtab, name, (void*)&c->validate);
 
 		} else if (! strcasecmp("no-indexes", name)) {
 			status = config_bool(curtab, name, (void*)&c->no_indexes);

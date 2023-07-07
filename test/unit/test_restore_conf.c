@@ -637,6 +637,7 @@ END_TEST
 DEFINE_INT_TEST(test_init_parallel, "parallel", parallel);
 // FIXME idk what this is and it isn't documented
 DEFINE_STR_TEST(test_init_nice_list, "nice", nice_list, "127.0.0.1,192.168.0.1");
+DEFINE_BOOL_TEST(test_init_validate, "validate", validate);
 DEFINE_BOOL_TEST(test_init_no_records, "no-records", no_records);
 DEFINE_BOOL_TEST(test_init_no_indexes, "no-indexes", no_indexes);
 DEFINE_BOOL_TEST(test_init_indexes_last, "indexes-last", indexes_last);
