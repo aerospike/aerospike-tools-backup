@@ -297,7 +297,7 @@ TEST_SRC := $(shell find $(DIR_UNIT_TEST) -name '*.c' -type f)
 TEST_OBJ := $(HELPER_OBJS) $(patsubst $(DIR_UNIT_TEST)/%.c,$(DIR_TEST_OBJ)/unit/%.o,$(TEST_SRC))
 TEST_DEP := $(patsubst $(DIR_TEST_OBJ)/%.o,$(DIR_TEST_OBJ)/%.d,$(TEST_OBJ))
 
-TEST_INTEGRATION_TESTS := $(patsubst $(DIR_INTEGRATION_TEST)/%.py,run_%,$(shell find $(DIR_INTEGRATION_TEST) -name 'test_validate*.py' -type f))
+TEST_INTEGRATION_TESTS := $(patsubst $(DIR_INTEGRATION_TEST)/%.py,run_%,$(shell find $(DIR_INTEGRATION_TEST) -name 'test_*.py' -type f))
 
 TEST_BACKUP_SRC := $(BACKUP_SRC_MAIN) $(HELPER_SRCS) $(HELPER_CXX_SRCS)
 TEST_BACKUP_OBJ := $(call test_src_to_obj, $(TEST_BACKUP_SRC))
