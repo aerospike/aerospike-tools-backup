@@ -814,9 +814,6 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 		} else if (! strcasecmp("s3-region", name)) {
 			status = config_str(curtab, name, (void*)&c->s3_region);
 
-		} else if (! strcasecmp("s3-bucket", name)) {
-			status = config_str(curtab, name, (void*)&c->s3_bucket);
-
 		} else if (! strcasecmp("s3-profile", name)) {
 			status = config_str(curtab, name, (void*)&c->s3_profile);
 
@@ -1096,9 +1093,6 @@ config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance,
 
 		} else if (! strcasecmp("s3-region", name)) {
 			status = config_str(curtab, name, (void*)&c->s3_region);
-
-		} else if (! strcasecmp("s3-bucket", name)) {
-			status = config_str(curtab, name, (void*)&c->s3_bucket);
 
 		} else if (! strcasecmp("s3-profile", name)) {
 			status = config_str(curtab, name, (void*)&c->s3_profile);

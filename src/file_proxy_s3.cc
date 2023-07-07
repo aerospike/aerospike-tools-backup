@@ -147,12 +147,6 @@ s3_set_region(const char* region)
 }
 
 void
-s3_set_bucket(const char* bucket)
-{
-	g_api.SetBucket(bucket);
-}
-
-void
 s3_set_profile(const char* profile)
 {
 	g_api.SetProfile(profile);

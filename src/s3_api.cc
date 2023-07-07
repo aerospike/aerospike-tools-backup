@@ -89,13 +89,6 @@ S3API::SetRegion(const std::string& region)
 }
 
 S3API&
-S3API::SetBucket(const std::string& bucket)
-{
-	this->bucket = bucket;
-	return *this;
-}
-
-S3API&
 S3API::SetProfile(const std::string& profile)
 {
 	if (IsInitialized()) {

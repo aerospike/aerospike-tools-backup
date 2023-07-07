@@ -60,8 +60,6 @@ public:
 	// This must be called before TryInitialize()
 	S3API& SetRegion(const std::string& region);
 
-	S3API& SetBucket(const std::string& bucket);
-
 	// This must be called before TryInitialize()
 	S3API& SetProfile(const std::string& profile);
 

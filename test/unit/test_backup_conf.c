@@ -140,7 +140,6 @@ assert_bup_config_eq(backup_config_t *c1, backup_config_t *c2)
 	CMP_STR_FIELD(c1->after_digest, c2->after_digest);
 
 	CMP_STR_FIELD(c1->s3_region, c2->s3_region);
-	CMP_STR_FIELD(c1->s3_bucket, c2->s3_bucket);
 	CMP_STR_FIELD(c1->s3_profile, c2->s3_profile);
 	CMP_STR_FIELD(c1->s3_endpoint_override, c2->s3_endpoint_override);
 	CMP_INT_FIELD(c1->s3_min_part_size, c2->s3_min_part_size);
@@ -746,7 +745,6 @@ DEFINE_INT_TEST(test_init_max_recs, "max-records", max_records);
 DEFINE_INT_TEST(test_init_records_per_second, "records-per-second", records_per_second);
 
 DEFINE_STR_TEST(test_init_s3_region, "s3-region", s3_region, "us-west-1");
-DEFINE_STR_TEST(test_init_s3_bucket, "s3-bucket", s3_bucket, "my-hosted-content");
 DEFINE_STR_TEST(test_init_s3_profile, "s3-profile", s3_profile, "default");
 DEFINE_STR_TEST(test_init_s3_endpoint_override, "s3-endpoint-override", s3_endpoint_override,
 		"https://<accountid>.r2.test.com");
@@ -821,7 +819,6 @@ Suite* backup_conf_suite()
 	tcase_add_test(tc_init, test_init_compress_mode);
 
 	tcase_add_test(tc_init, test_init_s3_region);
-	tcase_add_test(tc_init, test_init_s3_bucket);
 	tcase_add_test(tc_init, test_init_s3_profile);
 	tcase_add_test(tc_init, test_init_s3_endpoint_override);
 	tcase_add_test(tc_init, test_init_s3_min_part_size);
