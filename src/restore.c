@@ -763,7 +763,11 @@ restore_thread_func(void *cont)
 		}
 		// restoring from a directory: open the backup file with the given path
 		else {
-			inf("Restoring %s", ptc.path);
+			inf(
+				"%s %s",
+				ptc.conf->validate ? "validating" : "restoring"
+				ptc.path,
+			);
 
 			ptc.byte_count_file = 0;
 			ptc.fd = (io_read_proxy_t*) cf_malloc(sizeof(io_read_proxy_t));
