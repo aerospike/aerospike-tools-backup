@@ -248,7 +248,7 @@ def test_restore_bin_list():
 		restore_delay=1
 	)
 
-def test_backup_bin_list():
+def test_backup_bin_list_parallel():
 	"""
 	Tests the --bin-list backup option with --parallel.
 	Regression for tools-2624.
