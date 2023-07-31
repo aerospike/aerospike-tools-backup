@@ -248,6 +248,24 @@ def test_restore_bin_list():
 		restore_delay=1
 	)
 
+def test_backup_bin_list():
+	"""
+	Tests the --bin-list backup option with --parallel.
+	Regression for tools-2624.
+	"""
+	backup_and_restore(
+		put_data,
+		None,
+		lambda context: check_data(context,
+			True, True, True,
+			True, True,
+			True, True, True,
+			True),
+		backup_opts=["--bin-list", "%s,%s" % (BIN_NAME_1, BIN_NAME_2)],
+		restore_opts=["--wait"],
+		restore_delay=1
+	)
+
 def test_backup_no_records():
 	"""
 	Tests the --no-records backup option.

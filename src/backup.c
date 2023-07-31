@@ -2255,12 +2255,12 @@ init_scan_bins(char *bin_list, as_scan *scan)
 	as_vector bin_vec;
 	as_vector_inita(&bin_vec, sizeof (void *), 25);
 
-	if (bin_list[0] == 0) {
+	if (clone[0] == 0) {
 		err("Empty bin list");
 		goto cleanup1;
 	}
 
-	split_string(bin_list, ',', true, &bin_vec);
+	split_string(clone, ',', true, &bin_vec);
 
 	as_scan_select_init(scan, (uint16_t)bin_vec.size);
 
