@@ -372,7 +372,6 @@ GroupDownloadManager::StartNextPart()
 		return true;
 	}
 
-	async_downloads++;
 	DownloadManager* next = dms.front();
 
 	// place next back on the end of the queue if it has more parts that
@@ -380,6 +379,7 @@ GroupDownloadManager::StartNextPart()
 	dms.pop_front();
 
 	if (next->InitiateDownloadNextPart(std::bind(PartDownloadComplete, this, _1, _2))) {
+		async_downloads++;
 		dms.push_back(next);
 		return true;
 	}
