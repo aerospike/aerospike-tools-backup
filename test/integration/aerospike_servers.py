@@ -32,7 +32,9 @@ LUA_DIRECTORY = lib.absolute_path(WORK_DIRECTORY, "lua")
 
 FAKE_TIME_FILE = "clock_gettime.txt"
 
-DOCKER_CLIENT = docker.from_env()
+USE_DOCKER_SERVERS = True
+if USE_DOCKER_SERVERS:
+	DOCKER_CLIENT = docker.from_env()
 GLOBALS = { "running": False }
 
 def create_conf_file(temp_file, base, peer_addr, index):
@@ -187,34 +189,35 @@ def start_aerospike_servers(keep_work_dir=False):
 		#os.environ["LD_PRELOAD"] = interceptor
 		mount_dir = lib.absolute_path(WORK_DIRECTORY)
 
-		DOCKER_CLIENT.images.pull(SERVER_IMAGE)
+		if USE_DOCKER_SERVERS:
+			DOCKER_CLIENT.images.pull(SERVER_IMAGE)
 
-		first_base = 3000
-		first_ip = None
-		for index in range(1, N_NODES+1):
-			base = first_base + 10 * (index - 1)
-			conf_file = create_conf_file(temp_file, base,
-					None if index == 1 else (first_ip, first_base),
-					index)
-			cmd = '/usr/bin/asd --foreground --config-file %s --instance %s' % ('/opt/aerospike/work/' + lib.get_file(conf_file, base=mount_dir), str(index - 1))
-			
-			print('running in docker: %s' % cmd)
+			first_base = 3000
+			first_ip = None
+			for index in range(1, N_NODES+1):
+				base = first_base + 10 * (index - 1)
+				conf_file = create_conf_file(temp_file, base,
+						None if index == 1 else (first_ip, first_base),
+						index)
+				cmd = '/usr/bin/asd --foreground --config-file %s --instance %s' % ('/opt/aerospike/work/' + lib.get_file(conf_file, base=mount_dir), str(index - 1))
+				
+				print('running in docker: %s' % cmd)
 
-			container = DOCKER_CLIENT.containers.run(SERVER_IMAGE,
-					command=cmd,
-					ports={
-						str(base) + '/tcp': str(base),
-						str(base + 1) + '/tcp': str(base + 1),
-						str(base + 2) + '/tcp': str(base + 2),
-						str(base + 3) + '/tcp': str(base + 3)
-					},
-					volumes={ mount_dir: { 'bind': '/opt/aerospike/work', 'mode': 'rw' } },
-					tty=True, detach=True, name='aerospike-%d' % (index))
-			GLOBALS["asd-" + str(index)] = container
-			if index == 1:
-				container.reload()
-				first_ip = container.attrs["NetworkSettings"]["Networks"]["bridge"]["IPAddress"]
-		#del os.environ["LD_PRELOAD"]
+				container = DOCKER_CLIENT.containers.run(SERVER_IMAGE,
+						command=cmd,
+						ports={
+							str(base) + '/tcp': str(base),
+							str(base + 1) + '/tcp': str(base + 1),
+							str(base + 2) + '/tcp': str(base + 2),
+							str(base + 3) + '/tcp': str(base + 3)
+						},
+						volumes={ mount_dir: { 'bind': '/opt/aerospike/work', 'mode': 'rw' } },
+						tty=True, detach=True, name='aerospike-%d' % (index))
+				GLOBALS["asd-" + str(index)] = container
+				if index == 1:
+					container.reload()
+					first_ip = container.attrs["NetworkSettings"]["Networks"]["bridge"]["IPAddress"]
+			#del os.environ["LD_PRELOAD"]
 
 		print("Connecting client")
 		config = {

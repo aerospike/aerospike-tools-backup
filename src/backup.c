@@ -867,7 +867,7 @@ cleanup3:
 
 	if (backup_state != NULL && backup_state != BACKUP_STATE_ABORTED) {
 		if (backup_status_one_shot_done(status)) {
-			if (backup_state_is_complete(backup_state)) { // TODO make sure this checks for s3 files that have had all multiparts started but not finished
+			if (backup_state_is_complete(backup_state)) {
 				// if the backup state is actually complete, close/flush all
 				// of the backup state files and clear the file vector before
 				// closing the backup state.
@@ -884,7 +884,6 @@ cleanup3:
 						goto save_backup_state;
 					}
 
-					// I think this is freeing duplicate entries from backup_state->files
 					cf_free(file);
 
 					as_vector_remove(&backup_state->files, size - 1);
@@ -1514,6 +1513,17 @@ scan_callback(const as_val *val, void *cont)
 
 		if (!close_dir_file(bjc)) {
 			err("Error while closing old backup file");
+			// set fd to NULL so that worker threads
+			// will not attempt to close this file again
+			// if they do, this can cause problems like...
+			// if this close fails, the file will be added to bjc->file_queue
+			// which is saved to the state file. If the next close in
+			// worker thread succeeds, then the file will
+			// be cleaned up in the successful close call
+			// and when the state file logic at cleanup 6
+			// tries to close the file from the queue it will access
+			// freed memory/uninitialized fields.
+			bjc->fd = NULL;
 			bjc->interrupted = true;
 			return false;
 		}

@@ -41,6 +41,19 @@ GLOBALS = { "file_count": 0, "dir_mode": False }
 
 random.seed(0)
 
+def init_file_overrides():
+	"""
+	Compiles file open and close overrides. Used to simulate file system errors
+	during asbackup tests.
+	"""
+	path = absolute_path(WORK_DIRECTORY, "file_close_override.so")
+	subprocess.check_call(["cc", "-fpic", "-shared", \
+			"-o", path, absolute_path("file_close_override.c")])
+
+	path = absolute_path(WORK_DIRECTORY, "file_open_override.so")
+	subprocess.check_call(["cc", "-fpic", "-shared", \
+			"-o", path, absolute_path("file_open_override.c")])
+
 def safe_sleep(secs):
 	"""
 	Sleeps, even in the presence of signals.
@@ -148,6 +161,11 @@ def temporary_path(extension):
 	GLOBALS["file_count"] += 1
 	return absolute_path(os.path.join(WORK_DIRECTORY, file_name))
 
+def set_ld_preload():
+	print("env is")
+	print(os.environ)
+	os.setpgrp()
+
 def run(command, *options, do_async=False, pipe_stdout=None, pipe_stdin=None, pipe_stderr=None, env={}, USE_VALGRIND=False):
 	"""
 	Runs the given command with the given options.
@@ -167,7 +185,7 @@ def run(command, *options, do_async=False, pipe_stdout=None, pipe_stdin=None, pi
 	if do_async:
 		# preexec_fn is used to place the subprocess in a different process group
 		return sync_wait(asyncio.create_subprocess_exec(*command, cwd=directory,
-			preexec_fn=os.setpgrp,
+			preexec_fn=set_ld_preload,
 			stdout=asyncio.subprocess.PIPE if pipe_stdout is None else pipe_stdout,
 			stderr=asyncio.subprocess.PIPE,
 			stdin=pipe_stdin,
