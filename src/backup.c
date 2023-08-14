@@ -1364,7 +1364,7 @@ open_dir_file(backup_job_context_t *bjc)
 			pthread_mutex_unlock(&bjc->status->dir_file_init_mutex);
 			cf_free(bjc->fd);
 			bjc->fd = NULL;
-			err("New directory file %s, has less than 0 bytes written", file_path);
+			err("New directory file %s, failed to get file position", file_path);
 			return false;
 		}
 
