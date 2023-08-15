@@ -7,21 +7,38 @@ Tests the resumption of failed/interrupted backups.
 import signal
 import asyncio
 import os
+import random
 
 import aerospike_servers as as_srv
 import lib
 import record_gen
 from run_backup import backup_async, restore_async
 
+_built_file_overrides = False
+
+def build_file_overrides():
+	global _built_file_overrides
+	if not _built_file_overrides:
+		print("building overrides")
+		lib.init_file_overrides()
+		_built_file_overrides = True
+
+class interruptMethod():
+	sigkill = 0
+	fileIssue = 1
+
 def do_interrupt_run(max_interrupts, n_records=10000, do_indexes=False,
 		n_udfs=0, backup_opts=None, restore_opts=None, state_file_dir=False,
-		state_file_explicit=False, to_stdout=False, do_matrix=False):
+		state_file_explicit=False, to_stdout=False, do_matrix=False, interrupt_method=interruptMethod.sigkill):
 	if backup_opts == None:
 		backup_opts = []
 	if restore_opts == None:
 		restore_opts = []
 
 	as_srv.start_aerospike_servers()
+
+	# breakpoint()
+	build_file_overrides()
 
 	if do_matrix:
 		comp_enc_mode_list = [
@@ -90,14 +107,22 @@ def do_interrupt_run(max_interrupts, n_records=10000, do_indexes=False,
 				idx = opts.index('--records-per-second')
 				use_opts = opts[:idx] + opts[idx + 2:]
 
+			backup_env = {}
+			if i <= max_interrupts:
+				if interrupt_method == interruptMethod.fileIssue:
+					file_override = ["file_close_override.so", "file_open_override.so"][random.randint(0, 1)]
+					print("using file override: " + file_override)
+					backup_env = {"LD_LIBRARY_PATH": lib.absolute_path(lib.WORK_DIRECTORY), "LD_PRELOAD": file_override}
+			
 			bup, path = backup_async(
 				filler,
 				context=context,
 				backup_opts=use_opts,
 				path=path,
-				pipe_stdout=bup_file if to_stdout else None
+				pipe_stdout=bup_file if to_stdout else None,
+				env=backup_env
 			)
-			if i <= max_interrupts:
+			if interrupt_method == interruptMethod.sigkill:
 				lib.sync_wait(lib.kill_after(bup, dt=10))
 			res = lib.sync_wait(bup.wait())
 
@@ -168,6 +193,13 @@ def test_interrupt_once_parallel():
 
 def test_interrupt_many():
 	do_interrupt_run(10, backup_opts=['--records-per-second', '500', '--parallel', '1'], do_matrix=True)
+
+def test_file_interrupt_many():
+	# TODO add this for single file backups and with > 1 parallel threads
+	# NOTE the file issue overrides only take affect on Linux because they use the LD_PRELOAD trick
+	if lib.GLOBALS["dir_mode"]:
+		do_interrupt_run(3, backup_opts=['--records-per-second', '500', '--file-limit', '1'],
+			do_matrix=False, interrupt_method=interruptMethod.fileIssue)
 
 def test_interrupt_many_parallel():
 	do_interrupt_run(10, backup_opts=['--records-per-second', '500', '--parallel', '8'])

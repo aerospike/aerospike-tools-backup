@@ -1107,10 +1107,19 @@ queue_file(backup_job_context_t *bjc)
 		.rec_count_file = bjc->rec_count_file,
 		.byte_count_file = bjc->byte_count_file
 	};
-	if (cf_queue_push(bjc->file_queue, &q) == CF_QUEUE_OK) {
+
+	int push_res = cf_queue_push_unique(bjc->file_queue, &q);
+
+	if (push_res == CF_QUEUE_OK) {
 		int64_t file_size = io_write_proxy_bytes_written(bjc->fd);
 		ver("File %s size is %" PRId64 ", pushing to the queue",
 				io_proxy_file_path(bjc->fd), file_size);
+		return true;
+	}
+	// cf_queue_push_unique returns -2 to indicate that the item already exists
+	else if (push_res == -2) {
+		ver("File %s already exists in the queue",
+				io_proxy_file_path(bjc->fd));
 		return true;
 	}
 
@@ -1136,7 +1145,7 @@ close_file(io_write_proxy_t *fd)
 
 	int res = io_proxy_close2(fd, FILE_PROXY_EOF);
 	if (res != 0) {
-		err("Error while closing backup file");
+		err("Error while closing backup io proxy");
 		return false;
 	}
 
@@ -1234,6 +1243,11 @@ close_dir_file(backup_job_context_t *bjc)
 {
 	bool ret = true;
 
+	if (bjc->fd == NULL) {
+		err("Attempting to close a NULL file descriptor");
+		return false;
+	}
+
 	// flush the file before calculating the size
 	if (io_proxy_flush(bjc->fd) == EOF) {
 		err("Error while flushing backup file %s", io_proxy_file_path(bjc->fd));
@@ -1316,6 +1330,8 @@ open_dir_file(backup_job_context_t *bjc)
 
 		char* file_path = (char*) cf_malloc((file_path_size + 1) * sizeof(char));
 		if (file_path == NULL) {
+			cf_free(bjc->fd);
+			bjc->fd = NULL;
 			err("Unable to malloc file path name of length %" PRIu64, file_path_size);
 			return false;
 		}
@@ -1333,6 +1349,9 @@ open_dir_file(backup_job_context_t *bjc)
 					bjc->conf->compress_mode, bjc->conf->compression_level,
 					bjc->conf->encrypt_mode, bjc->conf->pkey)) {
 			pthread_mutex_unlock(&bjc->status->dir_file_init_mutex);
+			err("Failed to open directory file %s", file_path);
+			cf_free(bjc->fd);
+			bjc->fd = NULL;
 			cf_free(file_path);
 			return false;
 		}
@@ -1343,6 +1362,9 @@ open_dir_file(backup_job_context_t *bjc)
 		if (update_file_pos(bjc->fd, &bjc->byte_count_file, &bjc->byte_count_job,
 					&bjc->status->byte_count_total) < 0) {
 			pthread_mutex_unlock(&bjc->status->dir_file_init_mutex);
+			cf_free(bjc->fd);
+			bjc->fd = NULL;
+			err("New directory file %s, failed to get file position", file_path);
 			return false;
 		}
 
@@ -1490,6 +1512,17 @@ scan_callback(const as_val *val, void *cont)
 
 		if (!close_dir_file(bjc)) {
 			err("Error while closing old backup file");
+			// set fd to NULL so that worker threads
+			// will not attempt to close this file again
+			// if they do, this can cause problems like...
+			// if this close fails, the file will be added to bjc->file_queue
+			// which is saved to the state file. If the next close in
+			// worker thread succeeds, then the file will
+			// be cleaned up in the successful close call
+			// and when the state file logic at cleanup 6
+			// tries to close the file from the queue it will access
+			// freed memory/uninitialized fields.
+			bjc->fd = NULL;
 			bjc->interrupted = true;
 			return false;
 		}
@@ -2075,8 +2108,6 @@ close_file:
 		else if (bjc.conf->directory != NULL) {
 			if (!close_dir_file(&bjc)) {
 				err("Error while closing backup file");
-				cf_free(bjc.fd);
-				bjc.fd = NULL;
 				stop();
 			}
 		}

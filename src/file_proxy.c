@@ -250,7 +250,7 @@ file_proxy_close2(file_proxy_t* f, uint8_t mode)
 			fno = fileno(f->local.fd);
 
 			if (fno < 0) {
-				err("Error while retrieving native file descriptor");
+				err_code("Error while retrieving native file descriptor");
 				return EOF;
 			}
 
