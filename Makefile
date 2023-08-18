@@ -330,7 +330,7 @@ TEST_OBJS := $(sort $(TEST_OBJS))
 TEST_DEPS := $(sort $(TEST_DEPS))
 
 .PHONY: all
-all: $(DIR_OBJ_DYNAMIC_C) $(DIR_OBJ_DYNAMIC_CC) $(BUILD_C) $(BUILD_CC) $(BINS)
+all: $(BINS)
 
 .PHONY: set_dynamic_options
 set_dynamic_options: $(TOML)
