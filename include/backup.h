@@ -71,6 +71,9 @@ extern "C" {
 // Estimate total backup file sizes with 99.9% confidence.
 #define BACKUP_FILE_ESTIMATE_CONFIDENCE_LEVEL 0.999
 
+#define RUN_BACKUP_SUCCESS ((void*) 0)
+#define RUN_BACKUP_FAILURE ((void*) -1lu)
+
 /*
  * The struct used to maintain state information about a backup file which was
  * not completely filled from a backup task
@@ -87,6 +90,7 @@ typedef struct queued_backup_fd {
 //
 
 int32_t backup_main(int32_t argc, char **argv);
+backup_status_t* backup_run(backup_config_t* conf);
 
 /*
  * Returns the backup config/status struct being used by the currently running

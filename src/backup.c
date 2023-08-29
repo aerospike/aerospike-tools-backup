@@ -50,15 +50,11 @@ typedef struct backup_globals {
 // of the vector).
 static as_vector g_globals;
 
-#define RUN_BACKUP_SUCCESS ((void*) 0)
-#define RUN_BACKUP_FAILURE ((void*) -1lu)
-
-
 //==========================================================
 // Forward Declarations.
 //
 
-static backup_status_t* run_backup(backup_config_t* conf);
+static backup_status_t* start_backup(backup_config_t* conf);
 
 typedef struct distr_stats {
 	uint64_t total;
@@ -220,7 +216,7 @@ backup_main(int32_t argc, char **argv)
 		goto cleanup;
 	}
 
-	backup_status_t* status = run_backup(&conf);
+	backup_status_t* status = start_backup(&conf);
 	if (status == RUN_BACKUP_SUCCESS) {
 		res = EXIT_SUCCESS;
 	}
@@ -234,12 +230,35 @@ backup_main(int32_t argc, char **argv)
 
 cleanup:
 	file_proxy_cloud_shutdown();
+	as_vector_destroy(&g_globals);
+	ver("Exiting with status code %d", res);
+	return res;
+}
 
+/*
+ * FOR USE WITH ASBACKUP AS A LIBRARY (Use at your own risk)
+ *
+ * Runs a backup job with the given configuration. This method is not thread
+ * safe and should not be called multiple times in parallel, as it uses global
+ * variables to handle signal interruption.
+ * 
+ * The passed in backup config must be destroyed by the caller using backup_config_destroy()
+ * To enable C client logging, call enable_client_log() before calling this function
+ * 
+ * Returns the backup_status struct used during the run which must be freed by the
+ * caller using backup_status_destroy(), then free().
+ * Only free the return value if it is != RUN_BACKUP_FAILURE || != RUN_BACKUP_SUCCESS
+ */
+backup_status_t*
+backup_run(backup_config_t* conf) {
+	as_vector_init(&g_globals, sizeof(backup_globals_t), 1);
+
+	backup_status_t* status = start_backup(conf);
+
+	file_proxy_cloud_shutdown();
 	as_vector_destroy(&g_globals);
 
-	ver("Exiting with status code %d", res);
-
-	return res;
+	return status;
 }
 
 backup_config_t*
@@ -272,7 +291,7 @@ get_g_backup_status(void)
  * caller).
  */
 static backup_status_t*
-run_backup(backup_config_t* conf)
+start_backup(backup_config_t* conf)
 {
 	int32_t res = EXIT_FAILURE;
 	bool do_backup_save_state = false;
@@ -491,14 +510,14 @@ run_backup(backup_config_t* conf)
 
 			bool cur_silent_val = g_silent;
 			g_silent = true;
-			backup_status_t* estimate_status = run_backup(estimate_conf);
+			backup_status_t* estimate_status = start_backup(estimate_conf);
 			g_silent = cur_silent_val;
 
 			backup_config_destroy(estimate_conf);
 			cf_free(estimate_conf);
 
 			// re-enable signal handling, since it was disabled at the end of
-			// the estimate run in run_backup.
+			// the estimate run in start_backup.
 			set_sigaction(sig_hand);
 
 			if (estimate_status == RUN_BACKUP_FAILURE) {
