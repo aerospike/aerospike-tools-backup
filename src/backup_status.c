@@ -1209,7 +1209,7 @@ calc_node_list_partitions(as_cluster *clust, const as_namespace ns,
 		as_partition* part = &table->partitions[i];
 
 		for (uint32_t j = 0; j < n_node_names; j++) {
-			if (strncmp(part->master->name, (*node_names)[j], AS_NODE_NAME_SIZE) == 0) {
+			if (strncmp(part->nodes[0]->name, (*node_names)[j], AS_NODE_NAME_SIZE) == 0) {
 				if (last_part_included) {
 					filter->count++;
 				}

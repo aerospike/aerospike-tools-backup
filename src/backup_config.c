@@ -25,6 +25,7 @@
 
 #include <conf.h>
 #include <utils.h>
+#include <sc_client.h>
 
 
 //==========================================================
@@ -43,6 +44,10 @@ extern char *aerospike_client_version;
 
 static void print_version(void);
 static void usage(const char *name);
+static char* get_string_arg(sc_client* c, const char* optarg);
+static int64_t get_int64_arg(sc_client* c, const char* optarg);
+static uint8_t* get_secret_config(sc_client* c, const char* in, size_t* result_size);
+static char* get_secret_string(sc_client* c, const char* path);
 
 //==========================================================
 // Public API.
@@ -157,6 +162,19 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 		{ NULL, 0, NULL, 0 }
 	};
 
+    const char* addr = "127.0.0.1";
+    const char* port = "3005";
+
+    sc_cfg secret_agent_cfg;
+	sc_cfg_init(&secret_agent_cfg);
+	secret_agent_cfg.addr = addr;
+	secret_agent_cfg.port = port;
+
+	sc_client sac;
+	sc_client_init(&sac, &secret_agent_cfg);
+    
+	sc_set_log_function(&err);
+
 	backup_config_default(conf);
 
 	int32_t opt;
@@ -165,6 +183,11 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 
 	// Don't print error messages for the first two argument parsers
 	opterr = 0;
+
+	// TODO remove these. secret agent tls testing
+	// conf->tls.castring = get_string_arg("secrets:toolscerts:cacert");
+	// conf->tls.keystring = get_string_arg("secrets:toolscerts:key");
+	// conf->tls.certstring = get_string_arg("secrets:toolscerts:cert");
 
 	// Option string should start with '-' to avoid argv permutation.
 	// We need same argv sequence in third check to support space separated
@@ -235,7 +258,27 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 	opterr = 1;
 	// Reset optind (internal variable) to parse all options again
 	optind = 1;
+	// Used to reset optarg if an arg is a secret
+	char* old_optarg = NULL;
 	while ((opt = getopt_long(argc, argv, OPTIONS_SHORT, options, 0)) != -1) {
+
+		size_t secret_size = 0;
+		bool arg_is_secret = false;
+
+		if (optarg && !strncmp(SC_SECRETS_PATH_REFIX, optarg, strlen(SC_SECRETS_PATH_REFIX))) {
+			char* tmp_secret;
+			sc_err sc_status = sc_secret_get_bytes(&sac, optarg, &tmp_secret, &secret_size);
+			if (sc_status.code == SC_OK) {
+				old_optarg = optarg;
+				optarg = tmp_secret;
+				arg_is_secret = true;
+			}
+			else {
+				err("secret agent request failed err code: %d", sc_status.code);
+				return BACKUP_CONFIG_INIT_FAILURE;
+			}
+		}
+
 		switch (opt) {
 		case 'h':
 			conf->host = safe_strdup(optarg);
@@ -478,7 +521,12 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 			break;
 
 		case TLS_OPT_CA_FILE:
-			conf->tls.cafile = safe_strdup(optarg);
+			if (arg_is_secret) {
+				conf->tls.castring = safe_strdup(optarg);
+			}
+			else {
+				conf->tls.cafile = safe_strdup(optarg);
+			}
 			break;
 
 		case TLS_OPT_CA_PATH:
@@ -511,7 +559,12 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 			break;
 
 		case TLS_OPT_KEY_FILE:
-			conf->tls.keyfile = safe_strdup(optarg);
+			if (arg_is_secret) {
+				conf->tls.keystring = safe_strdup(optarg);
+			}
+			else {
+				conf->tls.keyfile = safe_strdup(optarg);
+			}
 			break;
 
 		case TLS_OPT_KEY_FILE_PASSWORD:
@@ -530,7 +583,12 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 			break;
 
 		case TLS_OPT_CERT_FILE:
-			conf->tls.certfile = safe_strdup(optarg);
+			if (arg_is_secret) {
+				conf->tls.certstring = safe_strdup(optarg);
+			}
+			else {
+				conf->tls.certfile = safe_strdup(optarg);
+			}
 			break;
 
 		case 'a':
@@ -647,6 +705,11 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 		default:
 			fprintf(stderr, "Run with --help for usage information and flag options\n");
 			return BACKUP_CONFIG_INIT_FAILURE;
+		}
+
+		if (arg_is_secret) {
+			cf_free(optarg);
+			optarg = old_optarg;
 		}
 	}
 

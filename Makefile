@@ -50,14 +50,14 @@ endif
 
 CC ?= cc
 
-DWARF := $(shell $(CC) -Wall -Wextra -O2 -o /tmp/asflags_$${$$} src/flags.c; \
+DWARF := $(shell $(CC) -Wall -Wextra -O0 -g -o /tmp/asflags_$${$$} src/flags.c; \
 		/tmp/asflags_$${$$}; rm /tmp/asflags_$${$$})
-CFLAGS += -std=gnu11 $(DWARF) -O2 -fno-common -fno-strict-aliasing \
+CFLAGS += -std=gnu11 $(DWARF) -O0 -g -fno-common -fno-strict-aliasing \
 		-Wall -Wextra -Wconversion -Wsign-conversion -Wmissing-declarations \
 		-Wno-implicit-fallthrough -Wno-unused-result -Wno-typedef-redefinition \
 		-D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_FORTIFY_SOURCE=2 -DMARCH_$(ARCH) \
 		-DTOOL_VERSION=\"$(VERSION)\"
-CXXFLAGS := -std=c++14 $(DWARF) -O2 -fno-common -fno-strict-aliasing \
+CXXFLAGS := -std=c++14 $(DWARF) -O0 -g -fno-common -fno-strict-aliasing \
 		-Wall -Wextra -Wconversion -Wsign-conversion -Wmissing-declarations \
 		-Wno-implicit-fallthrough -Wno-unused-result \
 		-D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_FORTIFY_SOURCE=2 -DMARCH_$(ARCH) \
@@ -121,15 +121,30 @@ DIR_TOML := $(ROOT)/src/toml
 DIR_C_CLIENT ?= $(DIR_MODULES)/c-client
 C_CLIENT_LIB := $(DIR_C_CLIENT)/target/$(PLATFORM)/lib/libaerospike.a
 
+DIR_SECRET_CLIENT ?= $(DIR_MODULES)/secret-agent-client
+SECRET_CLIENT_LIB := $(DIR_SECRET_CLIENT)/target/$(PLATFORM)/lib/libsecrets-client-c.a
+
+# DIR_JANSSON ?= $(DIR_MODULES)/jansson
+# JANSSON_LIB := $(DIR_JANSSON)/target/$(PLATFORM)/lib/libaerospike.a
+
 INCLUDES := -I$(DIR_INC)
 INCLUDES += -I$(DIR_TOML)
 INCLUDES += -I$(DIR_C_CLIENT)/src/include
 INCLUDES += -I$(DIR_C_CLIENT)/modules/common/src/include
 INCLUDES += -I$(OPENSSL_PREFIX)/include
+INCLUDES += -I$(DIR_SECRET_CLIENT)/src/include
 INCLUDES += -I/usr/local/include
 
 LIBRARIES := $(C_CLIENT_LIB)
+LIBRARIES += $(SECRET_CLIENT_LIB)
 LIBRARIES += -L/usr/local/lib
+
+ifdef M1_HOME_BREW
+  LIBRARIES += -L/opt/homebrew/lib
+  INCLUDES += -I/opt/homebrew/include
+endif
+
+LIBRARIES += -ljansson
 
 ifeq ($(AWS_SDK_STATIC_PATH),)
   # do not change the order of these
@@ -297,7 +312,7 @@ TEST_SRC := $(shell find $(DIR_UNIT_TEST) -name '*.c' -type f)
 TEST_OBJ := $(HELPER_OBJS) $(patsubst $(DIR_UNIT_TEST)/%.c,$(DIR_TEST_OBJ)/unit/%.o,$(TEST_SRC))
 TEST_DEP := $(patsubst $(DIR_TEST_OBJ)/%.o,$(DIR_TEST_OBJ)/%.d,$(TEST_OBJ))
 
-TEST_INTEGRATION_TESTS := $(patsubst $(DIR_INTEGRATION_TEST)/%.py,run_%,$(shell find $(DIR_INTEGRATION_TEST) -name 'test_*.py' -type f))
+TEST_INTEGRATION_TESTS := $(patsubst $(DIR_INTEGRATION_TEST)/%.py,run_%,$(shell find $(DIR_INTEGRATION_TEST) -name 'test_filter*.py' -type f))
 
 TEST_BACKUP_SRC := $(BACKUP_SRC_MAIN) $(HELPER_SRCS) $(HELPER_CXX_SRCS)
 TEST_BACKUP_OBJ := $(call test_src_to_obj, $(TEST_BACKUP_SRC))
@@ -324,6 +339,7 @@ all: $(BINS)
 clean:
 	$(MAKE) -C $(DIR_TOML) clean
 	$(MAKE) -C $(DIR_C_CLIENT) clean
+	$(MAKE) -C $(DIR_SECRET_CLIENT) clean
 	rm -f $(DEPS) $(OBJS) $(BINS) $(TEST_OBJS) $(TEST_DEPS) $(TEST_BINS)
 	if [ -d $(DIR_OBJ) ]; then rmdir $(DIR_OBJ); fi
 	if [ -d $(DIR_BIN) ]; then rmdir $(DIR_BIN); fi
@@ -372,10 +388,10 @@ $(DIR_OBJ)/%_c.o: $(DIR_SRC)/%.c | $(DIR_OBJ)
 $(DIR_OBJ)/%_cc.o: $(DIR_SRC)/%.cc | $(DIR_OBJ)
 	$(CXX) $(CXXFLAGS) -MMD -o $@ -c $(INCLUDES) $<
 
-$(BACKUP): $(BACKUP_OBJ) $(TOML) $(C_CLIENT_LIB) | $(DIR_BIN)
+$(BACKUP): $(BACKUP_OBJ) $(TOML) $(C_CLIENT_LIB) $(SECRET_CLIENT_LIB) | $(DIR_BIN)
 	$(CXX) $(LDFLAGS) -o $(BACKUP) $(BACKUP_OBJ) $(LIBRARIES)
 
-$(RESTORE): $(RESTORE_OBJ) $(TOML) $(C_CLIENT_LIB) | $(DIR_BIN)
+$(RESTORE): $(RESTORE_OBJ) $(TOML) $(C_CLIENT_LIB) $(SECRET_CLIENT_LIB) | $(DIR_BIN)
 	$(CXX) $(LDFLAGS) -o $(RESTORE) $(RESTORE_OBJ) $(LIBRARIES)
 
 $(TOML):
@@ -383,6 +399,9 @@ $(TOML):
 
 $(C_CLIENT_LIB):
 	$(MAKE) -C $(DIR_C_CLIENT)
+
+$(SECRET_CLIENT_LIB):
+	$(MAKE) -C $(DIR_SECRET_CLIENT)
 
 -include $(BACKUP_DEP)
 -include $(RESTORE_DEP)
@@ -427,10 +446,10 @@ $(DIR_TEST_OBJ)/src/%_cc.o: src/%.cc | $(DIR_TEST_OBJ)/src
 $(DIR_TEST_BIN)/test: $(TEST_OBJ) $(DIR_C_CLIENT)/target/$(PLATFORM)/lib/libaerospike.a $(TOML) | $(DIR_TEST_BIN)
 	$(CXX) -o $@ $(TEST_OBJ) $(DIR_C_CLIENT)/target/$(PLATFORM)/lib/libaerospike.a $(TEST_LDFLAGS) $(LIBRARIES)
 
-$(TEST_BACKUP): $(TEST_BACKUP_OBJ) $(TOML) $(C_CLIENT_LIB) | $(DIR_TEST_BIN)
+$(TEST_BACKUP): $(TEST_BACKUP_OBJ) $(TOML) $(C_CLIENT_LIB) $(SECRET_CLIENT_LIB) | $(DIR_TEST_BIN)
 	$(CXX) $(TEST_LDFLAGS) -o $(TEST_BACKUP) $(TEST_BACKUP_OBJ) $(LIBRARIES)
 
-$(TEST_RESTORE): $(TEST_RESTORE_OBJ) $(TOML) $(C_CLIENT_LIB) | $(DIR_TEST_BIN)
+$(TEST_RESTORE): $(TEST_RESTORE_OBJ) $(TOML) $(C_CLIENT_LIB) $(SECRET_CLIENT_LIB) | $(DIR_TEST_BIN)
 	$(CXX) $(TEST_LDFLAGS) -o $(TEST_RESTORE) $(TEST_RESTORE_OBJ) $(LIBRARIES)
 
 -include $(TEST_DEPS)
