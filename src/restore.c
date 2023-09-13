@@ -369,6 +369,8 @@ start_restore(restore_config_t *conf)
 		++threads_ok;
 	}
 
+	res = EXIT_SUCCESS;
+
 	inf(
 		"Finished %s backup file(s)",
 		conf->validate ? "validating" : "restoring"
