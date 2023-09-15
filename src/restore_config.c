@@ -21,6 +21,7 @@
 
 #include <restore_config.h>
 
+#include <sc_client.h>
 #include <getopt.h>
 
 #include <conf.h>
@@ -151,6 +152,12 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 		{ "s3-max-async-downloads", required_argument, NULL, COMMAND_OPT_S3_MAX_ASYNC_DOWNLOADS },
 		{ "s3-log-level", required_argument, NULL, COMMAND_OPT_S3_LOG_LEVEL },
 		{ "s3-connect-timeout", required_argument, NULL, COMMAND_OPT_S3_CONNECT_TIMEOUT },
+
+
+		{ "sa-address", required_argument, NULL, COMMAND_SA_ADDRESS },
+		{ "sa-port", required_argument, NULL, COMMAND_SA_PORT },
+		{ "sa-timeout", required_argument, NULL, COMMAND_SA_TIMEOUT },
+		{ "sa-cafile", required_argument, NULL, COMMAND_SA_CAFILE },
 		{ NULL, 0, NULL, 0 }
 	};
 
@@ -225,6 +232,54 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 			return RESTORE_CONFIG_INIT_FAILURE;
 		}
 	}
+
+    sc_cfg secret_agent_cfg;
+	sc_cfg_init(&secret_agent_cfg);
+
+	// Reset optind (internal variable) to parse all options again
+	optind = 1;
+	// parse secret agent arguments
+	while ((optcase = getopt_long(argc, argv, "-" OPTIONS_SHORT, options, 0)) != -1) {
+
+		switch (optcase) {
+		case COMMAND_SA_ADDRESS:
+			secret_agent_cfg.addr = safe_strdup(optarg);
+			break;
+
+		case COMMAND_SA_PORT:
+			secret_agent_cfg.port = safe_strdup(optarg);
+			break;
+		
+		case COMMAND_SA_TIMEOUT:
+			if (!better_atoi(optarg, &tmp) || tmp < 0 || tmp > INT_MAX) {
+				err("Invalid secret agent timeout value %s", optarg);
+				return RESTORE_CONFIG_INIT_FAILURE;
+			}
+			secret_agent_cfg.timeout = (int) tmp;
+			break;
+		
+		case COMMAND_SA_CAFILE:
+
+			// if this was already set during config file parsing,
+			// free the config version
+			if (secret_agent_cfg.tls.ca_string != NULL) {
+				cf_free((char*) secret_agent_cfg.tls.ca_string);
+				secret_agent_cfg.tls.ca_string = NULL;
+			}
+
+			secret_agent_cfg.tls.ca_string = read_file_as_string(optarg);
+			if (secret_agent_cfg.tls.ca_string == NULL) {
+				err("Invalid secret agent cafile %s", optarg);
+				return RESTORE_CONFIG_INIT_FAILURE;
+			}
+			break;
+		}
+	}
+
+	sc_client sac;
+	sc_client_init(&sac, &secret_agent_cfg);
+    
+	sc_set_log_function(&err);
 
 	// Now print error messages
 	opterr = 1;
@@ -594,12 +649,21 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 		case CONFIG_FILE_OPT_INSTANCE:
 		case CONFIG_FILE_OPT_NO_CONFIG_FILE:
 		case CONFIG_FILE_OPT_ONLY_CONFIG_FILE:
+		case COMMAND_SA_ADDRESS:
+		case COMMAND_SA_PORT:
+		case COMMAND_SA_TIMEOUT:
+		case COMMAND_SA_CAFILE:
 			break;
 
 		default:
 			fprintf(stderr, "Run with --help for usage information and flag options\n");
 			return RESTORE_CONFIG_INIT_FAILURE;
 		}
+	}
+
+	if (secret_agent_cfg.tls.ca_string != NULL) {
+		cf_free((char*) secret_agent_cfg.tls.ca_string);
+		secret_agent_cfg.tls.ca_string = NULL;
 	}
 
 	if (optind < argc) {

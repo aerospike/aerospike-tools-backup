@@ -256,7 +256,11 @@ typedef enum {
 	COMMAND_OPT_EVENT_LOOPS,
 	COMMAND_OPT_DIRECTORY_LIST,
 	COMMAND_OPT_PARENT_DIRECTORY,
-	COMMAND_OPT_VALIDATE
+	COMMAND_OPT_VALIDATE,
+	COMMAND_SA_ADDRESS,
+	COMMAND_SA_PORT,
+	COMMAND_SA_TIMEOUT,
+	COMMAND_SA_CAFILE
 } cmd_opt;
 
 /*
@@ -506,6 +510,12 @@ void tls_config_destroy(as_config_tls* tls);
  * Duplicates an as_config_tls object.
  */
 void tls_config_clone(as_config_tls* clone, const as_config_tls* src);
+
+/*
+ * Reads the contents of `path` as a char*
+ * The returned char* must be freed by the caller
+ */
+char* read_file_as_string(const char* path);
 
 #ifdef __cplusplus
 }

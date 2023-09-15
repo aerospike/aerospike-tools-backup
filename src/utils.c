@@ -2011,3 +2011,48 @@ tls_config_clone(as_config_tls* clone, const as_config_tls* src)
 	clone->certfile = safe_strdup(src->certfile);
 }
 
+char* read_file_as_string(const char* path)
+{
+    FILE* fptr;
+    long flen;
+
+    fptr = fopen(path, "rb");
+	if (fptr == NULL) {
+		err("failed to open %s", path);
+		return NULL;
+	}
+
+    if (fseek(fptr, 0, SEEK_END) != 0) {
+		err("failed to seek to end of %s", path);
+		return NULL;
+	}
+
+    flen = ftell(fptr);
+	if (flen < 0) {
+		err("filed to get file length of %s", path);
+		return NULL;
+	}
+
+    rewind(fptr);
+
+    char* buf = (char*) cf_malloc(flen * sizeof(char));
+	if (buf == NULL) {
+		err("failed to allocate memory for file buff, path: %s", path);
+		return NULL;
+	}
+
+    fread(buf, flen, 1, fptr);
+	if (ferror(fptr)) {
+		cf_free(buf);
+		err("failed to read %s", path);
+		return NULL;
+	}
+
+    if (fclose(fptr) != 0) {
+		cf_free(buf);
+		err("failed closing %s", path);
+		return NULL;
+	}
+
+    return buf;
+}
