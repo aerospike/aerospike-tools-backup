@@ -38,11 +38,11 @@
 static restore_config_t* g_conf;
 static restore_status_t* g_status;
 
-
 //==========================================================
 // Forward Declarations.
 //
 
+static restore_status_t* start_restore(restore_config_t *conf);
 static bool has_stopped(void);
 static void stop(void);
 static int update_file_pos(per_thread_context_t* ptc);
@@ -67,6 +67,7 @@ static bool wait_udf(aerospike *as, udf_param *udf, uint32_t timeout);
 static void sig_hand(int32_t sig);
 //static void print_stat(per_thread_context_t *ptc, cf_clock *prev_log,
 //		uint64_t *prev_records,	cf_clock *now, cf_clock *store_time, cf_clock *read_time);
+static void set_s3_configs(const restore_config_t* conf);
 
 
 //==========================================================
@@ -81,19 +82,81 @@ restore_main(int32_t argc, char **argv)
 	enable_client_log();
 
 	restore_config_t conf;
-	g_conf = &conf;
 
 	int restore_config_res = restore_config_init(argc, argv, &conf);
 	if (restore_config_res != 0) {
 		if (restore_config_res == RESTORE_CONFIG_INIT_EXIT) {
 			res = EXIT_SUCCESS;
 		}
+		goto cleanup;
+	}
+
+	restore_status_t *status = start_restore(&conf);
+	if (status != RUN_RESTORE_FAILURE) {
+		restore_status_destroy(status);
+		cf_free(status);
+		res = EXIT_SUCCESS;
+	}
+
+	restore_config_destroy(&conf);
+
+cleanup:
+	file_proxy_cloud_shutdown();
+	ver("Exiting with status code %d", res);
+	return res;
+}
+
+/*
+ * FOR USE WITH ASRESTORE AS A LIBRARY (Use at your own risk)
+ *
+ * Runs a restore job with the given configuration. This method is not thread
+ * safe and should not be called multiple times in parallel, as it uses global
+ * variables to handle signal interruption.
+ *
+ * The passed in restore_config must be freed by the caller using restore_config_destroy().
+ * To enable C client logging, call enable_client_log() before calling this function
+ * 
+ * Returns the restore_status struct used during the run which must be freed by the
+ * caller. Only free the return value if it is != RUN_RESTORE_FAILURE
+ */
+restore_status_t*
+restore_run(restore_config_t *conf) {
+	restore_status_t *status = start_restore(conf);
+	file_proxy_cloud_shutdown();
+
+	return status;
+}
+
+//==========================================================
+// Local helpers.
+//
+
+/*
+ * Runs a restore job with the given configuration. This method is not thread
+ * safe and should not be called multiple times in parallel, as it uses global
+ * variables to handle signal interruption.
+ *
+ * Returns the restore_status struct used during the run which must be freed by the
+ * caller.
+ * Only free the return value if it is != RUN_RESTORE_FAILURE
+ */
+static restore_status_t*
+start_restore(restore_config_t *conf)
+{
+	int32_t res = EXIT_FAILURE;
+	g_conf = conf;
+
+	restore_status_t *status = (restore_status_t*) malloc(sizeof(restore_status_t));
+	if (status == NULL) {
+		err("Failed to allocate %zu bytes for restore status struct",
+				sizeof(restore_status_t));
 		goto cleanup1;
 	}
 
-	restore_status_t status;
-	g_status = &status;
-	if (!restore_status_init(&status, &conf)) {
+	set_s3_configs(conf);
+
+	g_status = status;
+	if (!restore_status_init(status, conf)) {
 		err("Failed to initialize restore status");
 		goto cleanup1;
 	}
@@ -101,41 +164,41 @@ restore_main(int32_t argc, char **argv)
 	signal(SIGINT, sig_hand);
 	signal(SIGTERM, sig_hand);
 
-	if (conf.validate) {
+	if (conf->validate) {
 		inf("Starting validation of %s",
-				conf.input_file != NULL ?
-						file_proxy_is_std_path(conf.input_file) ? "[stdin]" : conf.input_file :
-						conf.directory);
+				conf->input_file != NULL ?
+						file_proxy_is_std_path(conf->input_file) ? "[stdin]" : conf->input_file :
+						conf->directory);
 	}
 	else {
-		inf("Starting restore to %s (bins: %s, sets: %s) from %s", conf.host,
-				conf.bin_list == NULL ? "[all]" : conf.bin_list,
-				conf.set_list == NULL ? "[all]" : conf.set_list,
-				conf.input_file != NULL ?
-						file_proxy_is_std_path(conf.input_file) ? "[stdin]" : conf.input_file :
-						conf.directory);
+		inf("Starting restore to %s (bins: %s, sets: %s) from %s", conf->host,
+				conf->bin_list == NULL ? "[all]" : conf->bin_list,
+				conf->set_list == NULL ? "[all]" : conf->set_list,
+				conf->input_file != NULL ?
+						file_proxy_is_std_path(conf->input_file) ? "[stdin]" : conf->input_file :
+						conf->directory);
 	}
 
 	FILE *mach_fd = NULL;
 
-	if (conf.machine != NULL && (mach_fd = fopen(conf.machine, "a")) == NULL) {
-		err_code("Error while opening machine-readable file %s", conf.machine);
+	if (conf->machine != NULL && (mach_fd = fopen(conf->machine, "a")) == NULL) {
+		err_code("Error while opening machine-readable file %s", conf->machine);
 		goto cleanup2;
 	}
 
 	char (*node_names)[][AS_NODE_NAME_SIZE] = NULL;
 	uint32_t n_node_names = 0;
 
-	if (!conf.validate) {
-		get_node_names(status.as->cluster, NULL, 0, &node_names, &n_node_names);
+	if (!conf->validate) {
+		get_node_names(status->as->cluster, NULL, 0, &node_names, &n_node_names);
 
 		inf("Processing %u node(s)", n_node_names);
 	}
 
 	pthread_t counter_thread;
 	counter_thread_args counter_args;
-	counter_args.conf = &conf;
-	counter_args.status = &status;
+	counter_args.conf = conf;
+	counter_args.status = status;
 	counter_args.node_names = node_names;
 	counter_args.n_node_names = n_node_names;
 	counter_args.mach_fd = mach_fd;
@@ -149,8 +212,8 @@ restore_main(int32_t argc, char **argv)
 
 	pthread_t restore_threads[MAX_THREADS];
 	restore_thread_args_t restore_args;
-	restore_args.conf = &conf;
-	restore_args.status = &status;
+	restore_args.conf = conf;
+	restore_args.status = status;
 	restore_args.path = NULL;
 	restore_args.shared_fd = NULL;
 	restore_args.line_no = NULL;
@@ -169,44 +232,44 @@ restore_main(int32_t argc, char **argv)
 	off_t total_file_size = 0;
 
 	// restoring from multiple directories
-	if (conf.directory_list != NULL) {
+	if (conf->directory_list != NULL) {
 
-		char *dir_clone = safe_strdup(conf.directory_list);
+		char *dir_clone = safe_strdup(conf->directory_list);
 		split_string(dir_clone, ',', false, &directories);
 
 		for (uint32_t i = 0; i < directories.size; i++) {
 			char *dir = as_vector_get_ptr(&directories, i);
 
-			if (conf.parent_directory) {
+			if (conf->parent_directory) {
 
-				size_t parent_dir_size = strlen(conf.parent_directory);
+				size_t parent_dir_size = strlen(conf->parent_directory);
 				size_t path_size = parent_dir_size + strlen(dir) + 1;
 				char *fmt = "%s%s";
 
 
-				if (conf.parent_directory[parent_dir_size - 1] != '/') {
+				if (conf->parent_directory[parent_dir_size - 1] != '/') {
 					++path_size;
 					fmt = "%s/%s";
 				}
 
 				char *tmp_dir = dir;
 				dir = cf_malloc(path_size);
-				snprintf(dir, path_size, fmt, conf.parent_directory, tmp_dir);
+				snprintf(dir, path_size, fmt, conf->parent_directory, tmp_dir);
 			}
 
-			total_file_size = get_backup_files(dir, &status.file_vec);
+			total_file_size = get_backup_files(dir, &status->file_vec);
 			if (total_file_size < 0) {
 				err("Error while getting backup files from directory_list entry: %s", dir);
 				cf_free(dir_clone);
 
-				if (conf.parent_directory) {
+				if (conf->parent_directory) {
 					cf_free(dir);
 				}
 
 				goto cleanup5;
 			}
 
-			if (conf.parent_directory) {
+			if (conf->parent_directory) {
 				cf_free(dir);
 			}
 		}
@@ -215,9 +278,9 @@ restore_main(int32_t argc, char **argv)
 	}
 
 	// restoring from a directory
-	if (conf.directory != NULL) {
+	if (conf->directory != NULL) {
 
-		total_file_size = get_backup_files(conf.directory, &status.file_vec);
+		total_file_size = get_backup_files(conf->directory, &status->file_vec);
 		if (total_file_size < 0) {
 			err("Error while getting backup files from directory");
 			goto cleanup5;
@@ -225,28 +288,28 @@ restore_main(int32_t argc, char **argv)
 	}
 
 	// directory and directory_list are mutually exclusive but share this logic
-	if (conf.directory != NULL || conf.directory_list != NULL) {
+	if (conf->directory != NULL || conf->directory_list != NULL) {
 
-		if (status.file_vec.size == 0) {
+		if (status->file_vec.size == 0) {
 			err("No backup files found");
 			goto cleanup5;
 		}
 
-		if (!conf.no_records) {
-			ver("Triaging %u backup file(s)", status.file_vec.size);
-			status.estimated_bytes = total_file_size;
-			ver("Estimated total backup file size: %lli bytes", status.estimated_bytes);
+		if (!conf->no_records) {
+			ver("Triaging %u backup file(s)", status->file_vec.size);
+			status->estimated_bytes = total_file_size;
+			ver("Estimated total backup file size: %lli bytes", status->estimated_bytes);
 		}
 
-		if (conf.validate) {
+		if (conf->validate) {
 			inf("Validating backup files");
 		}
 
-		ver("Pushing %u exclusive job(s) to job queue", status.file_vec.size);
+		ver("Pushing %u exclusive job(s) to job queue", status->file_vec.size);
 
 		// push a job for each backup file
-		for (uint32_t i = 0; i < status.file_vec.size; ++i) {
-			restore_args.path = as_vector_get_ptr(&status.file_vec, i);
+		for (uint32_t i = 0; i < status->file_vec.size; ++i) {
+			restore_args.path = as_vector_get_ptr(&status->file_vec, i);
 
 			if (cf_queue_push(job_queue, &restore_args) != CF_QUEUE_OK) {
 				err("Error while queueing restore job");
@@ -254,37 +317,37 @@ restore_main(int32_t argc, char **argv)
 			}
 		}
 
-		if (status.file_vec.size < conf.parallel) {
-			conf.parallel = status.file_vec.size;
+		if (status->file_vec.size < conf->parallel) {
+			conf->parallel = status->file_vec.size;
 		}
 	}
 	// restoring from a single backup file
 	else {
 		inf(
 			"%s %s", 
-			conf.validate ? "Validating" : "Restoring",
-			conf.input_file
+			conf->validate ? "Validating" : "Restoring",
+			conf->input_file
 		);
 
 		restore_args.shared_fd =
 			(io_read_proxy_t*) cf_malloc(sizeof(io_read_proxy_t));
 		// open the file, file descriptor goes to restore_args.shared_fd
-		if (!open_file(conf.input_file, &status.ns_vec, restore_args.shared_fd,
+		if (!open_file(conf->input_file, &status->ns_vec, restore_args.shared_fd,
 				&restore_args.legacy, &line_no, NULL,
-				conf.no_records ? NULL : &status.estimated_bytes,
-				conf.compress_mode, conf.encrypt_mode, conf.pkey)) {
+				conf->no_records ? NULL : &status->estimated_bytes,
+				conf->compress_mode, conf->encrypt_mode, conf->pkey)) {
 			err("Error while opening shared backup file");
 			cf_free(restore_args.shared_fd);
 			goto cleanup5;
 		}
 
-		ver("Pushing %u shared job(s) to job queue", conf.parallel);
+		ver("Pushing %u shared job(s) to job queue", conf->parallel);
 
 		restore_args.line_no = &line_no;
-		restore_args.path = conf.input_file;
+		restore_args.path = conf->input_file;
 
 		// push an identical job for each thread; all threads use restore_args.shared_fd for reading
-		for (uint32_t i = 0; i < conf.parallel; ++i) {
+		for (uint32_t i = 0; i < conf->parallel; ++i) {
 			if (cf_queue_push(job_queue, &restore_args) != CF_QUEUE_OK) {
 				err("Error while queueing restore job");
 				goto cleanup6;
@@ -292,15 +355,15 @@ restore_main(int32_t argc, char **argv)
 		}
 	}
 
-	if (!conf.no_records && !conf.validate) {
+	if (!conf->no_records && !conf->validate) {
 		inf("Restoring records");
 	}
 
 	uint32_t threads_ok = 0;
 
-	ver("Creating %u restore thread(s)", conf.parallel);
+	ver("Creating %u restore thread(s)", conf->parallel);
 
-	for (uint32_t i = 0; i < conf.parallel; ++i) {
+	for (uint32_t i = 0; i < conf->parallel; ++i) {
 		if (pthread_create(&restore_threads[i], NULL, restore_thread_func, job_queue) != 0) {
 			err_code("Error while creating restore thread");
 			goto cleanup7;
@@ -313,7 +376,7 @@ restore_main(int32_t argc, char **argv)
 
 	inf(
 		"Finished %s backup file(s)",
-		conf.validate ? "validating" : "restoring"
+		conf->validate ? "validating" : "restoring"
 	);
 
 cleanup7:
@@ -333,22 +396,22 @@ cleanup7:
 		}
 	}
 
-	if (!conf.validate && !batch_uploader_await(&status.batch_uploader)) {
+	if (!conf->validate && !batch_uploader_await(&status->batch_uploader)) {
 		res = EXIT_FAILURE;
 	}
 
 	// NOTE this is here to support the --indexes-last option
-	if (res == EXIT_SUCCESS && !conf.no_indexes && !conf.validate &&
-			!restore_indexes(status.as, &status.index_vec, &status.set_vec,
-				&restore_args, conf.wait, conf.timeout)) {
+	if (res == EXIT_SUCCESS && !conf->no_indexes && !conf->validate &&
+			!restore_indexes(status->as, &status->index_vec, &status->set_vec,
+				&restore_args, conf->wait, conf->timeout)) {
 		err("Error while restoring secondary indexes to cluster");
 		res = EXIT_FAILURE;
 	}
 
-	if (res == EXIT_SUCCESS && conf.wait) {
-		for (uint32_t i = 0; i < status.udf_vec.size; i++) {
-			udf_param* udf = as_vector_get(&status.udf_vec, i);
-			if (!wait_udf(status.as, udf, conf.timeout)) {
+	if (res == EXIT_SUCCESS && conf->wait) {
+		for (uint32_t i = 0; i < status->udf_vec.size; i++) {
+			udf_param* udf = as_vector_get(&status->udf_vec, i);
+			if (!wait_udf(status->as, udf, conf->timeout)) {
 				err("Error while waiting for UDF upload");
 				res = EXIT_FAILURE;
 			}
@@ -356,7 +419,7 @@ cleanup7:
 	}
 
 cleanup6:
-	if (conf.directory == NULL && conf.directory_list == NULL) {
+	if (conf->directory == NULL && conf->directory_list == NULL) {
 		if (!close_file(restore_args.shared_fd)) {
 			err("Error while closing shared backup file");
 			res = EXIT_FAILURE;
@@ -371,7 +434,7 @@ cleanup5:
 cleanup4:
 	ver("Waiting for counter thread");
 
-	restore_status_finish(&status);
+	restore_status_finish(status);
 
 	if (pthread_join(counter_thread, NULL) != 0) {
 		err_code("Error while joining counter thread");
@@ -388,22 +451,16 @@ cleanup2:
 		fclose(mach_fd);
 	}
 
-	restore_status_destroy(&status);
+	if (res == EXIT_FAILURE) {
+		restore_status_destroy(status);
+		cf_free(status);
+		status = RUN_RESTORE_FAILURE;
+	}
 
 cleanup1:
-	restore_config_destroy(&conf);
 
-	file_proxy_cloud_shutdown();
-
-	ver("Exiting with status code %d", res);
-
-	return res;
+	return res == EXIT_FAILURE ? RUN_RESTORE_FAILURE : status;
 }
-
-
-//==========================================================
-// Local helpers.
-//
 
 /*
  * Checks if the program has been stopped.
@@ -1578,3 +1635,22 @@ sig_hand(int32_t sig)
 	stop();
 }
 
+static void
+set_s3_configs(const restore_config_t* conf)
+{
+	if (conf->s3_region != NULL) {
+		s3_set_region(conf->s3_region);
+	}
+
+	if (conf->s3_profile != NULL) {
+		s3_set_profile(conf->s3_profile);
+	}
+
+	if (conf->s3_endpoint_override != NULL) {
+		s3_set_endpoint(conf->s3_endpoint_override);
+	}
+
+	s3_set_max_async_downloads(conf->s3_max_async_downloads);
+	s3_set_connect_timeout_ms(conf->s3_connect_timeout);
+	s3_set_log_level(conf->s3_log_level);
+}

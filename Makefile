@@ -48,6 +48,15 @@ ifdef M1_HOME_BREW
   OPENSSL_PREFIX = /opt/homebrew/opt/openssl
 endif
 
+ifeq ($(OS),Darwin)
+  DYNAMIC_SUFFIX = dylib
+  DYNAMIC_FLAG = -dynamiclib
+else
+  DYNAMIC_SUFFIX = so
+  DYNAMIC_FLAG = -shared
+endif
+DYNAMIC_OPTIONS =
+
 CC ?= cc
 
 DWARF := $(shell $(CC) -Wall -Wextra -O0 -g -o /tmp/asflags_$${$$} src/flags.c; \
@@ -294,6 +303,9 @@ BACKUP := $(DIR_BIN)/asbackup
 RESTORE := $(DIR_BIN)/asrestore
 TOML := $(DIR_TOML)/libtoml.a
 
+BACKUP_DYNAMIC := $(DIR_BIN)/asbackup.$(DYNAMIC_SUFFIX)
+RESTORE_DYNAMIC := $(DIR_BIN)/asrestore.$(DYNAMIC_SUFFIX)
+
 SRCS := $(BACKUP_SRC) $(RESTORE_SRC)
 OBJS := $(BACKUP_OBJ) $(RESTORE_OBJ)
 DEPS := $(BACKUP_DEP) $(RESTORE_DEP)
@@ -335,12 +347,25 @@ TEST_DEPS := $(sort $(TEST_DEPS))
 .PHONY: all
 all: $(BINS)
 
+# used as a pre-requisite for make shared
+# this rule is not meant for manual use by a user
+.PHONY: _set_dynamic_options
+_set_dynamic_options: $(TOML)
+	$(eval DYNAMIC_OPTIONS = -fPIC)
+
+# builds asbackup and asrestore as shared libraries
+# asbackup is designed as a standalone exe, use at your own risk
+# run this with the same options you would use in a normal build
+.PHONY: shared
+shared: _set_dynamic_options $(BACKUP_DYNAMIC) $(RESTORE_DYNAMIC)
+	$(eval DYNAMIC_OPTIONS =)
+
 .PHONY: clean
 clean:
 	$(MAKE) -C $(DIR_TOML) clean
 	$(MAKE) -C $(DIR_C_CLIENT) clean
 	$(MAKE) -C $(DIR_SECRET_CLIENT) clean
-	rm -f $(DEPS) $(OBJS) $(BINS) $(TEST_OBJS) $(TEST_DEPS) $(TEST_BINS)
+	rm -f $(DEPS) $(OBJS) $(BINS) $(TEST_OBJS) $(TEST_DEPS) $(TEST_BINS) $(BACKUP_DYNAMIC) $(RESTORE_DYNAMIC)
 	if [ -d $(DIR_OBJ) ]; then rmdir $(DIR_OBJ); fi
 	if [ -d $(DIR_BIN) ]; then rmdir $(DIR_BIN); fi
 	if [ -d $(DIR_TEST_OBJ) ]; then rm -r $(DIR_TEST_OBJ); fi
@@ -383,16 +408,22 @@ $(DIR_BIN):
 	mkdir $(DIR_BIN)
 
 $(DIR_OBJ)/%_c.o: $(DIR_SRC)/%.c | $(DIR_OBJ)
-	$(CC) $(CFLAGS) -MMD -o $@ -c $(INCLUDES) $<
+	$(CC) $(DYNAMIC_OPTIONS) $(CFLAGS) -MMD -o $@ -c $(INCLUDES) $<
 
 $(DIR_OBJ)/%_cc.o: $(DIR_SRC)/%.cc | $(DIR_OBJ)
-	$(CXX) $(CXXFLAGS) -MMD -o $@ -c $(INCLUDES) $<
+	$(CXX) $(DYNAMIC_OPTIONS) $(CXXFLAGS) -MMD -o $@ -c $(INCLUDES) $<
 
 $(BACKUP): $(BACKUP_OBJ) $(TOML) $(C_CLIENT_LIB) $(SECRET_CLIENT_LIB) | $(DIR_BIN)
 	$(CXX) $(LDFLAGS) -o $(BACKUP) $(BACKUP_OBJ) $(LIBRARIES)
 
 $(RESTORE): $(RESTORE_OBJ) $(TOML) $(C_CLIENT_LIB) $(SECRET_CLIENT_LIB) | $(DIR_BIN)
 	$(CXX) $(LDFLAGS) -o $(RESTORE) $(RESTORE_OBJ) $(LIBRARIES)
+
+$(BACKUP_DYNAMIC): $(BACKUP_OBJ) $(TOML) $(C_CLIENT_LIB) | $(DIR_BIN)
+	$(CXX) $(DYNAMIC_FLAG) $(LDFLAGS) -o $(BACKUP_DYNAMIC) $(BACKUP_OBJ) $(LIBRARIES)
+
+$(RESTORE_DYNAMIC): $(RESTORE_OBJ) $(TOML) $(C_CLIENT_LIB) | $(DIR_BIN)
+	$(CXX) $(DYNAMIC_FLAG) $(LDFLAGS) -o $(RESTORE_DYNAMIC) $(RESTORE_OBJ) $(LIBRARIES)
 
 $(TOML):
 	$(MAKE) -C $(DIR_TOML)

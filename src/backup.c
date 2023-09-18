@@ -50,15 +50,11 @@ typedef struct backup_globals {
 // of the vector).
 static as_vector g_globals;
 
-#define RUN_BACKUP_SUCCESS ((void*) 0)
-#define RUN_BACKUP_FAILURE ((void*) -1lu)
-
-
 //==========================================================
 // Forward Declarations.
 //
 
-static backup_status_t* run_backup(backup_config_t* conf);
+static backup_status_t* start_backup(backup_config_t* conf);
 
 typedef struct distr_stats {
 	uint64_t total;
@@ -195,6 +191,7 @@ static void show_estimate(FILE* mach_fd, uint64_t* samples, uint32_t n_samples,
 		uint64_t rec_count_estimate, io_write_proxy_t* fd);
 static void sig_hand(int32_t sig);
 static void no_op(int32_t sig);
+static void set_s3_configs(const backup_config_t*);
 
 
 //==========================================================
@@ -220,7 +217,7 @@ backup_main(int32_t argc, char **argv)
 		goto cleanup;
 	}
 
-	backup_status_t* status = run_backup(&conf);
+	backup_status_t* status = start_backup(&conf);
 	if (status == RUN_BACKUP_SUCCESS) {
 		res = EXIT_SUCCESS;
 	}
@@ -234,12 +231,35 @@ backup_main(int32_t argc, char **argv)
 
 cleanup:
 	file_proxy_cloud_shutdown();
+	as_vector_destroy(&g_globals);
+	ver("Exiting with status code %d", res);
+	return res;
+}
 
+/*
+ * FOR USE WITH ASBACKUP AS A LIBRARY (Use at your own risk)
+ *
+ * Runs a backup job with the given configuration. This method is not thread
+ * safe and should not be called multiple times in parallel, as it uses global
+ * variables to handle signal interruption.
+ * 
+ * The passed in backup config must be destroyed by the caller using backup_config_destroy()
+ * To enable C client logging, call enable_client_log() before calling this function
+ * 
+ * Returns the backup_status struct used during the run which must be freed by the
+ * caller using backup_status_destroy(), then free().
+ * Only free the return value if it is != RUN_BACKUP_FAILURE || != RUN_BACKUP_SUCCESS
+ */
+backup_status_t*
+backup_run(backup_config_t* conf) {
+	as_vector_init(&g_globals, sizeof(backup_globals_t), 1);
+
+	backup_status_t* status = start_backup(conf);
+
+	file_proxy_cloud_shutdown();
 	as_vector_destroy(&g_globals);
 
-	ver("Exiting with status code %d", res);
-
-	return res;
+	return status;
 }
 
 backup_config_t*
@@ -272,7 +292,7 @@ get_g_backup_status(void)
  * caller).
  */
 static backup_status_t*
-run_backup(backup_config_t* conf)
+start_backup(backup_config_t* conf)
 {
 	int32_t res = EXIT_FAILURE;
 	bool do_backup_save_state = false;
@@ -280,6 +300,8 @@ run_backup(backup_config_t* conf)
 	backup_status_t* status = RUN_BACKUP_SUCCESS;
 
 	push_backup_globals(conf, NULL);
+
+	set_s3_configs(conf);
 
 	if (conf->remove_artifacts) {
 
@@ -491,14 +513,14 @@ run_backup(backup_config_t* conf)
 
 			bool cur_silent_val = g_silent;
 			g_silent = true;
-			backup_status_t* estimate_status = run_backup(estimate_conf);
+			backup_status_t* estimate_status = start_backup(estimate_conf);
 			g_silent = cur_silent_val;
 
 			backup_config_destroy(estimate_conf);
 			cf_free(estimate_conf);
 
 			// re-enable signal handling, since it was disabled at the end of
-			// the estimate run in run_backup.
+			// the estimate run in start_backup.
 			set_sigaction(sig_hand);
 
 			if (estimate_status == RUN_BACKUP_FAILURE) {
@@ -1107,10 +1129,19 @@ queue_file(backup_job_context_t *bjc)
 		.rec_count_file = bjc->rec_count_file,
 		.byte_count_file = bjc->byte_count_file
 	};
-	if (cf_queue_push(bjc->file_queue, &q) == CF_QUEUE_OK) {
+
+	int push_res = cf_queue_push_unique(bjc->file_queue, &q);
+
+	if (push_res == CF_QUEUE_OK) {
 		int64_t file_size = io_write_proxy_bytes_written(bjc->fd);
 		ver("File %s size is %" PRId64 ", pushing to the queue",
 				io_proxy_file_path(bjc->fd), file_size);
+		return true;
+	}
+	// cf_queue_push_unique returns -2 to indicate that the item already exists
+	else if (push_res == -2) {
+		ver("File %s already exists in the queue",
+				io_proxy_file_path(bjc->fd));
 		return true;
 	}
 
@@ -1136,7 +1167,7 @@ close_file(io_write_proxy_t *fd)
 
 	int res = io_proxy_close2(fd, FILE_PROXY_EOF);
 	if (res != 0) {
-		err("Error while closing backup file");
+		err("Error while closing backup io proxy");
 		return false;
 	}
 
@@ -1234,6 +1265,11 @@ close_dir_file(backup_job_context_t *bjc)
 {
 	bool ret = true;
 
+	if (bjc->fd == NULL) {
+		err("Attempting to close a NULL file descriptor");
+		return false;
+	}
+
 	// flush the file before calculating the size
 	if (io_proxy_flush(bjc->fd) == EOF) {
 		err("Error while flushing backup file %s", io_proxy_file_path(bjc->fd));
@@ -1316,6 +1352,8 @@ open_dir_file(backup_job_context_t *bjc)
 
 		char* file_path = (char*) cf_malloc((file_path_size + 1) * sizeof(char));
 		if (file_path == NULL) {
+			cf_free(bjc->fd);
+			bjc->fd = NULL;
 			err("Unable to malloc file path name of length %" PRIu64, file_path_size);
 			return false;
 		}
@@ -1333,6 +1371,9 @@ open_dir_file(backup_job_context_t *bjc)
 					bjc->conf->compress_mode, bjc->conf->compression_level,
 					bjc->conf->encrypt_mode, bjc->conf->pkey)) {
 			pthread_mutex_unlock(&bjc->status->dir_file_init_mutex);
+			err("Failed to open directory file %s", file_path);
+			cf_free(bjc->fd);
+			bjc->fd = NULL;
 			cf_free(file_path);
 			return false;
 		}
@@ -1343,6 +1384,9 @@ open_dir_file(backup_job_context_t *bjc)
 		if (update_file_pos(bjc->fd, &bjc->byte_count_file, &bjc->byte_count_job,
 					&bjc->status->byte_count_total) < 0) {
 			pthread_mutex_unlock(&bjc->status->dir_file_init_mutex);
+			cf_free(bjc->fd);
+			bjc->fd = NULL;
+			err("New directory file %s, failed to get file position", file_path);
 			return false;
 		}
 
@@ -1490,6 +1534,17 @@ scan_callback(const as_val *val, void *cont)
 
 		if (!close_dir_file(bjc)) {
 			err("Error while closing old backup file");
+			// set fd to NULL so that worker threads
+			// will not attempt to close this file again
+			// if they do, this can cause problems like...
+			// if this close fails, the file will be added to bjc->file_queue
+			// which is saved to the state file. If the next close in
+			// worker thread succeeds, then the file will
+			// be cleaned up in the successful close call
+			// and when the state file logic at cleanup 6
+			// tries to close the file from the queue it will access
+			// freed memory/uninitialized fields.
+			bjc->fd = NULL;
 			bjc->interrupted = true;
 			return false;
 		}
@@ -2075,8 +2130,6 @@ close_file:
 		else if (bjc.conf->directory != NULL) {
 			if (!close_dir_file(&bjc)) {
 				err("Error while closing backup file");
-				cf_free(bjc.fd);
-				bjc.fd = NULL;
 				stop();
 			}
 		}
@@ -2255,12 +2308,12 @@ init_scan_bins(char *bin_list, as_scan *scan)
 	as_vector bin_vec;
 	as_vector_inita(&bin_vec, sizeof (void *), 25);
 
-	if (bin_list[0] == 0) {
+	if (clone[0] == 0) {
 		err("Empty bin list");
 		goto cleanup1;
 	}
 
-	split_string(bin_list, ',', true, &bin_vec);
+	split_string(clone, ',', true, &bin_vec);
 
 	as_scan_select_init(scan, (uint16_t)bin_vec.size);
 
@@ -2527,3 +2580,23 @@ no_op(int32_t sig)
 	(void) sig;
 }
 
+static void
+set_s3_configs(const backup_config_t* conf)
+{
+	if (conf->s3_region != NULL) {
+		s3_set_region(conf->s3_region);
+	}
+
+	if (conf->s3_profile != NULL) {
+		s3_set_profile(conf->s3_profile);
+	}
+
+	if (conf->s3_endpoint_override != NULL) {
+		s3_set_endpoint(conf->s3_endpoint_override);
+	}
+
+	s3_set_max_async_downloads(conf->s3_max_async_downloads);
+	s3_set_max_async_uploads(conf->s3_max_async_uploads);
+	s3_set_connect_timeout_ms(conf->s3_connect_timeout);
+	s3_set_log_level(conf->s3_log_level);
+}

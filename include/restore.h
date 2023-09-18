@@ -66,6 +66,7 @@ extern "C" {
 
 // The interval for logging per-thread timing stats.
 #define STAT_INTERVAL 10
+#define RUN_RESTORE_FAILURE ((void*) -1lu)
 
 /*
  * The backup file information pushed to the job queue and picked up by the restore threads.
@@ -142,6 +143,7 @@ typedef enum {
 //
 
 int32_t restore_main(int32_t argc, char **argv);
+restore_status_t* restore_run(restore_config_t *conf);
 
 #ifdef __cplusplus
 }

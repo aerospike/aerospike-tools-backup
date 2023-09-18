@@ -753,22 +753,6 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 		return RESTORE_CONFIG_INIT_FAILURE;
 	}
 
-	if (conf->s3_region != NULL) {
-		s3_set_region(conf->s3_region);
-	}
-
-	if (conf->s3_profile != NULL) {
-		s3_set_profile(conf->s3_profile);
-	}
-
-	if (conf->s3_endpoint_override != NULL) {
-		s3_set_endpoint(conf->s3_endpoint_override);
-	}
-
-	s3_set_max_async_downloads(conf->s3_max_async_downloads);
-	s3_set_connect_timeout_ms(conf->s3_connect_timeout);
-	s3_set_log_level(conf->s3_log_level);
-
 	if (conf->nice_list != NULL) {
 		as_vector nice_vec;
 		as_vector_inita(&nice_vec, sizeof(void*), 2);

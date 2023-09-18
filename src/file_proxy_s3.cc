@@ -529,6 +529,7 @@ file_proxy_s3_write_init(file_proxy_t* f, const char* file_path,
 	f->s3.s3_state = new UploadManager(g_api.GetS3Client(), path.GetBucket(),
 			path.GetKey(), _calc_part_size(max_file_size));
 	if (!static_cast<UploadManager*>(f->s3.s3_state)->StartUpload()) {
+		delete f->s3.s3_state;
 		return -1;
 	}
 
