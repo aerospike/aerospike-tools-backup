@@ -332,15 +332,17 @@ TEST_DEPS := $(sort $(TEST_DEPS))
 .PHONY: all
 all: $(BINS)
 
-.PHONY: set_dynamic_options
-set_dynamic_options: $(TOML)
+# used as a pre-requisite for make shared
+# this rule is not meant for manual use by a user
+.PHONY: _set_dynamic_options
+_set_dynamic_options: $(TOML)
 	$(eval DYNAMIC_OPTIONS = -fPIC)
 
 # builds asbackup and asrestore as shared libraries
 # asbackup is designed as a standalone exe, use at your own risk
 # run this with the same options you would use in a normal build
 .PHONY: shared
-shared: set_dynamic_options $(BACKUP_DYNAMIC) $(RESTORE_DYNAMIC)
+shared: _set_dynamic_options $(BACKUP_DYNAMIC) $(RESTORE_DYNAMIC)
 	$(eval DYNAMIC_OPTIONS =)
 
 .PHONY: clean
