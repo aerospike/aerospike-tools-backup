@@ -139,7 +139,7 @@ restore_run(restore_config_t *conf) {
  * caller.
  * Only free the return value if it is != RUN_RESTORE_FAILURE
  */
-restore_status_t*
+static restore_status_t*
 start_restore(restore_config_t *conf)
 {
 	int32_t res = EXIT_FAILURE;
