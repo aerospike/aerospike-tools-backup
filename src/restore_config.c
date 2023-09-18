@@ -286,7 +286,33 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 	// Reset to optind (internal variable)
 	// to parse all options again
 	optind = 1;
+	char* old_optarg = NULL;
 	while ((optcase = getopt_long(argc, argv, OPTIONS_SHORT, options, 0)) != -1) {
+		
+		size_t secret_size = 0;
+		bool arg_is_secret = false;
+
+		if (optarg && !strncmp(SC_SECRETS_PATH_REFIX, optarg, strlen(SC_SECRETS_PATH_REFIX))) {
+
+			if (!secret_agent_cfg.addr || !secret_agent_cfg.port) {
+				err("--sa-address and --sa-port must be used when using secrets");
+				return RESTORE_CONFIG_INIT_FAILURE;
+			}
+
+			char* tmp_secret;
+			sc_err sc_status = sc_secret_get_bytes(&sac, optarg, (uint8_t**) &tmp_secret, &secret_size);
+			if (sc_status.code == SC_OK) {
+				old_optarg = optarg;
+				optarg = tmp_secret;
+				optarg[secret_size-1] = 0;
+				arg_is_secret = true;
+			}
+			else {
+				err("secret agent request failed err code: %d", sc_status.code);
+				return RESTORE_CONFIG_INIT_FAILURE;
+			}
+		}
+		
 		switch (optcase) {
 		case 'h':
 			cf_free(conf->host);
@@ -478,7 +504,12 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 			break;
 
 		case TLS_OPT_CA_FILE:
-			conf->tls.cafile = safe_strdup(optarg);
+			if (arg_is_secret) {
+				conf->tls.castring = safe_strdup(optarg);
+			}
+			else {
+				conf->tls.cafile = safe_strdup(optarg);
+			}
 			break;
 
 		case TLS_OPT_CA_PATH:
@@ -511,7 +542,12 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 			break;
 
 		case TLS_OPT_KEY_FILE:
-			conf->tls.keyfile = safe_strdup(optarg);
+			if (arg_is_secret) {
+				conf->tls.keystring = safe_strdup(optarg);
+			}
+			else {
+				conf->tls.keyfile = safe_strdup(optarg);
+			}
 			break;
 
 		case TLS_OPT_KEY_FILE_PASSWORD:
@@ -531,7 +567,12 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 			break;
 
 		case TLS_OPT_CERT_FILE:
-			conf->tls.certfile = safe_strdup(optarg);
+			if (arg_is_secret) {
+				conf->tls.certstring = safe_strdup(optarg);
+			}
+			else {
+				conf->tls.certfile = safe_strdup(optarg);
+			}
 			break;
 
 		case 'T':
@@ -658,6 +699,11 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 		default:
 			fprintf(stderr, "Run with --help for usage information and flag options\n");
 			return RESTORE_CONFIG_INIT_FAILURE;
+		}
+
+		if (arg_is_secret) {
+			cf_free(optarg);
+			optarg = old_optarg;
 		}
 	}
 

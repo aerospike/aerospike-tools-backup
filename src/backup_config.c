@@ -306,12 +306,18 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 		bool arg_is_secret = false;
 
 		if (optarg && !strncmp(SC_SECRETS_PATH_REFIX, optarg, strlen(SC_SECRETS_PATH_REFIX))) {
+
+			if (!secret_agent_cfg.addr || !secret_agent_cfg.port) {
+				err("--sa-address and --sa-port must be used when using secrets");
+				return BACKUP_CONFIG_INIT_FAILURE;
+			}
+
 			char* tmp_secret;
 			sc_err sc_status = sc_secret_get_bytes(&sac, optarg, (uint8_t**) &tmp_secret, &secret_size);
 			if (sc_status.code == SC_OK) {
 				old_optarg = optarg;
 				optarg = tmp_secret;
-				optarg[secret_size-1] = 0;
+				optarg[secret_size] = 0;
 				arg_is_secret = true;
 			}
 			else {
