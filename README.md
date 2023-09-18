@@ -41,7 +41,7 @@ apt-get update
 apt-get install build-essential libssl-dev libuv1-dev libcurl4-openssl-dev libzstd-dev
 
 # for aws-sdk-cpp build
-apt-get install cmake
+apt-get install cmake pkg-config zlib1g-dev
 
 # download aws sdk
 git clone https://github.com/aws/aws-sdk-cpp.git
@@ -96,7 +96,7 @@ mkdir build
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=ON -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib
 make -C build
 
-# install aws static sdk
+# install aws dynamic sdk
 cd build
 make install
 cd ../..
