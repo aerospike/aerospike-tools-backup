@@ -191,6 +191,7 @@ static void show_estimate(FILE* mach_fd, uint64_t* samples, uint32_t n_samples,
 		uint64_t rec_count_estimate, io_write_proxy_t* fd);
 static void sig_hand(int32_t sig);
 static void no_op(int32_t sig);
+static void set_s3_configs(const backup_config_t*);
 
 
 //==========================================================
@@ -299,6 +300,8 @@ start_backup(backup_config_t* conf)
 	backup_status_t* status = RUN_BACKUP_SUCCESS;
 
 	push_backup_globals(conf, NULL);
+
+	set_s3_configs(conf);
 
 	if (conf->remove_artifacts) {
 
@@ -2577,3 +2580,23 @@ no_op(int32_t sig)
 	(void) sig;
 }
 
+static void
+set_s3_configs(const backup_config_t* conf)
+{
+	if (conf->s3_region != NULL) {
+		s3_set_region(conf->s3_region);
+	}
+
+	if (conf->s3_profile != NULL) {
+		s3_set_profile(conf->s3_profile);
+	}
+
+	if (conf->s3_endpoint_override != NULL) {
+		s3_set_endpoint(conf->s3_endpoint_override);
+	}
+
+	s3_set_max_async_downloads(conf->s3_max_async_downloads);
+	s3_set_max_async_uploads(conf->s3_max_async_uploads);
+	s3_set_connect_timeout_ms(conf->s3_connect_timeout);
+	s3_set_log_level(conf->s3_log_level);
+}

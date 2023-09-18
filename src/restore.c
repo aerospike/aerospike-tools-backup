@@ -67,6 +67,7 @@ static bool wait_udf(aerospike *as, udf_param *udf, uint32_t timeout);
 static void sig_hand(int32_t sig);
 //static void print_stat(per_thread_context_t *ptc, cf_clock *prev_log,
 //		uint64_t *prev_records,	cf_clock *now, cf_clock *store_time, cf_clock *read_time);
+static void set_s3_configs(const restore_config_t* conf);
 
 
 //==========================================================
@@ -151,6 +152,8 @@ start_restore(restore_config_t *conf)
 				sizeof(restore_status_t));
 		goto cleanup1;
 	}
+
+	set_s3_configs(conf);
 
 	g_status = status;
 	if (!restore_status_init(status, conf)) {
@@ -1632,3 +1635,22 @@ sig_hand(int32_t sig)
 	stop();
 }
 
+static void
+set_s3_configs(const restore_config_t* conf)
+{
+	if (conf->s3_region != NULL) {
+		s3_set_region(conf->s3_region);
+	}
+
+	if (conf->s3_profile != NULL) {
+		s3_set_profile(conf->s3_profile);
+	}
+
+	if (conf->s3_endpoint_override != NULL) {
+		s3_set_endpoint(conf->s3_endpoint_override);
+	}
+
+	s3_set_max_async_downloads(conf->s3_max_async_downloads);
+	s3_set_connect_timeout_ms(conf->s3_connect_timeout);
+	s3_set_log_level(conf->s3_log_level);
+}
