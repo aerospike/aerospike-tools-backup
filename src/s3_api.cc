@@ -52,9 +52,11 @@ S3API::S3API() : initialized(false),
 bool
 S3API::TryInitialize()
 {
-	std::call_once(init_once, _init_api, std::ref(*this));
+	if(!initialized) {
+		_init_api(std::ref(*this));
+	}
 
-	return this->initialized;
+	return initialized;
 }
 
 void
@@ -67,6 +69,7 @@ S3API::Shutdown()
 		}
 
 		Aws::ShutdownAPI(options);
+		initialized = false;
 	}
 }
 
