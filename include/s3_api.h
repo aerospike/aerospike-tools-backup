@@ -55,7 +55,7 @@ public:
 
 	void Shutdown();
 
-	bool IsInitialized() const;
+	bool IsInitialized();
 
 	// This must be called before TryInitialize()
 	S3API& SetRegion(const std::string& region);
@@ -123,6 +123,7 @@ public:
 private:
 	std::once_flag init_once;
 	bool initialized;
+	std::mutex s3_init_lock;
 	Aws::SDKOptions options;
 
 	std::string region;
