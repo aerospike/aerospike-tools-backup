@@ -68,6 +68,7 @@ S3API::TryInitialize()
 void
 S3API::Shutdown()
 {
+	std::unique_lock<std::mutex> lg(s3_init_lock);
 	if (initialized) {
 		inf("Closing S3 API");
 		if (client != nullptr) {
@@ -82,7 +83,7 @@ S3API::Shutdown()
 bool
 S3API::IsInitialized()
 {
-	std::unique_lock<std::mutex> lg(this->s3_init_lock);
+	std::unique_lock<std::mutex> lg(s3_init_lock);
 	return initialized;
 }
 
