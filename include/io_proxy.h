@@ -255,6 +255,13 @@ void encryption_key_clone(encryption_key_t* dst, const encryption_key_t* src);
 int io_proxy_read_private_key_file(const char* pkey_file_path,
 		encryption_key_t* key);
 
+/*
+ * reads a private key from the given buffer into the pkey buffer and
+ * initializes/populates the key passed
+ */
+int io_proxy_read_private_key(char* pkey_data,
+		encryption_key_t* key);
+
 void encryption_key_free(encryption_key_t*);
 
 

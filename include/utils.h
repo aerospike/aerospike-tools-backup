@@ -64,6 +64,8 @@ extern atomic_bool g_silent;
 #include <aerospike/as_node.h>
 #include <aerospike/as_vector.h>
 
+#include <sc_client.h>
+
 #pragma GCC diagnostic pop
 
 #include <encode.h>
@@ -403,6 +405,7 @@ bool read_block_dec(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
 // the following functions are only valid in C, not C++
 #ifndef __cplusplus
 
+int get_and_set_secret_arg(sc_client* sc, char** arg, bool* is_secret);
 void get_node_names(as_cluster *clust, node_spec *node_specs, uint32_t n_node_specs,
 		char (**node_names)[][AS_NODE_NAME_SIZE], uint32_t *n_node_names);
 bool get_info(aerospike *as, const char *value, const char *node_name, void *context,

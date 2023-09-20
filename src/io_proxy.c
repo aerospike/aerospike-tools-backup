@@ -145,6 +145,38 @@ io_proxy_read_private_key_file(const char* pkey_file_path,
 	return 0;
 }
 
+int
+io_proxy_read_private_key(char* pkey_data,
+		encryption_key_t* pkey_buf)
+{
+	BIO* key_bio = BIO_new_mem_buf(pkey_data, -1);
+
+	if (key_bio == NULL) {
+		err("Unable to allocate new BIO for private key");
+		return -1;
+	}
+
+	// read the private key into the OpenSSL EVP_PKEY struct
+	EVP_PKEY* pkey = PEM_read_bio_PrivateKey(key_bio, NULL, NULL, NULL);
+	if (pkey == NULL) {
+		err("Unable to parse private key, make sure the key is in PEM format");
+		BIO_free(key_bio);
+		return -1;
+	}
+
+	BIO_free(key_bio);
+	pkey_buf->data = NULL;
+	// encode the key into a temporary buffer
+	pkey_buf->len = (uint64_t) i2d_PrivateKey(pkey, &pkey_buf->data);
+
+	EVP_PKEY_free(pkey);
+	if (((int64_t) pkey_buf->len) <= 0) {
+		err("OpenSSL error: %s", ERR_error_string(ERR_get_error(), NULL));
+		return -1;
+	}
+	return 0;
+}
+
 void
 encryption_key_free(encryption_key_t* key)
 {

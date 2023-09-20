@@ -21,7 +21,6 @@
 
 #include <backup_config.h>
 
-#include <sc_client.h>
 #include <getopt.h>
 
 #include <conf.h>
@@ -302,28 +301,16 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 	char* old_optarg = NULL;
 	while ((opt = getopt_long(argc, argv, OPTIONS_SHORT, options, 0)) != -1) {
 
-		size_t secret_size = 0;
+		printf("optcase: %d optarg: %s optind-1: %s\n", opt, optarg, argv[optind-2]);
 		bool arg_is_secret = false;
+		old_optarg = optarg;
 
-		if (optarg && !strncmp(SC_SECRETS_PATH_REFIX, optarg, strlen(SC_SECRETS_PATH_REFIX))) {
-
-			if (!secret_agent_cfg.addr || !secret_agent_cfg.port) {
-				err("--sa-address and --sa-port must be used when using secrets");
-				return BACKUP_CONFIG_INIT_FAILURE;
-			}
-
-			char* tmp_secret;
-			sc_err sc_status = sc_secret_get_bytes(&sac, optarg, (uint8_t**) &tmp_secret, &secret_size);
-			if (sc_status.code == SC_OK) {
-				old_optarg = optarg;
-				optarg = tmp_secret;
-				optarg[secret_size] = 0;
-				arg_is_secret = true;
-			}
-			else {
-				err("secret agent request failed err code: %d", sc_status.code);
-				return BACKUP_CONFIG_INIT_FAILURE;
-			}
+		if (get_and_set_secret_arg(&sac, &optarg, &arg_is_secret) != 0) {
+			return BACKUP_CONFIG_INIT_FAILURE;
+		}
+		
+		if (!arg_is_secret) {
+			optarg = old_optarg;
 		}
 
 		switch (opt) {
@@ -351,7 +338,18 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 			} else {
 				if (optind < argc && NULL != argv[optind] && '-' != argv[optind][0] ) {
 					// space separated argument value
-					conf->password = safe_strdup(argv[optind++]);
+					char* pwd_val = argv[optind++];
+
+					if (get_and_set_secret_arg(&sac, &pwd_val, &arg_is_secret) != 0) {
+						return BACKUP_CONFIG_INIT_FAILURE;
+					}
+					
+					if (pwd_val != NULL && arg_is_secret) {
+						old_optarg = optarg;
+						optarg = pwd_val;
+					}
+
+					conf->password = safe_strdup(pwd_val);
 				} else {
 					// No password specified should
 					// force it to default password
@@ -478,10 +476,19 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 				err("Cannot specify both encryption-key-file and encryption-key-env");
 				return BACKUP_CONFIG_INIT_FAILURE;
 			}
+
 			conf->pkey = (encryption_key_t*) cf_malloc(sizeof(encryption_key_t));
-			if (io_proxy_read_private_key_file(optarg, conf->pkey) != 0) {
-				return BACKUP_CONFIG_INIT_FAILURE;
+			if (arg_is_secret) {
+				if(io_proxy_read_private_key(optarg, conf->pkey) != 0) {
+					return BACKUP_CONFIG_INIT_FAILURE;
+				}
 			}
+			else {
+				if (io_proxy_read_private_key_file(optarg, conf->pkey) != 0) {
+					return BACKUP_CONFIG_INIT_FAILURE;
+				}
+			}
+
 			break;
 
 		case '2':
@@ -620,7 +627,18 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 			} else {
 				if (optind < argc && NULL != argv[optind] && '-' != argv[optind][0] ) {
 					// space separated argument value
-					conf->tls.keyfile_pw = safe_strdup(argv[optind++]);
+					char* pwd_val = argv[optind++];
+
+					if (get_and_set_secret_arg(&sac, &pwd_val, &arg_is_secret) != 0) {
+						return BACKUP_CONFIG_INIT_FAILURE;
+					}
+					
+					if (pwd_val != NULL && arg_is_secret) {
+						old_optarg = optarg;
+						optarg = pwd_val;
+					}
+
+					conf->tls.keyfile_pw = safe_strdup(pwd_val);
 				} else {
 					// No password specified should force it to default password
 					// to trigger prompt.
