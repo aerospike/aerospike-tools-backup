@@ -52,15 +52,10 @@ S3API::S3API() : initialized(false),
 bool
 S3API::TryInitialize()
 {
-	if(initialized) {
-		return initialized;
-	}
-
 	std::unique_lock<std::mutex> lg(s3_init_lock);
 	if(!initialized) {
 		_init_api(std::ref(*this));
 	}
-	lg.unlock();
 
 	return initialized;
 }
