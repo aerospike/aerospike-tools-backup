@@ -52,14 +52,18 @@ S3API::S3API() : initialized(false),
 bool
 S3API::TryInitialize()
 {
-	std::call_once(init_once, _init_api, std::ref(*this));
+	std::unique_lock<std::mutex> lg(s3_init_lock);
+	if(!initialized) {
+		_init_api(std::ref(*this));
+	}
 
-	return this->initialized;
+	return initialized;
 }
 
 void
 S3API::Shutdown()
 {
+	std::unique_lock<std::mutex> lg(s3_init_lock);
 	if (initialized) {
 		inf("Closing S3 API");
 		if (client != nullptr) {
@@ -67,12 +71,14 @@ S3API::Shutdown()
 		}
 
 		Aws::ShutdownAPI(options);
+		initialized = false;
 	}
 }
 
 bool
-S3API::IsInitialized() const
+S3API::IsInitialized()
 {
+	std::unique_lock<std::mutex> lg(s3_init_lock);
 	return initialized;
 }
 
