@@ -13,6 +13,7 @@ _tmp_python_client
 *.swp
 test_dir
 .vscode/
+.idea/
 null.d
 
 # Compiled source #
