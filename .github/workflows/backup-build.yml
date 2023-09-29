@@ -31,6 +31,10 @@ jobs:
       id: install-valgrind
       run: |
         sudo apt install -y valgrind
+    - name: install secret agent client requirements
+      id: install-secret-agent-client-requirements
+      run: |
+        sudo apt install -y libjansson-dev
     - name: install AWS requirements
       id: install-aws-requirements
       run: |
