@@ -172,7 +172,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 	// Reset to optind (internal variable)
 	// to parse all options again in case this was called before
 	// by the shared library
-	optind = 1;
+	optind = 0;
 
 	// option string should start with '-' to avoid argv permutation
 	// we need same argv sequence in third check to support space separated optional argument value
@@ -239,6 +239,10 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 
 	// Reset optind (internal variable) to parse all options again
 	optind = 1;
+
+	// Now print error messages
+	opterr = 1;
+
 	// parse secret agent arguments
 	while ((optcase = getopt_long(argc, argv, "-" OPTIONS_SHORT, options, 0)) != -1) {
 
@@ -283,8 +287,6 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
     
 	sc_set_log_function(&err);
 
-	// Now print error messages
-	opterr = 1;
 	// Reset to optind (internal variable)
 	// to parse all options again
 	optind = 1;
