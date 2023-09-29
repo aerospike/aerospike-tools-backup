@@ -414,7 +414,9 @@ start_backup(backup_config_t* conf)
 	// allowable from this point onward, as the fields that haven't been
 	// initialized in status aren't used when stopping a backup.
 	set_global_status(status);
+	#ifndef ASB_SHARED_LIB
 	set_sigaction(sig_hand);
+	#endif
 
 	if (conf->state_file != NULL) {
 		loaded_backup_state = load_backup_state(conf->state_file);
@@ -521,7 +523,9 @@ start_backup(backup_config_t* conf)
 
 			// re-enable signal handling, since it was disabled at the end of
 			// the estimate run in start_backup.
+			#ifndef ASB_SHARED_LIB
 			set_sigaction(sig_hand);
+			#endif
 
 			if (estimate_status == RUN_BACKUP_FAILURE) {
 				err("Error while running backup estimate");
@@ -718,7 +722,9 @@ cleanup6:
 
 	if (!conf->estimate) {
 		// no longer allow SIGINT/SIGSTOP to trigger saving the backup state
+		#ifndef ASB_SHARED_LIB
 		set_sigaction(no_op);
+		#endif
 	}
 
 	// Since we won't be acquiring any more locks from here on
@@ -835,7 +841,9 @@ cleanup6:
 
 cleanup5:
 	// don't catch SIGINT/SIGSTOP while cleaning up
+	#ifndef ASB_SHARED_LIB
 	set_sigaction(no_op);
+	#endif
 
 cleanup4:
 	if (conf->output_file != NULL || conf->estimate) {
@@ -999,6 +1007,7 @@ has_stopped(void)
 static void
 set_sigaction(void (*sig_hand)(int))
 {
+	ver("setting sigaction for SIGINT and SIGTERM");
 	sigset_t mask;
 	sigemptyset(&mask);
 	struct sigaction sa = {

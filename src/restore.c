@@ -91,6 +91,9 @@ restore_main(int32_t argc, char **argv)
 		goto cleanup;
 	}
 
+	signal(SIGINT, sig_hand);
+	signal(SIGTERM, sig_hand);
+
 	restore_status_t *status = start_restore(&conf);
 	if (status != RUN_RESTORE_FAILURE) {
 		restore_status_destroy(status);
@@ -155,14 +158,11 @@ start_restore(restore_config_t *conf)
 
 	set_s3_configs(conf);
 
-	g_status = status;
 	if (!restore_status_init(status, conf)) {
 		err("Failed to initialize restore status");
 		goto cleanup1;
 	}
-
-	signal(SIGINT, sig_hand);
-	signal(SIGTERM, sig_hand);
+	g_status = status;
 
 	if (conf->validate) {
 		inf("Starting validation of %s",

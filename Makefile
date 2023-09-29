@@ -351,6 +351,7 @@ all: $(BINS)
 # this rule is not meant for manual use by a user
 .PHONY: _set_dynamic_options
 _set_dynamic_options: $(TOML)
+	$(eval CFLAGS += -DASB_SHARED_LIB)
 	$(eval DYNAMIC_OPTIONS = -fPIC)
 
 # builds asbackup and asrestore as shared libraries
