@@ -171,10 +171,10 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 	// Don't print error messages for the first two argument parsers
 	opterr = 0;
 
-	// TODO remove these. secret agent tls testing
-	// conf->tls.castring = get_string_arg("secrets:toolscerts:cacert");
-	// conf->tls.keystring = get_string_arg("secrets:toolscerts:key");
-	// conf->tls.certstring = get_string_arg("secrets:toolscerts:cert");
+	// Reset to optind (internal variable)
+	// to parse all options again in case this was called before
+	// by the shared library
+	optind = 1;
 
 	// Option string should start with '-' to avoid argv permutation.
 	// We need same argv sequence in third check to support space separated

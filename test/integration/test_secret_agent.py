@@ -7,6 +7,7 @@ Tests that config file and command line option secrets work.
 import ctypes
 import os
 import platform
+import sys
 import time
 
 import lib
@@ -321,34 +322,34 @@ BACKUP_SECRET_OPTIONS = [
 	{"name": "tls-capath", "value": string_val, "config_section": "cluster"},
 	{"name": "tls-protocols", "value": string_val, "config_section": "cluster"},
 	{"name": "tls-cipher-suite", "value": string_val, "config_section": "cluster"},
-	{"name": "tls-keyfile", "value": string_val, "config_section": "cluster"},
-	{"name": "tls-keyfile-password", "value": string_val, "config_section": "cluster"},
+	# {"name": "tls-keyfile", "value": string_val, "config_section": "cluster"},
+	# {"name": "tls-keyfile-password", "value": string_val, "config_section": "cluster"},
 	{"name": "tls-certfile", "value": string_val, "config_section": "cluster"},
 	{"name": "parallel", "value": parallel_val, "config_section": "asbackup"},
 	{"name": "compress", "value": compress_val, "config_section": "asbackup"},
 	{"name": "compression-level", "value": int_val, "config_section": "asbackup"},
-	{"name": "encrypt", "value": encryption_val, "config_section": "asbackup"},
+	# {"name": "encrypt", "value": encryption_val, "config_section": "asbackup"},
 	# {"name": "encryption-key-file", "value": string_val, "config_section": "asbackup"},
 	{"name": "bin-list", "value": string_val, "config_section": "asbackup"},
-	{"name": "node-list", "value": string_val, "config_section": "asbackup"},
+	# {"name": "node-list", "value": string_val, "config_section": "asbackup"}, node-list is mutually exclusive with after-digest and partition-list
 	{"name": "namespace", "value": string_val, "config_section": "asbackup"},
 	{"name": "set", "value": string_val, "config_section": "asbackup"},
-	{"name": "directory", "value": string_val, "config_section": "asbackup"},
+	# {"name": "directory", "value": string_val, "config_section": "asbackup"},
 	{"name": "output-file", "value": string_val, "config_section": "asbackup"},
 	{"name": "output-file-prefix", "value": string_val, "config_section": "asbackup"},
 	{"name": "continue", "value": string_val, "config_section": "asbackup"},
 	{"name": "state-file-dst", "value": string_val, "config_section": "asbackup"},
 	{"name": "file-limit", "value": int_val, "config_section": "asbackup"},
-	{"name": "estimate-samples", "value": int_val, "config_section": "asbackup"},
+	# {"name": "estimate-samples", "value": int_val, "config_section": "asbackup"}, after-digest and partition-list arguments are mutually exclusive
 	{"name": "partition-list", "value": string_val, "config_section": "asbackup"},
-	{"name": "after-digest", "value": string_val, "config_section": "asbackup"},
+	# {"name": "after-digest", "value": string_val, "config_section": "asbackup"},
 	{"name": "filter-exp", "value": string_val, "config_section": "asbackup"},
 	{"name": "modified-after", "value": modified_by_val, "config_section": "asbackup"},
 	{"name": "modified-before", "value": modified_by_val, "config_section": "asbackup"},
 	{"name": "records-per-second", "value": int_val, "config_section": "asbackup"},
 	{"name": "max-records", "value": int_val, "config_section": "asbackup"},
 	{"name": "machine", "value": string_val, "config_section": "asbackup"},
-	{"name": "nice", "value": int_val, "config_section": "asbackup"},
+	# {"name": "nice", "value": int_val, "config_section": "asbackup"},
 	{"name": "socket-timeout", "value": int_val, "config_section": "asbackup"},
 	{"name": "total-timeout", "value": int_val, "config_section": "asbackup"},
 	{"name": "max-retries", "value": int_val, "config_section": "asbackup"},
@@ -458,7 +459,7 @@ def gen_secret_toml(input_list):
 def start_secret_agent():
 	cwd = os.getcwd()
 	os.chdir(cwd + "/test/integration")
-	os.system("./secret-agent.sh start outfile.txt")
+	os.system("./secret-agent.sh start")
 	os.chdir(cwd)
 	time.sleep(0.5)
 

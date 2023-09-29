@@ -169,6 +169,11 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 	// Don't print error messages for the first two argument parsers
 	opterr = 0;
 
+	// Reset to optind (internal variable)
+	// to parse all options again in case this was called before
+	// by the shared library
+	optind = 1;
+
 	// option string should start with '-' to avoid argv permutation
 	// we need same argv sequence in third check to support space separated optional argument value
 	while ((optcase = getopt_long(argc, argv, OPTIONS_SHORT, options, 0)) != -1) {
