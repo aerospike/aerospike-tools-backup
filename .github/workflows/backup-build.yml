@@ -142,16 +142,8 @@ jobs:
       run: make unit
       working-directory: main
     - name: Test secret agent
-      run: |
-        ulimit -c unlimited
-        sudo your_command_to_run
-        sudo chmod -R +rwx /cores/*
-        make run_test_secret_agent
+      run: make run_test_secret_agent
       working-directory: main
-    - uses: actions/upload-artifact@master # capture all crashes as build artifacts
-      with:
-        name: crashes
-        path: /cores
     - name: Test Validate
       run: make run_test_validate
       working-directory: main
