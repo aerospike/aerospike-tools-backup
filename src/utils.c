@@ -2058,10 +2058,10 @@ char* read_file_as_string(const char* path)
 }
 
 int
-get_and_set_secret_arg(sc_client* sc, char** arg, bool* is_secret) {
+get_and_set_secret_arg(sc_client* sc, char* path, char** res, bool* is_secret) {
 	size_t secret_size = 0;
 
-	if (*arg && !strncmp(SC_SECRETS_PATH_REFIX, *arg, strlen(SC_SECRETS_PATH_REFIX))) {
+	if (path && !strncmp(SC_SECRETS_PATH_REFIX, path, strlen(SC_SECRETS_PATH_REFIX))) {
 
 		if (!sc->cfg->addr || !sc->cfg->port) {
 			err("--sa-address and --sa-port must be used when using secrets");
@@ -2069,10 +2069,10 @@ get_and_set_secret_arg(sc_client* sc, char** arg, bool* is_secret) {
 		}
 
 		char* tmp_secret;
-		sc_err sc_status = sc_secret_get_bytes(sc, *arg, (uint8_t**) &tmp_secret, &secret_size);
+		sc_err sc_status = sc_secret_get_bytes(sc, path, (uint8_t**) &tmp_secret, &secret_size);
 		if (sc_status.code == SC_OK) {
 			tmp_secret[secret_size] = 0;
-			*arg = tmp_secret;
+			*res = tmp_secret;
 			*is_secret = true;
 		}
 		else {

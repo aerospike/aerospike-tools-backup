@@ -38,6 +38,7 @@ extern "C" {
 
 #include <aerospike/as_scan.h>
 #include <aerospike/as_tls.h>
+#include <sc_client.h>
 
 #pragma GCC diagnostic pop
 
@@ -176,6 +177,9 @@ typedef struct backup_config {
 
 	// custom b64-encoded filter expression to use in the scan calls
 	char *filter_exp;
+
+	// secret agent client configs
+	sc_cfg secret_cfg;
 } backup_config_t;
 
 

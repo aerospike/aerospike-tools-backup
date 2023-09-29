@@ -22,6 +22,7 @@
 #include <restore_config.h>
 
 #include <getopt.h>
+#include <sc_client.h>
 
 #include <conf.h>
 #include <utils.h>
@@ -231,9 +232,6 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 		}
 	}
 
-    sc_cfg secret_agent_cfg;
-	sc_cfg_init(&secret_agent_cfg);
-
 	// Reset optind (internal variable) to parse all options again
 	optind = 1;
 	// parse secret agent arguments
@@ -241,11 +239,11 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 
 		switch (optcase) {
 		case COMMAND_SA_ADDRESS:
-			secret_agent_cfg.addr = safe_strdup(optarg);
+			conf->secret_cfg.addr = safe_strdup(optarg);
 			break;
 
 		case COMMAND_SA_PORT:
-			secret_agent_cfg.port = safe_strdup(optarg);
+			conf->secret_cfg.port = safe_strdup(optarg);
 			break;
 		
 		case COMMAND_SA_TIMEOUT:
@@ -253,20 +251,21 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 				err("Invalid secret agent timeout value %s", optarg);
 				return RESTORE_CONFIG_INIT_FAILURE;
 			}
-			secret_agent_cfg.timeout = (int) tmp;
+			conf->secret_cfg.timeout = (int) tmp;
 			break;
 		
 		case COMMAND_SA_CAFILE:
+			conf->secret_cfg.tls.enabled = true;
 
 			// if this was already set during config file parsing,
 			// free the config version
-			if (secret_agent_cfg.tls.ca_string != NULL) {
-				cf_free((char*) secret_agent_cfg.tls.ca_string);
-				secret_agent_cfg.tls.ca_string = NULL;
+			if (conf->secret_cfg.tls.ca_string != NULL) {
+				cf_free((char*) conf->secret_cfg.tls.ca_string);
+				conf->secret_cfg.tls.ca_string = NULL;
 			}
 
-			secret_agent_cfg.tls.ca_string = read_file_as_string(optarg);
-			if (secret_agent_cfg.tls.ca_string == NULL) {
+			conf->secret_cfg.tls.ca_string = read_file_as_string(optarg);
+			if (conf->secret_cfg.tls.ca_string == NULL) {
 				err("Invalid secret agent cafile %s", optarg);
 				return RESTORE_CONFIG_INIT_FAILURE;
 			}
@@ -275,7 +274,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 	}
 
 	sc_client sac;
-	sc_client_init(&sac, &secret_agent_cfg);
+	sc_client_init(&sac, &conf->secret_cfg);
     
 	sc_set_log_function(&err);
 
@@ -287,11 +286,10 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 	char* old_optarg = NULL;
 	while ((optcase = getopt_long(argc, argv, OPTIONS_SHORT, options, 0)) != -1) {
 		
-		printf("optcase: %d optarg: %s optind-1: %s\n", optcase, optarg, argv[optind-2]);
 		bool arg_is_secret = false;
 		old_optarg = optarg;
 
-		if (get_and_set_secret_arg(&sac, &optarg, &arg_is_secret) != 0) {
+		if (get_and_set_secret_arg(&sac, optarg, &optarg, &arg_is_secret) != 0) {
 			return RESTORE_CONFIG_INIT_FAILURE;
 		}
 		
@@ -327,7 +325,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 					// space separated argument value
 					char* pwd_val = argv[optind++];
 
-					if (get_and_set_secret_arg(&sac, &pwd_val, &arg_is_secret) != 0) {
+					if (get_and_set_secret_arg(&sac, pwd_val, &pwd_val, &arg_is_secret) != 0) {
 						return RESTORE_CONFIG_INIT_FAILURE;
 					}
 					
@@ -375,7 +373,6 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 				err("Invalid compression type \"%s\"\n", optarg);
 				return RESTORE_CONFIG_INIT_FAILURE;
 			}
-			printf("compress type: %d\n", conf->compress_mode);
 			break;
 
 		case 'y':
@@ -434,7 +431,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 			break;
 
 		case 'm':
-			conf->machine = optarg;
+			conf->machine = safe_strdup(optarg);
 			break;
 
 		case 'B':
@@ -541,7 +538,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 
 		case TLS_OPT_CERT_BLACK_LIST:
 			conf->tls.cert_blacklist = safe_strdup(optarg);
-			inf("Warning: --tls-cert-blackList is deprecated and will be removed in the next release. Use a crl instead");
+			err("Warning: --tls-cert-blackList is deprecated and will be removed in the next release. Use a crl instead");
 			break;
 
 		case TLS_OPT_LOG_SESSION_INFO:
@@ -566,7 +563,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 
 					char* pwd_val = argv[optind++];
 
-					if (get_and_set_secret_arg(&sac, &pwd_val, &arg_is_secret) != 0) {
+					if (get_and_set_secret_arg(&sac, pwd_val, &pwd_val, &arg_is_secret) != 0) {
 						return RESTORE_CONFIG_INIT_FAILURE;
 					}
 					
@@ -628,7 +625,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 			break;
 
 		case COMMAND_OPT_RETRY_DELAY:
-			inf("Warning: `--sleep-between-retries` is deprecated and has no "
+			err("Warning: `--sleep-between-retries` and `--retry-delay` are deprecated and has no "
 					"effect, use `--retry-scale-factor` to configure the amount "
 					"to back off when retrying transactions.");
 			break;
@@ -725,11 +722,6 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 			cf_free(optarg);
 			optarg = old_optarg;
 		}
-	}
-
-	if (secret_agent_cfg.tls.ca_string != NULL) {
-		cf_free((char*) secret_agent_cfg.tls.ca_string);
-		secret_agent_cfg.tls.ca_string = NULL;
 	}
 
 	if (optind < argc) {
@@ -870,6 +862,8 @@ restore_config_default(restore_config_t *conf)
 
 	memset(&conf->tls, 0, sizeof(as_config_tls));
 	conf->tls_name = NULL;
+
+	sc_cfg_init(&conf->secret_cfg);
 }
 
 void
@@ -949,6 +943,20 @@ restore_config_destroy(restore_config_t *conf)
 	}
 
 	tls_config_destroy(&conf->tls);
+
+	if (conf->secret_cfg.tls.ca_string != NULL) {
+		cf_free((char*) conf->secret_cfg.tls.ca_string);
+		conf->secret_cfg.tls.ca_string = NULL;
+	}
+
+	if (conf->secret_cfg.addr != NULL) {
+		cf_free((char*) conf->secret_cfg.addr);
+	}
+	
+	if (conf->secret_cfg.port != NULL) {
+		cf_free((char*) conf->secret_cfg.port);
+	}
+	
 }
 
 bool

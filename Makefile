@@ -61,12 +61,12 @@ CC ?= cc
 
 DWARF := $(shell $(CC) -Wall -Wextra -O0 -g -o /tmp/asflags_$${$$} src/flags.c; \
 		/tmp/asflags_$${$$}; rm /tmp/asflags_$${$$})
-CFLAGS += -std=gnu11 $(DWARF) -O0 -g -fno-common -fno-strict-aliasing \
+CFLAGS += -std=gnu11 $(DWARF) -O2 -fno-common -fno-strict-aliasing \
 		-Wall -Wextra -Wconversion -Wsign-conversion -Wmissing-declarations \
 		-Wno-implicit-fallthrough -Wno-unused-result -Wno-typedef-redefinition \
 		-D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_FORTIFY_SOURCE=2 -DMARCH_$(ARCH) \
 		-DTOOL_VERSION=\"$(VERSION)\"
-CXXFLAGS := -std=c++14 $(DWARF) -O0 -g -fno-common -fno-strict-aliasing \
+CXXFLAGS := -std=c++14 $(DWARF) -O2 -fno-common -fno-strict-aliasing \
 		-Wall -Wextra -Wconversion -Wsign-conversion -Wmissing-declarations \
 		-Wno-implicit-fallthrough -Wno-unused-result \
 		-D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_FORTIFY_SOURCE=2 -DMARCH_$(ARCH) \
@@ -419,10 +419,10 @@ $(BACKUP): $(BACKUP_OBJ) $(TOML) $(C_CLIENT_LIB) $(SECRET_CLIENT_LIB) | $(DIR_BI
 $(RESTORE): $(RESTORE_OBJ) $(TOML) $(C_CLIENT_LIB) $(SECRET_CLIENT_LIB) | $(DIR_BIN)
 	$(CXX) $(LDFLAGS) -o $(RESTORE) $(RESTORE_OBJ) $(LIBRARIES)
 
-$(BACKUP_DYNAMIC): $(BACKUP_OBJ) $(TOML) $(C_CLIENT_LIB) | $(DIR_BIN)
+$(BACKUP_DYNAMIC): $(BACKUP_OBJ) $(TOML) $(C_CLIENT_LIB) $(SECRET_CLIENT_LIB) | $(DIR_BIN)
 	$(CXX) $(DYNAMIC_FLAG) $(LDFLAGS) -o $(BACKUP_DYNAMIC) $(BACKUP_OBJ) $(LIBRARIES)
 
-$(RESTORE_DYNAMIC): $(RESTORE_OBJ) $(TOML) $(C_CLIENT_LIB) | $(DIR_BIN)
+$(RESTORE_DYNAMIC): $(RESTORE_OBJ) $(TOML) $(C_CLIENT_LIB) $(SECRET_CLIENT_LIB) | $(DIR_BIN)
 	$(CXX) $(DYNAMIC_FLAG) $(LDFLAGS) -o $(RESTORE_DYNAMIC) $(RESTORE_OBJ) $(LIBRARIES)
 
 $(TOML):
@@ -477,10 +477,10 @@ $(DIR_TEST_OBJ)/src/%_cc.o: src/%.cc | $(DIR_TEST_OBJ)/src
 $(DIR_TEST_BIN)/test: $(TEST_OBJ) $(DIR_C_CLIENT)/target/$(PLATFORM)/lib/libaerospike.a $(TOML) | $(DIR_TEST_BIN)
 	$(CXX) -o $@ $(TEST_OBJ) $(DIR_C_CLIENT)/target/$(PLATFORM)/lib/libaerospike.a $(TEST_LDFLAGS) $(LIBRARIES)
 
-$(TEST_BACKUP): $(TEST_BACKUP_OBJ) $(TOML) $(C_CLIENT_LIB) $(SECRET_CLIENT_LIB) | $(DIR_TEST_BIN)
+$(TEST_BACKUP): shared $(TEST_BACKUP_OBJ) $(TOML) $(C_CLIENT_LIB) $(SECRET_CLIENT_LIB) | $(DIR_TEST_BIN)
 	$(CXX) $(TEST_LDFLAGS) -o $(TEST_BACKUP) $(TEST_BACKUP_OBJ) $(LIBRARIES)
 
-$(TEST_RESTORE): $(TEST_RESTORE_OBJ) $(TOML) $(C_CLIENT_LIB) $(SECRET_CLIENT_LIB) | $(DIR_TEST_BIN)
+$(TEST_RESTORE): shared $(TEST_RESTORE_OBJ) $(TOML) $(C_CLIENT_LIB) $(SECRET_CLIENT_LIB) | $(DIR_TEST_BIN)
 	$(CXX) $(TEST_LDFLAGS) -o $(TEST_RESTORE) $(TEST_RESTORE_OBJ) $(LIBRARIES)
 
 -include $(TEST_DEPS)

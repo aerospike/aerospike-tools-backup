@@ -4,21 +4,29 @@
 Tests that config file and command line option secrets work.
 """
 
-import aerospike
 import ctypes
+import os
+import platform
+import time
 
 import lib
-from run_backup import backup_and_restore
+from aerospike_servers import init_work_dir
 
-path = "/Users/dwelch/Desktop/everything/projects/tools/aerospike-tools-backup/bin/asrestore.dylib"
-restore_so = ctypes.CDLL(path)
-backup_so = ctypes.CDLL(path)
+shared_extension = "so"
+if platform.system() == "Darwin":
+	shared_extension = "dylib"
+
+cwd = os.getcwd()
+restore_so = ctypes.CDLL(cwd + "/bin/asrestore." + shared_extension)
+backup_so = ctypes.CDLL(cwd + "/bin/asbackup." + shared_extension)
+# restore_so = ctypes.CDLL("/tmp/testing/bin/asrestore.so")
+# backup_so = ctypes.CDLL("/tmp/testing/bin/asbackup.so")
 
 class ComparableCtStructure(ctypes.Structure):
 
 	def __eq__(self, other):
 		for fld in self._fields_:
-			#todo verify the pkey field
+			#TODO verify the pkey field
 			if fld[0] == "pkey":
 				continue
 
@@ -32,7 +40,7 @@ class ComparableCtStructure(ctypes.Structure):
 
 	def __ne__(self, other):
 		for fld in self._fields_:
-			# todo verify the pkey field
+			#TODO verify the pkey field
 			if fld[0] == "pkey":
 				continue
 
@@ -40,6 +48,22 @@ class ComparableCtStructure(ctypes.Structure):
 				print("ne. %s unequal v1: %s v2: %s" % (fld, getattr(self, fld[0]), getattr(other, fld[0])))
 				return True
 		return False
+
+# Define the encryption_key_t structure
+class SCTLSCFG(ComparableCtStructure):
+	_fields_ = [
+		("ca_string", ctypes.c_char_p),
+		("enabled", ctypes.c_bool),
+	]
+
+# Define the encryption_key_t structure
+class SCCFG(ComparableCtStructure):
+	_fields_ = [
+		("addr", ctypes.c_char_p),
+		("port", ctypes.c_char_p),
+		("timeout", ctypes.c_int),
+		("tls", SCTLSCFG)
+	]
 
 # Define the encryption_key_t structure
 class EncryptionKeyT(ComparableCtStructure):
@@ -100,7 +124,7 @@ class RestoreConfigT(ComparableCtStructure):
 		("s3_endpoint_override", ctypes.c_char_p),
 		("s3_max_async_downloads", ctypes.c_uint32),
 		("s3_connect_timeout", ctypes.c_uint32),
-		("s3_log_level", ctypes.c_int),  # Assuming s3_log_level is an enum, use int
+		("s3_log_level", ctypes.c_int),
 		("tls", AsConfigTls),
 		("tls_name", ctypes.c_char_p),
 		("ns_list", ctypes.c_char_p),
@@ -112,8 +136,8 @@ class RestoreConfigT(ComparableCtStructure):
 		("bin_list", ctypes.c_char_p),
 		("set_list", ctypes.c_char_p),
 		("pkey", ctypes.POINTER(EncryptionKeyT)),
-		("compress_mode", ctypes.c_int),  # Assuming compression_opt is an enum, use int
-		("encrypt_mode", ctypes.c_int),  # Assuming encryption_opt is an enum, use int
+		("compress_mode", ctypes.c_int),
+		("encrypt_mode", ctypes.c_int),
 		("unique", ctypes.c_bool),
 		("replace", ctypes.c_bool),
 		("ignore_rec_error", ctypes.c_bool),
@@ -121,7 +145,8 @@ class RestoreConfigT(ComparableCtStructure):
 		("extra_ttl", ctypes.c_int32),
 		("bandwidth", ctypes.c_uint64),
 		("tps", ctypes.c_uint32),
-		("auth_mode", ctypes.c_char_p)
+		("auth_mode", ctypes.c_char_p),
+		("secret_cfg", SCCFG)
 	]
 
 string_val = "str"
@@ -131,54 +156,63 @@ compress_val = "zstd"
 encryption_val = "aes256"
 s3_log_level_val = "debug"
 parallel_val = 16
+modified_by_val = "2016-05-12_08:10:30"
+
+secret_vals = {
+	"string_val": string_val,
+	"int_val": int_val,
+	"bool_val": bool_val,
+	"compress_val": compress_val,
+	"encryption_val": encryption_val,
+	"s3_log_level_val": s3_log_level_val,
+	"parallel_val": parallel_val,
+	"modified_by_val": modified_by_val,
+}
 
 # anytime an option is added to restore that can be
 # a secret it should be added here
 RESTORE_SECRET_OPTIONS = [
-	{"name": "host", "value": string_val},
-	{"name": "port", "value": int_val},
-	{"name": "user", "value": string_val},
-	{"name": "password", "value": string_val},
-	{"name": "auth", "value": string_val},
-	{"name": "tls-name", "value": string_val},
-	{"name": "tls-cafile", "value": string_val},
-	{"name": "tls-capath", "value": string_val},
-	{"name": "tls-protocols", "value": string_val},
-	{"name": "tls-cipher-suite", "value": string_val},
-	{"name": "tls-keyfile", "value": string_val},
-	{"name": "tls-keyfile-password", "value": string_val},
-	{"name": "tls-certfile", "value": string_val},
-	{"name": "namespace", "value": string_val},
-	{"name": "directory", "value": string_val},
-	{"name": "directory-list", "value": string_val},
-	{"name": "parent-directory", "value": string_val},
-	{"name": "input-file", "value": string_val},
-	{"name": "compress", "value": compress_val},
-	{"name": "encrypt", "value": encryption_val},
-	{"name": "encryption-key-file", "value": string_val},
-	{"name": "parallel", "value": int_val},
-	{"name": "threads", "value": int_val},
-	{"name": "machine", "value": string_val},
-	{"name": "bin-list", "value": string_val},
-	{"name": "set-list", "value": string_val},
-	{"name": "extra-ttl", "value": int_val},
-	{"name": "nice", "value": int_val},
-	{"name": "timeout", "value": int_val},
-	{"name": "socket-timeout", "value": int_val},
-	{"name": "total-timeout", "value": int_val},
-	{"name": "max-retries", "value": int_val},
-	{"name": "retry-scale-factor", "value": int_val},
-	{"name": "sleep-between-retries", "value": int_val},
-	{"name": "retry-delay", "value": int_val},
-	{"name": "max-async-batches", "value": int_val},
-	{"name": "batch-size", "value": int_val},
-	{"name": "event-loops", "value": int_val},
-	{"name": "s3-region", "value": string_val},
-	{"name": "s3-profile", "value": string_val},
-	{"name": "s3-endpoint-override", "value": string_val},
-	{"name": "s3-max-async-downloads", "value": int_val},
-	{"name": "s3-log-level", "value": s3_log_level_val},
-	{"name": "s3-connect-timeout", "value": int_val},
+	{"name": "host", "value": string_val, "config_section": "cluster"},
+	{"name": "port", "value": int_val, "config_section": "cluster"},
+	{"name": "user", "value": string_val, "config_section": "cluster"},
+	{"name": "password", "value": string_val, "config_section": "cluster"},
+	{"name": "auth", "value": string_val, "config_section": "cluster"},
+	{"name": "tls-name", "value": string_val, "config_section": "cluster"},
+	{"name": "tls-cafile", "value": string_val, "config_section": "cluster"},
+	{"name": "tls-capath", "value": string_val, "config_section": "cluster"},
+	{"name": "tls-protocols", "value": string_val, "config_section": "cluster"},
+	{"name": "tls-cipher-suite", "value": string_val, "config_section": "cluster"},
+	{"name": "tls-keyfile", "value": string_val, "config_section": "cluster"},
+	{"name": "tls-keyfile-password", "value": string_val, "config_section": "cluster"},
+	{"name": "tls-certfile", "value": string_val, "config_section": "cluster"},
+	{"name": "namespace", "value": string_val, "config_section": "asrestore"},
+	# {"name": "directory", "value": string_val, "config_section": "asrestore"}, # mutually exclusive with --directory-list
+	{"name": "directory-list", "value": string_val, "config_section": "asrestore"},
+	{"name": "parent-directory", "value": string_val, "config_section": "asrestore"},
+	# {"name": "input-file", "value": string_val, "config_section": "asrestore"}, # mutually exclusive with --directory
+	{"name": "compress", "value": compress_val, "config_section": "asrestore"},
+	# {"name": "encrypt", "value": encryption_val, "config_section": "asrestore"}, # requires --encryption-key-file
+	# {"name": "encryption-key-file", "value": string_val, "config_section": "asrestore"}, # TODO generate a real cert that this can parse
+	{"name": "parallel", "value": parallel_val, "config_section": "asrestore"},
+	{"name": "machine", "value": string_val, "config_section": "asrestore"},
+	{"name": "bin-list", "value": string_val, "config_section": "asrestore"},
+	{"name": "set-list", "value": string_val, "config_section": "asrestore"},
+	{"name": "extra-ttl", "value": int_val, "config_section": "asrestore"},
+	# {"name": "nice", "value": int_val, "config_section": "asrestore"}, #TODO needs a two element val x,y
+	{"name": "timeout", "value": int_val, "config_section": "asrestore"},
+	{"name": "socket-timeout", "value": int_val, "config_section": "asrestore"},
+	{"name": "total-timeout", "value": int_val, "config_section": "asrestore"},
+	{"name": "max-retries", "value": int_val, "config_section": "asrestore"},
+	{"name": "retry-scale-factor", "value": int_val, "config_section": "asrestore"},
+	{"name": "max-async-batches", "value": int_val, "config_section": "asrestore"},
+	{"name": "batch-size", "value": int_val, "config_section": "asrestore"},
+	{"name": "event-loops", "value": int_val, "config_section": "asrestore"},
+	{"name": "s3-region", "value": string_val, "config_section": "asrestore"},
+	{"name": "s3-profile", "value": string_val, "config_section": "asrestore"},
+	{"name": "s3-endpoint-override", "value": string_val, "config_section": "asrestore"},
+	{"name": "s3-max-async-downloads", "value": int_val, "config_section": "asrestore"},
+	{"name": "s3-log-level", "value": s3_log_level_val, "config_section": "asrestore"},
+	{"name": "s3-connect-timeout", "value": int_val, "config_section": "asrestore"},
 ]
 
 class AsVector(ComparableCtStructure):
@@ -232,11 +266,11 @@ class BackupConfigT(ComparableCtStructure):
         ("s3_max_async_uploads", ctypes.c_uint32),
         ("s3_connect_timeout", ctypes.c_uint32),
         ("s3_log_level", ctypes.c_int),
-        ("ns", ctypes.c_char * 32),  # Use simplified as_namespace structure
+        ("ns", ctypes.c_char * 32),
         ("no_bins", ctypes.c_bool),
         ("state_file", ctypes.c_char_p),
         ("state_file_dst", ctypes.c_char_p),
-        ("set_list", AsVector),  # Use simplified as_vector structure
+        ("set_list", AsVector),
         ("bin_list", ctypes.c_char_p),
         ("node_list", ctypes.c_char_p),
         ("mod_after", ctypes.c_int64),
@@ -247,7 +281,7 @@ class BackupConfigT(ComparableCtStructure):
         ("max_retries", ctypes.c_uint32),
         ("retry_delay", ctypes.c_uint32),
         ("tls_name", ctypes.c_char_p),
-        ("tls", AsConfigTls),  # Use simplified as_config_tls structure
+        ("tls", AsConfigTls),
         ("remove_files", ctypes.c_bool),
         ("remove_artifacts", ctypes.c_bool),
         ("n_estimate_samples", ctypes.c_uint32),
@@ -256,9 +290,9 @@ class BackupConfigT(ComparableCtStructure):
         ("prefix", ctypes.c_char_p),
         ("compact", ctypes.c_bool),
         ("parallel", ctypes.c_int32),
-        ("compress_mode", ctypes.c_int32),  # Use appropriate type
+        ("compress_mode", ctypes.c_int32),
         ("compression_level", ctypes.c_int32),
-        ("encrypt_mode", ctypes.c_int32),  # Use appropriate type
+        ("encrypt_mode", ctypes.c_int32),
         ("pkey", ctypes.POINTER(EncryptionKeyT)),
         ("machine", ctypes.c_char_p),
         ("estimate", ctypes.c_bool),
@@ -272,62 +306,62 @@ class BackupConfigT(ComparableCtStructure):
         ("auth_mode", ctypes.c_char_p),
         ("partition_list", ctypes.c_char_p),
         ("after_digest", ctypes.c_char_p),
-        ("filter_exp", ctypes.c_char_p)
+        ("filter_exp", ctypes.c_char_p),
+		("secret_cfg", SCCFG)
     ]
 
 BACKUP_SECRET_OPTIONS = [
-	{"name": "host", "value": string_val},
-	{"name": "port", "value": int_val},
-	{"name": "user", "value": string_val},
-	{"name": "password", "value": string_val},
-	{"name": "auth", "value": string_val},
-	{"name": "tls-name", "value": string_val},
-	{"name": "tls-cafile", "value": string_val},
-	{"name": "tls-capath", "value": string_val},
-	{"name": "tls-protocols", "value": string_val},
-	{"name": "tls-cipher-suite", "value": string_val},
-	{"name": "tls-keyfile", "value": string_val},
-	{"name": "tls-keyfile-password", "value": string_val},
-	{"name": "tls-certfile", "value": string_val},
-	{"name": "compact", "value": string_val},
-	{"name": "parallel", "value": parallel_val},
-	{"name": "compress", "value": compress_val},
-	{"name": "compression-level", "value": int_val},
-	{"name": "encrypt", "value": encryption_val},
-	{"name": "encryption-key-file", "value": string_val},
-	{"name": "bin-list", "value": string_val},
-	{"name": "node-list", "value": string_val},
-	{"name": "namespace", "value": string_val},
-	{"name": "set", "value": string_val},
-	{"name": "directory", "value": string_val},
-	{"name": "output-file", "value": string_val},
-	{"name": "output-file-prefix", "value": string_val},
-	{"name": "continue", "value": string_val},
-	{"name": "state-file-dst", "value": string_val}, # TODO this expects a file path, maybe it should support reading state file from mem
-	{"name": "file-limit", "value": int_val},
-	{"name": "estimate-samples", "value": int_val},
-	{"name": "partition-list", "value": string_val},
-	{"name": "after-digest", "value": string_val},
-	{"name": "filter-exp", "value": string_val},
-	{"name": "modified-after", "value": string_val},
-	{"name": "modified-before", "value": string_val},
-	{"name": "records-per-second", "value": int_val},
-	{"name": "max-records", "value": int_val},
-	{"name": "machine", "value": string_val},
-	{"name": "nice", "value": int_val},
-	{"name": "socket-timeout", "value": int_val},
-	{"name": "total-timeout", "value": int_val},
-	{"name": "max-retries", "value": int_val},
-	{"name": "sleep-between-retries", "value": int_val},
-	{"name": "retry-delay", "value": int_val},
-	{"name": "s3-region", "value": string_val},
-	{"name": "s3-profile", "value": string_val},
-	{"name": "s3-endpoint-override", "value": string_val},
-	{"name": "s3-min-part-size", "value": int_val},
-	{"name": "s3-max-async-downloads", "value": int_val},
-	{"name": "s3-max-async-uploads", "value": int_val},
-	{"name": "s3-log-level", "value": s3_log_level_val},
-	{"name": "s3-connect-timeout", "value": int_val}
+	{"name": "host", "value": string_val, "config_section": "cluster"},
+	{"name": "port", "value": int_val, "config_section": "cluster"},
+	{"name": "user", "value": string_val, "config_section": "cluster"},
+	{"name": "password", "value": string_val, "config_section": "cluster"},
+	{"name": "auth", "value": string_val, "config_section": "cluster"},
+	{"name": "tls-name", "value": string_val, "config_section": "cluster"},
+	{"name": "tls-cafile", "value": string_val, "config_section": "cluster"},
+	{"name": "tls-capath", "value": string_val, "config_section": "cluster"},
+	{"name": "tls-protocols", "value": string_val, "config_section": "cluster"},
+	{"name": "tls-cipher-suite", "value": string_val, "config_section": "cluster"},
+	{"name": "tls-keyfile", "value": string_val, "config_section": "cluster"},
+	{"name": "tls-keyfile-password", "value": string_val, "config_section": "cluster"},
+	{"name": "tls-certfile", "value": string_val, "config_section": "cluster"},
+	{"name": "parallel", "value": parallel_val, "config_section": "asbackup"},
+	{"name": "compress", "value": compress_val, "config_section": "asbackup"},
+	{"name": "compression-level", "value": int_val, "config_section": "asbackup"},
+	{"name": "encrypt", "value": encryption_val, "config_section": "asbackup"},
+	# {"name": "encryption-key-file", "value": string_val, "config_section": "asbackup"},
+	{"name": "bin-list", "value": string_val, "config_section": "asbackup"},
+	{"name": "node-list", "value": string_val, "config_section": "asbackup"},
+	{"name": "namespace", "value": string_val, "config_section": "asbackup"},
+	{"name": "set", "value": string_val, "config_section": "asbackup"},
+	{"name": "directory", "value": string_val, "config_section": "asbackup"},
+	{"name": "output-file", "value": string_val, "config_section": "asbackup"},
+	{"name": "output-file-prefix", "value": string_val, "config_section": "asbackup"},
+	{"name": "continue", "value": string_val, "config_section": "asbackup"},
+	{"name": "state-file-dst", "value": string_val, "config_section": "asbackup"},
+	{"name": "file-limit", "value": int_val, "config_section": "asbackup"},
+	{"name": "estimate-samples", "value": int_val, "config_section": "asbackup"},
+	{"name": "partition-list", "value": string_val, "config_section": "asbackup"},
+	{"name": "after-digest", "value": string_val, "config_section": "asbackup"},
+	{"name": "filter-exp", "value": string_val, "config_section": "asbackup"},
+	{"name": "modified-after", "value": modified_by_val, "config_section": "asbackup"},
+	{"name": "modified-before", "value": modified_by_val, "config_section": "asbackup"},
+	{"name": "records-per-second", "value": int_val, "config_section": "asbackup"},
+	{"name": "max-records", "value": int_val, "config_section": "asbackup"},
+	{"name": "machine", "value": string_val, "config_section": "asbackup"},
+	{"name": "nice", "value": int_val, "config_section": "asbackup"},
+	{"name": "socket-timeout", "value": int_val, "config_section": "asbackup"},
+	{"name": "total-timeout", "value": int_val, "config_section": "asbackup"},
+	{"name": "max-retries", "value": int_val, "config_section": "asbackup"},
+	{"name": "sleep-between-retries", "value": int_val, "config_section": "asbackup"},
+	{"name": "retry-delay", "value": int_val, "config_section": "asbackup"},
+	{"name": "s3-region", "value": string_val, "config_section": "asbackup"},
+	{"name": "s3-profile", "value": string_val, "config_section": "asbackup"},
+	{"name": "s3-endpoint-override", "value": string_val, "config_section": "asbackup"},
+	{"name": "s3-min-part-size", "value": int_val, "config_section": "asbackup"},
+	{"name": "s3-max-async-downloads", "value": int_val, "config_section": "asbackup"},
+	{"name": "s3-max-async-uploads", "value": int_val, "config_section": "asbackup"},
+	{"name": "s3-log-level", "value": s3_log_level_val, "config_section": "asbackup"},
+	{"name": "s3-connect-timeout", "value": int_val, "config_section": "asbackup"}
 ]
 
 def gen_secret_args(input_list, prgm_name):
@@ -350,6 +384,8 @@ def gen_secret_args(input_list, prgm_name):
 			val = val + "s3_log_level_val"
 		elif val_type == parallel_val:
 			val = val + "parallel_val"
+		elif val_type == modified_by_val:
+			val = val + "modified_by_val"
 		# val = val + elem["name"]
 
 		args.append(bytes(val, "utf-8"))
@@ -377,6 +413,70 @@ def gen_args(input_list, prgm_name):
 	count = len(args)
 	return count, args
 
+def gen_secret_toml(input_list):
+	data = ""
+	cluster_data = "[cluster]\n"
+	secret_data = '[secret-agent]\nsa-address = "127.0.0.1"\nsa-port = "3005"\n'
+	asbackup_data = "[asbackup]\n"
+	asrestore_data = "[asrestore]\n"
+
+	for elem in input_list:
+		val = "secrets:r1:"
+		val_type = elem["value"]
+		if val_type == string_val:
+			val = val + "string_val"
+		elif val_type == int_val:
+			val = val + "int_val"
+		elif val_type == compress_val:
+			val = val + "compress_val"
+		elif val_type == encryption_val:
+			val = val + "encryption_val"
+		elif val_type == s3_log_level_val:
+			val = val + "s3_log_level_val"
+		elif val_type == parallel_val:
+			val = val + "parallel_val"
+		elif val_type == modified_by_val:
+			val = val + "modified_by_val"
+
+		arg = elem["name"] + " = " +  '"%s"' % val
+		if elem["config_section"] == "cluster":
+			cluster_data += arg + "\n"
+		elif elem["config_section"] == "asbackup":
+			asbackup_data += arg + "\n"
+		elif elem["config_section"] == "asrestore":
+			asrestore_data += arg + "\n"
+	
+	data = cluster_data + secret_data + asbackup_data + asrestore_data
+
+	
+	path = lib.temporary_path("toml")
+	with open(path, "x") as conf:
+		conf.write(data)
+	
+	return path
+
+def start_secret_agent():
+	cwd = os.getcwd()
+	os.chdir(cwd + "/test/integration")
+	os.system("./secret-agent.sh start outfile.txt")
+	os.chdir(cwd)
+	time.sleep(0.5)
+
+def stop_secret_agent():
+	cwd = os.getcwd()
+	os.chdir(cwd + "/test/integration")
+	os.system("./secret-agent.sh stop")
+	os.system("./secret-agent.sh clean")
+	os.chdir(cwd)
+	time.sleep(0.5)
+
+def setup_module(module):
+	init_work_dir()
+	start_secret_agent()
+
+def teardown_module(module):
+	stop_secret_agent()
+
 def test_restore_config_init():
 	exp_argc, exp_argv = gen_args(RESTORE_SECRET_OPTIONS, b"asrestore")
 	
@@ -386,7 +486,7 @@ def test_restore_config_init():
 	p_exp_argv = ctypes.POINTER(ctypes.c_char_p)(c_exp_argv)
 	restore_so.restore_config_init(exp_argc, p_exp_argv, p_exp_conf)
 
-	# configs that don't use secrets for these fields will file
+	# configs that don't use secrets for these fields will fill
 	# the ~file fields instead of the ~string fields
 	# adjust the expected data to match configs that use secrets
 	expected_conf.tls.castring = expected_conf.tls.cafile
@@ -431,4 +531,60 @@ def test_backup_config_init():
 	p_conf = ctypes.POINTER(BackupConfigT)(conf)
 	backup_so.backup_config_init(argc, p_argv, p_conf)
 
+	assert expected_conf == conf
+
+def test_backup_conf_file():
+	exp_argc, exp_argv = gen_args(BACKUP_SECRET_OPTIONS, b"asbackup")
+
+	expected_conf = BackupConfigT()
+	p_exp_conf = ctypes.POINTER(BackupConfigT)(expected_conf)
+	c_exp_argv = (ctypes.c_char_p * exp_argc)(*exp_argv)
+	p_exp_argv = ctypes.POINTER(ctypes.c_char_p)(c_exp_argv)
+	backup_so.backup_config_init(exp_argc, p_exp_argv, p_exp_conf)
+
+	# configs that don't use secrets for these fields will fill
+	# the ~file fields instead of the ~string fields
+	# adjust the expected data to match configs that use secrets
+	expected_conf.tls.castring = expected_conf.tls.cafile
+	expected_conf.tls.cafile = None
+	expected_conf.tls.keystring = expected_conf.tls.keyfile
+	expected_conf.tls.keyfile = None
+	expected_conf.tls.certstring = expected_conf.tls.certfile
+	expected_conf.tls.certfile = None
+
+	conf_path = gen_secret_toml(BACKUP_SECRET_OPTIONS)
+
+	conf = BackupConfigT()
+	p_conf = ctypes.POINTER(BackupConfigT)(conf)
+	backup_so.backup_config_default(p_conf)
+
+	backup_so.config_from_file(p_conf, None, bytes(conf_path, "utf-8"), 0, True)
+	assert expected_conf == conf
+
+def test_asrestore_conf_file():
+	exp_argc, exp_argv = gen_args(RESTORE_SECRET_OPTIONS, b"asrestore")
+
+	expected_conf = RestoreConfigT()
+	p_exp_conf = ctypes.POINTER(RestoreConfigT)(expected_conf)
+	c_exp_argv = (ctypes.c_char_p * exp_argc)(*exp_argv)
+	p_exp_argv = ctypes.POINTER(ctypes.c_char_p)(c_exp_argv)
+	restore_so.restore_config_init(exp_argc, p_exp_argv, p_exp_conf)
+
+	# configs that don't use secrets for these fields will fill
+	# the ~file fields instead of the ~string fields
+	# adjust the expected data to match configs that use secrets
+	expected_conf.tls.castring = expected_conf.tls.cafile
+	expected_conf.tls.cafile = None
+	expected_conf.tls.keystring = expected_conf.tls.keyfile
+	expected_conf.tls.keyfile = None
+	expected_conf.tls.certstring = expected_conf.tls.certfile
+	expected_conf.tls.certfile = None
+
+	conf_path = gen_secret_toml(RESTORE_SECRET_OPTIONS)
+
+	conf = RestoreConfigT()
+	p_conf = ctypes.POINTER(RestoreConfigT)(conf)
+	restore_so.restore_config_default(p_conf)
+
+	restore_so.config_from_file(p_conf, None, bytes(conf_path, "utf-8"), 0, False)
 	assert expected_conf == conf

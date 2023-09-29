@@ -22,7 +22,7 @@ tmp_file_setup(void)
 
 static void
 tmp_file_init(const char* cluster_args, const char* backup_args,
-		const char* asadm_args)
+		const char* asadm_args, const char* secret_agent_args)
 {
 	snprintf(file_name, sizeof(file_name), WORKING_DIR "/" TMP_FILE_NAME);
 	FILE* f = fopen(file_name, "w+");
@@ -35,13 +35,15 @@ tmp_file_init(const char* cluster_args, const char* backup_args,
 		"[asrestore]\n"
 		"%s\n"
 		"[asadmin]\n"
-		"%s";
+		"%s\n"
+		"[secret-agent]\n"
+		"%s\n";
 	// add 1 to include the null terminator
 	size_t n_bytes = (size_t) snprintf(NULL, 0, file_contents, cluster_args,
-			backup_args, asadm_args) + 1;
+			backup_args, asadm_args, secret_agent_args) + 1;
 	file_contents_buf = test_malloc(n_bytes);
 	snprintf(file_contents_buf, n_bytes, file_contents, cluster_args,
-			backup_args, asadm_args);
+			backup_args, asadm_args, secret_agent_args);
 	fwrite(file_contents_buf, 1, n_bytes, f);
 	cf_free(file_contents_buf);
 	fclose(f);
@@ -144,12 +146,18 @@ assert_restore_config_eq(restore_config_t *c1, restore_config_t *c2)
 	CMP_INT_FIELD(c1->s3_max_async_downloads, c2->s3_max_async_downloads);
 	CMP_INT_FIELD(c1->s3_connect_timeout, c2->s3_connect_timeout);
 	CMP_INT_FIELD(c1->s3_log_level, c2->s3_log_level);
+
+	CMP_STR_FIELD(c1->secret_cfg.addr, c2->secret_cfg.addr);
+	CMP_STR_FIELD(c1->secret_cfg.port, c2->secret_cfg.port);
+	CMP_INT_FIELD(c1->secret_cfg.timeout, c2->secret_cfg.timeout);
+	CMP_STR_FIELD(c1->secret_cfg.tls.ca_string, c2->secret_cfg.tls.ca_string);
+	CMP_INT_FIELD(c1->secret_cfg.tls.enabled, c2->secret_cfg.tls.enabled);
 }
 
 
 START_TEST(test_init_empty)
 {
-	tmp_file_init("", "", "");
+	tmp_file_init("", "", "", "");
 	restore_config_t c1;
 	restore_config_t c2;
 	restore_config_default(&c1);
@@ -167,7 +175,7 @@ END_TEST
 #define DEFINE_BOOL_TEST(test_name, str_name, field_name) \
 START_TEST(test_name) \
 { \
-	tmp_file_init(str_name "=true\n", "", ""); \
+	tmp_file_init(str_name "=true\n", "", "", ""); \
 	restore_config_t c1; \
 	restore_config_t c2; \
 	restore_config_default(&c1); \
@@ -189,7 +197,7 @@ END_TEST
 #define DEFINE_INT_TEST_MULT(test_name, str_name, field_name, mult) \
 START_TEST(test_name) \
 { \
-	tmp_file_init(str_name "=314159\n", "", ""); \
+	tmp_file_init(str_name "=314159\n", "", "", ""); \
 	restore_config_t c1; \
 	restore_config_t c2; \
 	restore_config_default(&c1); \
@@ -210,7 +218,7 @@ END_TEST
 #define DEFINE_STR_TEST(test_name, str_name, field_name, str_val) \
 START_TEST(test_name) \
 { \
-	tmp_file_init(str_name "=\"" str_val "\"\n", "", ""); \
+	tmp_file_init(str_name "=\"" str_val "\"\n", "", "", ""); \
 	restore_config_t c1; \
 	restore_config_t c2; \
 	restore_config_default(&c1); \
@@ -255,7 +263,7 @@ DEFINE_STR_TEST(test_init_tls_cert_blacklist, "tls-cert-blacklist", tls.cert_bla
 
 START_TEST(test_init_set_list)
 {
-	tmp_file_init("", "set-list=\"set-1,set-2,set-3\"", "");
+	tmp_file_init("", "set-list=\"set-1,set-2,set-3\"", "", "");
 	restore_config_t c1;
 	restore_config_t c2;
 	restore_config_default(&c1);
@@ -274,7 +282,7 @@ END_TEST
 
 START_TEST(test_init_bin_list)
 {
-	tmp_file_init("", "bin-list=\"bin-1,bin-2,bin-3\"", "");
+	tmp_file_init("", "bin-list=\"bin-1,bin-2,bin-3\"", "", "");
 	restore_config_t c1;
 	restore_config_t c2;
 	restore_config_default(&c1);
@@ -293,7 +301,7 @@ END_TEST
 
 START_TEST(test_init_ns_list)
 {
-	tmp_file_init("", "namespace=\"test\"", "");
+	tmp_file_init("", "namespace=\"test\"", "", "");
 	restore_config_t c1;
 	restore_config_t c2;
 	restore_config_default(&c1);
@@ -312,7 +320,7 @@ END_TEST
 
 START_TEST(test_init_s3_log_level)
 {
-	tmp_file_init("", "s3-log-level=\"Debug\"\n", "");
+	tmp_file_init("", "s3-log-level=\"Debug\"\n", "", "");
 	restore_config_t c1;
 	restore_config_t c2;
 	restore_config_default(&c1);
@@ -331,7 +339,7 @@ END_TEST
 
 START_TEST(test_init_compress_mode)
 {
-	tmp_file_init("", "compress=\"zstd\"\n", "");
+	tmp_file_init("", "compress=\"zstd\"\n", "", "");
 	restore_config_t c1;
 	restore_config_t c2;
 	restore_config_default(&c1);
@@ -350,7 +358,7 @@ END_TEST
 
 START_TEST(test_init_encryption_mode)
 {
-	tmp_file_init("", "encrypt=\"aes128\"\n", "");
+	tmp_file_init("", "encrypt=\"aes128\"\n", "", "");
 	restore_config_t c1;
 	restore_config_t c2;
 	restore_config_default(&c1);
@@ -522,7 +530,7 @@ START_TEST(test_init_encrypt_key_file)
 		0xe8, 0xae, 0x43, 0xf1, 0x68, 0xbd
 	};
 
-	tmp_file_init("", "encryption-key-file=\"test/test_key.pem\"\n", "");
+	tmp_file_init("", "encryption-key-file=\"test/test_key.pem\"\n", "", "");
 	restore_config_t c1;
 	restore_config_t c2;
 	restore_config_default(&c1);
@@ -550,7 +558,7 @@ START_TEST(test_init_encryption_key_env)
 	};
 
 	setenv("TEST_ENCRYPT_KEY_ENV_VAR", "MUFZJlNYl5Orze8BI0VniQ==", true);
-	tmp_file_init("", "encryption-key-env=\"TEST_ENCRYPT_KEY_ENV_VAR\"\n", "");
+	tmp_file_init("", "encryption-key-env=\"TEST_ENCRYPT_KEY_ENV_VAR\"\n", "", "");
 
 	restore_config_t c1;
 	restore_config_t c2;
@@ -572,10 +580,60 @@ START_TEST(test_init_encryption_key_env)
 }
 END_TEST
 
+START_TEST(test_init_sa_ca_file)
+{
+	// decoding of test/test_key.pem
+	static char data[] = "-----BEGIN RSA PRIVATE KEY-----\n"
+			"MIIEogIBAAKCAQEAvFGdHQauRhjDleDY/0lAVi7OfpzuUUpEbaQZIQ966qs2nXCY\n"
+			"CAYZwnO7VkR4ooUKofms4rgGv7wmZzzXYGXqQuhiEcGd+DeUnasq6+cgqWlUGqYw\n"
+			"I67iWIjzJTWOoMC7jCbphBsjHLb/ckJ4piNJUxVH/9FPdYoQLCo5J3gTvae5IZwr\n"
+			"ezB88uc9JUYFuXDWwTu0yTzzZuteLMTG1Ab6ZMTR6wb4x4vU4yJfTyictJRcO6ad\n"
+			"idXPOrEqbFk/AzOegzHSVEvPRwwbfbHYI08CyYXJ3RO9hTrv6MdPqtI+jz6uPFRl\n"
+			"ilHCIlQ9cJjapNLJFnGJfzv6guTICkaxUTnhTwIDAQABAoIBAC7VsVhlr/P49rOQ\n"
+			"vwcGhbypWWu9xbtr2AbYl/NT8ULpn+SZ+wWL1t44gC/dSY9JvTI5cRjVocAPoBFu\n"
+			"3TW5QwCu4Kz/1TTFRe3Mgxk2WzYm3ubdy/0j4mEYdjgb0MQECuC5ULwtL5dVn8Qf\n"
+			"6fePsQ27rjNeL//QfWMugRZi064H2lQjI27/x5uPRvkPM0yjijqMlTA/0XVA0aO9\n"
+			"UWMkEAH5iwUslAhE+0MJebFZA704No+98VrcShxnzEfEMqtAtpdCpcA19Nev5TsZ\n"
+			"DvhvODzw4xYdHfEBlPRO7SVXwC4NBxZZy2ocglwHVN3rd6gfa3IfF4OuGs13y6O+\n"
+			"jAy9l3ECgYEA39aGooT4U50RReGVsRf483Rf4b2Ajkm6Di29Qw2il0LcGTc5PG6s\n"
+			"LjA2dX1ubzp1jBsY/P2tpgPBjreOY8lA5tEcFYHLfwMBXYLFG7GBcgYzwDpyH402\n"
+			"5dPMJzAEwwAUsfKkZSdqfudNBvUIPZ4mf2j2Xji9tOF+Y+X2LLKm1rkCgYEA12CU\n"
+			"Nuy2rvHtvLSRjlK79j2oY8ijQOTNT5xIiaBUCNHQJBOKfjb2jv9efxSsQqVMWXsn\n"
+			"8Rvwi3aklVINzmcdLLWZc7X3lnazEd5dpiIzFOYr0sXDdrNexr/+w3OMQtiivBru\n"
+			"YCp8o70NIsRf+h/1kLmtNzM+OqSEIzft0lys9EcCgYBf2504yD0YgbE9/gd/GccR\n"
+			"a4sMP31ocgZtwATHTHWO1aEwY0ftq2+tMBSCaD78/0oLwCcJYRIWgJFJry4ZabyT\n"
+			"nIWsaDNfp0fUZgZHf9Lxo9pRvjXVcUJLVlKdjaDcaZJzSnhAoYqn4iJIknL/AFV4\n"
+			"RtkLLL2BUvgvi/HK3o84cQKBgF2U/VGQMSB6xk3EN6qbkEhCKjSRLT45LGx2/52t\n"
+			"KFZctA+43ehRgXhIxYp6NQ8QO8h1lrlQ5ofymTi4Wn9glnCix3ZbjqS2FsCg2hgh\n"
+			"rAhcqpX+kBu3fGrnaY8LWdqBvtP077ahP171+gstQHayBEVKKFVf0p4wdanH13Ic\n"
+			"CpppAoGAOzC3FYRb3C3RhAMddPQ3kZ2VWk9XYOwe9KDZtdjGvmyhBHuRlkw2+nX4\n"
+			"Gq13GCn2ugWNryIPzq+2uqognb9Z+mdUTwc0DBoIWaKJbf7CRxraD2KOym0jU3nn\n"
+			"7QAQsGMrAby/zeT+pQRbQRBim6PAfpRoPicDa9PZNh7orkPxaL0=\n"
+			"-----END RSA PRIVATE KEY-----\n";
+
+	tmp_file_init("", "", "", "sa-cafile=\"test/test_key.pem\"\n");
+	restore_config_t c1;
+	restore_config_t c2;
+	restore_config_default(&c1);
+	restore_config_default(&c2);
+
+	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, false), 0);
+
+	c2.secret_cfg.tls.ca_string = (char*) test_malloc(sizeof(data));
+	memcpy(c2.secret_cfg.tls.ca_string, data, sizeof(data));
+	c2.secret_cfg.tls.enabled = true;
+
+	assert_restore_config_eq(&c1, &c2);
+
+	restore_config_destroy(&c2);
+	restore_config_destroy(&c1);
+}
+END_TEST
+
 #define DEFINE_BOOL_TEST(test_name, str_name, field_name) \
 START_TEST(test_name) \
 { \
-	tmp_file_init("", str_name "=true\n", ""); \
+	tmp_file_init("", str_name "=true\n", "", ""); \
 	restore_config_t c1; \
 	restore_config_t c2; \
 	restore_config_default(&c1); \
@@ -597,7 +655,7 @@ END_TEST
 #define DEFINE_INT_TEST_MULT(test_name, str_name, field_name, mult) \
 START_TEST(test_name) \
 { \
-	tmp_file_init("", str_name "=314\n", ""); \
+	tmp_file_init("", str_name "=314\n", "", ""); \
 	restore_config_t c1; \
 	restore_config_t c2; \
 	restore_config_default(&c1); \
@@ -618,7 +676,7 @@ END_TEST
 #define DEFINE_STR_TEST(test_name, str_name, field_name, str_val) \
 START_TEST(test_name) \
 { \
-	tmp_file_init("", str_name "=\"" str_val "\"\n", ""); \
+	tmp_file_init("", str_name "=\"" str_val "\"\n", "", ""); \
 	restore_config_t c1; \
 	restore_config_t c2; \
 	restore_config_default(&c1); \
@@ -627,6 +685,43 @@ START_TEST(test_name) \
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, false), 0); \
 	cf_free(c2.field_name); \
 	c2.field_name = strdup(str_val); \
+	assert_restore_config_eq(&c1, &c2); \
+	\
+	restore_config_destroy(&c2); \
+	restore_config_destroy(&c1); \
+} \
+END_TEST
+
+#define DEFINE_STR_SECRET_TEST(test_name, str_name, field_name, str_val) \
+START_TEST(test_name) \
+{ \
+	tmp_file_init("", "", "", str_name "=\"" str_val "\"\n"); \
+	restore_config_t c1; \
+	restore_config_t c2; \
+	restore_config_default(&c1); \
+	restore_config_default(&c2); \
+	\
+	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, false), 0); \
+	cf_free(c2.field_name); \
+	c2.field_name = strdup(str_val); \
+	assert_restore_config_eq(&c1, &c2); \
+	\
+	restore_config_destroy(&c2); \
+	restore_config_destroy(&c1); \
+} \
+END_TEST
+
+#define DEFINE_INT_SECRET_TEST(test_name, str_name, field_name) \
+START_TEST(test_name) \
+{ \
+	tmp_file_init("", "", "", str_name "=314\n"); \
+	restore_config_t c1; \
+	restore_config_t c2; \
+	restore_config_default(&c1); \
+	restore_config_default(&c2); \
+	\
+	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, false), 0); \
+	c2.field_name = 314lu; \
 	assert_restore_config_eq(&c1, &c2); \
 	\
 	restore_config_destroy(&c2); \
@@ -664,6 +759,10 @@ DEFINE_STR_TEST(test_init_s3_endpoint_override, "s3-endpoint-override", s3_endpo
 		"https://<accountid>.r2.test.com");
 DEFINE_INT_TEST(test_init_s3_max_async_downloads, "s3-max-async-downloads", s3_max_async_downloads);
 DEFINE_INT_TEST(test_init_s3_connect_timeout, "s3-connect-timeout", s3_connect_timeout);
+
+DEFINE_STR_SECRET_TEST(test_init_sa_address, "sa-address", secret_cfg.addr, "127.0.0.1");
+DEFINE_STR_SECRET_TEST(test_init_sa_port, "sa-port", secret_cfg.port, "3005");
+DEFINE_INT_SECRET_TEST(test_init_sa_timeout, "sa-timeout", secret_cfg.timeout);
 
 
 Suite* restore_conf_suite()
@@ -732,6 +831,12 @@ Suite* restore_conf_suite()
 	tcase_add_test(tc_init, test_init_s3_max_async_downloads);
 	tcase_add_test(tc_init, test_init_s3_connect_timeout);
 	tcase_add_test(tc_init, test_init_s3_log_level);
+
+	tcase_add_test(tc_init, test_init_sa_address);
+	tcase_add_test(tc_init, test_init_sa_port);
+	tcase_add_test(tc_init, test_init_sa_timeout);
+	tcase_add_test(tc_init, test_init_sa_ca_file);
+
 	suite_add_tcase(s, tc_init);
 
 	return s;

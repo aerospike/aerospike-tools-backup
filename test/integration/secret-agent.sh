@@ -23,31 +23,32 @@
 # SOFTWARE.
 #
 
+PRE="work"
+
 function clear_work {
 	if [ -d work ]; then
-		rm -rf work/secret-agent
+		rm -rf $PRE/secret-agent
 	fi
 }
 
 function make_work {
 	clear_work
-	mkdir work work/secret-agent work/secret-agent/state
+	mkdir $PRE $PRE/secret-agent $PRE/secret-agent/state
 }
 
 function clone {
-    git clone https://github.com/dwelch-spike/aerospike-secret-agent.git work/secret-agent/aerospike-secret-agent
-    cd work/secret-agent/aerospike-secret-agent
-    git checkout local-backend
+    git clone https://github.com/aerospike/aerospike-secret-agent.git $PRE/secret-agent/aerospike-secret-agent
+    cd $PRE/secret-agent/aerospike-secret-agent
     cd -
 }
 
 function build {
-    make -C work/secret-agent/aerospike-secret-agent/
+    make -C $PRE/secret-agent/aerospike-secret-agent/
 }
 
 function test_process {
-	if [ -f work/secret-agent/state/sa.pid ]; then
-		echo "secret agent process already exists with PID $(cat work/secret-agent/state/sa.pid)"
+	if [ -f $PRE/secret-agent/state/sa.pid ]; then
+		echo "secret agent process already exists with PID $(cat $PRE/secret-agent/state/sa.pid)"
 		exit 1
 	fi
 }
@@ -59,12 +60,12 @@ function start_process {
     clone
     build
 
-	DIR=work/secret-agent/aerospike-secret-agent/target
+	DIR=$PRE/secret-agent/aerospike-secret-agent/target
 
     if [ -x ${DIR}/aerospike-secret-agent ]; then
         echo "starting ${DIR}/aerospike-secret-agent"
         PID=$(${DIR}/aerospike-secret-agent --config-file secret-agent-conf.yaml >"${1}" 2>&1 & echo $!)
-        echo $PID > work/secret-agent/state/sa.pid
+        echo $PID > $PRE/secret-agent/state/sa.pid
         exit 0
     fi	
 
@@ -73,14 +74,14 @@ function start_process {
 }
 
 function stop_process {
-	if [ ! -f work/secret-agent/state/sa.pid ]; then
+	if [ ! -f $PRE/secret-agent/state/sa.pid ]; then
 		echo "no running secret agent process"
 		exit 1
 	fi
 
-	kill $(cat work/secret-agent/state/sa.pid)
-    echo "killed secret agent process with PID $(cat work/secret-agent/state/sa.pid)"
-    rm -f work/secret-agent/state/sa.pid
+	kill $(cat $PRE/secret-agent/state/sa.pid)
+    echo "killed secret agent process with PID $(cat $PRE/secret-agent/state/sa.pid)"
+    rm -f $PRE/secret-agent/state/sa.pid
 }
 
 function usage {
