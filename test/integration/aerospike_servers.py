@@ -32,7 +32,7 @@ LUA_DIRECTORY = lib.absolute_path(WORK_DIRECTORY, "lua")
 
 FAKE_TIME_FILE = "clock_gettime.txt"
 
-USE_DOCKER_SERVERS = True
+USE_DOCKER_SERVERS = False
 if USE_DOCKER_SERVERS:
 	DOCKER_CLIENT = docker.from_env()
 GLOBALS = { "running": False }

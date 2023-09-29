@@ -490,18 +490,18 @@ def test_restore_config_init():
 	# configs that don't use secrets for these fields will fill
 	# the ~file fields instead of the ~string fields
 	# adjust the expected data to match configs that use secrets
-	expected_conf.tls.castring = expected_conf.tls.cafile
-	expected_conf.tls.cafile = None
-	expected_conf.tls.keystring = expected_conf.tls.keyfile
-	expected_conf.tls.keyfile = None
-	expected_conf.tls.certstring = expected_conf.tls.certfile
-	expected_conf.tls.certfile = None
+	# expected_conf.tls.castring = expected_conf.tls.cafile
+	# expected_conf.tls.cafile = None
+	# expected_conf.tls.keystring = expected_conf.tls.keyfile
+	# expected_conf.tls.keyfile = None
+	# expected_conf.tls.certstring = expected_conf.tls.certfile
+	# expected_conf.tls.certfile = None
 
 	argc, argv = gen_secret_args(RESTORE_SECRET_OPTIONS, b"asrestore")
 	conf = RestoreConfigT()
+	p_conf = ctypes.POINTER(RestoreConfigT)(conf)
 	c_argv = (ctypes.c_char_p * argc)(*argv)
 	p_argv = ctypes.POINTER(ctypes.c_char_p)(c_argv)
-	p_conf = ctypes.POINTER(RestoreConfigT)(conf)
 	restore_so.restore_config_init(argc, p_argv, p_conf)
 
 	assert expected_conf == conf
@@ -518,12 +518,12 @@ def test_backup_config_init():
 	# configs that don't use secrets for these fields will file
 	# the ~file fields instead of the ~string fields
 	# adjust the expected data to match configs that use secrets
-	expected_conf.tls.castring = expected_conf.tls.cafile
-	expected_conf.tls.cafile = None
-	expected_conf.tls.keystring = expected_conf.tls.keyfile
-	expected_conf.tls.keyfile = None
-	expected_conf.tls.certstring = expected_conf.tls.certfile
-	expected_conf.tls.certfile = None
+	# expected_conf.tls.castring = expected_conf.tls.cafile
+	# expected_conf.tls.cafile = None
+	# expected_conf.tls.keystring = expected_conf.tls.keyfile
+	# expected_conf.tls.keyfile = None
+	# expected_conf.tls.certstring = expected_conf.tls.certfile
+	# expected_conf.tls.certfile = None
 
 	argc, argv = gen_secret_args(BACKUP_SECRET_OPTIONS, b"asbackup")
 	conf = BackupConfigT()
@@ -546,12 +546,12 @@ def test_backup_conf_file():
 	# configs that don't use secrets for these fields will fill
 	# the ~file fields instead of the ~string fields
 	# adjust the expected data to match configs that use secrets
-	expected_conf.tls.castring = expected_conf.tls.cafile
-	expected_conf.tls.cafile = None
-	expected_conf.tls.keystring = expected_conf.tls.keyfile
-	expected_conf.tls.keyfile = None
-	expected_conf.tls.certstring = expected_conf.tls.certfile
-	expected_conf.tls.certfile = None
+	# expected_conf.tls.castring = expected_conf.tls.cafile
+	# expected_conf.tls.cafile = None
+	# expected_conf.tls.keystring = expected_conf.tls.keyfile
+	# expected_conf.tls.keyfile = None
+	# expected_conf.tls.certstring = expected_conf.tls.certfile
+	# expected_conf.tls.certfile = None
 
 	conf_path = gen_secret_toml(BACKUP_SECRET_OPTIONS)
 
@@ -574,12 +574,12 @@ def test_asrestore_conf_file():
 	# configs that don't use secrets for these fields will fill
 	# the ~file fields instead of the ~string fields
 	# adjust the expected data to match configs that use secrets
-	expected_conf.tls.castring = expected_conf.tls.cafile
-	expected_conf.tls.cafile = None
-	expected_conf.tls.keystring = expected_conf.tls.keyfile
-	expected_conf.tls.keyfile = None
-	expected_conf.tls.certstring = expected_conf.tls.certfile
-	expected_conf.tls.certfile = None
+	# expected_conf.tls.castring = expected_conf.tls.cafile
+	# expected_conf.tls.cafile = None
+	# expected_conf.tls.keystring = expected_conf.tls.keyfile
+	# expected_conf.tls.keyfile = None
+	# expected_conf.tls.certstring = expected_conf.tls.certfile
+	# expected_conf.tls.certfile = None
 
 	conf_path = gen_secret_toml(RESTORE_SECRET_OPTIONS)
 
