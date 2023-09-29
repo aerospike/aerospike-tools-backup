@@ -142,7 +142,7 @@ jobs:
       run: make unit
       working-directory: main
     - name: Test secret agent
-      run: make run_test_secret-agent
+      run: make run_test_secret_agent
       working-directory: main
     - name: Test Validate
       run: make run_test_validate
