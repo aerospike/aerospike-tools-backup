@@ -142,8 +142,15 @@ jobs:
       run: make unit
       working-directory: main
     - name: Test secrets
-      run: make run_test_secrets
+      run: |
+        ulimit -c unlimited         # Enable core dumps to be captured (must be in same run block)
+        make run_test_secrets
+        chmod -R +rwx /cores/* # Enable access to core dumps (doesn't need to be in same run block)
       working-directory: main
+    - uses: actions/upload-artifact@master # capture all crashes as build artifacts
+      with:
+        name: crashes
+        path: /cores
     - name: Test Validate
       run: make run_test_validate
       working-directory: main
