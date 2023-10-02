@@ -53,18 +53,25 @@ function test_process {
 	fi
 }
 
-function start_process {
-    make_work
-    test_process
+function setup_agent {
+	if [ -f $PRE/secret-agent/aerospike-secret-agent ]; then
+		echo "secret agent already clonned"
+		return
+	fi
 
-    clone
-    build
+	make_work
+	clone
+	build
+}
+
+function start_process {
+    test_process
 
 	DIR=$PRE/secret-agent/aerospike-secret-agent/target
 
     if [ -x ${DIR}/aerospike-secret-agent ]; then
         echo "starting ${DIR}/aerospike-secret-agent"
-        PID=$(${DIR}/aerospike-secret-agent --config-file secret-agent-conf.yaml >"${1}" 2>&1 & echo $!)
+        PID=$(${DIR}/aerospike-secret-agent --config-file "${1}" >"${2}" 2>&1 & echo $!)
         echo $PID > $PRE/secret-agent/state/sa.pid
         exit 0
     fi	
@@ -85,7 +92,7 @@ function stop_process {
 }
 
 function usage {
-	echo "usage: secret-agent.sh start log-file"
+	echo "usage: secret-agent.sh start config-file log-file"
 	echo "       secret-agent.sh test|stop|clean"
 }
 
@@ -97,12 +104,18 @@ fi
 case "${1}" in
 	start)
 		if [ -z "${2}" ]; then
+			echo missing config file argument
+			usage
+			exit 1
+		fi
+
+		if [ -z "${3}" ]; then
 			echo missing log file argument
 			usage
 			exit 1
 		fi
 
-		start_process "${2}"
+		start_process "${2}" "${3}"
 		exit 0
 		;;
 	stop)
@@ -113,6 +126,10 @@ case "${1}" in
         test_process
         exit 0
         ;;
+	setup)
+		setup_agent
+		exit 0
+		;;
 	clean)
 		clear_work
 		exit 0

@@ -20,6 +20,7 @@ from aerospike_client import validate_client, get_client
 from aerospike_helpers import cdt_ctx
 
 WORK_DIRECTORY = "work"
+SECRET_AGENT_DIRECTORY = "secret-agent-work"
 
 PORT = 3000
 NAMESPACE = "test"

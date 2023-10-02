@@ -141,8 +141,8 @@ jobs:
     - name: Unit Test
       run: make unit
       working-directory: main
-    - name: Test secret agent
-      run: make run_test_secret_agent
+    - name: Test secrets
+      run: make run_test_secrets
       working-directory: main
     - name: Test Validate
       run: make run_test_validate
@@ -182,6 +182,8 @@ jobs:
       working-directory: main
     - name: Test S3
       run: make run_test_s3
+    - name: Test secret agent
+      run: make run_test_secret_agent
       working-directory: main
     - name: Accumulate coverage
       run: make coverage
