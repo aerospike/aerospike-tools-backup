@@ -10,12 +10,12 @@ import base64
 import os
 import time
 import subprocess
+import secret_agent_servers as sa
 
 SA_BASE_PATH = lib.absolute_path(lib.SECRET_AGENT_DIRECTORY)
 SA_RSRC_PATH = os.path.join(SA_BASE_PATH, "resources")
 
-SA_ADDR = "127.0.0.1"
-SA_PORT = "3005"
+SA_ADDR = "0.0.0.0"
 
 SA_BACKUP_FILE_PATH = os.path.join(SA_RSRC_PATH, "b_secrets.json")
 SA_BACKUP_RESOURCE = "backup"
@@ -26,11 +26,16 @@ SA_RESTORE_RESOURCE = "restore"
 
 def gen_secret_agent_conf(resources:{str:str}) -> str:
     sa_addr = SA_ADDR
-    sa_port = SA_PORT
+    sa_port = sa.SA_PORT
 
     def make_resources(resources:{str:str}={}) -> str:
         res = ""
         for k, v in resources.items():
+
+            if sa.USE_DOCKER_SERVERS:
+                v = os.path.relpath(v, SA_BASE_PATH)
+                v = os.path.join(sa.CONTAINER_VAL, v)
+
             nl = '\n'
             res += f'       "{k}": "{v}"{nl}'
         return res
@@ -48,7 +53,7 @@ secret-manager:
 %s
 
 log:
-  level: info
+  level: debug
 """ % (sa_addr, sa_port, resource_str)
     return secret_agent_conf_template
 
@@ -78,56 +83,7 @@ def gen_secret_agent_secrets(secrets:{str:any}={}) -> str:
 """ % secret_str
     return secrets_template
 
-class SecretAgent():
-    def __init__(self, path:str, config:str) -> None:
-        self.path = path
-        self.config = config
-        self.running = False
-        self.process = None
-    
-    def start(self):
-        if self.running:
-            return
-
-        args = [self.path, "--config-file", self.config]
-        self.process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        self.running = True
-        time.sleep(0.5)
-    
-    def stop(self):
-        if not self.running:
-            return
-
-        self.process.kill()
-        self.running = False
-    
-    def output(self) -> str:
-        if not self.process:
-            return
-
-        return str(self.process.stdout.read().decode("utf-8"))
-
-SA_REPO_PATH = os.path.join(SA_BASE_PATH, "aerospike-secret-agent/")
-SA_BIN_PATH = os.path.join(SA_REPO_PATH, "target/aerospike-secret-agent")
-
-def setup_secret_agent():
-    cmd = "mkdir -p %s" % SA_BASE_PATH
-    os.system(cmd)
-
-    secret_agent_url = "https://github.com/aerospike/aerospike-secret-agent.git"
-    cmd = "git clone %s %s" % (secret_agent_url, SA_REPO_PATH)
-    os.system(cmd)
-
-    cmd = "make -C %s" % SA_REPO_PATH
-    os.system(cmd)
-
-    cmd = "chmod +x %s" % SA_BIN_PATH
-
-def teardown_secret_agent():
-    cmd = "rm -rf %s" % SA_BASE_PATH
-    os.system(cmd)
-
-SA_CONF_PATH = SA_RSRC_PATH + "conf.yaml"
+SA_CONF_PATH = os.path.join(SA_RSRC_PATH, "conf.yaml")
 
 def gen_secret_agent_files(backup_args={str:any}, restore_args={str:any}):
     backup_secrets_json = gen_secret_agent_secrets(backup_args)
@@ -179,10 +135,10 @@ def backup_restore_with_secrets(backup_args:{str:any}, restore_args:{str:any}, s
 
     gen_secret_agent_files(backup_args=backup_args, restore_args=restore_args)
 
-    sa = SecretAgent(path=SA_BIN_PATH, config=SA_CONF_PATH)
+    agent = sa.get_secret_agent(config=SA_CONF_PATH)
 
     try:
-        sa.start()
+        agent.start()
 
         bargs = gen_secret_args(backup_args, SA_BACKUP_RESOURCE)
         bargs += sa_args
@@ -200,16 +156,16 @@ def backup_restore_with_secrets(backup_args:{str:any}, restore_args:{str:any}, s
     except Exception as e:
         raise e
     finally:
-        sa.stop()
+        agent.stop()
         print("*** Secret Agent Output ***")
-        print(sa.output())
+        print(agent.output())
         print("*** End Secret Agent Output ***")
 
 def setup_module(module):
-	setup_secret_agent()
+	sa.setup_secret_agent()
 
 def teardown_module(module):
-	teardown_secret_agent()
+	sa.teardown_secret_agent()
 
 def test_secrets():
     """
@@ -218,6 +174,5 @@ def test_secrets():
     backup_restore_with_secrets(
         backup_args={"host": "127.0.0.1", "port": 3000},
         restore_args={"host": "127.0.0.1", "port": 3000},
-        sa_args=["--sa-address", SA_ADDR, "--sa-port", SA_PORT]
+        sa_args=["--sa-address", SA_ADDR, "--sa-port", sa.SA_PORT]
     )
-    assert 1 == 2

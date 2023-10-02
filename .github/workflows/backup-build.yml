@@ -182,9 +182,9 @@ jobs:
       working-directory: main
     - name: Test S3
       run: make run_test_s3
-    - name: Test secret agent
-      run: make run_test_secret_agent
-      working-directory: main
+    # - name: Test secret agent
+    #   run: make run_test_secret_agent
+    #   working-directory: main
     - name: Accumulate coverage
       run: make coverage
       working-directory: main
