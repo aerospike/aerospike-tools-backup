@@ -155,11 +155,14 @@ jobs:
     - name: Enable core directories
       if: always()
       run: sudo chmod -R +rwx /cores/* # Enable access to core dumps (doesn't need to be in same run block)
-    - uses: actions/upload-artifact@master # capture all crashes as build artifacts
+    - name: Setup tmate session
       if: always()
-      with:
-        name: crashes
-        path: /cores
+      uses: mxschmitt/action-tmate@v3
+    # - uses: actions/upload-artifact@master # capture all crashes as build artifacts
+    #   if: always()
+    #   with:
+    #     name: crashes
+    #     path: /cores
     - name: Test Validate
       run: make run_test_validate
       working-directory: main
