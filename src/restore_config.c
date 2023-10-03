@@ -951,18 +951,7 @@ restore_config_destroy(restore_config_t *conf)
 
 	tls_config_destroy(&conf->tls);
 
-	if (conf->secret_cfg.tls.ca_string != NULL) {
-		cf_free((char*) conf->secret_cfg.tls.ca_string);
-		conf->secret_cfg.tls.ca_string = NULL;
-	}
-
-	if (conf->secret_cfg.addr != NULL) {
-		cf_free((char*) conf->secret_cfg.addr);
-	}
-	
-	if (conf->secret_cfg.port != NULL) {
-		cf_free((char*) conf->secret_cfg.port);
-	}
+	sc_config_destroy(&conf->secret_cfg);
 	
 }
 

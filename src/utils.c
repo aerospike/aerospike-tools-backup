@@ -2011,6 +2011,49 @@ tls_config_clone(as_config_tls* clone, const as_config_tls* src)
 	clone->certfile = safe_strdup(src->certfile);
 }
 
+void
+sc_config_clone(sc_cfg* clone, const sc_cfg* src)
+{
+	memcpy(clone, src, sizeof(sc_cfg));
+	clone->addr = safe_strdup(src->addr);
+	clone->port = safe_strdup(src->port);
+	sc_tls_clone(&clone->tls, &src->tls);
+}
+
+void
+sc_config_destroy(sc_cfg* cfg)
+{
+	if (cfg->addr != NULL) {
+		cf_free((char*) cfg->addr);
+	}
+	
+	if (cfg->port != NULL) {
+		cf_free((char*) cfg->port);
+	}
+
+	sc_tls_destroy(&cfg->tls);
+
+	memset(cfg, 0, sizeof(sc_cfg));
+}
+
+void
+sc_tls_clone(sc_tls_cfg* clone, const sc_tls_cfg* src)
+{
+	memcpy(clone, src, sizeof(sc_tls_cfg));
+	clone->ca_string = safe_strdup(src->ca_string);
+}
+
+void
+sc_tls_destroy(sc_tls_cfg* cfg)
+{
+	if (cfg->ca_string != NULL) {
+		cf_free((char*) cfg->ca_string);
+		cfg->ca_string = NULL;
+	}
+
+	memset(cfg, 0, sizeof(sc_tls_cfg));
+}
+
 char* read_file_as_string(const char* path)
 {
     FILE* fptr;

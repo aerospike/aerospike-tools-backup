@@ -1045,18 +1045,7 @@ backup_config_destroy(backup_config_t* conf)
 
 	tls_config_destroy(&conf->tls);
 
-	if (conf->secret_cfg.tls.ca_string != NULL) {
-		cf_free((char*) conf->secret_cfg.tls.ca_string);
-		conf->secret_cfg.tls.ca_string = NULL;
-	}
-
-	if (conf->secret_cfg.addr != NULL) {
-		cf_free((char*) conf->secret_cfg.addr);
-	}
-	
-	if (conf->secret_cfg.port != NULL) {
-		cf_free((char*) conf->secret_cfg.port);
-	}
+	sc_config_destroy(&conf->secret_cfg);
 }
 
 backup_config_t*
@@ -1130,6 +1119,8 @@ backup_config_clone(backup_config_t* conf)
 	clone->partition_list = safe_strdup(conf->partition_list);
 	clone->after_digest = safe_strdup(conf->after_digest);
 	clone->filter_exp = safe_strdup(conf->filter_exp);
+
+	sc_config_clone(&clone->secret_cfg, &conf->secret_cfg);
 
 	return clone;
 }

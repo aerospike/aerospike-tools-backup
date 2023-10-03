@@ -402,6 +402,11 @@ bool read_block(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
 bool read_block_dec(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
 		void *buffer, size_t size, b64_context *b64c);
 
+void sc_config_clone(sc_cfg* clone, const sc_cfg* src);
+void sc_config_destroy(sc_cfg* cfg);
+void sc_tls_clone(sc_tls_cfg* clone, const sc_tls_cfg* src);
+void sc_tls_destroy(sc_tls_cfg* cfg);
+
 // the following functions are only valid in C, not C++
 #ifndef __cplusplus
 
