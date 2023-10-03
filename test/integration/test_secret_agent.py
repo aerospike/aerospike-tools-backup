@@ -12,6 +12,7 @@ import time
 
 import lib
 from aerospike_servers import init_work_dir
+import secret_agent_servers as sa
 
 shared_extension = "so"
 if platform.system() == "Darwin":
@@ -365,42 +366,23 @@ BACKUP_SECRET_OPTIONS = [
 	{"name": "s3-connect-timeout", "value": int_val, "config_section": "asbackup"}
 ]
 
-def gen_secret_args(input_list, prgm_name):
+def gen_secret_args(input_list, prgm_name, sa_args, resource_name):
 	args = [prgm_name]
-	for elem in input_list:
-		arg = "--" + elem["name"]
-		args.append(bytes(arg, "utf-8"))
 
-		val = "secrets:r1:"
-		val_type = elem["value"]
-		if val_type == string_val:
-			val = val + "string_val"
-		elif val_type == int_val:
-			val = val + "int_val"
-		elif val_type == compress_val:
-			val = val + "compress_val"
-		elif val_type == encryption_val:
-			val = val + "encryption_val"
-		elif val_type == s3_log_level_val:
-			val = val + "s3_log_level_val"
-		elif val_type == parallel_val:
-			val = val + "parallel_val"
-		elif val_type == modified_by_val:
-			val = val + "modified_by_val"
-		# val = val + elem["name"]
-
-		args.append(bytes(val, "utf-8"))
+	args += sa.gen_secret_args(
+		args={x["name"]: x["value"] for x in input_list},
+		resource=resource_name
+	)
 	
-	args.append(b"--sa-address")
-	args.append(b"127.0.0.1")
-	args.append(b"--sa-port")
-	args.append(b"3005")
+	args += sa_args
+
+	args = [bytes(x, "utf-8") for x in args]
 
 	count = len(args)
 	return count, args
 
 def gen_args(input_list, prgm_name):
-	args = [prgm_name]
+	args = [bytes(prgm_name, "utf-8")]
 	for elem in input_list:
 		arg = "--" + elem["name"]
 		args.append(bytes(arg, "utf-8"))
@@ -414,31 +396,15 @@ def gen_args(input_list, prgm_name):
 	count = len(args)
 	return count, args
 
-def gen_secret_toml(input_list):
+def gen_secret_toml(input_list, resource_name, sa_data='sa-address = "127.0.0.1"\nsa-port = "3005"\n'):
 	data = ""
 	cluster_data = "[cluster]\n"
-	secret_data = '[secret-agent]\nsa-address = "127.0.0.1"\nsa-port = "3005"\n'
+	secret_data = '[secret-agent]\n%s' % sa_data
 	asbackup_data = "[asbackup]\n"
 	asrestore_data = "[asrestore]\n"
 
 	for elem in input_list:
-		val = "secrets:r1:"
-		val_type = elem["value"]
-		if val_type == string_val:
-			val = val + "string_val"
-		elif val_type == int_val:
-			val = val + "int_val"
-		elif val_type == compress_val:
-			val = val + "compress_val"
-		elif val_type == encryption_val:
-			val = val + "encryption_val"
-		elif val_type == s3_log_level_val:
-			val = val + "s3_log_level_val"
-		elif val_type == parallel_val:
-			val = val + "parallel_val"
-		elif val_type == modified_by_val:
-			val = val + "modified_by_val"
-
+		val = "secrets:%s:%s" % (resource_name, elem["name"])
 		arg = elem["name"] + " = " +  '"%s"' % val
 		if elem["config_section"] == "cluster":
 			cluster_data += arg + "\n"
@@ -456,30 +422,49 @@ def gen_secret_toml(input_list):
 	
 	return path
 
-def start_secret_agent():
-	cwd = os.getcwd()
-	os.chdir(cwd + "/test/integration")
-	os.system("./secret-agent.sh start")
-	os.chdir(cwd)
-	time.sleep(0.5)
-
-def stop_secret_agent():
-	cwd = os.getcwd()
-	os.chdir(cwd + "/test/integration")
-	os.system("./secret-agent.sh stop")
-	os.system("./secret-agent.sh clean")
-	os.chdir(cwd)
-	time.sleep(0.5)
-
 def setup_module(module):
 	init_work_dir()
-	start_secret_agent()
+	sa.setup_secret_agent()
 
 def teardown_module(module):
-	stop_secret_agent()
+	sa.teardown_secret_agent()
+
+SA_RSRC_PATH = os.path.join(sa.WORK_DIRECTORY, "resources")
+
+SA_BACKUP_FILE_PATH = os.path.join(SA_RSRC_PATH, "b_secrets.json")
+SA_BACKUP_RESOURCE = "backup"
+
+SA_RESTORE_FILE_PATH = os.path.join(SA_RSRC_PATH, "r_secrets.json")
+SA_RESTORE_RESOURCE = "restore"
+
+SA_CONF_PATH = os.path.join(SA_RSRC_PATH, "conf.yaml")
+
+def gen_secret_agent_files(backup_args:{str:any}=None, restore_args:{str:any}=None):
+    resources = {}
+
+    if backup_args:
+        backup_secrets_json = sa.gen_secret_agent_secrets(backup_args)
+        with open(SA_BACKUP_FILE_PATH, "w+") as f:
+                f.write(backup_secrets_json)
+        resources[SA_BACKUP_RESOURCE] = SA_BACKUP_FILE_PATH
+
+    if restore_args:
+        restore_secrets_json = sa.gen_secret_agent_secrets(restore_args)
+        with open(SA_RESTORE_FILE_PATH, "w+") as f:
+                f.write(restore_secrets_json)
+        resources[SA_RESTORE_RESOURCE] = SA_RESTORE_FILE_PATH
+
+    secrets_conf = sa.gen_secret_agent_conf(resources=resources)
+
+    with open(SA_CONF_PATH, "w+") as f:
+        f.write(secrets_conf)
+
+def setup_function(function):
+    os.system("rm -rf " + SA_RSRC_PATH)
+    os.system("mkdir " + SA_RSRC_PATH)
 
 def test_restore_config_init():
-	exp_argc, exp_argv = gen_args(RESTORE_SECRET_OPTIONS, b"asrestore")
+	exp_argc, exp_argv = gen_args(RESTORE_SECRET_OPTIONS, "asrestore")
 	
 	expected_conf = RestoreConfigT()
 	p_exp_conf = ctypes.POINTER(RestoreConfigT)(expected_conf)
@@ -490,24 +475,47 @@ def test_restore_config_init():
 	# configs that don't use secrets for these fields will fill
 	# the ~file fields instead of the ~string fields
 	# adjust the expected data to match configs that use secrets
-	# expected_conf.tls.castring = expected_conf.tls.cafile
-	# expected_conf.tls.cafile = None
-	# expected_conf.tls.keystring = expected_conf.tls.keyfile
-	# expected_conf.tls.keyfile = None
-	# expected_conf.tls.certstring = expected_conf.tls.certfile
-	# expected_conf.tls.certfile = None
+	expected_conf.tls.castring = expected_conf.tls.cafile
+	expected_conf.tls.cafile = None
+	expected_conf.tls.keystring = expected_conf.tls.keyfile
+	expected_conf.tls.keyfile = None
+	expected_conf.tls.certstring = expected_conf.tls.certfile
+	expected_conf.tls.certfile = None
 
-	argc, argv = gen_secret_args(RESTORE_SECRET_OPTIONS, b"asrestore")
+	gen_secret_agent_files(
+		restore_args={x["name"]: x["value"] for x in RESTORE_SECRET_OPTIONS}
+	)
+
+	sa_args = ["--sa-address", "127.0.0.1", "--sa-port", sa.SA_PORT]
+	argc, argv = gen_secret_args(
+		input_list=RESTORE_SECRET_OPTIONS,
+		prgm_name="asrestore",
+		sa_args=sa_args,
+		resource_name=SA_RESTORE_RESOURCE
+	)
+
 	conf = RestoreConfigT()
 	p_conf = ctypes.POINTER(RestoreConfigT)(conf)
 	c_argv = (ctypes.c_char_p * argc)(*argv)
 	p_argv = ctypes.POINTER(ctypes.c_char_p)(c_argv)
-	restore_so.restore_config_init(argc, p_argv, p_conf)
+
+	agent = sa.get_secret_agent(config=SA_CONF_PATH)
+	try:
+		agent.start()
+		restore_so.restore_config_init(argc, p_argv, p_conf)
+	except Exception as e:
+		raise e
+	finally:
+		agent.stop()
+		print("*** Secret Agent Output ***")
+		print(agent.output())
+		print("*** End Secret Agent Output ***")
+		agent.cleanup()
 
 	assert expected_conf == conf
 
 def test_backup_config_init():
-	exp_argc, exp_argv = gen_args(BACKUP_SECRET_OPTIONS, b"asbackup")
+	exp_argc, exp_argv = gen_args(BACKUP_SECRET_OPTIONS, "asbackup")
 
 	expected_conf = BackupConfigT()
 	p_exp_conf = ctypes.POINTER(BackupConfigT)(expected_conf)
@@ -518,24 +526,47 @@ def test_backup_config_init():
 	# configs that don't use secrets for these fields will file
 	# the ~file fields instead of the ~string fields
 	# adjust the expected data to match configs that use secrets
-	# expected_conf.tls.castring = expected_conf.tls.cafile
-	# expected_conf.tls.cafile = None
-	# expected_conf.tls.keystring = expected_conf.tls.keyfile
-	# expected_conf.tls.keyfile = None
-	# expected_conf.tls.certstring = expected_conf.tls.certfile
-	# expected_conf.tls.certfile = None
+	expected_conf.tls.castring = expected_conf.tls.cafile
+	expected_conf.tls.cafile = None
+	expected_conf.tls.keystring = expected_conf.tls.keyfile
+	expected_conf.tls.keyfile = None
+	expected_conf.tls.certstring = expected_conf.tls.certfile
+	expected_conf.tls.certfile = None
 
-	argc, argv = gen_secret_args(BACKUP_SECRET_OPTIONS, b"asbackup")
+	gen_secret_agent_files(
+		backup_args={x["name"]: x["value"] for x in BACKUP_SECRET_OPTIONS}
+	)
+
+	sa_args = ["--sa-address", "127.0.0.1", "--sa-port", sa.SA_PORT]
+	argc, argv = gen_secret_args(
+		input_list=BACKUP_SECRET_OPTIONS,
+		prgm_name="asbackup",
+		sa_args=sa_args,
+		resource_name=SA_BACKUP_RESOURCE
+	)
+
 	conf = BackupConfigT()
 	c_argv = (ctypes.c_char_p * argc)(*argv)
 	p_argv = ctypes.POINTER(ctypes.c_char_p)(c_argv)
 	p_conf = ctypes.POINTER(BackupConfigT)(conf)
-	backup_so.backup_config_init(argc, p_argv, p_conf)
+
+	agent = sa.get_secret_agent(config=SA_CONF_PATH)
+	try:
+		agent.start()
+		backup_so.backup_config_init(argc, p_argv, p_conf)
+	except Exception as e:
+		raise e
+	finally:
+		agent.stop()
+		print("*** Secret Agent Output ***")
+		print(agent.output())
+		print("*** End Secret Agent Output ***")
+		agent.cleanup()
 
 	assert expected_conf == conf
 
 def test_backup_conf_file():
-	exp_argc, exp_argv = gen_args(BACKUP_SECRET_OPTIONS, b"asbackup")
+	exp_argc, exp_argv = gen_args(BACKUP_SECRET_OPTIONS, "asbackup")
 
 	expected_conf = BackupConfigT()
 	p_exp_conf = ctypes.POINTER(BackupConfigT)(expected_conf)
@@ -546,24 +577,45 @@ def test_backup_conf_file():
 	# configs that don't use secrets for these fields will fill
 	# the ~file fields instead of the ~string fields
 	# adjust the expected data to match configs that use secrets
-	# expected_conf.tls.castring = expected_conf.tls.cafile
-	# expected_conf.tls.cafile = None
-	# expected_conf.tls.keystring = expected_conf.tls.keyfile
-	# expected_conf.tls.keyfile = None
-	# expected_conf.tls.certstring = expected_conf.tls.certfile
-	# expected_conf.tls.certfile = None
+	expected_conf.tls.castring = expected_conf.tls.cafile
+	expected_conf.tls.cafile = None
+	expected_conf.tls.keystring = expected_conf.tls.keyfile
+	expected_conf.tls.keyfile = None
+	expected_conf.tls.certstring = expected_conf.tls.certfile
+	expected_conf.tls.certfile = None
 
-	conf_path = gen_secret_toml(BACKUP_SECRET_OPTIONS)
+	gen_secret_agent_files(
+		backup_args={x["name"]: x["value"] for x in BACKUP_SECRET_OPTIONS}
+	)
+
+	sa_args = 'sa-address = "127.0.0.1"\nsa-port = "%s"\n' % sa.SA_PORT
+	conf_path = gen_secret_toml(
+		BACKUP_SECRET_OPTIONS,
+		SA_BACKUP_RESOURCE,
+		sa_args
+	)
 
 	conf = BackupConfigT()
 	p_conf = ctypes.POINTER(BackupConfigT)(conf)
 	backup_so.backup_config_default(p_conf)
 
-	backup_so.config_from_file(p_conf, None, bytes(conf_path, "utf-8"), 0, True)
+	agent = sa.get_secret_agent(config=SA_CONF_PATH)
+	try:
+		agent.start()
+		backup_so.config_from_file(p_conf, None, bytes(conf_path, "utf-8"), 0, True)
+	except Exception as e:
+		raise e
+	finally:
+		agent.stop()
+		print("*** Secret Agent Output ***")
+		print(agent.output())
+		print("*** End Secret Agent Output ***")
+		agent.cleanup()
+
 	assert expected_conf == conf
 
 def test_asrestore_conf_file():
-	exp_argc, exp_argv = gen_args(RESTORE_SECRET_OPTIONS, b"asrestore")
+	exp_argc, exp_argv = gen_args(RESTORE_SECRET_OPTIONS, "asrestore")
 
 	expected_conf = RestoreConfigT()
 	p_exp_conf = ctypes.POINTER(RestoreConfigT)(expected_conf)
@@ -574,18 +626,39 @@ def test_asrestore_conf_file():
 	# configs that don't use secrets for these fields will fill
 	# the ~file fields instead of the ~string fields
 	# adjust the expected data to match configs that use secrets
-	# expected_conf.tls.castring = expected_conf.tls.cafile
-	# expected_conf.tls.cafile = None
-	# expected_conf.tls.keystring = expected_conf.tls.keyfile
-	# expected_conf.tls.keyfile = None
-	# expected_conf.tls.certstring = expected_conf.tls.certfile
-	# expected_conf.tls.certfile = None
+	expected_conf.tls.castring = expected_conf.tls.cafile
+	expected_conf.tls.cafile = None
+	expected_conf.tls.keystring = expected_conf.tls.keyfile
+	expected_conf.tls.keyfile = None
+	expected_conf.tls.certstring = expected_conf.tls.certfile
+	expected_conf.tls.certfile = None
 
-	conf_path = gen_secret_toml(RESTORE_SECRET_OPTIONS)
+	gen_secret_agent_files(
+		restore_args={x["name"]: x["value"] for x in RESTORE_SECRET_OPTIONS}
+	)
+
+	sa_args = 'sa-address = "127.0.0.1"\nsa-port = "%s"\n' % sa.SA_PORT
+	conf_path = gen_secret_toml(
+		RESTORE_SECRET_OPTIONS,
+		SA_RESTORE_RESOURCE,
+		sa_args
+	)
 
 	conf = RestoreConfigT()
 	p_conf = ctypes.POINTER(RestoreConfigT)(conf)
 	restore_so.restore_config_default(p_conf)
 
-	restore_so.config_from_file(p_conf, None, bytes(conf_path, "utf-8"), 0, False)
+	agent = sa.get_secret_agent(config=SA_CONF_PATH)
+	try:
+		agent.start()
+		restore_so.config_from_file(p_conf, None, bytes(conf_path, "utf-8"), 0, False)
+	except Exception as e:
+		raise e
+	finally:
+		agent.stop()
+		print("*** Secret Agent Output ***")
+		print(agent.output())
+		print("*** End Secret Agent Output ***")
+		agent.cleanup()
+
 	assert expected_conf == conf

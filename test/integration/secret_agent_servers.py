@@ -1,3 +1,4 @@
+import base64
 import docker
 import lib
 import time
@@ -21,6 +22,7 @@ if USE_DOCKER_SERVERS:
 
 class SecretAgent():
     running: bool = False
+    instance = None
     
     def start(self):
         raise NotImplemented
@@ -30,13 +32,19 @@ class SecretAgent():
     
     def output(self) -> str:
         raise NotImplemented
+    
+    def cleanup(self):
+        raise NotImplemented
 
 class SADocker(SecretAgent):
+    cleaned_up = False
+
     def __init__(self, config:str, port:str) -> None:
         self.config = config
         self.container = None
         self.port = port
         self.client = docker.from_env()
+        self.cleaned_up = False
     
     def start(self):
         if SecretAgent.running:
@@ -58,6 +66,7 @@ class SADocker(SecretAgent):
                 tty=True, detach=True, name='aerospike-secret-agent')
 
         SecretAgent.running = True
+        SecretAgent.instance = self
         time.sleep(0.5)
     
     def stop(self):
@@ -74,6 +83,12 @@ class SADocker(SecretAgent):
             return "container is None"
 
         return self.container.logs(stdout=True, stderr=True)
+    
+    def cleanup(self):
+        self.stop()
+        DOCKER_CLIENT.containers.get("/aerospike-secret-agent").remove()
+        SecretAgent.instance = None
+        print("docker based secret agent cleaned up")
 
 class SAProcess(SecretAgent):
     def __init__(self, config:str) -> None:
@@ -92,6 +107,7 @@ class SAProcess(SecretAgent):
         args = [self.path, "--config-file", self.config]
         self.process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         SecretAgent.running = True
+        SecretAgent.instance = self
         time.sleep(0.5)
     
     def stop(self):
@@ -107,7 +123,12 @@ class SAProcess(SecretAgent):
         if not self.process:
             return "secret agent process is None"
 
-        return str(self.process.stdout.read().decode("utf-8"))
+        return (self.process.stdout.read()).decode("utf-8")
+
+    def cleanup(self):
+        self.stop()
+        SecretAgent.instance = None
+        print("process based secret agent cleaned up")
 
 def init_work_dir():
     if os.path.exists(WORK_DIRECTORY):
@@ -152,8 +173,8 @@ def teardown_secret_agent():
     cmd = "rm -rf %s" % WORK_DIRECTORY
     os.system(cmd)
 
-    if USE_DOCKER_SERVERS:
-        DOCKER_CLIENT.containers.get("/aerospike-secret-agent").remove()
+    if SecretAgent.instance:
+        SecretAgent.instance.cleanup()
 
 def setup_secret_agent():
     if USE_DOCKER_SERVERS:
@@ -166,3 +187,77 @@ def get_secret_agent(config:str, port:str=SA_PORT) -> SecretAgent:
         return SADocker(config, port)
     
     return SAProcess(config)
+
+# util functions
+
+SA_ADDR = "0.0.0.0"
+
+def gen_secret_agent_conf(resources:{str:str}) -> str:
+    sa_addr = SA_ADDR
+    sa_port = SA_PORT
+
+    def make_resources(resources:{str:str}={}) -> str:
+        res = ""
+        for k, v in resources.items():
+
+            if USE_DOCKER_SERVERS:
+                v = os.path.relpath(v, WORK_DIRECTORY)
+                v = os.path.join(CONTAINER_VAL, v)
+
+            nl = '\n'
+            res += f'       "{k}": "{v}"{nl}'
+        return res
+
+    resource_str = make_resources(resources=resources)
+
+    secret_agent_conf_template = """
+service:
+  tcp:
+    endpoint: %s:%s
+
+secret-manager:
+  file:
+    resources:
+%s
+
+log:
+  level: debug
+""" % (sa_addr, sa_port, resource_str)
+    return secret_agent_conf_template
+
+def gen_secret_agent_secrets(secrets:{str:any}={}) -> str:
+    
+    def make_secrets(secrets:{str:any}={}) -> str:
+        res = ""
+        for k, v in secrets.items():
+            if v is None or v == "":
+                continue
+
+            nl = '\n'
+            name = k
+            value = base64.b64encode(str(v).encode("utf-8")).decode("utf-8")
+            template = f'   "{name}": "{value}",{nl}'
+
+            res += template
+        # remove the last "",\n"
+        return res[:-2]
+			
+    secret_str = make_secrets(secrets=secrets)
+
+    secrets_template = """
+{
+%s
+}
+""" % secret_str
+    return secrets_template
+
+def gen_secret_args(args:{str:any}, resource:str) -> [str]:
+    res = []
+    for k, v in args.items():
+        arg = f"--{k}"
+        res.append(arg)
+
+        val = f"secrets:{resource}:{k}"
+        res.append(val)
+
+    return res

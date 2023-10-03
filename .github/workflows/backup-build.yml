@@ -147,17 +147,21 @@ jobs:
         sudo chmod 777 /cores
         # Core filenames will be of the form executable.pid.timestamp:
         sudo bash -c 'echo "/cores/%e.%p.%t" > /proc/sys/kernel/core_pattern'
-    - name: Test secrets
+    - name: Test secret agent
       run: |
         ulimit -c unlimited         # Enable core dumps to be captured (must be in same run block)
         make run_test_secrets
+    - name: Test secrets
+      run: |
+        ulimit -c unlimited         # Enable core dumps to be captured (must be in same run block)
+        make run_test_secret_agent
       working-directory: main
-    - name: Enable core directories
-      if: always()
-      run: sudo chmod -R +rwx /cores/* # Enable access to core dumps (doesn't need to be in same run block)
-    - name: Setup tmate session
-      if: always()
-      uses: mxschmitt/action-tmate@v3
+    # - name: Enable core directories
+    #   if: always()
+    #   run: sudo chmod -R +rwx /cores/* # Enable access to core dumps (doesn't need to be in same run block)
+    # - name: Setup tmate session
+    #   if: always()
+    #   uses: mxschmitt/action-tmate@v3
     # - uses: actions/upload-artifact@master # capture all crashes as build artifacts
     #   if: always()
     #   with:
