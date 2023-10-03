@@ -141,6 +141,12 @@ jobs:
     - name: Unit Test
       run: make unit
       working-directory: main
+    - name: Set cores to get stored in /cores
+      run: |
+        sudo mkdir /cores
+        sudo chmod 777 /cores
+        # Core filenames will be of the form executable.pid.timestamp:
+        sudo bash -c 'echo "/cores/%e.%p.%t" > /proc/sys/kernel/core_pattern'
     - name: Test secrets
       run: |
         ulimit -c unlimited         # Enable core dumps to be captured (must be in same run block)
@@ -148,7 +154,7 @@ jobs:
       working-directory: main
     - name: Enable core directories
       if: always()
-      run: chmod -R +rwx /cores/* # Enable access to core dumps (doesn't need to be in same run block)
+      run: sudo chmod -R +rwx /cores/* # Enable access to core dumps (doesn't need to be in same run block)
     - uses: actions/upload-artifact@master # capture all crashes as build artifacts
       if: always()
       with:
