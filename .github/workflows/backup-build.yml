@@ -149,7 +149,6 @@ jobs:
         sudo bash -c 'echo "/cores/%e.%p.%t" > /proc/sys/kernel/core_pattern'
     - name: Test secret agent
       run: |
-        ulimit -c unlimited         # Enable core dumps to be captured (must be in same run block)
         make run_test_secrets
     - name: Test secrets
       run: |
