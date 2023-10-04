@@ -91,6 +91,11 @@ restore_main(int32_t argc, char **argv)
 		goto cleanup;
 	}
 
+	int restore_validate_res = restore_config_validate(&conf);
+	if (restore_validate_res != 0) {
+		goto cleanup;
+	}
+
 	signal(SIGINT, sig_hand);
 	signal(SIGTERM, sig_hand);
 

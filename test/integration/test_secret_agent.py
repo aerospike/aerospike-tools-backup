@@ -28,26 +28,48 @@ class ComparableCtStructure(ctypes.Structure):
 
 	def __eq__(self, other):
 		for fld in self._fields_:
-			#TODO verify the pkey field
-			if fld[0] == "pkey":
-				continue
-
 			lattr = getattr(self, fld[0])
 			rattr = getattr(other, fld[0])
 
-			if lattr != rattr:
-				print("eq. %s unequal v1: %s v2: %s" % (fld, getattr(self, fld[0]), getattr(other, fld[0])))
+			if lattr and rattr and isinstance(lattr, ctypes._Pointer):
+				lattr = lattr.contents
+				rattr = rattr.contents
+
+			are_eq = lattr.__eq__(rattr)
+
+			if are_eq == NotImplemented:
+				print(
+					"WARNING: eq %s unimplemented, skipping v1: %s, v2: %s" % (fld, lattr, rattr),
+		  			file=sys.stderr
+				)
+				continue
+
+			if not are_eq:
+				print("eq. %s unequal v1: %s v2: %s" % (fld, lattr, rattr))
 				return False
 		return True
 
 	def __ne__(self, other):
 		for fld in self._fields_:
-			#TODO verify the pkey field
-			if fld[0] == "pkey":
+			lattr = getattr(self, fld[0])
+			rattr = getattr(other, fld[0])
+
+			if lattr and rattr and isinstance(lattr, ctypes._Pointer):
+				lattr = lattr.contents
+				rattr = rattr.contents
+				breakpoint()
+
+			are_ne = lattr.__ne__(rattr)
+
+			if are_ne == NotImplemented:
+				print(
+					"WARNING: ne %s unimplemented, skipping v1: %s, v2: %s" % (fld, lattr, rattr),
+		  			file=sys.stderr
+				)
 				continue
 
-			if getattr(self, fld[0]) != getattr(other, fld[0]):
-				print("ne. %s unequal v1: %s v2: %s" % (fld, getattr(self, fld[0]), getattr(other, fld[0])))
+			if are_ne:
+				print("ne. %s unequal v1: %s v2: %s" % (fld, lattr, rattr))
 				return True
 		return False
 
@@ -151,6 +173,10 @@ class RestoreConfigT(ComparableCtStructure):
 		("secret_cfg", SCCFG)
 	]
 
+encryption_key_val = ""
+with open("./test/test_key.pem", 'r') as key_file:
+	encryption_key_val = key_file.read()
+
 string_val = "str"
 int_val = 1234
 bool_val = True
@@ -159,17 +185,6 @@ encryption_val = "aes256"
 s3_log_level_val = "debug"
 parallel_val = 16
 modified_by_val = "2016-05-12_08:10:30"
-
-secret_vals = {
-	"string_val": string_val,
-	"int_val": int_val,
-	"bool_val": bool_val,
-	"compress_val": compress_val,
-	"encryption_val": encryption_val,
-	"s3_log_level_val": s3_log_level_val,
-	"parallel_val": parallel_val,
-	"modified_by_val": modified_by_val,
-}
 
 # anytime an option is added to restore that can be
 # a secret it should be added here
@@ -188,19 +203,19 @@ RESTORE_SECRET_OPTIONS = [
 	{"name": "tls-keyfile-password", "value": string_val, "config_section": "cluster"},
 	{"name": "tls-certfile", "value": string_val, "config_section": "cluster"},
 	{"name": "namespace", "value": string_val, "config_section": "asrestore"},
-	# {"name": "directory", "value": string_val, "config_section": "asrestore"}, # mutually exclusive with --directory-list
+	{"name": "directory", "value": string_val, "config_section": "asrestore"},
 	{"name": "directory-list", "value": string_val, "config_section": "asrestore"},
 	{"name": "parent-directory", "value": string_val, "config_section": "asrestore"},
-	# {"name": "input-file", "value": string_val, "config_section": "asrestore"}, # mutually exclusive with --directory
+	{"name": "input-file", "value": string_val, "config_section": "asrestore"},
 	{"name": "compress", "value": compress_val, "config_section": "asrestore"},
-	# {"name": "encrypt", "value": encryption_val, "config_section": "asrestore"}, # requires --encryption-key-file
-	# {"name": "encryption-key-file", "value": string_val, "config_section": "asrestore"}, # TODO generate a real cert that this can parse
+	{"name": "encrypt", "value": encryption_val, "config_section": "asrestore"},
+	{"name": "encryption-key-file", "value": encryption_key_val, "config_section": "asrestore"},
 	{"name": "parallel", "value": parallel_val, "config_section": "asrestore"},
 	{"name": "machine", "value": string_val, "config_section": "asrestore"},
 	{"name": "bin-list", "value": string_val, "config_section": "asrestore"},
 	{"name": "set-list", "value": string_val, "config_section": "asrestore"},
 	{"name": "extra-ttl", "value": int_val, "config_section": "asrestore"},
-	# {"name": "nice", "value": int_val, "config_section": "asrestore"}, #TODO needs a two element val x,y
+	{"name": "nice", "value": int_val, "config_section": "asrestore"},
 	{"name": "timeout", "value": int_val, "config_section": "asrestore"},
 	{"name": "socket-timeout", "value": int_val, "config_section": "asrestore"},
 	{"name": "total-timeout", "value": int_val, "config_section": "asrestore"},
@@ -323,34 +338,34 @@ BACKUP_SECRET_OPTIONS = [
 	{"name": "tls-capath", "value": string_val, "config_section": "cluster"},
 	{"name": "tls-protocols", "value": string_val, "config_section": "cluster"},
 	{"name": "tls-cipher-suite", "value": string_val, "config_section": "cluster"},
-	# {"name": "tls-keyfile", "value": string_val, "config_section": "cluster"},
-	# {"name": "tls-keyfile-password", "value": string_val, "config_section": "cluster"},
+	{"name": "tls-keyfile", "value": string_val, "config_section": "cluster"},
+	{"name": "tls-keyfile-password", "value": string_val, "config_section": "cluster"},
 	{"name": "tls-certfile", "value": string_val, "config_section": "cluster"},
 	{"name": "parallel", "value": parallel_val, "config_section": "asbackup"},
 	{"name": "compress", "value": compress_val, "config_section": "asbackup"},
 	{"name": "compression-level", "value": int_val, "config_section": "asbackup"},
-	# {"name": "encrypt", "value": encryption_val, "config_section": "asbackup"},
-	# {"name": "encryption-key-file", "value": string_val, "config_section": "asbackup"},
+	{"name": "encrypt", "value": encryption_val, "config_section": "asbackup"},
+	{"name": "encryption-key-file", "value": encryption_key_val, "config_section": "asbackup"},
 	{"name": "bin-list", "value": string_val, "config_section": "asbackup"},
-	# {"name": "node-list", "value": string_val, "config_section": "asbackup"}, node-list is mutually exclusive with after-digest and partition-list
+	{"name": "node-list", "value": string_val, "config_section": "asbackup"},
 	{"name": "namespace", "value": string_val, "config_section": "asbackup"},
 	{"name": "set", "value": string_val, "config_section": "asbackup"},
-	# {"name": "directory", "value": string_val, "config_section": "asbackup"},
+	{"name": "directory", "value": string_val, "config_section": "asbackup"},
 	{"name": "output-file", "value": string_val, "config_section": "asbackup"},
 	{"name": "output-file-prefix", "value": string_val, "config_section": "asbackup"},
 	{"name": "continue", "value": string_val, "config_section": "asbackup"},
 	{"name": "state-file-dst", "value": string_val, "config_section": "asbackup"},
 	{"name": "file-limit", "value": int_val, "config_section": "asbackup"},
-	# {"name": "estimate-samples", "value": int_val, "config_section": "asbackup"}, after-digest and partition-list arguments are mutually exclusive
+	{"name": "estimate-samples", "value": int_val, "config_section": "asbackup"},
 	{"name": "partition-list", "value": string_val, "config_section": "asbackup"},
-	# {"name": "after-digest", "value": string_val, "config_section": "asbackup"},
+	{"name": "after-digest", "value": string_val, "config_section": "asbackup"},
 	{"name": "filter-exp", "value": string_val, "config_section": "asbackup"},
 	{"name": "modified-after", "value": modified_by_val, "config_section": "asbackup"},
 	{"name": "modified-before", "value": modified_by_val, "config_section": "asbackup"},
 	{"name": "records-per-second", "value": int_val, "config_section": "asbackup"},
 	{"name": "max-records", "value": int_val, "config_section": "asbackup"},
 	{"name": "machine", "value": string_val, "config_section": "asbackup"},
-	# {"name": "nice", "value": int_val, "config_section": "asbackup"},
+	{"name": "nice", "value": int_val, "config_section": "asbackup"},
 	{"name": "socket-timeout", "value": int_val, "config_section": "asbackup"},
 	{"name": "total-timeout", "value": int_val, "config_section": "asbackup"},
 	{"name": "max-retries", "value": int_val, "config_section": "asbackup"},
@@ -386,12 +401,19 @@ def gen_args(input_list, prgm_name):
 	for elem in input_list:
 		arg = "--" + elem["name"]
 		args.append(bytes(arg, "utf-8"))
-		args.append(bytes(str(elem["value"]), "utf-8"))
+
+		val = str(elem["value"])
+		if elem["name"] == "encryption-key-file":
+			val = "./test/test_key.pem"
+
+		args.append(bytes(val, "utf-8"))
 	
 	args.append(b"--sa-address")
 	args.append(b"127.0.0.1")
 	args.append(b"--sa-port")
 	args.append(b"3005")
+
+	x = ctypes.POINTER("hi").contents
 
 	count = len(args)
 	return count, args
@@ -444,6 +466,10 @@ def gen_secret_agent_files(backup_args:{str:any}=None, restore_args:{str:any}=No
 
     if backup_args:
         backup_secrets_json = sa.gen_secret_agent_secrets(backup_args)
+
+        # if "encryption-key-file" in backup_args:
+        #     backup_args["encryption-key-file"]
+
         with open(SA_BACKUP_FILE_PATH, "w+") as f:
                 f.write(backup_secrets_json)
         resources[SA_BACKUP_RESOURCE] = SA_BACKUP_FILE_PATH

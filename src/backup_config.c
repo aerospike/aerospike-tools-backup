@@ -782,6 +782,12 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 		return BACKUP_CONFIG_INIT_FAILURE;
 	}
 
+	return 0;
+}
+
+int
+backup_config_validate(backup_config_t* conf)
+{
 	if (conf->port < 0) {
 		conf->port = DEFAULT_PORT;
 	}
@@ -792,24 +798,24 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 
 	if (conf->ns[0] == 0 && !conf->remove_artifacts) {
 		err("Please specify a namespace (-n option)");
-		return BACKUP_CONFIG_INIT_FAILURE;
+		return BACKUP_CONFIG_VALIDATE_FAILURE;
 	}
 
 	if (conf->set_list.size > 1 && conf->filter_exp != NULL) {
 		err("Multi-set backup and filter-exp are mutually exclusive");
-		return BACKUP_CONFIG_INIT_FAILURE;
+		return BACKUP_CONFIG_VALIDATE_FAILURE;
 	}
 
 	if (conf->compress_mode == IO_PROXY_COMPRESS_NONE &&
 			conf->compression_level != 0) {
 		err("Cannot set compression level without compression enabled");
-		return BACKUP_CONFIG_INIT_FAILURE;
+		return BACKUP_CONFIG_VALIDATE_FAILURE;
 	}
 
 	if ((conf->pkey != NULL) ^ (conf->encrypt_mode != IO_PROXY_ENCRYPT_NONE)) {
 		err("Must specify both encryption mode and a private key "
 				"file/environment variable");
-		return BACKUP_CONFIG_INIT_FAILURE;
+		return BACKUP_CONFIG_VALIDATE_FAILURE;
 	}
 
 	int32_t out_count = 0;
@@ -819,56 +825,56 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 
 	if (out_count > 1) {
 		err("Invalid options: --directory, --output-file, and --estimate are mutually exclusive.");
-		return BACKUP_CONFIG_INIT_FAILURE;
+		return BACKUP_CONFIG_VALIDATE_FAILURE;
 	}
 
 	if (out_count == 0) {
 		err("Please specify a directory (-d), an output file (-o), or make an estimate (-e).");
-		return BACKUP_CONFIG_INIT_FAILURE;
+		return BACKUP_CONFIG_VALIDATE_FAILURE;
 	}
 
 	if (conf->estimate && conf->no_records) {
 		err("Invalid options: -e and -R are mutually exclusive.");
-		return BACKUP_CONFIG_INIT_FAILURE;
+		return BACKUP_CONFIG_VALIDATE_FAILURE;
 	}
 
 	if (conf->estimate && conf->parallel != 0) {
 		err("Estimate cannot be parallelized, don't set --parallel.");
-		return BACKUP_CONFIG_INIT_FAILURE;
+		return BACKUP_CONFIG_VALIDATE_FAILURE;
 	}
 
 	if (conf->partition_list != NULL && conf->after_digest != NULL) {
 		err("after-digest and partition-list arguments are mutually exclusive");
-		return BACKUP_CONFIG_INIT_FAILURE;
+		return BACKUP_CONFIG_VALIDATE_FAILURE;
 	}
 	if (conf->node_list != NULL &&
 			(conf->partition_list != NULL || conf->after_digest != NULL)) {
 		err("node-list is mutually exclusive with after-digest and partition-list");
-		return BACKUP_CONFIG_INIT_FAILURE;
+		return BACKUP_CONFIG_VALIDATE_FAILURE;
 	}
 
 	if (conf->state_file != NULL && conf->estimate) {
 		err("--continue and --estimate arguments are mutually exclusive");
-		return BACKUP_CONFIG_INIT_FAILURE;
+		return BACKUP_CONFIG_VALIDATE_FAILURE;
 	}
 	if (conf->state_file != NULL && conf->remove_files) {
 		err("--continue and --remove-files arguments are mutually exclusive");
-		return BACKUP_CONFIG_INIT_FAILURE;
+		return BACKUP_CONFIG_VALIDATE_FAILURE;
 	}
 
 	if (conf->state_file != NULL && conf->remove_artifacts) {
 		err("--continue and --remove-artifacts arguments are mutually exclusive");
-		return BACKUP_CONFIG_INIT_FAILURE;
+		return BACKUP_CONFIG_VALIDATE_FAILURE;
 	}
 	if (conf->estimate && conf->remove_artifacts) {
 		err("--estimate and --remove-artifacts arguments are mutually exclusive");
-		return BACKUP_CONFIG_INIT_FAILURE;
+		return BACKUP_CONFIG_VALIDATE_FAILURE;
 	}
 
 	if (conf->s3_min_part_size != 0 && (conf->s3_min_part_size < S3_MIN_PART_SIZE ||
 			conf->s3_min_part_size > S3_MAX_PART_SIZE)) {
 		err("S3 minimum part size must be between 5 MB and 5 GB (5120 MB)");
-		return BACKUP_CONFIG_INIT_FAILURE;
+		return BACKUP_CONFIG_VALIDATE_FAILURE;
 	}
 
 	if (conf->estimate) {

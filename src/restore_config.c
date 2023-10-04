@@ -736,40 +736,45 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 		return RESTORE_CONFIG_INIT_FAILURE;
 	}
 
+	return 0;
+}
+
+int
+restore_config_validate(restore_config_t *conf) {
 	if (conf->directory == NULL && conf->input_file == NULL && conf->directory_list == NULL) {
 		err("Invalid options: please specify a directory (-d option), directory list (--directory-list option), or an input file (-i option).");
-		return RESTORE_CONFIG_INIT_FAILURE;
+		return RESTORE_CONFIG_VALIDATE_FAILURE;
 	}
 
 	if (conf->parent_directory != NULL && conf->directory_list == NULL) {
 		err("Invalid options: --parent-directory should always be used with, and only applies to --directory-list.");
-		return RESTORE_CONFIG_INIT_FAILURE;
+		return RESTORE_CONFIG_VALIDATE_FAILURE;
 	}
 
 	if (conf->directory != NULL && conf->input_file != NULL) {
 		err("Invalid options: --directory and --input-file are mutually exclusive.");
-		return RESTORE_CONFIG_INIT_FAILURE;
+		return RESTORE_CONFIG_VALIDATE_FAILURE;
 	}
 
 	if (conf->unique && (conf->replace || conf->no_generation)) {
 		err("Invalid options: --unique is mutually exclusive with --replace and --no-generation.");
-		return RESTORE_CONFIG_INIT_FAILURE;
+		return RESTORE_CONFIG_VALIDATE_FAILURE;
 	}
 
 	if (conf->directory != NULL && conf->directory_list != NULL) {
 		err("Invalid options: --directory and --directory-list are mutually exclusive.");
-		return RESTORE_CONFIG_INIT_FAILURE;
+		return RESTORE_CONFIG_VALIDATE_FAILURE;
 	}
 
 	if (conf->input_file != NULL && conf->directory_list != NULL) {
 		err("Invalid options: --input-file and --directory-list are mutually exclusive.");
-		return RESTORE_CONFIG_INIT_FAILURE;
+		return RESTORE_CONFIG_VALIDATE_FAILURE;
 	}
 
 	if ((conf->pkey != NULL) ^ (conf->encrypt_mode != IO_PROXY_ENCRYPT_NONE)) {
 		err("Must specify both encryption mode and a private key "
 				"file/environment variable\n");
-		return RESTORE_CONFIG_INIT_FAILURE;
+		return RESTORE_CONFIG_VALIDATE_FAILURE;
 	}
 
 	if (conf->nice_list != NULL) {
@@ -779,23 +784,24 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 		if (!restore_config_parse_list("nice", 10, conf->nice_list, &nice_vec)) {
 			err("Error while parsing nice list");
 			as_vector_destroy(&nice_vec);
-			return RESTORE_CONFIG_INIT_FAILURE;
+			return RESTORE_CONFIG_VALIDATE_FAILURE;
 		}
 
 		if (nice_vec.size != 2) {
 			err("Invalid nice option");
 			as_vector_destroy(&nice_vec);
-			return RESTORE_CONFIG_INIT_FAILURE;
+			return RESTORE_CONFIG_VALIDATE_FAILURE;
 		}
 
 		char *item0 = as_vector_get_ptr(&nice_vec, 0);
 		char *item1 = as_vector_get_ptr(&nice_vec ,1);
 
+		int64_t tmp;
 		if (!better_atoi(item0, &tmp) || tmp < 1 ||
 					((uint64_t) tmp) > ULONG_MAX / (1024 * 1024)) {
 			err("Invalid bandwidth value %s", item0);
 			as_vector_destroy(&nice_vec);
-			return RESTORE_CONFIG_INIT_FAILURE;
+			return RESTORE_CONFIG_VALIDATE_FAILURE;
 		}
 
 		conf->bandwidth = ((uint64_t) tmp) * 1024 * 1024;
@@ -803,7 +809,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 		if (!better_atoi(item1, &tmp) || tmp < 1 || tmp > UINT32_MAX) {
 			err("Invalid TPS value %s", item1);
 			as_vector_destroy(&nice_vec);
-			return RESTORE_CONFIG_INIT_FAILURE;
+			return RESTORE_CONFIG_VALIDATE_FAILURE;
 		}
 
 		conf->tps = (uint32_t) tmp;

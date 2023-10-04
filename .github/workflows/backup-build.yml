@@ -150,6 +150,7 @@ jobs:
     - name: Test secret agent
       run: |
         make run_test_secrets
+      working-directory: main
     - name: Test secrets
       run: |
         ulimit -c unlimited         # Enable core dumps to be captured (must be in same run block)
