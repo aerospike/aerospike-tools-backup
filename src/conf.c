@@ -66,11 +66,16 @@ char *DEFAULTPASSWORD = "SomeDefaultRandomPassword";
 // Forward Declarations.
 //
 
-static bool config_str(toml_table_t *curtab, const char *raw_val, void *ptr, const char *sc);
-static bool _config_str(toml_table_t *curtab, const char *raw_val, void *ptr);
-static bool config_int32(toml_table_t *curtab, const char *raw_val, int32_t *ptr);
-static bool config_int64(toml_table_t *curtab, const char *raw_val, int64_t *ptr);
-static bool config_bool(toml_table_t *curtab, const char *raw_val, void *ptr);
+static bool config_str(const char *raw_val, void *ptr, const char* override);
+static bool config_int32(const char *raw_val, int32_t *ptr, const char* override);
+static bool config_int64(const char *raw_val, int64_t *ptr, const char* override);
+static bool config_bool(const char *raw_val, void *ptr, const char* override);
+
+static bool _config_str(const char *raw_val, void *ptr);
+static bool _config_int32(const char *raw_val, int32_t *ptr);
+static bool _config_int64(const char *raw_val, int64_t *ptr);
+static bool _config_bool(const char *raw_val, void *ptr);
+
 static bool config_parse_file(const char *fname, toml_table_t **tab, char errbuf[]);
 
 static bool config_backup_cluster(toml_table_t *conftab, backup_config_t *c, const char *instance, char errbuf[], sc_client* sc);
@@ -206,18 +211,18 @@ tls_read_password(char *value, char **ptr)
 //
 
 static bool
-config_str(toml_table_t *curtab, const char *raw_val, void *ptr, const char *override)
+config_str(const char *raw_val, void *ptr, const char *override)
 {
 	if (override != NULL) {
 		*((char**) ptr) = safe_strdup(override);
 		return true;
 	}
 
-	return _config_str(curtab, raw_val, ptr);
+	return _config_str(raw_val, ptr);
 }
 
 static bool
-_config_str(toml_table_t *curtab, const char *raw_val, void *ptr)
+_config_str(const char *raw_val, void *ptr)
 {
 	if (! raw_val) {
 		return false;
@@ -235,7 +240,23 @@ _config_str(toml_table_t *curtab, const char *raw_val, void *ptr)
 }
 
 static bool
-config_int32(toml_table_t *curtab, const char *raw_val, int32_t *ptr)
+config_int32(const char *raw_val, int32_t *ptr, const char *override)
+{
+	if (override != NULL) {
+		int64_t tmp;
+		if (!better_atoi(override, &tmp) || tmp < INT32_MIN || tmp > INT32_MAX) {
+			return false;
+		}
+
+		*ptr = (int32_t) tmp;
+		return true;
+	}
+
+	return _config_int32(raw_val, ptr);
+}
+
+static bool
+_config_int32(const char *raw_val, int32_t *ptr)
 {
 	if (! raw_val) {
 		return false;
@@ -250,7 +271,23 @@ config_int32(toml_table_t *curtab, const char *raw_val, int32_t *ptr)
 }
 
 static bool
-config_int64(toml_table_t *curtab, const char *raw_val, int64_t *ptr)
+config_int64(const char *raw_val, int64_t *ptr, const char *override)
+{
+	if (override != NULL) {
+		int64_t tmp;
+		if (!better_atoi(override, &tmp)) {
+			return false;
+		}
+
+		*ptr = tmp;
+		return true;
+	}
+
+	return _config_int64(raw_val, ptr);
+}
+
+static bool
+_config_int64(const char *raw_val, int64_t *ptr)
 {
 	if (! raw_val) {
 		return false;
@@ -265,7 +302,17 @@ config_int64(toml_table_t *curtab, const char *raw_val, int64_t *ptr)
 }
 
 static bool
-config_bool(toml_table_t *curtab, const char *raw_val, void *ptr)
+config_bool(const char *raw_val, void *ptr, const char *override)
+{
+	if (override != NULL) {
+		return _config_bool(override, ptr);
+	}
+
+	return _config_bool(raw_val, ptr);
+}
+
+static bool
+_config_bool(const char *raw_val, void *ptr)
 {
 	if (! raw_val) {
 		return false;
@@ -313,19 +360,19 @@ config_secret_agent(toml_table_t *conftab, sc_cfg *c, const char *instance,
 		bool status = false;
 
 		if (! strcasecmp("sa-address", name)) {
-			status = config_str(curtab, config_value, (void*)&c->addr, NULL);
+			status = config_str(config_value, (void*)&c->addr, NULL);
 		}
 		else if (! strcasecmp("sa-port", name)) {
-			status = config_str(curtab, config_value, (void*)&c->port, NULL);
+			status = config_str(config_value, (void*)&c->port, NULL);
 		}
 		else if (! strcasecmp("sa-timeout", name)) {
-			status = config_int64(curtab, config_value, (void*)&c->timeout);
+			status = config_int64(config_value, (void*)&c->timeout, NULL);
 		}
 		else if (! strcasecmp("sa-cafile", name)) {
 			c->tls.enabled = true;
 
 			char* tmp = NULL;
-			status = config_str(curtab, config_value, (void*)&tmp, NULL);
+			status = config_str(config_value, (void*)&tmp, NULL);
 			if (status) {
 				c->tls.ca_string = read_file_as_string(tmp);
 				cf_free(tmp);
@@ -371,8 +418,8 @@ config_restore_cluster(toml_table_t *conftab, restore_config_t *c, const char *i
 
 	for (uint8_t k = 0; 0 != (name = toml_key_in(curtab, k)); k++) {
 
-		const char* raw_config_value = toml_raw_in(curtab, name);
-		if (! raw_config_value) {
+		const char *config_value = toml_raw_in(curtab, name);
+		if (! config_value) {
 			snprintf(errbuf, ERR_BUF_SIZE, "Invalid parameter value for `%s` in `%s` section.\n",
 					name, cluster);
 			return false;
@@ -380,89 +427,81 @@ config_restore_cluster(toml_table_t *conftab, restore_config_t *c, const char *i
 
 		bool arg_is_secret = false;
 		char *override = NULL;
-		char *config_value = NULL;
-		if (!get_secret_rtoml(sc, raw_config_value, &config_value, &arg_is_secret)) {
+		if (!get_secret_rtoml(sc, config_value, &override, &arg_is_secret)) {
 			return false;
-		}
-		else {
-			override = config_value;
-		}
-
-		if (! arg_is_secret) {
-			config_value = safe_strdup(raw_config_value);
 		}
 
 		bool status;
 		if (! strcasecmp("host", name)) {
-			status = config_str(curtab, config_value, (void*)&c->host, override);
+			status = config_str(config_value, (void*)&c->host, override);
 
 		} else if (! strcasecmp("port", name)) {
 			// TODO make limits check for int for all int
-			status = config_int32(curtab, config_value, (void*)&c->port);
+			status = config_int32(config_value, (void*)&c->port, override);
 
 		} else if (! strcasecmp("use-services-alternate",  name)) {
-			status = config_bool(curtab, config_value,
-					(void*)&c->use_services_alternate);
+			status = config_bool(config_value,
+					(void*)&c->use_services_alternate, override);
 
 		} else if (! strcasecmp("user", name)) {
-			status = config_str(curtab, config_value, (void*)&c->user, override);
+			status = config_str(config_value, (void*)&c->user, override);
 
 		} else if (! strcasecmp("password", name)) {
-			status = config_str(curtab, config_value, (void*)&c->password, override);
+			status = config_str(config_value, (void*)&c->password, override);
 		
 		} else if (! strcasecmp("auth", name)) {
-			status = config_str(curtab, config_value, &c->auth_mode, override);
+			status = config_str(config_value, &c->auth_mode, override);
 
 		} else if (! strcasecmp("tls-enable", name)) {
-			status = config_bool(curtab, config_value, (void*)&c->tls.enable);
+			status = config_bool(config_value, (void*)&c->tls.enable, override);
 
 		} else if (! strcasecmp("tls-name", name)) {
-			status = config_str(curtab, config_value, (void*)&c->tls_name, override);
+			status = config_str(config_value, (void*)&c->tls_name, override);
 
 		} else if (! strcasecmp("tls-protocols", name)) {
-			status = config_str(curtab, config_value, (void*)&c->tls.protocols, override);
+			status = config_str(config_value, (void*)&c->tls.protocols, override);
 
 		} else if (! strcasecmp("tls-cipher-suite", name)) {
-			status = config_str(curtab, config_value, (void*)&c->tls.cipher_suite, override);
+			status = config_str(config_value, (void*)&c->tls.cipher_suite, override);
 
 		} else if (! strcasecmp("tls-crl-check", name)) {
-			status = config_bool(curtab, config_value, (void*)&c->tls.crl_check);
+			status = config_bool(config_value, (void*)&c->tls.crl_check, override);
 
 		} else if (! strcasecmp("tls-crl-check-all", name)) {
-			status = config_bool(curtab, config_value, (void*)&c->tls.crl_check_all);
+			status = config_bool(config_value, (void*)&c->tls.crl_check_all, override);
 
 		} else if (! strcasecmp("tls-keyfile", name)) {
 			if (arg_is_secret) {
-				status = config_str(curtab, config_value, (void*)&c->tls.keystring, override);
+				status = config_str(config_value, (void*)&c->tls.keystring, override);
 			}
 			else {
-				status = config_str(curtab, config_value, (void*)&c->tls.keyfile, override);
+				status = config_str(config_value, (void*)&c->tls.keyfile, override);
 			}
 
 		} else if (! strcasecmp("tls-keyfile-password", name)) {
-			status = config_str(curtab, config_value, (void*)&c->tls.keyfile_pw, override);
+			status = config_str(config_value, (void*)&c->tls.keyfile_pw, override);
 
 		} else if (! strcasecmp("tls-cafile", name)) {
 			if (arg_is_secret) {
-				status = config_str(curtab, config_value, (void*)&c->tls.castring, override);
+				status = config_str(config_value, (void*)&c->tls.castring, override);
 			}
 			else {
-				status = config_str(curtab, config_value, (void*)&c->tls.cafile, override);
+				status = config_str(config_value, (void*)&c->tls.cafile, override);
 			}
 
 		} else if (! strcasecmp("tls-capath", name)) {
-			status = config_str(curtab, config_value, (void*)&c->tls.capath, override);
+			status = config_str(config_value, (void*)&c->tls.capath, override);
 
 		} else if (! strcasecmp("tls-certfile", name)) {
 			if (arg_is_secret) {
-				status = config_str(curtab, config_value, (void*)&c->tls.certstring, override);
+				status = config_str(config_value, (void*)&c->tls.certstring, override);
 			}
 			else {
-				status = config_str(curtab, config_value, (void*)&c->tls.certfile, override);
+				status = config_str(config_value, (void*)&c->tls.certfile, override);
 			}
 
 		} else if (! strcasecmp("tls-cert-blacklist", name)) {
-			status = config_str(curtab, config_value, (void*)&c->tls.cert_blacklist, override);
+			status = config_str(config_value, (void*)&c->tls.cert_blacklist, override);
 			fprintf(stderr, "Warning: --tls-cert-blacklist is deprecated and will be removed in the next release. Use a crl instead\n");
 
 		} else {
@@ -471,7 +510,9 @@ config_restore_cluster(toml_table_t *conftab, restore_config_t *c, const char *i
 			return false;
 		}
 
-		cf_free(config_value);
+		if (arg_is_secret) {
+			cf_free(override);
+		}
 
 		if (! status) {
 			snprintf(errbuf, ERR_BUF_SIZE, "Invalid parameter value for `%s` in `%s` section.\n",
@@ -505,8 +546,8 @@ config_backup_cluster(toml_table_t *conftab, backup_config_t *c, const char *ins
 
 	for (uint8_t i = 0; 0 != (name = toml_key_in(curtab, i)); i++) {
 
-		const char *raw_config_value = toml_raw_in(curtab, name);
-		if (! raw_config_value) {
+		const char *config_value = toml_raw_in(curtab, name);
+		if (! config_value) {
 			snprintf(errbuf, ERR_BUF_SIZE, "Invalid parameter value for `%s` in `%s` section.\n",
 					name, cluster);
 			return false;
@@ -514,89 +555,81 @@ config_backup_cluster(toml_table_t *conftab, backup_config_t *c, const char *ins
 
 		bool arg_is_secret = false;
 		char *override = NULL;
-		char *config_value = NULL;
-		if (!get_secret_rtoml(sc, raw_config_value, &config_value, &arg_is_secret)) {
+		if (!get_secret_rtoml(sc, config_value, &override, &arg_is_secret)) {
 			return false;
-		}
-		else {
-			override = config_value;
-		}
-
-		if (! arg_is_secret) {
-			config_value = safe_strdup(raw_config_value);
 		}
 
 		bool status;
 		if (! strcasecmp("host", name)) {
-			status = config_str(curtab, config_value, (void*)&c->host, override);
+			status = config_str(config_value, (void*)&c->host, override);
 
 		} else if (! strcasecmp("port", name)) {
 			// TODO make limits check for int for all int
-			status = config_int32(curtab, config_value, (void*)&c->port);
+			status = config_int32(config_value, (void*)&c->port, override);
 		
 		} else if (! strcasecmp("use-services-alternate",  name)) {
-			status = config_bool(curtab, config_value,
-					(void*)&c->use_services_alternate);
+			status = config_bool(config_value,
+					(void*)&c->use_services_alternate, override);
 
 		} else if (! strcasecmp("user", name)) {
-			status = config_str(curtab, config_value, (void*)&c->user, override);
+			status = config_str(config_value, (void*)&c->user, override);
 
 		} else if (! strcasecmp("password", name)) {
-			status = config_str(curtab, config_value, (void*)&c->password, override);
+			status = config_str(config_value, (void*)&c->password, override);
 		
 		} else if (! strcasecmp("auth", name)) {
-			status = config_str(curtab, config_value, &c->auth_mode, override);
+			status = config_str(config_value, &c->auth_mode, override);
 
 		} else if (! strcasecmp("tls-enable", name)) {
-			status = config_bool(curtab, config_value, (void*)&c->tls.enable);
+			status = config_bool(config_value, (void*)&c->tls.enable, override);
 
 		} else if (! strcasecmp("tls-name", name)) {
-			status = config_str(curtab, config_value, (void*)&c->tls_name, override);
+			status = config_str(config_value, (void*)&c->tls_name, override);
 
 		} else if (! strcasecmp("tls-protocols", name)) {
-			status = config_str(curtab, config_value, (void*)&c->tls.protocols, override);
+			status = config_str(config_value, (void*)&c->tls.protocols, override);
 
 		} else if (! strcasecmp("tls-cipher-suite", name)) {
-			status = config_str(curtab, config_value, (void*)&c->tls.cipher_suite, override);
+			status = config_str(config_value, (void*)&c->tls.cipher_suite, override);
 
 		} else if (! strcasecmp("tls-crl-check", name)) {
-			status = config_bool(curtab, config_value, (void*)&c->tls.crl_check);
+			status = config_bool(config_value, (void*)&c->tls.crl_check, override);
 
 		} else if (! strcasecmp("tls-crl-check-all", name)) {
-			status = config_bool(curtab, config_value, (void*)&c->tls.crl_check_all);
+			status = config_bool(config_value, (void*)&c->tls.crl_check_all, override);
 
 		} else if (! strcasecmp("tls-keyfile", name)) {
 			if (arg_is_secret) {
-				status = config_str(curtab, config_value, (void*)&c->tls.keystring, override);
+				status = config_str(config_value, (void*)&c->tls.keystring, override);
 			}
 			else {
-				status = config_str(curtab, config_value, (void*)&c->tls.keyfile, override);
+				status = config_str(config_value, (void*)&c->tls.keyfile, override);
 			}
 
 		} else if (! strcasecmp("tls-keyfile-password", name)) {
-			status = config_str(curtab, config_value, (void*)&c->tls.keyfile_pw, override);
+			status = config_str(config_value, (void*)&c->tls.keyfile_pw, override);
 
 		} else if (! strcasecmp("tls-cafile", name)) {
 			if (arg_is_secret) {
-				status = config_str(curtab, config_value, (void*)&c->tls.castring, override);
+				status = config_str(config_value, (void*)&c->tls.castring, override);
 			}
 			else {
-				status = config_str(curtab, config_value, (void*)&c->tls.cafile, override);
+				status = config_str(config_value, (void*)&c->tls.cafile, override);
 			}
 
 		} else if (! strcasecmp("tls-capath", name)) {
-			status = config_str(curtab, config_value, (void*)&c->tls.capath, override);
+			status = config_str(config_value, (void*)&c->tls.capath, override);
 
 		} else if (! strcasecmp("tls-certfile", name)) {
 			if (arg_is_secret) {
-				status = config_str(curtab, config_value, (void*)&c->tls.certstring, override);
+				status = config_str(config_value, (void*)&c->tls.certstring, override);
 			}
 			else {
-				status = config_str(curtab, config_value, (void*)&c->tls.certfile, override);
+				status = config_str(config_value, (void*)&c->tls.certfile, override);
 			}
 
 		} else if (! strcasecmp("tls-cert-blacklist", name)) {
-			status = config_str(curtab, config_value, (void*)&c->tls.cert_blacklist, override);
+			status = config_str(config_value, (void*)&c->tls.cert_blacklist, override);
 			fprintf(stderr, "Warning: --tls-cert-blacklist is deprecated and will be removed in the next release. Use a crl instead\n");
 
 		} else {
@@ -605,7 +638,9 @@ config_backup_cluster(toml_table_t *conftab, backup_config_t *c, const char *ins
 			return false;
 		}
 
-		cf_free(config_value);
+		if (arg_is_secret) {
+			cf_free(override);
+		}
 
 		if (! status) {
 			snprintf(errbuf, ERR_BUF_SIZE, "Invalid parameter value for `%s` in `%s` section.\n",
@@ -688,7 +723,7 @@ config_include(toml_table_t *conftab, void *c, const char *instance,
 
 		if (! strcasecmp("file", name)) {
 			char *fname = NULL;
-			status = config_str(curtab, raw_config_value, (void*)&fname, NULL);
+			status = config_str(raw_config_value, (void*)&fname, NULL);
 
 			if (status) {
 				if (! config_from_file(c, instance, fname, level + 1, is_backup)) {
@@ -700,7 +735,7 @@ config_include(toml_table_t *conftab, void *c, const char *instance,
 
 		} else if (! strcasecmp("directory", name)) {
 			char *dirname = NULL;
-			status = config_str(curtab, raw_config_value, (void*)&dirname, NULL);
+			status = config_str(raw_config_value, (void*)&dirname, NULL);
 			if (status) {
 				if (! config_from_dir(c, instance, dirname, level + 1, is_backup)) {
 					cf_free(dirname);
@@ -772,8 +807,8 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 
 	for (uint8_t k = 0; 0 != (name = toml_key_in(curtab, k)); k++) {
 
-		const char* raw_config_value = toml_raw_in(curtab, name);
-		if (! raw_config_value) {
+		const char *config_value = toml_raw_in(curtab, name);
+		if (! config_value) {
 			snprintf(errbuf, ERR_BUF_SIZE, "Invalid parameter value for `%s` in `%s` section.\n",
 					name, asbackup);
 			return false;
@@ -781,22 +816,14 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 
 		bool arg_is_secret = false;
 		char *override = NULL;
-		char *config_value = NULL;
-		if (!get_secret_rtoml(sc, raw_config_value, &config_value, &arg_is_secret)) {
+		if (!get_secret_rtoml(sc, config_value, &override, &arg_is_secret)) {
 			return false;
-		}
-		else {
-			override = config_value;
-		}
-
-		if (! arg_is_secret) {
-			config_value = safe_strdup(raw_config_value);
 		}
 
 		bool status;
 		if (! strcasecmp("namespace", name)) {
 			s = NULL;
-			status = config_str(curtab, config_value, (void*)&s, override);
+			status = config_str(config_value, (void*)&s, override);
 			if (status) {
 				as_strncpy(c->ns, s, AS_NAMESPACE_MAX_SIZE);
 				cf_free(s);
@@ -804,41 +831,41 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 
 		} else if (! strcasecmp("set", name)) {
 			s = NULL;
-			status = config_str(curtab, config_value, (void*)&s, override);
+			status = config_str(config_value, (void*)&s, override);
 			if (status) {
 				status = parse_set_list(&c->set_list, s);
 				cf_free(s);
 			}
 
 		} else if (! strcasecmp("continue", name)) {
-			status = config_str(curtab, config_value, (void*)&c->state_file, override);
+			status = config_str(config_value, (void*)&c->state_file, override);
 
 		} else if (! strcasecmp("state-file-dst", name)) {
-			status = config_str(curtab, config_value, (void*)&c->state_file_dst, override);
+			status = config_str(config_value, (void*)&c->state_file_dst, override);
 
 		} else if (! strcasecmp("remove-files", name)) {
-			status = config_bool(curtab, config_value, (void*)&c->remove_files);
+			status = config_bool(config_value, (void*)&c->remove_files, override);
 
 		} else if (! strcasecmp("remove-artifacts", name)) {
-			status = config_bool(curtab, config_value, (void*)&c->remove_artifacts);
+			status = config_bool(config_value, (void*)&c->remove_artifacts, override);
 
 		} else if (! strcasecmp("directory", name)) {
-			status = config_str(curtab, config_value, (void*)&c->directory, override);
+			status = config_str(config_value, (void*)&c->directory, override);
 		
 		} else if (! strcasecmp("output-file-prefix", name)) {
-			status = config_str(curtab, config_value, &c->prefix, override);
+			status = config_str(config_value, &c->prefix, override);
 
 		} else if (! strcasecmp("no-ttl-only", name)) {
-			status = config_bool(curtab, config_value, &c->ttl_zero);
+			status = config_bool(config_value, &c->ttl_zero, override);
 
 		} else if (! strcasecmp("max-records", name)) {
-			status = config_int64(curtab, config_value, (int64_t*) &c->max_records);
+			status = config_int64(config_value, (int64_t*) &c->max_records, override);
 
 		} else if (! strcasecmp("output-file", name)) {
-			status = config_str(curtab, config_value, (void*)&c->output_file, override);
+			status = config_str(config_value, (void*)&c->output_file, override);
 
 		} else if (! strcasecmp("file-limit", name)) {
-			status = config_int64(curtab, config_value, (void*)&i_val);
+			status = config_int64(config_value, (void*)&i_val, override);
 			if (i_val > 0) {
 				c->file_limit = (uint64_t)i_val * 1024 * 1024;
 			} else {
@@ -846,17 +873,17 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 			}
 
 		} else if (! strcasecmp("records-per-second", name)) {
-			status = config_int32(curtab, config_value, (int32_t*)&c->records_per_second);
+			status = config_int32(config_value, (int32_t*)&c->records_per_second, override);
 
 		} else if (! strcasecmp("no-bins", name)) {
-			status = config_bool(curtab, config_value, (void*)&c->no_bins);
+			status = config_bool(config_value, (void*)&c->no_bins, override);
 
 		} else if (! strcasecmp("compact", name)) {
-			status = config_bool(curtab, config_value, (void*)&c->compact);
+			status = config_bool(config_value, (void*)&c->compact, override);
 
 		} else if (! strcasecmp("parallel", name)) {
 
-			status = config_int64(curtab, config_value, (void*)&i_val);
+			status = config_int64(config_value, (void*)&i_val, override);
 			if (i_val > 0) {
 				c->parallel = (int32_t)i_val;
 			} else {
@@ -865,18 +892,18 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 
 		} else if (! strcasecmp("compress", name)) {
 			char* compress_type = NULL;
-			status = config_str(curtab, config_value, (void*) &compress_type, override);
+			status = config_str(config_value, (void*) &compress_type, override);
 			if (status) {
 				status = parse_compression_type(compress_type, &c->compress_mode) == 0;
 				cf_free(compress_type);
 			}
 
 		} else if (! strcasecmp("compression-level", name)) {
-			status = config_int32(curtab, config_value, (void*)&c->compression_level);
+			status = config_int32(config_value, (void*)&c->compression_level, override);
 
 		} else if (! strcasecmp("encrypt", name)) {
 			char* encrypt_type = NULL;
-			status = config_str(curtab, config_value, (void*) &encrypt_type, override);
+			status = config_str(config_value, (void*) &encrypt_type, override);
 			if (status) {
 				status = parse_encryption_type(encrypt_type, &c->encrypt_mode) == 0;
 				cf_free(encrypt_type);
@@ -890,7 +917,7 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 			}
 
 			char* key_file = NULL;
-			status = config_str(curtab, config_value, (void*) &key_file, override);
+			status = config_str(config_value, (void*) &key_file, override);
 			if (status) {
 				c->pkey = (encryption_key_t*) cf_malloc(sizeof(encryption_key_t));
 				if (arg_is_secret) {
@@ -911,7 +938,7 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 			}
 			else {
 				char* env_var = NULL;
-				status = config_str(curtab, config_value, (void*) &env_var, override);
+				status = config_str(config_value, (void*) &env_var, override);
 				if (status) {
 					c->pkey = parse_encryption_key_env(env_var);
 					status = c->pkey != NULL;
@@ -920,23 +947,23 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 			}
 
 		} else if (! strcasecmp("bin-list", name)) {
-			status = config_str(curtab, config_value, (void*)&c->bin_list, override);
+			status = config_str(config_value, (void*)&c->bin_list, override);
 
 		} else if (! strcasecmp("node-list", name)) {
-			status = config_str(curtab, config_value, (void*)&c->node_list, override);
+			status = config_str(config_value, (void*)&c->node_list, override);
 
 		} else if (! strcasecmp("partition-list", name)) {
-			status = config_str(curtab, config_value, (void*)&c->partition_list, override);
+			status = config_str(config_value, (void*)&c->partition_list, override);
 
 		} else if (! strcasecmp("after-digest", name)) {
-			status = config_str(curtab, config_value, (void*)&c->after_digest, override);
+			status = config_str(config_value, (void*)&c->after_digest, override);
 
 		} else if (! strcasecmp("filter-exp", name)) {
-			status = config_str(curtab, config_value, (void*)&c->filter_exp, override);
+			status = config_str(config_value, (void*)&c->filter_exp, override);
 
 		} else if (! strcasecmp("modified-after", name)) {
 			char* mod_after_time = NULL;
-			status = config_str(curtab, config_value, (void*) &mod_after_time, override);
+			status = config_str(config_value, (void*) &mod_after_time, override);
 			if (status) {
 				status = parse_date_time(mod_after_time, &c->mod_after);
 				cf_free(mod_after_time);
@@ -944,20 +971,20 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 
 		} else if (! strcasecmp("modified-before", name)) {
 			char* mod_before_time = NULL;
-			status = config_str(curtab, config_value, (void*) &mod_before_time, override);
+			status = config_str(config_value, (void*) &mod_before_time, override);
 			if (status) {
 				status = parse_date_time(mod_before_time, &c->mod_before);
 				cf_free(mod_before_time);
 			}
 
 		} else if (! strcasecmp("machine", name)) {
-			status = config_str(curtab, config_value, (void*)&c->machine, override);
+			status = config_str(config_value, (void*)&c->machine, override);
 
 		} else if (! strcasecmp("estimate", name)) {
-			status = config_bool(curtab, config_value, (void*)&c->estimate);
+			status = config_bool(config_value, (void*)&c->estimate, override);
 
 		} else if (! strcasecmp("estimate-samples", name)) {
-			status = config_int64(curtab, config_value, (void*)&i_val);
+			status = config_int64(config_value, (void*)&i_val, override);
 			if (i_val > 0) {
 				c->n_estimate_samples = (uint32_t)i_val;
 			} else {
@@ -965,11 +992,11 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 			}
 
 		} else if (! strcasecmp("verbose", name)) {
-			status = config_bool(curtab, config_value, (void*)&g_verbose);
+			status = config_bool(config_value, (void*)&g_verbose, override);
 
 		} else if (! strcasecmp("nice", name)) {
 
-			status = config_int64(curtab, config_value, (void*)&i_val);
+			status = config_int64(config_value, (void*)&i_val, override);
 			if (i_val > 0) {
 				c->bandwidth = (uint64_t)i_val * 1024 * 1024;
 			} else {
@@ -977,16 +1004,16 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 			}
 
 		} else if (! strcasecmp("no-records", name)) {
-			status = config_bool(curtab, config_value, (void*)&c->no_records);
+			status = config_bool(config_value, (void*)&c->no_records, override);
 
 		} else if (! strcasecmp("no-indexes", name)) {
-			status = config_bool(curtab, config_value, (void*)&c->no_indexes);
+			status = config_bool(config_value, (void*)&c->no_indexes, override);
 
 		} else if (! strcasecmp("no-udfs", name)) {
-			status = config_bool(curtab, config_value, (void*)&c->no_udfs);
+			status = config_bool(config_value, (void*)&c->no_udfs, override);
 
 		} else if (! strcasecmp("socket-timeout", name)) {
-			status = config_int32(curtab, config_value, (int32_t*)&i_val);
+			status = config_int32(config_value, (int32_t*)&i_val, override);
 			if ((int32_t) i_val >= 0) {
 				c->socket_timeout = (uint32_t)i_val;
 			} else {
@@ -994,7 +1021,7 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 			}
 
 		} else if (! strcasecmp("total-timeout", name)) {
-			status = config_int32(curtab, config_value, (int32_t*)&i_val);
+			status = config_int32(config_value, (int32_t*)&i_val, override);
 			if ((int32_t) i_val >= 0) {
 				c->total_timeout = (uint32_t)i_val;
 			} else {
@@ -1002,7 +1029,7 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 			}
 
 		} else if (! strcasecmp("max-retries", name)) {
-			status = config_int32(curtab, config_value, (int32_t*)&i_val);
+			status = config_int32(config_value, (int32_t*)&i_val, override);
 			if ((int32_t) i_val >= 0) {
 				c->max_retries = (uint32_t)i_val;
 			} else {
@@ -1010,7 +1037,7 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 			}
 
 		} else if (! strcasecmp("retry-delay", name)) {
-			status = config_int32(curtab, config_value, (int32_t*)&i_val);
+			status = config_int32(config_value, (int32_t*)&i_val, override);
 			if ((int32_t) i_val >= 0) {
 				c->retry_delay = (uint32_t)i_val;
 			} else {
@@ -1018,7 +1045,7 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 			}
 
 		} else if (! strcasecmp("sleep-between-retries", name)) {
-			status = config_int32(curtab, config_value, (int32_t*)&i_val);
+			status = config_int32(config_value, (int32_t*)&i_val, override);
 			if ((int32_t) i_val >= 0) {
 				c->retry_delay = (uint32_t)i_val;
 			} else {
@@ -1026,16 +1053,16 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 			}
 
 		} else if (! strcasecmp("s3-region", name)) {
-			status = config_str(curtab, config_value, (void*)&c->s3_region, override);
+			status = config_str(config_value, (void*)&c->s3_region, override);
 
 		} else if (! strcasecmp("s3-profile", name)) {
-			status = config_str(curtab, config_value, (void*)&c->s3_profile, override);
+			status = config_str(config_value, (void*)&c->s3_profile, override);
 
 		} else if (! strcasecmp("s3-endpoint-override", name)) {
-			status = config_str(curtab, config_value, (void*)&c->s3_endpoint_override, override);
+			status = config_str(config_value, (void*)&c->s3_endpoint_override, override);
 
 		} else if (! strcasecmp("s3-min-part-size", name)) {
-			status = config_int64(curtab, config_value, (void*)&i_val);
+			status = config_int64(config_value, (void*)&i_val, override);
 			if (i_val > 0) {
 				c->s3_min_part_size = (uint64_t) i_val * 1024 * 1024;
 			} else {
@@ -1043,7 +1070,7 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 			}
 
 		} else if (! strcasecmp("s3-max-async-downloads", name)) {
-			status = config_int64(curtab, config_value, (void*)&i_val);
+			status = config_int64(config_value, (void*)&i_val, override);
 			if (i_val > 0 && i_val <= UINT_MAX) {
 				c->s3_max_async_downloads = (uint32_t) i_val;
 			} else {
@@ -1051,7 +1078,7 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 			}
 
 		} else if (! strcasecmp("s3-max-async-uploads", name)) {
-			status = config_int64(curtab, config_value, (void*)&i_val);
+			status = config_int64(config_value, (void*)&i_val, override);
 			if (i_val > 0 && i_val <= UINT_MAX) {
 				c->s3_max_async_uploads = (uint32_t) i_val;
 			} else {
@@ -1059,7 +1086,7 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 			}
 
 		} else if (! strcasecmp("s3-connect-timeout", name)) {
-			status = config_int64(curtab, config_value, (void*)&i_val);
+			status = config_int64(config_value, (void*)&i_val, override);
 			if (i_val >= 0 && i_val <= UINT_MAX) {
 				c->s3_connect_timeout = (uint32_t) i_val;
 			} else {
@@ -1068,7 +1095,7 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 
 		} else if (! strcasecmp("s3-log-level", name)) {
 			s = NULL;
-			status = config_str(curtab, config_value, (void*)&s, override);
+			status = config_str(config_value, (void*)&s, override);
 			if (status && !s3_parse_log_level(s, &c->s3_log_level)) {
 				err("Invalid S3 log level \"%s\"", s);
 				status = false;
@@ -1080,7 +1107,9 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 			return false;
 		}
 
-		cf_free(config_value);
+		if (arg_is_secret) {
+			cf_free(override);
+		}
 
 		if (! status) {
 			snprintf(errbuf, ERR_BUF_SIZE, "Invalid parameter value for `%s` in `%s` section\n",
@@ -1119,8 +1148,8 @@ config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance,
 
 	for (uint8_t k = 0; 0 != (name = toml_key_in(curtab, k)); k++) {
 
-		const char* raw_config_value = toml_raw_in(curtab, name);
-		if (! raw_config_value) {
+		const char *config_value = toml_raw_in(curtab, name);
+		if (! config_value) {
 			snprintf(errbuf, ERR_BUF_SIZE, "Invalid parameter value for `%s` in `%s` section.\n",
 					name, asrestore);
 			return false;
@@ -1128,38 +1157,30 @@ config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance,
 
 		bool arg_is_secret = false;
 		char *override = NULL;
-		char *config_value = NULL;
-		if (! get_secret_rtoml(sc, raw_config_value, &config_value, &arg_is_secret)) {
+		if (!get_secret_rtoml(sc, config_value, &override, &arg_is_secret)) {
 			return false;
-		}
-		else {
-			override = config_value;
-		}
-
-		if (! arg_is_secret) {
-			config_value = safe_strdup(raw_config_value);
 		}
 
 		bool status;
 		if (! strcasecmp("namespace", name)) {
 			// TODO limit check of namespace size
-			status = config_str(curtab, config_value, (void*)&c->ns_list, override);
+			status = config_str(config_value, (void*)&c->ns_list, override);
 
 		} else if (! strcasecmp("directory", name)) {
-			status = config_str(curtab, config_value, (void*)&c->directory, override);
+			status = config_str(config_value, (void*)&c->directory, override);
 
 		} else if (! strcasecmp("directory-list", name)) {
-			status = config_str(curtab, config_value, (void*)&c->directory_list, override);
+			status = config_str(config_value, (void*)&c->directory_list, override);
 
 		} else if (! strcasecmp("parent-directory", name)) {
-			status = config_str(curtab, config_value, (void*)&c->parent_directory, override);
+			status = config_str(config_value, (void*)&c->parent_directory, override);
 
 		} else if (! strcasecmp("input-file", name)) {
-			status = config_str(curtab, config_value, (void*)&c->input_file, override);
+			status = config_str(config_value, (void*)&c->input_file, override);
 
 		} else if (! strcasecmp("compress", name)) {
 			char* compress_type = NULL;
-			status = config_str(curtab, config_value, (void*) &compress_type, override);
+			status = config_str(config_value, (void*) &compress_type, override);
 			if (status) {
 				status = parse_compression_type(compress_type, &c->compress_mode) == 0;
 				cf_free(compress_type);
@@ -1167,7 +1188,7 @@ config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance,
 
 		} else if (! strcasecmp("encrypt", name)) {
 			char* encrypt_type = NULL;
-			status = config_str(curtab, config_value, (void*) &encrypt_type, override);
+			status = config_str(config_value, (void*) &encrypt_type, override);
 			if (status) {
 				status = parse_encryption_type(encrypt_type, &c->encrypt_mode) == 0;
 				cf_free(encrypt_type);
@@ -1181,7 +1202,7 @@ config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance,
 			}
 
 			char* key_file = NULL;
-			status = config_str(curtab, config_value, (void*) &key_file, override);
+			status = config_str(config_value, (void*) &key_file, override);
 			if (status) {
 				c->pkey = (encryption_key_t*) cf_malloc(sizeof(encryption_key_t));
 				if (arg_is_secret) {
@@ -1202,7 +1223,7 @@ config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance,
 			}
 			else {
 				char* env_var = NULL;
-				status = config_str(curtab, config_value, (void*) &env_var, override);
+				status = config_str(config_value, (void*) &env_var, override);
 				if (status) {
 					c->pkey = parse_encryption_key_env(env_var);
 					status = c->pkey != NULL;
@@ -1212,7 +1233,7 @@ config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance,
 
 		} else if (! strcasecmp("parallel", name) || ! strcasecmp("threads", name)) {
 
-			status = config_int64(curtab, config_value, (void*)&i_val);
+			status = config_int64(config_value, (void*)&i_val, override);
 			if (i_val >= 1 && i_val <= MAX_THREADS) {
 				c->parallel = (uint32_t)i_val;
 			} else {
@@ -1220,35 +1241,35 @@ config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance,
 			}
 
 		} else if (! strcasecmp("machine", name)) {
-			status = config_str(curtab, config_value, (void*)&c->machine, override);
+			status = config_str(config_value, (void*)&c->machine, override);
 
 		} else if (! strcasecmp("verbose", name)) {
-			status = config_bool(curtab, config_value, (void*)&g_verbose);
+			status = config_bool(config_value, (void*)&g_verbose, override);
 
 		} else if (! strcasecmp("bin-list", name)) {
-			status = config_str(curtab, config_value, (void*)&c->bin_list, override);
+			status = config_str(config_value, (void*)&c->bin_list, override);
 
 		} else if (! strcasecmp("set-list", name)) {
-			status = config_str(curtab, config_value, (void*)&c->set_list, override);
+			status = config_str(config_value, (void*)&c->set_list, override);
 
 		} else if (! strcasecmp("unique", name)) {
-			status = config_bool(curtab, config_value, (void*)&c->unique);
+			status = config_bool(config_value, (void*)&c->unique, override);
 
 		} else if (! strcasecmp("ignore-record-error", name)) {
-			status = config_bool(curtab, config_value, (void*)&c->ignore_rec_error);
+			status = config_bool(config_value, (void*)&c->ignore_rec_error, override);
 
 		} else if (! strcasecmp("replace", name)) {
-			status = config_bool(curtab, config_value, (void*)&c->replace);
+			status = config_bool(config_value, (void*)&c->replace, override);
 
 		} else if (! strcasecmp("no-generation", name)) {
-			status = config_bool(curtab, config_value, (void*)&c->no_generation);
+			status = config_bool(config_value, (void*)&c->no_generation, override);
 
 		} else if (! strcasecmp("extra-ttl", name)) {
-			status = config_int32(curtab, config_value, (void*)&c->extra_ttl);
+			status = config_int32(config_value, (void*)&c->extra_ttl, override);
 
 		} else if (! strcasecmp("bandwidth", name)) {
 
-			status = config_int64(curtab, config_value, (void*)&i_val);
+			status = config_int64(config_value, (void*)&i_val, override);
 			if (i_val > 0) {
 				c->bandwidth = (uint64_t)i_val * 1024 * 1024;
 			} else {
@@ -1256,31 +1277,31 @@ config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance,
 			}
 
 		} else if (! strcasecmp("tps", name)) {
-			status = config_int32(curtab, config_value, (void*)&c->tps);
+			status = config_int32(config_value, (void*)&c->tps, override);
 
 		} else if (! strcasecmp("nice", name)) {
-			status = config_str(curtab, config_value, (void*)&c->nice_list, override);
+			status = config_str(config_value, (void*)&c->nice_list, override);
 
 		} else if (! strcasecmp("no-records", name)) {
-			status = config_bool(curtab, config_value, (void*)&c->no_records);
+			status = config_bool(config_value, (void*)&c->no_records, override);
 		
 		} else if (! strcasecmp("validate", name)) {
-			status = config_bool(curtab, config_value, (void*)&c->validate);
+			status = config_bool(config_value, (void*)&c->validate, override);
 
 		} else if (! strcasecmp("no-indexes", name)) {
-			status = config_bool(curtab, config_value, (void*)&c->no_indexes);
+			status = config_bool(config_value, (void*)&c->no_indexes, override);
 
 		} else if (! strcasecmp("indexes-last", name)) {
-			status = config_bool(curtab, config_value, (void*)&c->indexes_last);
+			status = config_bool(config_value, (void*)&c->indexes_last, override);
 
 		} else if (! strcasecmp("no-udfs", name)) {
-			status = config_bool(curtab, config_value, (void*)&c->no_udfs);
+			status = config_bool(config_value, (void*)&c->no_udfs, override);
 
 		} else if (! strcasecmp("wait", name)) {
-			status = config_bool(curtab, config_value, (void*)&c->wait);
+			status = config_bool(config_value, (void*)&c->wait, override);
 
 		} else if (! strcasecmp("timeout", name)) {
-			status = config_int64(curtab, config_value, (void*)&i_val);
+			status = config_int64(config_value, (void*)&i_val, override);
 			if (i_val >= 0) {
 				c->timeout = (uint32_t)i_val;
 			} else {
@@ -1288,7 +1309,7 @@ config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance,
 			}
 
 		} else if (! strcasecmp("socket-timeout", name)) {
-			status = config_int32(curtab, config_value, (int32_t*)&i_val);
+			status = config_int32(config_value, (int32_t*)&i_val, override);
 			if (i_val >= 0) {
 				c->socket_timeout = (uint32_t)i_val;
 			} else {
@@ -1296,7 +1317,7 @@ config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance,
 			}
 
 		} else if (! strcasecmp("total-timeout", name)) {
-			status = config_int32(curtab, config_value, (int32_t*)&i_val);
+			status = config_int32(config_value, (int32_t*)&i_val, override);
 			if ((int32_t) i_val >= 0) {
 				c->total_timeout = (uint32_t)i_val;
 			} else {
@@ -1304,7 +1325,7 @@ config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance,
 			}
 
 		} else if (! strcasecmp("max-retries", name)) {
-			status = config_int32(curtab, config_value, (int32_t*)&i_val);
+			status = config_int32(config_value, (int32_t*)&i_val, override);
 			if ((int32_t) i_val >= 0) {
 				c->max_retries = (uint32_t)i_val;
 			} else {
@@ -1324,7 +1345,7 @@ config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance,
 			status = true;
 
 		} else if (! strcasecmp("batch-size", name)) {
-			status = config_int32(curtab, config_value, (int32_t*)&i_val);
+			status = config_int32(config_value, (int32_t*)&i_val, override);
 			if ((int32_t) i_val >= 0) {
 				c->batch_size = (uint32_t)i_val;
 			} else {
@@ -1332,7 +1353,7 @@ config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance,
 			}
 
 		} else if (! strcasecmp("event-loops", name)) {
-			status = config_int32(curtab, config_value, (int32_t*)&i_val);
+			status = config_int32(config_value, (int32_t*)&i_val, override);
 			if ((int32_t) i_val >= 0) {
 				c->event_loops = (uint32_t)i_val;
 			} else {
@@ -1340,7 +1361,7 @@ config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance,
 			}
 
 		} else if (! strcasecmp("max-async-batches", name)) {
-			status = config_int32(curtab, config_value, (int32_t*)&i_val);
+			status = config_int32(config_value, (int32_t*)&i_val, override);
 			if ((int32_t) i_val >= 0) {
 				c->max_async_batches = (uint32_t)i_val;
 			} else {
@@ -1348,7 +1369,7 @@ config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance,
 			}
 
 		} else if (! strcasecmp("retry-scale-factor", name)) {
-			status = config_int32(curtab, config_value, (int32_t*)&i_val);
+			status = config_int32(config_value, (int32_t*)&i_val, override);
 			if ((int32_t) i_val >= 0) {
 				c->retry_scale_factor = (uint32_t)i_val;
 			} else {
@@ -1356,19 +1377,19 @@ config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance,
 			}
 
 		} else if (! strcasecmp("disable-batch-writes", name)) {
-			status = config_bool(curtab, config_value, (void*)&c->disable_batch_writes);
+			status = config_bool(config_value, (void*)&c->disable_batch_writes, override);
 
 		} else if (! strcasecmp("s3-region", name)) {
-			status = config_str(curtab, config_value, (void*)&c->s3_region, override);
+			status = config_str(config_value, (void*)&c->s3_region, override);
 
 		} else if (! strcasecmp("s3-profile", name)) {
-			status = config_str(curtab, config_value, (void*)&c->s3_profile, override);
+			status = config_str(config_value, (void*)&c->s3_profile, override);
 
 		} else if (! strcasecmp("s3-endpoint-override", name)) {
-			status = config_str(curtab, config_value, (void*)&c->s3_endpoint_override, override);
+			status = config_str(config_value, (void*)&c->s3_endpoint_override, override);
 
 		} else if (! strcasecmp("s3-connect-timeout", name)) {
-			status = config_int64(curtab, config_value, (void*)&i_val);
+			status = config_int64(config_value, (void*)&i_val, override);
 			if (i_val >= 0 && i_val <= UINT_MAX) {
 				c->s3_connect_timeout = (uint32_t) i_val;
 			} else {
@@ -1376,7 +1397,7 @@ config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance,
 			}
 
 		} else if (! strcasecmp("s3-max-async-downloads", name)) {
-			status = config_int64(curtab, config_value, (void*)&i_val);
+			status = config_int64(config_value, (void*)&i_val, override);
 			if (i_val > 0 && i_val <= UINT_MAX) {
 				c->s3_max_async_downloads = (uint32_t) i_val;
 			} else {
@@ -1385,7 +1406,7 @@ config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance,
 
 		} else if (! strcasecmp("s3-log-level", name)) {
 			s = NULL;
-			status = config_str(curtab, config_value, (void*)&s, override);
+			status = config_str(config_value, (void*)&s, override);
 			if (status && !s3_parse_log_level(s, &c->s3_log_level)) {
 				err("Invalid S3 log level \"%s\"", s);
 				status = false;
@@ -1397,7 +1418,9 @@ config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance,
 			return false;
 		}
 
-		cf_free(config_value);
+		if (arg_is_secret) {
+			cf_free(override);
+		}
 
 		if (! status) {
 			snprintf(errbuf, ERR_BUF_SIZE, "Invalid parameter value for `%s` in `%s` section\n",
@@ -1474,6 +1497,8 @@ password_file(const char *path, char **ptr)
 static bool
 get_secret_rtoml(sc_client *sc, const char *rtoml, char **res, bool *is_secret)
 {
+	*is_secret = false;
+
 	char *secret_str = NULL;
 	if (toml_rtos(rtoml, &secret_str) != 0) {
 		// this is not a string so it can't be a secret, skip it
@@ -1486,9 +1511,7 @@ get_secret_rtoml(sc_client *sc, const char *rtoml, char **res, bool *is_secret)
 		return false;
 	}
 
-	if (*is_secret) {
-		cf_free(secret_str);
-	}
+	cf_free(secret_str);
 
 	return true;
 }

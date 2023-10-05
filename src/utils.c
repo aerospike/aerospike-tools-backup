@@ -2078,13 +2078,13 @@ char* read_file_as_string(const char* path)
 
     rewind(fptr);
 
-    char* buf = (char*) cf_malloc(flen * sizeof(char));
+    char* buf = (char*) cf_malloc(((unsigned long)flen) * sizeof(char));
 	if (buf == NULL) {
 		err("failed to allocate memory for file buff, path: %s", path);
 		return NULL;
 	}
 
-    fread(buf, flen, 1, fptr);
+    fread(buf, (unsigned long)flen, 1, fptr);
 	if (ferror(fptr)) {
 		cf_free(buf);
 		err("failed to read %s", path);
@@ -2102,6 +2102,7 @@ char* read_file_as_string(const char* path)
 
 int
 get_and_set_secret_arg(sc_client* sc, char* path, char** res, bool* is_secret) {
+	*is_secret = false;
 	size_t secret_size = 0;
 
 	if (path && !strncmp(SC_SECRETS_PATH_REFIX, path, strlen(SC_SECRETS_PATH_REFIX))) {
