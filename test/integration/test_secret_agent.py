@@ -512,7 +512,7 @@ def test_restore_config_init():
 		restore_args={x["name"]: x["value"] for x in RESTORE_SECRET_OPTIONS}
 	)
 
-	sa_args = ["--sa-address", "127.0.0.1", "--sa-port", sa.SA_PORT]
+	sa_args = ["--sa-address", "%s:%s" % ("127.0.0.1", sa.SA_PORT)]
 	argc, argv = gen_secret_args(
 		input_list=RESTORE_SECRET_OPTIONS,
 		prgm_name="asrestore",
@@ -663,7 +663,7 @@ def test_asrestore_conf_file():
 		restore_args={x["name"]: x["value"] for x in RESTORE_SECRET_OPTIONS}
 	)
 
-	sa_args = 'sa-address = "127.0.0.1"\nsa-port = "%s"\n' % sa.SA_PORT
+	sa_args = 'sa-address = "%s:%s"\n' % ("127.0.0.1", sa.SA_PORT)
 	conf_path = gen_secret_toml(
 		RESTORE_SECRET_OPTIONS,
 		SA_RESTORE_RESOURCE,

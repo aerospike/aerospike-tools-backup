@@ -59,7 +59,7 @@ DYNAMIC_OPTIONS =
 
 CC ?= cc
 
-DWARF := $(shell $(CC) -Wall -Wextra -O0 -g -o /tmp/asflags_$${$$} src/flags.c; \
+DWARF := $(shell $(CC) -Wall -Wextra -O2 -o /tmp/asflags_$${$$} src/flags.c; \
 		/tmp/asflags_$${$$}; rm /tmp/asflags_$${$$})
 CFLAGS += -std=gnu11 $(DWARF) -O2 -fno-common -fno-strict-aliasing \
 		-Wall -Wextra -Wconversion -Wsign-conversion -Wmissing-declarations \

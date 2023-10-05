@@ -59,7 +59,7 @@ def gen_secret_agent_files(backup_args:{str:any}=None, restore_args:{str:any}=No
         f.write(secrets_conf)
 
 BIN_NAMES = lib.identifier_variations(14, False)
-def backup_restore_with_secrets(backup_args:{str:any}, restore_args:{str:any}, sa_args:[str]=None):
+def backup_restore_with_secrets(backup_args:{str:any}, restore_args:{str:any}, sa_args:[str]):
     os.system("rm -rf " + SA_RSRC_PATH)
     os.system("mkdir " + SA_RSRC_PATH)
 
@@ -106,4 +106,34 @@ def test_secrets():
         backup_args={"host": "127.0.0.1", "port": 3000},
         restore_args={"host": "127.0.0.1", "port": 3000},
         sa_args=["--sa-address", sa.SA_ADDR, "--sa-port", sa.SA_PORT]
+    )
+
+def test_secrets_ip_parsing():
+    """
+    Test sa addr with port.
+    """
+    backup_restore_with_secrets(
+        backup_args={"host": "127.0.0.1", "port": 3000, "parallel": 2},
+        restore_args={"host": "127.0.0.1", "port": 3000},
+        sa_args=["--sa-address", "%s:%s" % (sa.SA_ADDR, sa.SA_PORT)]
+    )
+
+def test_secrets_ipv6_parsing():
+    """
+    Test sa addr with port.
+    """
+    backup_restore_with_secrets(
+        backup_args={"host": "127.0.0.1", "port": 3000, "parallel": 2},
+        restore_args={"host": "127.0.0.1", "port": 3000},
+        sa_args=["--sa-address", "%s:%s" % ("[::]", sa.SA_PORT)]
+    )
+
+def test_secrets_default_sa_args():
+    """
+    Test default secret options.
+    """
+    backup_restore_with_secrets(
+        backup_args={"host": "127.0.0.1", "port": 3000},
+        restore_args={"host": "127.0.0.1", "port": 3000},
+        sa_args=[]
     )

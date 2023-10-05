@@ -358,11 +358,12 @@ config_secret_agent(toml_table_t *conftab, sc_cfg *c, const char *instance,
 		}
 
 		bool status = false;
-
+		bool used_sa_port_arg = false;
 		if (! strcasecmp("sa-address", name)) {
 			status = config_str(config_value, (void*)&c->addr, NULL);
 		}
 		else if (! strcasecmp("sa-port", name)) {
+			used_sa_port_arg = true;
 			status = config_str(config_value, (void*)&c->port, NULL);
 		}
 		else if (! strcasecmp("sa-timeout", name)) {
@@ -385,6 +386,21 @@ config_secret_agent(toml_table_t *conftab, sc_cfg *c, const char *instance,
 			fprintf(stderr, "Unknown parameter `%s` in `%s` section\n", name,
 					secret_agent);
 			return false;
+		}
+
+		// if the user supplied the secret_agent address
+		// with an attached port, ex 127.0.0.1:3005
+		// then parse and use the addr and port only
+		// if the user did not also provide an explicit port
+		char* sc_addr = NULL;
+		char* sc_port = NULL;
+		char *sa_addr_p = c->addr;
+		bool is_addr_and_port = parse_host(&c->addr, &sc_addr, &sc_port);
+		if (is_addr_and_port && !used_sa_port_arg) {
+			cf_free(c->port);
+			c->addr = safe_strdup(sc_addr);
+			c->port = safe_strdup(sc_port);
+			cf_free(sa_addr_p);
 		}
 
 		if (! status) {

@@ -702,6 +702,51 @@ parse_date_time(const char *string, int64_t *nanos)
 	return true;
 }
 
+bool
+parse_host(char** pp, char** host, char** port)
+{
+	// Format: address1:port1
+	// Destructive parse. String is modified.
+	// IPV6 addresses can start with bracket.
+	char* p = *pp;
+
+	if (*p == '[') {
+		*host = ++p;
+
+		while (*p) {
+			if (*p == ']') {
+				*p++ = 0;
+
+				if (*p == ':') {
+					p++;
+					*port = p;
+					*pp = p;
+					return true;
+				}
+				else {
+					break;
+				}
+			}
+			p++;
+		}
+	}
+	else {
+		*host = p;
+
+		while (*p) {
+			if (*p == ':') {
+				*p++ = 0;
+				*port = p;
+				*pp = p;
+				return true;
+			}
+			p++;
+		}
+	}
+	*port = 0;
+	return false;
+}
+
 /*
  * Converts the given nanoseconds since the epoch (GMT) into a "YYYY-MM-DD_HH:MM:SS"
  * date and time string (local time).

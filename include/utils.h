@@ -84,6 +84,11 @@ extern atomic_bool g_silent;
 // The default port to connect to.
 #define DEFAULT_PORT 3000
 
+// The default host to connect to the Aerospike secret agent on.
+#define DEFAULT_SECRET_AGENT_HOST "127.0.0.1"
+// The default port to connect to the Aerospike secret agent on.
+#define DEFAULT_SECRET_AGENT_PORT "3005"
+
 // The timeout for all operations (in ms).
 #define TIMEOUT 10000
 
@@ -375,6 +380,7 @@ double confidence_z(double p, uint64_t n_records);
 char* dyn_sprintf(const char* format, ...) __attribute__ ((format (printf, 1, 2)));
 bool better_atoi(const char *string, int64_t *val);
 bool parse_date_time(const char *string, int64_t *nanos);
+bool parse_host(char** pp, char** host, char** port);
 bool format_date_time(int64_t nanos, char *buffer, size_t size);
 void get_current_time(struct timespec* now);
 void timespec_add_us(struct timespec* ts, uint64_t us);

@@ -247,6 +247,7 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 	// Now print error messages
 	opterr = 1;
 
+	bool used_sa_port_arg = false;
 	// parse secret agent arguments
 	while ((opt = getopt_long(argc, argv, "-" OPTIONS_SHORT, options, 0)) != -1) {
 
@@ -256,6 +257,7 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 			break;
 
 		case COMMAND_SA_PORT:
+			used_sa_port_arg = true;
 			conf->secret_cfg.port = safe_strdup(optarg);
 			break;
 		
@@ -284,6 +286,21 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 			}
 			break;
 		}
+	}
+
+	// if the user supplied the secret_agent address
+	// with an attached port, ex 127.0.0.1:3005
+	// then parse and use the addr and port only
+	// if the user did not also provide an explicit port
+	char* sc_addr = NULL;
+	char* sc_port = NULL;
+	char *sa_addr_p = conf->secret_cfg.addr;
+	bool is_addr_and_port = parse_host(&conf->secret_cfg.addr, &sc_addr, &sc_port);
+	if (is_addr_and_port && !used_sa_port_arg) {
+		cf_free(conf->secret_cfg.port);
+		conf->secret_cfg.addr = safe_strdup(sc_addr);
+		conf->secret_cfg.port = safe_strdup(sc_port);
+		cf_free(sa_addr_p);
 	}
 
 	sc_client sac;
@@ -960,6 +977,8 @@ backup_config_default(backup_config_t* conf)
 	conf->retry_delay = 0;
 
 	sc_cfg_init(&conf->secret_cfg);
+	conf->secret_cfg.addr = safe_strdup(DEFAULT_SECRET_AGENT_HOST);
+	conf->secret_cfg.port = safe_strdup(DEFAULT_SECRET_AGENT_PORT);
 }
 
 void
@@ -1475,6 +1494,35 @@ usage(const char *name)
 	fprintf(stdout, " --config-file <path>\n");
 	fprintf(stdout, "                      Read this file after default configuration file.\n");
 	fprintf(stdout, " --only-config-file <path>\n");
-	fprintf(stdout, "                      Read only this configuration file.\n");
+	fprintf(stdout, "                      Read only this configuration file.\n\n");
+
+	fprintf(stdout, "[secret-agent]\n");
+	fprintf(stdout, " Options pertaining to the Aerospike secret agent https://docs.aerospike.com/tools/secret-agent.\n");
+	fprintf(stdout, " Asbackup and asrestore support getting most config file and command line options\n");
+	fprintf(stdout, " from the Aerospike secret agent. \n");
+	fprintf(stdout, " To use a secret as an option, use this format \"secrets:<resource_name>:<secret_name>\" \n");
+	fprintf(stdout, "    Examples:\n");
+	fprintf(stdout, "    asrestore -n secrets:resource1:namespace -d testout -h secrets:pass:pass --sa-address 0.0.0.0:3005\n");
+	fprintf(stdout, "    asbackup -n test -d testout --ca-file secrets:resource2:cacert\n");
+	fprintf(stdout, " --sa-address=HOST\n");
+	fprintf(stdout, "                      HOST is \"<host>[:<port>]\" \n");
+	fprintf(stdout, "                      Aerospike Secret agent hostname or IP address.\n");
+	fprintf(stdout, "                      Default: localhost:3005\n");
+	fprintf(stdout, "                      Examples:\n");
+	fprintf(stdout, "                        host1\n");
+	fprintf(stdout, "                        host1:3005\n");
+	fprintf(stdout, "                        192.168.1.10:3005\n");
+	fprintf(stdout, "                        [::]:3005\n");
+	fprintf(stdout, " --sa-port=PORT\n");
+	fprintf(stdout, "                      PORT is the port number used to connect to the Aerospike secret agent \n");
+	fprintf(stdout, "                      Default: 3005 \n");
+	fprintf(stdout, "                      Examples:\n");
+	fprintf(stdout, "                        3005\n");
+	fprintf(stdout, " --sa-timeout <ms>\n");
+	fprintf(stdout, "                      Total socket timeout in milliseconds when connecting.\n");
+	fprintf(stdout, "                      The default timeout is 1000ms.\n");
+	fprintf(stdout, " --sa-cafile=TLS_CAFILE\n");
+	fprintf(stdout, "                      Path to a trusted CA certificate file.\n");
+	fprintf(stdout, "                      Used when authenticating with the Aerospike secret agent.\n");
 }
 
