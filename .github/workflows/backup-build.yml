@@ -153,7 +153,6 @@ jobs:
       working-directory: main
     - name: Test secrets
       run: |
-        ulimit -c unlimited         # Enable core dumps to be captured (must be in same run block)
         make run_test_secret_agent
       working-directory: main
     # - name: Enable core directories
@@ -205,9 +204,7 @@ jobs:
       working-directory: main
     - name: Test S3
       run: make run_test_s3
-    # - name: Test secret agent
-    #   run: make run_test_secret_agent
-    #   working-directory: main
+      working-directory: main
     - name: Accumulate coverage
       run: make coverage
       working-directory: main
