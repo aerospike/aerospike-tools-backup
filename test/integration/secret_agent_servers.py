@@ -1,9 +1,17 @@
 import base64
-import docker
+import datetime
 import lib
 import time
 import subprocess
 import os
+
+from cryptography.hazmat.primitives import serialization
+from cryptography.x509.oid import NameOID
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography import x509
+
+import docker
 
 WORK_DIRECTORY = lib.absolute_path(lib.SECRET_AGENT_DIRECTORY)
 SA_REPO_PATH = os.path.join(WORK_DIRECTORY, "aerospike-secret-agent/")
@@ -192,7 +200,95 @@ def get_secret_agent(config:str, port:str=SA_PORT) -> SecretAgent:
 
 SA_ADDR = "0.0.0.0"
 
-def gen_secret_agent_conf(resources:{str:str}) -> str:
+class tls_cfg():
+    def __init__(self, cert_file:str, key_file:str) -> None:
+        self.cert_file = cert_file
+        self.key_file = key_file
+        self.key = None
+        self.cert = None
+
+    def get_cfg(self) -> str:
+
+        self._write_crypto()
+
+        def adjust_path_for_docker_volume(path:str):
+            if USE_DOCKER_SERVERS:
+                path = os.path.relpath(path, WORK_DIRECTORY)
+                path = os.path.join(CONTAINER_VAL, path)
+
+            return path
+
+        cert_path = adjust_path_for_docker_volume(self.cert_file)
+        key_path = adjust_path_for_docker_volume(self.key_file)
+
+        template = """
+    tls:
+        "cert-file": %s
+        "key-file": %s
+""" % (cert_path, key_path)
+
+        return template
+    
+    def _write_crypto(self):
+
+        self._gen_private_key()
+        with open(self.key_file, "wb+") as f:
+            f.write(self.key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.TraditionalOpenSSL,
+                encryption_algorithm=serialization.NoEncryption(),
+            ))
+
+        self._gen_cert()
+        with open(self.cert_file, "wb+") as f:
+            f.write(self.cert.public_bytes(
+                encoding=serialization.Encoding.PEM,
+            ))
+
+    def _gen_private_key(self):
+        """
+        generate private key self.key
+        """
+        self.key = rsa.generate_private_key(
+            public_exponent=65537,
+            key_size=2048
+        )
+    
+    def _gen_cert(self):
+        """
+        Generate self.cert, a self signed cert using self.key
+        """
+        subject = issuer = x509.Name([
+            x509.NameAttribute(NameOID.COUNTRY_NAME, u"US"),
+            x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, u"California"),
+            x509.NameAttribute(NameOID.LOCALITY_NAME, u"San Francisco"),
+            x509.NameAttribute(NameOID.ORGANIZATION_NAME, u"My Company"),
+            x509.NameAttribute(NameOID.COMMON_NAME, u"mysite.com"),
+        ])
+
+        self.cert = x509.CertificateBuilder().subject_name(
+            subject
+        ).issuer_name(
+            issuer
+        ).public_key(
+            self.key.public_key()
+        ).serial_number(
+            x509.random_serial_number()
+        ).not_valid_before(
+            datetime.datetime.now(datetime.timezone.utc)
+        ).not_valid_after(
+            # Our certificate will be valid for 10 days
+            datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=10)
+        ).add_extension(
+            x509.SubjectAlternativeName([x509.DNSName(u"localhost")]),
+            critical=False,
+        # Sign our certificate with our private key
+        ).sign(self.key, hashes.SHA256())
+
+
+        
+
+def gen_secret_agent_conf(resources:{str:str}, tls_cfg:str) -> str:
     sa_addr = SA_ADDR
     sa_port = SA_PORT
 
@@ -214,6 +310,7 @@ def gen_secret_agent_conf(resources:{str:str}) -> str:
 service:
   tcp:
     endpoint: %s:%s
+%s
 
 secret-manager:
   file:
@@ -222,7 +319,7 @@ secret-manager:
 
 log:
   level: debug
-""" % (sa_addr, sa_port, resource_str)
+""" % (sa_addr, sa_port, tls_cfg, resource_str)
     return secret_agent_conf_template
 
 def gen_secret_agent_secrets(secrets:{str:any}={}) -> str:

@@ -38,7 +38,10 @@ SA_RESTORE_RESOURCE = "restore"
 
 SA_CONF_PATH = os.path.join(SA_RSRC_PATH, "conf.yaml")
 
-def gen_secret_agent_files(backup_args:{str:any}=None, restore_args:{str:any}=None):
+SA_CA_FILE = os.path.join(SA_RSRC_PATH, "cert.pem")
+SA_KEY_FILE = os.path.join(SA_RSRC_PATH, "key.pem")
+
+def gen_secret_agent_files(backup_args:{str:any}=None, restore_args:{str:any}=None, sa_tls:bool=False):
     resources = {}
 
     if backup_args:
@@ -53,17 +56,32 @@ def gen_secret_agent_files(backup_args:{str:any}=None, restore_args:{str:any}=No
                 f.write(restore_secrets_json)
         resources[SA_RESTORE_RESOURCE] = SA_RESTORE_FILE_PATH
 
-    secrets_conf = sa.gen_secret_agent_conf(resources=resources)
+    sa_tls_cfg = ""
+    if sa_tls:
+        sa_tls_cfg = sa.tls_cfg(
+            cert_file=SA_CA_FILE,
+            key_file=SA_KEY_FILE,
+        ).get_cfg()
+
+    secrets_conf = sa.gen_secret_agent_conf(
+        resources=resources,
+        tls_cfg=sa_tls_cfg,
+    )
 
     with open(SA_CONF_PATH, "w+") as f:
         f.write(secrets_conf)
 
+
 BIN_NAMES = lib.identifier_variations(14, False)
-def backup_restore_with_secrets(backup_args:{str:any}, restore_args:{str:any}, sa_args:[str]):
+def backup_restore_with_secrets(backup_args:{str:any}, restore_args:{str:any}, sa_args:[str], sa_tls:bool=False):
     os.system("rm -rf " + SA_RSRC_PATH)
     os.system("mkdir " + SA_RSRC_PATH)
 
-    gen_secret_agent_files(backup_args=backup_args, restore_args=restore_args)
+    gen_secret_agent_files(
+        backup_args=backup_args,
+        restore_args=restore_args,
+        sa_tls=sa_tls
+    )
 
     agent = sa.get_secret_agent(config=SA_CONF_PATH)
 
@@ -98,6 +116,17 @@ def setup_module(module):
 def teardown_module(module):
 	sa.teardown_secret_agent()
 
+def test_secrets_ca_file():
+    """
+    Test sa cert secret option.
+    """
+    backup_restore_with_secrets(
+        backup_args={"host": "127.0.0.1", "port": 3000},
+        restore_args={"host": "127.0.0.1", "port": 3000},
+        sa_args=["--sa-address", sa.SA_ADDR, "--sa-port", sa.SA_PORT, "--sa-cafile", SA_CA_FILE],
+        sa_tls=True
+    )
+
 def test_secrets():
     """
     Test basic secret options.
@@ -120,7 +149,7 @@ def test_secrets_ip_parsing():
 
 def test_secrets_ipv6_parsing():
     """
-    Test sa addr with port.
+    Test sa addr with ipv6 port.
     """
     backup_restore_with_secrets(
         backup_args={"host": "127.0.0.1", "port": 3000, "parallel": 2},

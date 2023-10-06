@@ -3,3 +3,4 @@ docker
 pytest
 pylint
 six
+cryptography
