@@ -281,8 +281,6 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 			break;
 		
 		case COMMAND_SA_CAFILE:
-			conf->secret_cfg.tls.enabled = true;
-
 			// if this was already set during config file parsing,
 			// free the config version
 			if (conf->secret_cfg.tls.ca_string != NULL) {
@@ -295,6 +293,8 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 				err("Invalid secret agent cafile %s", optarg);
 				return BACKUP_CONFIG_INIT_FAILURE;
 			}
+
+			conf->secret_cfg.tls.enabled = true;
 			break;
 		}
 	}

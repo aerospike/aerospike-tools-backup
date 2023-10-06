@@ -444,7 +444,7 @@ test: unit integration
 .PHONY: unit
 unit: $(DIR_TEST_BIN)/test
 	@$<
-	@#valgrind --tool=memcheck --leak-check=full --track-origins=yes --show-leak-kinds=all $<
+	@#CK_FORK=no valgrind --tool=memcheck --leak-check=full --track-origins=yes --show-leak-kinds=all $<
 
 .PHONY: integration
 integration: $(TEST_INTEGRATION_TESTS)

@@ -2123,8 +2123,8 @@ char* read_file_as_string(const char* path)
 
     rewind(fptr);
 
-	size_t fsize = (unsigned long) flen;
-    char* buf = (char*) cf_malloc(fsize * sizeof(char));
+	size_t fsize = (size_t) flen;
+    char* buf = (char*) cf_malloc(fsize + 1);
 	if (buf == NULL) {
 		err("failed to allocate memory for file buff, path: %s", path);
 		return NULL;
@@ -2143,6 +2143,8 @@ char* read_file_as_string(const char* path)
 		return NULL;
 	}
 
+	buf[fsize] = 0;
+
     return buf;
 }
 
@@ -2152,6 +2154,12 @@ get_and_set_secret_arg(sc_client* sc, char* path, char** res, bool* is_secret) {
 	size_t secret_size = 0;
 
 	if (path && !strncmp(SC_SECRETS_PATH_REFIX, path, strlen(SC_SECRETS_PATH_REFIX))) {
+
+		if (!sc) {
+			err("secret agent client failed to initialize, this probably means a secret agent option is incorrect");
+			err("Unable to fetch secret: %s", path);
+			return 1;
+		}
 
 		if (!sc->cfg->addr || !sc->cfg->port) {
 			err("--sa-address and --sa-port must be used when using secrets");

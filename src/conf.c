@@ -127,7 +127,9 @@ config_from_file(void *c, const char *instance, const char *fname,
 			sc_cfg* secret_cfg = &((backup_config_t*)c)->secret_cfg;
 			if (! config_secret_agent(conftab, secret_cfg, instance, errbuf)) {
 				status = false;
+				goto cleanup;
 			}
+
 			sc_client_init(&sc, secret_cfg);
 
 			if (! config_backup_cluster(conftab, (backup_config_t*)c, instance, errbuf, &sc)) {
@@ -142,6 +144,7 @@ config_from_file(void *c, const char *instance, const char *fname,
 			sc_cfg* secret_cfg = &((restore_config_t*)c)->secret_cfg;
 			if (! config_secret_agent(conftab, secret_cfg, instance, errbuf)) {
 				status = false;
+				goto cleanup;
 			}
 			sc_client_init(&sc, secret_cfg);
 
@@ -155,6 +158,7 @@ config_from_file(void *c, const char *instance, const char *fname,
 		}
 	}
 
+cleanup:
 	toml_free(conftab);
 
 	if (! status) {
@@ -372,8 +376,6 @@ config_secret_agent(toml_table_t *conftab, sc_cfg *c, const char *instance,
 			status = config_int64(config_value, (void*)&c->timeout, NULL);
 		}
 		else if (! strcasecmp("sa-cafile", name)) {
-			c->tls.enabled = true;
-
 			char* tmp = NULL;
 			status = config_str(config_value, (void*)&tmp, NULL);
 			if (status) {
@@ -382,6 +384,7 @@ config_secret_agent(toml_table_t *conftab, sc_cfg *c, const char *instance,
 				if (c->tls.ca_string == NULL) {
 					status = false;
 				}
+				c->tls.enabled = true;
 			}
 		}
 		else {

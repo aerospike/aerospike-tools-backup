@@ -620,7 +620,7 @@ START_TEST(test_init_sa_ca_file)
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, false), 0);
 
 	c2.secret_cfg.tls.ca_string = (char*) test_malloc(sizeof(data));
-	memcpy(c2.secret_cfg.tls.ca_string, data, sizeof(data));
+	memcpy((void*)c2.secret_cfg.tls.ca_string, data, sizeof(data));
 	c2.secret_cfg.tls.enabled = true;
 
 	assert_restore_config_eq(&c1, &c2);
