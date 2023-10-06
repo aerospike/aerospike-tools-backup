@@ -480,7 +480,7 @@ def gen_secret_agent_files(backup_args:{str:any}=None, restore_args:{str:any}=No
                 f.write(restore_secrets_json)
         resources[SA_RESTORE_RESOURCE] = SA_RESTORE_FILE_PATH
 
-    secrets_conf = sa.gen_secret_agent_conf(resources=resources)
+    secrets_conf = sa.gen_secret_agent_conf(resources=resources, tls_cfg="")
 
     with open(SA_CONF_PATH, "w+") as f:
         f.write(secrets_conf)
