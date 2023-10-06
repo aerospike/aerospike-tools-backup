@@ -2123,13 +2123,14 @@ char* read_file_as_string(const char* path)
 
     rewind(fptr);
 
-    char* buf = (char*) cf_malloc(((unsigned long)flen) * sizeof(char));
+	size_t fsize = (unsigned long) flen;
+    char* buf = (char*) cf_malloc(fsize * sizeof(char));
 	if (buf == NULL) {
 		err("failed to allocate memory for file buff, path: %s", path);
 		return NULL;
 	}
 
-    fread(buf, (unsigned long)flen, 1, fptr);
+    fread(buf, fsize, 1, fptr);
 	if (ferror(fptr)) {
 		cf_free(buf);
 		err("failed to read %s", path);

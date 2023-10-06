@@ -249,11 +249,23 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 
 		switch (optcase) {
 		case COMMAND_SA_ADDRESS:
+
+			// if the default was set, free it
+			if (conf->secret_cfg.addr != NULL) {
+				cf_free(conf->secret_cfg.addr);
+			}
+
 			conf->secret_cfg.addr = safe_strdup(optarg);
 			break;
 
 		case COMMAND_SA_PORT:
 			used_sa_port_arg = true;
+			
+			// if the default was set, free it
+			if (conf->secret_cfg.port != NULL) {
+				cf_free(conf->secret_cfg.port);
+			}
+			
 			conf->secret_cfg.port = safe_strdup(optarg);
 			break;
 		
