@@ -218,6 +218,12 @@ static bool
 config_str(const char *raw_val, void *ptr, const char *override)
 {
 	if (override != NULL) {
+		// if the config already has a non NULL value
+		// assume it is a heap allocated default and free it
+		if (*((char**) ptr) != NULL) {
+			cf_free(*((char**) ptr));
+		}
+
 		*((char**) ptr) = safe_strdup(override);
 		return true;
 	}
