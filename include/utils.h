@@ -526,7 +526,7 @@ void tls_config_destroy(as_config_tls* tls);
 void tls_config_clone(as_config_tls* clone, const as_config_tls* src);
 
 /*
- * Reads the contents of `path` as a char*
+ * Reads the contents of `path` and adds a null terminator.
  * The returned char* must be freed by the caller
  */
 char* read_file_as_string(const char* path);

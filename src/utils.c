@@ -2105,7 +2105,6 @@ sc_tls_destroy(sc_tls_cfg* cfg)
 {
 	if (cfg->ca_string != NULL) {
 		cf_free((char*) cfg->ca_string);
-		cfg->ca_string = NULL;
 	}
 
 	memset(cfg, 0, sizeof(sc_tls_cfg));
@@ -2113,43 +2112,43 @@ sc_tls_destroy(sc_tls_cfg* cfg)
 
 char* read_file_as_string(const char* path)
 {
-    FILE* fptr;
-    long flen;
+	FILE* fptr;
+	long flen;
 
-    fptr = fopen(path, "rb");
+	fptr = fopen(path, "rb");
 	if (fptr == NULL) {
 		err("failed to open %s", path);
 		return NULL;
 	}
 
-    if (fseek(fptr, 0, SEEK_END) != 0) {
+	if (fseek(fptr, 0, SEEK_END) != 0) {
 		err("failed to seek to end of %s", path);
 		return NULL;
 	}
 
-    flen = ftell(fptr);
+	flen = ftell(fptr);
 	if (flen < 0) {
-		err("filed to get file length of %s", path);
+		err("failed to get file length of %s", path);
 		return NULL;
 	}
 
-    rewind(fptr);
+	rewind(fptr);
 
 	size_t fsize = (size_t) flen;
-    char* buf = (char*) cf_malloc(fsize + 1);
+	char* buf = (char*) cf_malloc(fsize + 1);
 	if (buf == NULL) {
 		err("failed to allocate memory for file buff, path: %s", path);
 		return NULL;
 	}
 
-    fread(buf, fsize, 1, fptr);
+	fread(buf, fsize, 1, fptr);
 	if (ferror(fptr)) {
 		cf_free(buf);
 		err("failed to read %s", path);
 		return NULL;
 	}
 
-    if (fclose(fptr) != 0) {
+	if (fclose(fptr) != 0) {
 		cf_free(buf);
 		err("failed closing %s", path);
 		return NULL;
@@ -2157,7 +2156,7 @@ char* read_file_as_string(const char* path)
 
 	buf[fsize] = 0;
 
-    return buf;
+	return buf;
 }
 
 int

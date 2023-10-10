@@ -1,7 +1,7 @@
 # coding=UTF-8
 
 """
-Tests that config file and command line option secrets work.
+Tests that config file and command line option secrets are parsed correctly.
 """
 
 import ctypes

@@ -141,12 +141,12 @@ jobs:
     - name: Unit Test
       run: make unit
       working-directory: main
-    - name: Set cores to get stored in /cores
-      run: |
-        sudo mkdir /cores
-        sudo chmod 777 /cores
-        # Core filenames will be of the form executable.pid.timestamp:
-        sudo bash -c 'echo "/cores/%e.%p.%t" > /proc/sys/kernel/core_pattern'
+    # - name: Set cores to get stored in /cores
+    #   run: |
+    #     sudo mkdir /cores
+    #     sudo chmod 777 /cores
+    #     # Core filenames will be of the form executable.pid.timestamp:
+    #     sudo bash -c 'echo "/cores/%e.%p.%t" > /proc/sys/kernel/core_pattern'
     - name: Test secret agent
       run: |
         make run_test_secrets

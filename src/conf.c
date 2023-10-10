@@ -93,7 +93,7 @@ static bool password_env(const char *var, char **ptr);
 static bool password_file(const char *path, char **ptr);
 
 // returns 0 on success or if rtoml cannot be a secret path
-// returns != 0 on failure
+// returns a value not equal to 0 on failure
 // res is only set if a secret is successfully retrieved
 static bool get_secret_rtoml(sc_client *sc, const char *rtoml, char **res, bool *is_secret);
 
@@ -146,6 +146,7 @@ config_from_file(void *c, const char *instance, const char *fname,
 				status = false;
 				goto cleanup;
 			}
+
 			sc_client_init(&sc, secret_cfg);
 
 			if (! config_restore_cluster(conftab, (restore_config_t*)c, instance, errbuf, &sc)) {
@@ -253,13 +254,7 @@ static bool
 config_int32(const char *raw_val, int32_t *ptr, const char *override)
 {
 	if (override != NULL) {
-		int64_t tmp;
-		if (!better_atoi(override, &tmp) || tmp < INT32_MIN || tmp > INT32_MAX) {
-			return false;
-		}
-
-		*ptr = (int32_t) tmp;
-		return true;
+		return _config_int32(override, ptr);
 	}
 
 	return _config_int32(raw_val, ptr);
@@ -284,13 +279,7 @@ static bool
 config_int64(const char *raw_val, int64_t *ptr, const char *override)
 {
 	if (override != NULL) {
-		int64_t tmp;
-		if (!better_atoi(override, &tmp)) {
-			return false;
-		}
-
-		*ptr = tmp;
-		return true;
+		return _config_int64(override, ptr);
 	}
 
 	return _config_int64(raw_val, ptr);
@@ -387,10 +376,13 @@ config_secret_agent(toml_table_t *conftab, sc_cfg *c, const char *instance,
 			if (status) {
 				c->tls.ca_string = read_file_as_string(tmp);
 				cf_free(tmp);
+
+				c->tls.enabled = true;
+
 				if (c->tls.ca_string == NULL) {
 					status = false;
+					c->tls.enabled = false;
 				}
-				c->tls.enabled = true;
 			}
 		}
 		else {
@@ -1534,7 +1526,7 @@ get_secret_rtoml(sc_client *sc, const char *rtoml, char **res, bool *is_secret)
 	}
 
 	if (get_and_set_secret_arg(sc, secret_str, res, is_secret) != 0) {
-		err("failed requesting secret: %s", rtoml);
+		err("failed requesting secret: %s", secret_str);
 		cf_free(secret_str);
 		return false;
 	}

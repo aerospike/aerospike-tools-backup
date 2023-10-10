@@ -1,15 +1,12 @@
 # coding=UTF-8
 
 """
-Tests the representation of bin names in backup files.
+Tests backup and restore with the secret agent.
 """
 
 import lib
 from run_backup import backup_and_restore
-import base64
 import os
-import time
-import subprocess
 import secret_agent_servers as sa
 
 def put_bins(set_name, key, bin_names, value):

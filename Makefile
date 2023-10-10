@@ -133,9 +133,6 @@ C_CLIENT_LIB := $(DIR_C_CLIENT)/target/$(PLATFORM)/lib/libaerospike.a
 DIR_SECRET_CLIENT ?= $(DIR_MODULES)/secret-agent-client
 SECRET_CLIENT_LIB := $(DIR_SECRET_CLIENT)/target/$(PLATFORM)/lib/libsecrets-client-c.a
 
-# DIR_JANSSON ?= $(DIR_MODULES)/jansson
-# JANSSON_LIB := $(DIR_JANSSON)/target/$(PLATFORM)/lib/libaerospike.a
-
 INCLUDES := -I$(DIR_INC)
 INCLUDES += -I$(DIR_TOML)
 INCLUDES += -I$(DIR_C_CLIENT)/src/include

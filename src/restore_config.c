@@ -152,7 +152,6 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 		{ "s3-log-level", required_argument, NULL, COMMAND_OPT_S3_LOG_LEVEL },
 		{ "s3-connect-timeout", required_argument, NULL, COMMAND_OPT_S3_CONNECT_TIMEOUT },
 
-
 		{ "sa-address", required_argument, NULL, COMMAND_SA_ADDRESS },
 		{ "sa-port", required_argument, NULL, COMMAND_SA_PORT },
 		{ "sa-timeout", required_argument, NULL, COMMAND_SA_TIMEOUT },
@@ -169,10 +168,10 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 	// Don't print error messages for the first two argument parsers
 	opterr = 0;
 
-	// Reset to optind (internal variable)
+	// Reset optind (internal variable)
 	// to parse all options again in case this was called before
 	// by the shared library
-	optind = 0;
+	optind = 1;
 
 	// option string should start with '-' to avoid argv permutation
 	// we need same argv sequence in third check to support space separated optional argument value
@@ -193,7 +192,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 	bool read_only_conf_file = false;
 	char *instance = NULL;
 
-	// Reset to optind (internal variable)
+	// Reset optind (internal variable)
 	// to parse all options again
 	optind = 1;
 	while ((optcase = getopt_long(argc, argv, OPTIONS_SHORT, options, 0)) != -1) {
@@ -281,7 +280,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 			// if this was already set during config file parsing,
 			// free the config version
 			if (conf->secret_cfg.tls.ca_string != NULL) {
-				cf_free((char*) conf->secret_cfg.tls.ca_string);
+				cf_free(conf->secret_cfg.tls.ca_string);
 				conf->secret_cfg.tls.ca_string = NULL;
 			}
 
@@ -316,7 +315,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
     
 	sc_set_log_function(&err);
 
-	// Reset to optind (internal variable)
+	// Reset optind (internal variable)
 	// to parse all options again
 	optind = 1;
 	char* old_optarg = NULL;
@@ -749,7 +748,6 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 			break;
 
 		default:
-			fprintf(stderr, "Unrecognized option: %d\n", optcase);
 			fprintf(stderr, "Run with --help for usage information and flag options\n");
 			return RESTORE_CONFIG_INIT_FAILURE;
 		}

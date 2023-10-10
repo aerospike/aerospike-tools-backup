@@ -171,10 +171,10 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 	// Don't print error messages for the first two argument parsers
 	opterr = 0;
 
-	// Reset to optind (internal variable)
+	// Reset optind (internal variable)
 	// to parse all options again in case this was called before
 	// by the shared library
-	optind = 0;
+	optind = 1;
 
 	// Option string should start with '-' to avoid argv permutation.
 	// We need same argv sequence in third check to support space separated
@@ -284,7 +284,7 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 			// if this was already set during config file parsing,
 			// free the config version
 			if (conf->secret_cfg.tls.ca_string != NULL) {
-				cf_free((char*) conf->secret_cfg.tls.ca_string);
+				cf_free(conf->secret_cfg.tls.ca_string);
 				conf->secret_cfg.tls.ca_string = NULL;
 			}
 
