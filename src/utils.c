@@ -2039,6 +2039,18 @@ tls_config_destroy(as_config_tls* tls)
 		cf_free(tls->certfile);
 	}
 
+	if (tls->castring != NULL) {
+		cf_free(tls->castring);
+	}
+
+	if (tls->certstring != NULL) {
+		cf_free(tls->certstring);
+	}
+
+	if (tls->keystring != NULL) {
+		cf_free(tls->keystring);
+	}
+
 	memset(tls, 0, sizeof(as_config_tls));
 }
 
