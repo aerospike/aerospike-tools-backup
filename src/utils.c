@@ -2160,7 +2160,7 @@ char* read_file_as_string(const char* path)
 }
 
 int
-get_and_set_secret_arg(sc_client* sc, char* path, char** res, bool* is_secret) {
+get_secret_arg(sc_client* sc, char* path, char** res, bool* is_secret) {
 	*is_secret = false;
 	size_t secret_size = 0;
 

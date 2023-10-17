@@ -78,15 +78,15 @@ static bool _config_bool(const char *raw_val, void *ptr);
 
 static bool config_parse_file(const char *fname, toml_table_t **tab, char errbuf[]);
 
-static bool config_backup_cluster(toml_table_t *conftab, backup_config_t *c, const char *instance, char errbuf[], sc_client* sc);
-static bool config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance, char errbuf[], sc_client* sc);
+static bool config_backup_cluster(toml_table_t *config_table, backup_config_t *c, const char *instance, char errbuf[], sc_client* sc);
+static bool config_backup(toml_table_t *config_table, backup_config_t *c, const char *instance, char errbuf[], sc_client* sc);
 
-static bool config_restore_cluster(toml_table_t *conftab, restore_config_t *c, const char *instance, char errbuf[], sc_client* sc);
-static bool config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance, char errbuf[], sc_client* sc);
+static bool config_restore_cluster(toml_table_t *config_table, restore_config_t *c, const char *instance, char errbuf[], sc_client* sc);
+static bool config_restore(toml_table_t *config_table, restore_config_t *c, const char *instance, char errbuf[], sc_client* sc);
 
-static bool config_secret_agent(toml_table_t *conftab, sc_cfg *c, const char *instance, char errbuf[]);
+static bool config_secret_agent(toml_table_t *config_table, sc_cfg *c, const char *instance, char errbuf[]);
 
-static bool config_include(toml_table_t *conftab, void *c, const char *instance, int level, bool is_backup);
+static bool config_include(toml_table_t *config_table, void *c, const char *instance, int level, bool is_backup);
 static bool config_from_dir(void *c, const char *instance, char *dirname, int level, bool is_backup);
 
 static bool password_env(const char *var, char **ptr);
@@ -108,59 +108,59 @@ config_from_file(void *c, const char *instance, const char *fname,
 {
 	bool status = true;
 	//fprintf(stderr, "Load file %d:%s\n", level, fname);
-	toml_table_t *conftab = NULL;
+	toml_table_t *config_table = NULL;
 
 	char errbuf[ERR_BUF_SIZE] = {""};
-	if (! config_parse_file((char*)fname, &conftab, errbuf)) {
+	if (! config_parse_file((char*)fname, &config_table, errbuf)) {
 		status = false;
 	}
-	else if (! conftab) {
+	else if (! config_table) {
 		status = true;
 	}
 
-	if (status && conftab) {
+	if (status && config_table) {
 		sc_set_log_function(err);
 		sc_client sc;
 
 		if (is_backup) {
 
 			sc_cfg* secret_cfg = &((backup_config_t*)c)->secret_cfg;
-			if (! config_secret_agent(conftab, secret_cfg, instance, errbuf)) {
+			if (! config_secret_agent(config_table, secret_cfg, instance, errbuf)) {
 				status = false;
 				goto cleanup;
 			}
 
 			sc_client_init(&sc, secret_cfg);
 
-			if (! config_backup_cluster(conftab, (backup_config_t*)c, instance, errbuf, &sc)) {
+			if (! config_backup_cluster(config_table, (backup_config_t*)c, instance, errbuf, &sc)) {
 				status = false;
-			} else if (! config_backup(conftab, (backup_config_t*)c, instance, errbuf, &sc)) {
+			} else if (! config_backup(config_table, (backup_config_t*)c, instance, errbuf, &sc)) {
 				status = false;
-			} else if (! config_include(conftab, c, instance, level, is_backup)) {
+			} else if (! config_include(config_table, c, instance, level, is_backup)) {
 				status = false;
 			}
 		} else {
 
 			sc_cfg* secret_cfg = &((restore_config_t*)c)->secret_cfg;
-			if (! config_secret_agent(conftab, secret_cfg, instance, errbuf)) {
+			if (! config_secret_agent(config_table, secret_cfg, instance, errbuf)) {
 				status = false;
 				goto cleanup;
 			}
 
 			sc_client_init(&sc, secret_cfg);
 
-			if (! config_restore_cluster(conftab, (restore_config_t*)c, instance, errbuf, &sc)) {
+			if (! config_restore_cluster(config_table, (restore_config_t*)c, instance, errbuf, &sc)) {
 				status = false;
-			} else if (! config_restore(conftab, (restore_config_t*)c, instance, errbuf, &sc)) {
+			} else if (! config_restore(config_table, (restore_config_t*)c, instance, errbuf, &sc)) {
 				status = false;
-			} else if (! config_include(conftab, c, instance, level, is_backup)) {
+			} else if (! config_include(config_table, c, instance, level, is_backup)) {
 				status = false;
 			}
 		}
 	}
 
 cleanup:
-	toml_free(conftab);
+	toml_free(config_table);
 
 	if (! status) {
 		fprintf(stderr, "Parse error `%s` in file [%d:%s]\n", errbuf, level,
@@ -326,31 +326,31 @@ _config_bool(const char *raw_val, void *ptr)
 }
 
 static bool
-config_secret_agent(toml_table_t *conftab, sc_cfg *c, const char *instance,
+config_secret_agent(toml_table_t *config_table, sc_cfg *c, const char *instance,
 		char errbuf[])
 {
 	// Defaults to "secret-agent" section in case present.
-	toml_table_t *curtab = toml_table_in(conftab, "secret-agent");
+	toml_table_t *current_table = toml_table_in(config_table, "secret-agent");
 
 	char secret_agent[256] = {"secret-agent"};
 	if (instance) {
 		snprintf(secret_agent, 255, "secret-agent_%s", instance);
 		// override if it exists otherwise use
 		// default section
-		if (toml_table_in(conftab, secret_agent)) {
-			curtab = toml_table_in(conftab, secret_agent);
+		if (toml_table_in(config_table, secret_agent)) {
+			current_table = toml_table_in(config_table, secret_agent);
 		}
 	}
 
-	if (! curtab) {
+	if (! current_table) {
 		return true;
 	}
 
 	const char *name;
 	bool used_sa_port_arg = false;
 
-	for (uint8_t k = 0; 0 != (name = toml_key_in(curtab, k)); k++) {
-		char* config_value = (char*) toml_raw_in(curtab, name);
+	for (uint8_t k = 0; 0 != (name = toml_key_in(current_table, k)); k++) {
+		char* config_value = (char*) toml_raw_in(current_table, name);
 		if (! config_value) {
 			snprintf(errbuf, ERR_BUF_SIZE, "Invalid parameter value for `%s` in `%s` section.\n",
 					name, secret_agent);
@@ -417,28 +417,28 @@ config_secret_agent(toml_table_t *conftab, sc_cfg *c, const char *instance,
 }
 
 static bool
-config_restore_cluster(toml_table_t *conftab, restore_config_t *c, const char *instance,
+config_restore_cluster(toml_table_t *config_table, restore_config_t *c, const char *instance,
 		char errbuf[], sc_client* sc)
 {
 	// Defaults to "cluster" section in case present.
-	toml_table_t *curtab = toml_table_in(conftab, "cluster");
+	toml_table_t *current_table = toml_table_in(config_table, "cluster");
 
 	char cluster[256] = {"cluster"};
 	if (instance) {
 		snprintf(cluster, 255, "cluster_%s", instance);
 		// No override for cluster section.
-		curtab = toml_table_in(conftab, cluster);
+		current_table = toml_table_in(config_table, cluster);
 	}
 
-	if (! curtab) {
+	if (! current_table) {
 		return true;
 	}
 
 	const char *name;
 
-	for (uint8_t k = 0; 0 != (name = toml_key_in(curtab, k)); k++) {
+	for (uint8_t k = 0; 0 != (name = toml_key_in(current_table, k)); k++) {
 
-		const char *config_value = toml_raw_in(curtab, name);
+		const char *config_value = toml_raw_in(current_table, name);
 		if (! config_value) {
 			snprintf(errbuf, ERR_BUF_SIZE, "Invalid parameter value for `%s` in `%s` section.\n",
 					name, cluster);
@@ -545,28 +545,28 @@ config_restore_cluster(toml_table_t *conftab, restore_config_t *c, const char *i
 
 
 static bool
-config_backup_cluster(toml_table_t *conftab, backup_config_t *c, const char *instance,
+config_backup_cluster(toml_table_t *config_table, backup_config_t *c, const char *instance,
 		char errbuf[], sc_client* sc)
 {
 	// Defaults to "cluster" section in case present.
-	toml_table_t *curtab = toml_table_in(conftab, "cluster");
+	toml_table_t *current_table = toml_table_in(config_table, "cluster");
 
 	char cluster[256] = {"cluster"};
 	if (instance) {
 		snprintf(cluster, 255, "cluster_%s", instance);
 		// No override for cluster section.
-		curtab = toml_table_in(conftab, cluster);
+		current_table = toml_table_in(config_table, cluster);
 	}
 
-	if (! curtab) {
+	if (! current_table) {
 		return true;
 	}
 
 	const char *name;
 
-	for (uint8_t i = 0; 0 != (name = toml_key_in(curtab, i)); i++) {
+	for (uint8_t i = 0; 0 != (name = toml_key_in(current_table, i)); i++) {
 
-		const char *config_value = toml_raw_in(curtab, name);
+		const char *config_value = toml_raw_in(current_table, name);
 		if (! config_value) {
 			snprintf(errbuf, ERR_BUF_SIZE, "Invalid parameter value for `%s` in `%s` section.\n",
 					name, cluster);
@@ -715,7 +715,7 @@ config_from_dir(void *c, const char *instance, char *dirname,
 }
 
 static bool
-config_include(toml_table_t *conftab, void *c, const char *instance,
+config_include(toml_table_t *config_table, void *c, const char *instance,
 		int level, bool is_backup)
 {
 	if (level > 3) {
@@ -724,15 +724,15 @@ config_include(toml_table_t *conftab, void *c, const char *instance,
 	}
 
 	// Get include section
-	toml_table_t *curtab = toml_table_in(conftab, "include");
-	if (! curtab) {
+	toml_table_t *current_table = toml_table_in(config_table, "include");
+	if (! current_table) {
 		return true;
 	}
 
 	const char *name;
-	for (uint8_t i = 0; 0 != (name = toml_key_in(curtab, i)); i++) {
+	for (uint8_t i = 0; 0 != (name = toml_key_in(current_table, i)); i++) {
 
-		const char* raw_config_value = toml_raw_in(curtab, name);
+		const char* raw_config_value = toml_raw_in(current_table, name);
 		if (! raw_config_value) {
 			fprintf(stderr, "Invalid parameter value for `%s` in `%s` section.\n",
 					name, "include");
@@ -800,23 +800,23 @@ config_parse_file(const char *fname, toml_table_t **tab, char errbuf[])
 
 
 static bool
-config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
+config_backup(toml_table_t *config_table, backup_config_t *c, const char *instance,
 		char errbuf[], sc_client* sc)
 {
 	// Defaults to "asbackup" section in case present.
-	toml_table_t *curtab = toml_table_in(conftab, "asbackup");
+	toml_table_t *current_table = toml_table_in(config_table, "asbackup");
 
 	char asbackup[256] = {"asbackup"};
 	if (instance) {
 		snprintf(asbackup, 255, "asbackup_%s", instance);
 		// override if it exists otherwise use
 		// default section
-		if (toml_table_in(conftab, asbackup)) {
-			curtab = toml_table_in(conftab, asbackup);
+		if (toml_table_in(config_table, asbackup)) {
+			current_table = toml_table_in(config_table, asbackup);
 		}
 	}
 
-	if (! curtab) {
+	if (! current_table) {
 		return true;
 	}
 
@@ -825,9 +825,9 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 	char *s;
 	int64_t i_val;
 
-	for (uint8_t k = 0; 0 != (name = toml_key_in(curtab, k)); k++) {
+	for (uint8_t k = 0; 0 != (name = toml_key_in(current_table, k)); k++) {
 
-		const char *config_value = toml_raw_in(curtab, name);
+		const char *config_value = toml_raw_in(current_table, name);
 		if (! config_value) {
 			snprintf(errbuf, ERR_BUF_SIZE, "Invalid parameter value for `%s` in `%s` section.\n",
 					name, asbackup);
@@ -1141,23 +1141,23 @@ config_backup(toml_table_t *conftab, backup_config_t *c, const char *instance,
 }
 
 static bool
-config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance,
+config_restore(toml_table_t *config_table, restore_config_t *c, const char *instance,
 		char errbuf[], sc_client* sc)
 {
 	// Defaults to "asrestore" section in case present.
-	toml_table_t *curtab = toml_table_in(conftab, "asrestore");
+	toml_table_t *current_table = toml_table_in(config_table, "asrestore");
 
 	char asrestore[256] = {"asrestore"};
 	if (instance) {
 		snprintf(asrestore, 255, "asrestore_%s", instance);
 		// override if it exists otherwise use
 		// default section
-		if (toml_table_in(conftab, asrestore)) {
-			curtab = toml_table_in(conftab, asrestore);
+		if (toml_table_in(config_table, asrestore)) {
+			current_table = toml_table_in(config_table, asrestore);
 		}
 	}
 
-	if (! curtab) {
+	if (! current_table) {
 		return true;
 	}
 
@@ -1166,9 +1166,9 @@ config_restore(toml_table_t *conftab, restore_config_t *c, const char *instance,
 	int64_t i_val = 0;
 	char* s;
 
-	for (uint8_t k = 0; 0 != (name = toml_key_in(curtab, k)); k++) {
+	for (uint8_t k = 0; 0 != (name = toml_key_in(current_table, k)); k++) {
 
-		const char *config_value = toml_raw_in(curtab, name);
+		const char *config_value = toml_raw_in(current_table, name);
 		if (! config_value) {
 			snprintf(errbuf, ERR_BUF_SIZE, "Invalid parameter value for `%s` in `%s` section.\n",
 					name, asrestore);
@@ -1525,7 +1525,7 @@ get_secret_rtoml(sc_client *sc, const char *rtoml, char **res, bool *is_secret)
 		return true;
 	}
 
-	if (get_and_set_secret_arg(sc, secret_str, res, is_secret) != 0) {
+	if (get_secret_arg(sc, secret_str, res, is_secret) != 0) {
 		err("failed requesting secret: %s", secret_str);
 		cf_free(secret_str);
 		return false;

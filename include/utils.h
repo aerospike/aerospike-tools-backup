@@ -416,7 +416,7 @@ void sc_tls_destroy(sc_tls_cfg* cfg);
 // the following functions are only valid in C, not C++
 #ifndef __cplusplus
 
-int get_and_set_secret_arg(sc_client* sc, char* path, char** res, bool* is_secret);
+int get_secret_arg(sc_client* sc, char* path, char** res, bool* is_secret);
 void get_node_names(as_cluster *clust, node_spec *node_specs, uint32_t n_node_specs,
 		char (**node_names)[][AS_NODE_NAME_SIZE], uint32_t *n_node_names);
 bool get_info(aerospike *as, const char *value, const char *node_name, void *context,

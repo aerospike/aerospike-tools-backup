@@ -156,13 +156,13 @@ jobs:
         make run_test_secret_agent
       working-directory: main
     # - name: Enable core directories
-    #   if: always()
+    #   if: fails()
     #   run: sudo chmod -R +rwx /cores/* # Enable access to core dumps (doesn't need to be in same run block)
     # - name: Setup tmate session
-    #   if: always()
+    #   if: fails()
     #   uses: mxschmitt/action-tmate@v3
     # - uses: actions/upload-artifact@master # capture all crashes as build artifacts
-    #   if: always()
+    #   if: fails()
     #   with:
     #     name: crashes
     #     path: /cores

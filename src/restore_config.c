@@ -324,7 +324,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 		bool arg_is_secret = false;
 		old_optarg = optarg;
 
-		if (get_and_set_secret_arg(&sac, optarg, &optarg, &arg_is_secret) != 0) {
+		if (get_secret_arg(&sac, optarg, &optarg, &arg_is_secret) != 0) {
 			return RESTORE_CONFIG_INIT_FAILURE;
 		}
 		
@@ -360,7 +360,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 					// space separated argument value
 					char* pwd_val = argv[optind++];
 
-					if (get_and_set_secret_arg(&sac, pwd_val, &pwd_val, &arg_is_secret) != 0) {
+					if (get_secret_arg(&sac, pwd_val, &pwd_val, &arg_is_secret) != 0) {
 						return RESTORE_CONFIG_INIT_FAILURE;
 					}
 					
@@ -598,7 +598,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 
 					char* pwd_val = argv[optind++];
 
-					if (get_and_set_secret_arg(&sac, pwd_val, &pwd_val, &arg_is_secret) != 0) {
+					if (get_secret_arg(&sac, pwd_val, &pwd_val, &arg_is_secret) != 0) {
 						return RESTORE_CONFIG_INIT_FAILURE;
 					}
 					
