@@ -414,6 +414,20 @@ void sa_config_destroy(sa_cfg* cfg);
 void sa_tls_clone(sa_tls_cfg* clone, const sa_tls_cfg* src);
 void sa_tls_destroy(sa_tls_cfg* cfg);
 
+/*
+ * reads a private key from the given file into the pkey buffer and
+ * initializes/populates the key passed
+ */
+int read_private_key_file(const char* pkey_file_path,
+		encryption_key_t* key);
+
+/*
+ * reads a private key from the given buffer into the pkey buffer and
+ * initializes/populates the key passed
+ */
+int read_private_key(char* pkey_data,
+		encryption_key_t* key);
+
 // the following functions are only valid in C, not C++
 #ifndef __cplusplus
 

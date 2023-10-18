@@ -502,12 +502,12 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 
 			conf->pkey = (encryption_key_t*) cf_malloc(sizeof(encryption_key_t));
 			if (arg_is_secret) {
-				if(io_proxy_read_private_key(optarg, conf->pkey) != 0) {
+				if(read_private_key(optarg, conf->pkey) != 0) {
 					return BACKUP_CONFIG_INIT_FAILURE;
 				}
 			}
 			else {
-				if (io_proxy_read_private_key_file(optarg, conf->pkey) != 0) {
+				if (read_private_key_file(optarg, conf->pkey) != 0) {
 					return BACKUP_CONFIG_INIT_FAILURE;
 				}
 			}

@@ -941,10 +941,10 @@ config_backup(toml_table_t *config_table, backup_config_t *c, const char *instan
 			if (status) {
 				c->pkey = (encryption_key_t*) cf_malloc(sizeof(encryption_key_t));
 				if (arg_is_secret) {
-					status = io_proxy_read_private_key(key_file, c->pkey) == 0;
+					status = read_private_key(key_file, c->pkey) == 0;
 				}
 				else {
-					status = io_proxy_read_private_key_file(key_file, c->pkey) == 0;
+					status = read_private_key_file(key_file, c->pkey) == 0;
 				}
 
 				cf_free(key_file);
@@ -1226,10 +1226,10 @@ config_restore(toml_table_t *config_table, restore_config_t *c, const char *inst
 			if (status) {
 				c->pkey = (encryption_key_t*) cf_malloc(sizeof(encryption_key_t));
 				if (arg_is_secret) {
-					status = io_proxy_read_private_key(key_file, c->pkey) == 0;
+					status = read_private_key(key_file, c->pkey) == 0;
 				}
 				else {
-					status = io_proxy_read_private_key_file(key_file, c->pkey) == 0;
+					status = read_private_key_file(key_file, c->pkey) == 0;
 				}
 
 				cf_free(key_file);

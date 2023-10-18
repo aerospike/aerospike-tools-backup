@@ -23,6 +23,11 @@
 #include <math.h>
 #include <stdatomic.h>
 
+#include <openssl/err.h>
+#include <openssl/evp.h>
+#include <openssl/pem.h>
+#include <openssl/modes.h>
+
 #include <utils.h>
 
 
@@ -2205,5 +2210,71 @@ get_secret_arg(sa_client* sc, char* path, char** res, bool* is_secret) {
 		}
 	}
 
+	return 0;
+}
+
+int
+read_private_key_file(const char* pkey_file_path,
+		encryption_key_t* pkey_buf)
+{
+	FILE* pkey_file;
+	EVP_PKEY* pkey;
+
+	pkey_file = fopen(pkey_file_path, "r");
+	if (pkey_file == NULL) {
+		err("Could not open private key file \"%s\"",
+				pkey_file_path);
+		return -1;
+	}
+
+	// read the private key into the OpenSSL EVP_PKEY struct
+	pkey = PEM_read_PrivateKey(pkey_file, NULL, NULL, NULL);
+	fclose(pkey_file);
+	if (pkey == NULL) {
+		err("Unable to parse private key, make sure the key is in PEM format");
+		return -1;
+	}
+
+	pkey_buf->data = NULL;
+	// encode the key into a temporary buffer
+	pkey_buf->len = (uint64_t) i2d_PrivateKey(pkey, &pkey_buf->data);
+
+	EVP_PKEY_free(pkey);
+	if (((int64_t) pkey_buf->len) <= 0) {
+		err("OpenSSL error: %s", ERR_error_string(ERR_get_error(), NULL));
+		return -1;
+	}
+	return 0;
+}
+
+int
+read_private_key(char* pkey_data,
+		encryption_key_t* pkey_buf)
+{
+	BIO* key_bio = BIO_new_mem_buf(pkey_data, -1);
+
+	if (key_bio == NULL) {
+		err("Unable to allocate new BIO for private key");
+		return -1;
+	}
+
+	// read the private key into the OpenSSL EVP_PKEY struct
+	EVP_PKEY* pkey = PEM_read_bio_PrivateKey(key_bio, NULL, NULL, NULL);
+	if (pkey == NULL) {
+		err("Unable to parse private key, make sure the key is in PEM format");
+		BIO_free(key_bio);
+		return -1;
+	}
+
+	BIO_free(key_bio);
+	pkey_buf->data = NULL;
+	// encode the key into a temporary buffer
+	pkey_buf->len = (uint64_t) i2d_PrivateKey(pkey, &pkey_buf->data);
+
+	EVP_PKEY_free(pkey);
+	if (((int64_t) pkey_buf->len) <= 0) {
+		err("OpenSSL error: %s", ERR_error_string(ERR_get_error(), NULL));
+		return -1;
+	}
 	return 0;
 }
