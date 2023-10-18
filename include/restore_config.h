@@ -37,6 +37,7 @@ extern "C" {
 #pragma GCC diagnostic ignored "-Wsign-conversion"
 
 #include <aerospike/as_tls.h>
+#include <sa_client.h>
 
 #pragma GCC diagnostic pop
 
@@ -52,6 +53,9 @@ extern "C" {
 // to be returned by restore_config_init when the program should immediately exit
 // with success error code
 #define RESTORE_CONFIG_INIT_EXIT -2
+
+// returned when a restore_config_t fails validation
+#define RESTORE_CONFIG_VALIDATE_FAILURE -3
 
 // The default number of restore threads.
 #define DEFAULT_THREADS 20
@@ -167,6 +171,9 @@ typedef struct restore_config {
 
 	// Authentication mode.
 	char *auth_mode;
+
+	// secret agent client configs
+	sa_cfg secret_cfg;
 } restore_config_t;
 
 
@@ -182,6 +189,14 @@ typedef struct restore_config {
  * should be destroyed) regardless of the return value
  */
 int restore_config_init(int argc, char* argv[], restore_config_t* conf);
+
+/*
+ * Validates the restore config, checking for mutually exclusive options,
+ * invalid options, etc. This should be called immediately after restore_config_init.
+ * Success: return 0
+ * Failure: return RESTORE_CONFIG_VALIDATE_FAILURE
+ */
+int restore_config_validate(restore_config_t *conf);
 
 void restore_config_default(restore_config_t* conf);
 

@@ -49,6 +49,10 @@ jobs:
       id: install-libssh2
       run: |
         brew install libssh2
+    - name: install secret agent client requirements
+      id: install-secret-agent-client-requirements
+      run: |
+        brew install jansson
     - name: install AWS requirements
       id: install-aws-requirements
       run: |

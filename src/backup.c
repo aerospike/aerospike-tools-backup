@@ -217,6 +217,11 @@ backup_main(int32_t argc, char **argv)
 		goto cleanup;
 	}
 
+	int backup_validate_res = backup_config_validate(&conf);
+	if (backup_validate_res != 0) {
+		goto cleanup;
+	}
+
 	backup_status_t* status = start_backup(&conf);
 	if (status == RUN_BACKUP_SUCCESS) {
 		res = EXIT_SUCCESS;

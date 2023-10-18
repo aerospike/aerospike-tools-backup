@@ -64,6 +64,8 @@ extern atomic_bool g_silent;
 #include <aerospike/as_node.h>
 #include <aerospike/as_vector.h>
 
+#include <sa_client.h>
+
 #pragma GCC diagnostic pop
 
 #include <encode.h>
@@ -81,6 +83,11 @@ extern atomic_bool g_silent;
 #define DEFAULT_HOST "127.0.0.1"
 // The default port to connect to.
 #define DEFAULT_PORT 3000
+
+// The default host to connect to the Aerospike secret agent on.
+#define DEFAULT_SECRET_AGENT_HOST "127.0.0.1"
+// The default port to connect to the Aerospike secret agent on.
+#define DEFAULT_SECRET_AGENT_PORT "3005"
 
 // The timeout for all operations (in ms).
 #define TIMEOUT 10000
@@ -256,7 +263,11 @@ typedef enum {
 	COMMAND_OPT_EVENT_LOOPS,
 	COMMAND_OPT_DIRECTORY_LIST,
 	COMMAND_OPT_PARENT_DIRECTORY,
-	COMMAND_OPT_VALIDATE
+	COMMAND_OPT_VALIDATE,
+	COMMAND_SA_ADDRESS,
+	COMMAND_SA_PORT,
+	COMMAND_SA_TIMEOUT,
+	COMMAND_SA_CAFILE
 } cmd_opt;
 
 /*
@@ -349,6 +360,7 @@ void log_line(const char *tag, const char *prefix, const char *format,
 void _ver_fn(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
 void inf(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
 void err(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
+void sa_log_err(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
 void err_code(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
 const char* boolstr(bool val);
 void hex_dump_ver(const void *data, uint32_t len);
@@ -369,6 +381,7 @@ double confidence_z(double p, uint64_t n_records);
 char* dyn_sprintf(const char* format, ...) __attribute__ ((format (printf, 1, 2)));
 bool better_atoi(const char *string, int64_t *val);
 bool parse_date_time(const char *string, int64_t *nanos);
+bool parse_host(char** pp, char** host, char** port);
 bool format_date_time(int64_t nanos, char *buffer, size_t size);
 void get_current_time(struct timespec* now);
 void timespec_add_us(struct timespec* ts, uint64_t us);
@@ -396,9 +409,29 @@ bool read_block(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
 bool read_block_dec(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
 		void *buffer, size_t size, b64_context *b64c);
 
+void sa_config_clone(sa_cfg* clone, const sa_cfg* src);
+void sa_config_destroy(sa_cfg* cfg);
+void sa_tls_clone(sa_tls_cfg* clone, const sa_tls_cfg* src);
+void sa_tls_destroy(sa_tls_cfg* cfg);
+
+/*
+ * reads a private key from the given file into the pkey buffer and
+ * initializes/populates the key passed
+ */
+int read_private_key_file(const char* pkey_file_path,
+		encryption_key_t* key);
+
+/*
+ * reads a private key from the given buffer into the pkey buffer and
+ * initializes/populates the key passed
+ */
+int read_private_key(char* pkey_data,
+		encryption_key_t* key);
+
 // the following functions are only valid in C, not C++
 #ifndef __cplusplus
 
+int get_secret_arg(sa_client* sc, char* path, char** res, bool* is_secret);
 void get_node_names(as_cluster *clust, node_spec *node_specs, uint32_t n_node_specs,
 		char (**node_names)[][AS_NODE_NAME_SIZE], uint32_t *n_node_names);
 bool get_info(aerospike *as, const char *value, const char *node_name, void *context,
@@ -506,6 +539,12 @@ void tls_config_destroy(as_config_tls* tls);
  * Duplicates an as_config_tls object.
  */
 void tls_config_clone(as_config_tls* clone, const as_config_tls* src);
+
+/*
+ * Reads the contents of `path` and adds a null terminator.
+ * The returned char* must be freed by the caller
+ */
+char* read_file_as_string(const char* path);
 
 #ifdef __cplusplus
 }

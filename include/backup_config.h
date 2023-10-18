@@ -38,6 +38,7 @@ extern "C" {
 
 #include <aerospike/as_scan.h>
 #include <aerospike/as_tls.h>
+#include <sa_client.h>
 
 #pragma GCC diagnostic pop
 
@@ -53,6 +54,9 @@ extern "C" {
 // to be returned by backup_config_init when the program should immediately exit
 // with success error code
 #define BACKUP_CONFIG_INIT_EXIT -2
+
+// returned when a backup_config_t fails validation
+#define BACKUP_CONFIG_VALIDATE_FAILURE -3
 
 // By default, start a new backup file when the current backup file crosses this
 // size in MiB.
@@ -176,6 +180,9 @@ typedef struct backup_config {
 
 	// custom b64-encoded filter expression to use in the scan calls
 	char *filter_exp;
+
+	// secret agent client configs
+	sa_cfg secret_cfg;
 } backup_config_t;
 
 
@@ -191,6 +198,14 @@ typedef struct backup_config {
  * should be destroyed) regardless of the return value
  */
 int backup_config_init(int argc, char* argv[], backup_config_t* conf);
+
+/*
+ * Validates the backup config, checking for mutually exclusive options,
+ * invalid options, etc. This should be called immediately after backup_config_init.
+ * Success: return 0
+ * Failure: return BACKUP_CONFIG_VALIDATE_FAILURE
+ */
+int backup_config_validate(backup_config_t* conf);
 
 void backup_config_default(backup_config_t* conf);
 

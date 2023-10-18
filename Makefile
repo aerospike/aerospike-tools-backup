@@ -130,15 +130,27 @@ DIR_TOML := $(ROOT)/src/toml
 DIR_C_CLIENT ?= $(DIR_MODULES)/c-client
 C_CLIENT_LIB := $(DIR_C_CLIENT)/target/$(PLATFORM)/lib/libaerospike.a
 
+DIR_SECRET_CLIENT ?= $(DIR_MODULES)/secret-agent-client
+SECRET_CLIENT_LIB := $(DIR_SECRET_CLIENT)/target/$(PLATFORM)/lib/libsecret-agent-client-c.a
+
 INCLUDES := -I$(DIR_INC)
 INCLUDES += -I$(DIR_TOML)
 INCLUDES += -I$(DIR_C_CLIENT)/src/include
 INCLUDES += -I$(DIR_C_CLIENT)/modules/common/src/include
 INCLUDES += -I$(OPENSSL_PREFIX)/include
+INCLUDES += -I$(DIR_SECRET_CLIENT)/src/include
 INCLUDES += -I/usr/local/include
 
 LIBRARIES := $(C_CLIENT_LIB)
+LIBRARIES += $(SECRET_CLIENT_LIB)
 LIBRARIES += -L/usr/local/lib
+
+ifdef M1_HOME_BREW
+  LIBRARIES += -L/opt/homebrew/lib
+  INCLUDES += -I/opt/homebrew/include
+endif
+
+LIBRARIES += -ljansson
 
 ifeq ($(AWS_SDK_STATIC_PATH),)
   # do not change the order of these
@@ -350,6 +362,7 @@ shared: _set_dynamic_options $(BACKUP_DYNAMIC) $(RESTORE_DYNAMIC)
 clean:
 	$(MAKE) -C $(DIR_TOML) clean
 	$(MAKE) -C $(DIR_C_CLIENT) clean
+	$(MAKE) -C $(DIR_SECRET_CLIENT) clean
 	rm -f $(DEPS) $(OBJS) $(BINS) $(TEST_OBJS) $(TEST_DEPS) $(TEST_BINS) $(BACKUP_DYNAMIC) $(RESTORE_DYNAMIC)
 	if [ -d $(DIR_OBJ) ]; then rmdir $(DIR_OBJ); fi
 	if [ -d $(DIR_BIN) ]; then rmdir $(DIR_BIN); fi
@@ -398,16 +411,16 @@ $(DIR_OBJ)/%_c.o: $(DIR_SRC)/%.c | $(DIR_OBJ)
 $(DIR_OBJ)/%_cc.o: $(DIR_SRC)/%.cc | $(DIR_OBJ)
 	$(CXX) $(DYNAMIC_OPTIONS) $(CXXFLAGS) -MMD -o $@ -c $(INCLUDES) $<
 
-$(BACKUP): $(BACKUP_OBJ) $(TOML) $(C_CLIENT_LIB) | $(DIR_BIN)
+$(BACKUP): $(BACKUP_OBJ) $(TOML) $(C_CLIENT_LIB) $(SECRET_CLIENT_LIB) | $(DIR_BIN)
 	$(CXX) $(LDFLAGS) -o $(BACKUP) $(BACKUP_OBJ) $(LIBRARIES)
 
-$(RESTORE): $(RESTORE_OBJ) $(TOML) $(C_CLIENT_LIB) | $(DIR_BIN)
+$(RESTORE): $(RESTORE_OBJ) $(TOML) $(C_CLIENT_LIB) $(SECRET_CLIENT_LIB) | $(DIR_BIN)
 	$(CXX) $(LDFLAGS) -o $(RESTORE) $(RESTORE_OBJ) $(LIBRARIES)
 
-$(BACKUP_DYNAMIC): $(BACKUP_OBJ) $(TOML) $(C_CLIENT_LIB) | $(DIR_BIN)
+$(BACKUP_DYNAMIC): $(BACKUP_OBJ) $(TOML) $(C_CLIENT_LIB) $(SECRET_CLIENT_LIB) | $(DIR_BIN)
 	$(CXX) $(DYNAMIC_FLAG) $(LDFLAGS) -o $(BACKUP_DYNAMIC) $(BACKUP_OBJ) $(LIBRARIES)
 
-$(RESTORE_DYNAMIC): $(RESTORE_OBJ) $(TOML) $(C_CLIENT_LIB) | $(DIR_BIN)
+$(RESTORE_DYNAMIC): $(RESTORE_OBJ) $(TOML) $(C_CLIENT_LIB) $(SECRET_CLIENT_LIB) | $(DIR_BIN)
 	$(CXX) $(DYNAMIC_FLAG) $(LDFLAGS) -o $(RESTORE_DYNAMIC) $(RESTORE_OBJ) $(LIBRARIES)
 
 $(TOML):
@@ -415,6 +428,9 @@ $(TOML):
 
 $(C_CLIENT_LIB):
 	$(MAKE) -C $(DIR_C_CLIENT)
+
+$(SECRET_CLIENT_LIB):
+	$(MAKE) -C $(DIR_SECRET_CLIENT)
 
 -include $(BACKUP_DEP)
 -include $(RESTORE_DEP)
@@ -425,7 +441,7 @@ test: unit integration
 .PHONY: unit
 unit: $(DIR_TEST_BIN)/test
 	@$<
-	@#valgrind --tool=memcheck --leak-check=full --track-origins=yes --show-leak-kinds=all $<
+	@#CK_FORK=no valgrind --tool=memcheck --leak-check=full --track-origins=yes --show-leak-kinds=all $<
 
 .PHONY: integration
 integration: $(TEST_INTEGRATION_TESTS)
@@ -459,10 +475,10 @@ $(DIR_TEST_OBJ)/src/%_cc.o: src/%.cc | $(DIR_TEST_OBJ)/src
 $(DIR_TEST_BIN)/test: $(TEST_OBJ) $(DIR_C_CLIENT)/target/$(PLATFORM)/lib/libaerospike.a $(TOML) | $(DIR_TEST_BIN)
 	$(CXX) -o $@ $(TEST_OBJ) $(DIR_C_CLIENT)/target/$(PLATFORM)/lib/libaerospike.a $(TEST_LDFLAGS) $(LIBRARIES)
 
-$(TEST_BACKUP): $(TEST_BACKUP_OBJ) $(TOML) $(C_CLIENT_LIB) | $(DIR_TEST_BIN)
+$(TEST_BACKUP): shared $(TEST_BACKUP_OBJ) $(TOML) $(C_CLIENT_LIB) $(SECRET_CLIENT_LIB) | $(DIR_TEST_BIN)
 	$(CXX) $(TEST_LDFLAGS) -o $(TEST_BACKUP) $(TEST_BACKUP_OBJ) $(LIBRARIES)
 
-$(TEST_RESTORE): $(TEST_RESTORE_OBJ) $(TOML) $(C_CLIENT_LIB) | $(DIR_TEST_BIN)
+$(TEST_RESTORE): shared $(TEST_RESTORE_OBJ) $(TOML) $(C_CLIENT_LIB) $(SECRET_CLIENT_LIB) | $(DIR_TEST_BIN)
 	$(CXX) $(TEST_LDFLAGS) -o $(TEST_RESTORE) $(TEST_RESTORE_OBJ) $(LIBRARIES)
 
 -include $(TEST_DEPS)

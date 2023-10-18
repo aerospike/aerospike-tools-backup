@@ -22,6 +22,7 @@
 #include <restore_config.h>
 
 #include <getopt.h>
+#include <sa_client.h>
 
 #include <conf.h>
 #include <utils.h>
@@ -42,8 +43,7 @@ extern char *aerospike_client_version;
 //
 
 static void print_version(void);
-static void usage(const char *name);
-
+static void usage(const char* name);
 
 //==========================================================
 // Public API.
@@ -151,6 +151,11 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 		{ "s3-max-async-downloads", required_argument, NULL, COMMAND_OPT_S3_MAX_ASYNC_DOWNLOADS },
 		{ "s3-log-level", required_argument, NULL, COMMAND_OPT_S3_LOG_LEVEL },
 		{ "s3-connect-timeout", required_argument, NULL, COMMAND_OPT_S3_CONNECT_TIMEOUT },
+
+		{ "sa-address", required_argument, NULL, COMMAND_SA_ADDRESS },
+		{ "sa-port", required_argument, NULL, COMMAND_SA_PORT },
+		{ "sa-timeout", required_argument, NULL, COMMAND_SA_TIMEOUT },
+		{ "sa-cafile", required_argument, NULL, COMMAND_SA_CAFILE },
 		{ NULL, 0, NULL, 0 }
 	};
 
@@ -162,6 +167,11 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 
 	// Don't print error messages for the first two argument parsers
 	opterr = 0;
+
+	// Reset optind (internal variable)
+	// to parse all options again in case this was called before
+	// by the shared library
+	optind = 1;
 
 	// option string should start with '-' to avoid argv permutation
 	// we need same argv sequence in third check to support space separated optional argument value
@@ -182,7 +192,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 	bool read_only_conf_file = false;
 	char *instance = NULL;
 
-	// Reset to optind (internal variable)
+	// Reset optind (internal variable)
 	// to parse all options again
 	optind = 1;
 	while ((optcase = getopt_long(argc, argv, OPTIONS_SHORT, options, 0)) != -1) {
@@ -226,12 +236,102 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 		}
 	}
 
+	// Reset optind (internal variable) to parse all options again
+	optind = 1;
+
 	// Now print error messages
 	opterr = 1;
-	// Reset to optind (internal variable)
+
+	bool used_sa_port_arg = false;
+	// parse secret agent arguments
+	while ((optcase = getopt_long(argc, argv, "-" OPTIONS_SHORT, options, 0)) != -1) {
+
+		switch (optcase) {
+		case COMMAND_SA_ADDRESS:
+
+			// if the default was set, free it
+			if (conf->secret_cfg.addr != NULL) {
+				cf_free(conf->secret_cfg.addr);
+			}
+
+			conf->secret_cfg.addr = safe_strdup(optarg);
+			break;
+
+		case COMMAND_SA_PORT:
+			used_sa_port_arg = true;
+			
+			// if the default was set, free it
+			if (conf->secret_cfg.port != NULL) {
+				cf_free(conf->secret_cfg.port);
+			}
+			
+			conf->secret_cfg.port = safe_strdup(optarg);
+			break;
+		
+		case COMMAND_SA_TIMEOUT:
+			if (!better_atoi(optarg, &tmp) || tmp < 0 || tmp > INT_MAX) {
+				err("Invalid secret agent timeout value %s", optarg);
+				return RESTORE_CONFIG_INIT_FAILURE;
+			}
+			conf->secret_cfg.timeout = (int) tmp;
+			break;
+		
+		case COMMAND_SA_CAFILE:
+			// if this was already set during config file parsing,
+			// free the config version
+			if (conf->secret_cfg.tls.ca_string != NULL) {
+				cf_free(conf->secret_cfg.tls.ca_string);
+				conf->secret_cfg.tls.ca_string = NULL;
+			}
+
+			conf->secret_cfg.tls.ca_string = read_file_as_string(optarg);
+			if (conf->secret_cfg.tls.ca_string == NULL) {
+				err("Invalid secret agent cafile %s", optarg);
+				return RESTORE_CONFIG_INIT_FAILURE;
+			}
+
+			conf->secret_cfg.tls.enabled = true;
+			break;
+		}
+	}
+
+	// if the user supplied the secret_agent address
+	// with an attached port, ex 127.0.0.1:3005
+	// then parse and use the addr and port only
+	// if the user did not also provide an explicit port
+	char* sa_addr = NULL;
+	char* sa_port = NULL;
+	char *sa_addr_p = conf->secret_cfg.addr;
+	bool is_addr_and_port = parse_host(&conf->secret_cfg.addr, &sa_addr, &sa_port);
+	if (is_addr_and_port && !used_sa_port_arg) {
+		cf_free(conf->secret_cfg.port);
+		conf->secret_cfg.addr = safe_strdup(sa_addr);
+		conf->secret_cfg.port = safe_strdup(sa_port);
+		cf_free(sa_addr_p);
+	}
+
+	sa_client sac;
+	sa_client_init(&sac, &conf->secret_cfg);
+    
+	sa_set_log_function(&sa_log_err);
+
+	// Reset optind (internal variable)
 	// to parse all options again
 	optind = 1;
+	char* old_optarg = NULL;
 	while ((optcase = getopt_long(argc, argv, OPTIONS_SHORT, options, 0)) != -1) {
+		
+		bool arg_is_secret = false;
+		old_optarg = optarg;
+
+		if (get_secret_arg(&sac, optarg, &optarg, &arg_is_secret) != 0) {
+			return RESTORE_CONFIG_INIT_FAILURE;
+		}
+		
+		if (!arg_is_secret) {
+			optarg = old_optarg;
+		}
+		
 		switch (optcase) {
 		case 'h':
 			cf_free(conf->host);
@@ -258,7 +358,18 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 			} else {
 				if (optind < argc && NULL != argv[optind] && '-' != argv[optind][0] ) {
 					// space separated argument value
-					conf->password = safe_strdup(argv[optind++]);
+					char* pwd_val = argv[optind++];
+
+					if (get_secret_arg(&sac, pwd_val, &pwd_val, &arg_is_secret) != 0) {
+						return RESTORE_CONFIG_INIT_FAILURE;
+					}
+					
+					if (pwd_val != NULL && arg_is_secret) {
+						old_optarg = optarg;
+						optarg = pwd_val;
+					}
+
+					conf->password = safe_strdup(pwd_val);
 				} else {
 					// No password specified should
 					// force it to default password
@@ -312,10 +423,19 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 				err("Cannot specify both encryption-key-file and encryption-key-env\n");
 				return RESTORE_CONFIG_INIT_FAILURE;
 			}
+
 			conf->pkey = (encryption_key_t*) cf_malloc(sizeof(encryption_key_t));
-			if (io_proxy_read_private_key_file(optarg, conf->pkey) != 0) {
-				return RESTORE_CONFIG_INIT_FAILURE;
+			if (arg_is_secret) {
+				if(read_private_key(optarg, conf->pkey) != 0) {
+					return RESTORE_CONFIG_INIT_FAILURE;
+				}
 			}
+			else {
+				if (read_private_key_file(optarg, conf->pkey) != 0) {
+					return RESTORE_CONFIG_INIT_FAILURE;
+				}
+			}
+
 			break;
 
 		case '2':
@@ -346,7 +466,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 			break;
 
 		case 'm':
-			conf->machine = optarg;
+			conf->machine = safe_strdup(optarg);
 			break;
 
 		case 'B':
@@ -423,7 +543,12 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 			break;
 
 		case TLS_OPT_CA_FILE:
-			conf->tls.cafile = safe_strdup(optarg);
+			if (arg_is_secret) {
+				conf->tls.castring = safe_strdup(optarg);
+			}
+			else {
+				conf->tls.cafile = safe_strdup(optarg);
+			}
 			break;
 
 		case TLS_OPT_CA_PATH:
@@ -448,7 +573,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 
 		case TLS_OPT_CERT_BLACK_LIST:
 			conf->tls.cert_blacklist = safe_strdup(optarg);
-			inf("Warning: --tls-cert-blackList is deprecated and will be removed in the next release. Use a crl instead");
+			err("Warning: --tls-cert-blackList is deprecated and will be removed in the next release. Use a crl instead");
 			break;
 
 		case TLS_OPT_LOG_SESSION_INFO:
@@ -456,7 +581,12 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 			break;
 
 		case TLS_OPT_KEY_FILE:
-			conf->tls.keyfile = safe_strdup(optarg);
+			if (arg_is_secret) {
+				conf->tls.keystring = safe_strdup(optarg);
+			}
+			else {
+				conf->tls.keyfile = safe_strdup(optarg);
+			}
 			break;
 
 		case TLS_OPT_KEY_FILE_PASSWORD:
@@ -465,7 +595,19 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 			} else {
 				if (optind < argc && NULL != argv[optind] && '-' != argv[optind][0] ) {
 					// space separated argument value
-					conf->tls.keyfile_pw = safe_strdup(argv[optind++]);
+
+					char* pwd_val = argv[optind++];
+
+					if (get_secret_arg(&sac, pwd_val, &pwd_val, &arg_is_secret) != 0) {
+						return RESTORE_CONFIG_INIT_FAILURE;
+					}
+					
+					if (pwd_val != NULL && arg_is_secret) {
+						old_optarg = optarg;
+						optarg = pwd_val;
+					}
+
+					conf->tls.keyfile_pw = safe_strdup(pwd_val);
 				} else {
 					// No password specified should
 					// force it to default password
@@ -476,7 +618,12 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 			break;
 
 		case TLS_OPT_CERT_FILE:
-			conf->tls.certfile = safe_strdup(optarg);
+			if (arg_is_secret) {
+				conf->tls.certstring = safe_strdup(optarg);
+			}
+			else {
+				conf->tls.certfile = safe_strdup(optarg);
+			}
 			break;
 
 		case 'T':
@@ -513,7 +660,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 			break;
 
 		case COMMAND_OPT_RETRY_DELAY:
-			inf("Warning: `--sleep-between-retries` is deprecated and has no "
+			err("Warning: `--sleep-between-retries` and `--retry-delay` are deprecated and has no "
 					"effect, use `--retry-scale-factor` to configure the amount "
 					"to back off when retrying transactions.");
 			break;
@@ -594,11 +741,20 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 		case CONFIG_FILE_OPT_INSTANCE:
 		case CONFIG_FILE_OPT_NO_CONFIG_FILE:
 		case CONFIG_FILE_OPT_ONLY_CONFIG_FILE:
+		case COMMAND_SA_ADDRESS:
+		case COMMAND_SA_PORT:
+		case COMMAND_SA_TIMEOUT:
+		case COMMAND_SA_CAFILE:
 			break;
 
 		default:
 			fprintf(stderr, "Run with --help for usage information and flag options\n");
 			return RESTORE_CONFIG_INIT_FAILURE;
+		}
+
+		if (arg_is_secret) {
+			cf_free(optarg);
+			optarg = old_optarg;
 		}
 	}
 
@@ -607,40 +763,45 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 		return RESTORE_CONFIG_INIT_FAILURE;
 	}
 
+	return 0;
+}
+
+int
+restore_config_validate(restore_config_t *conf) {
 	if (conf->directory == NULL && conf->input_file == NULL && conf->directory_list == NULL) {
 		err("Invalid options: please specify a directory (-d option), directory list (--directory-list option), or an input file (-i option).");
-		return RESTORE_CONFIG_INIT_FAILURE;
+		return RESTORE_CONFIG_VALIDATE_FAILURE;
 	}
 
 	if (conf->parent_directory != NULL && conf->directory_list == NULL) {
 		err("Invalid options: --parent-directory should always be used with, and only applies to --directory-list.");
-		return RESTORE_CONFIG_INIT_FAILURE;
+		return RESTORE_CONFIG_VALIDATE_FAILURE;
 	}
 
 	if (conf->directory != NULL && conf->input_file != NULL) {
 		err("Invalid options: --directory and --input-file are mutually exclusive.");
-		return RESTORE_CONFIG_INIT_FAILURE;
+		return RESTORE_CONFIG_VALIDATE_FAILURE;
 	}
 
 	if (conf->unique && (conf->replace || conf->no_generation)) {
 		err("Invalid options: --unique is mutually exclusive with --replace and --no-generation.");
-		return RESTORE_CONFIG_INIT_FAILURE;
+		return RESTORE_CONFIG_VALIDATE_FAILURE;
 	}
 
 	if (conf->directory != NULL && conf->directory_list != NULL) {
 		err("Invalid options: --directory and --directory-list are mutually exclusive.");
-		return RESTORE_CONFIG_INIT_FAILURE;
+		return RESTORE_CONFIG_VALIDATE_FAILURE;
 	}
 
 	if (conf->input_file != NULL && conf->directory_list != NULL) {
 		err("Invalid options: --input-file and --directory-list are mutually exclusive.");
-		return RESTORE_CONFIG_INIT_FAILURE;
+		return RESTORE_CONFIG_VALIDATE_FAILURE;
 	}
 
 	if ((conf->pkey != NULL) ^ (conf->encrypt_mode != IO_PROXY_ENCRYPT_NONE)) {
 		err("Must specify both encryption mode and a private key "
 				"file/environment variable\n");
-		return RESTORE_CONFIG_INIT_FAILURE;
+		return RESTORE_CONFIG_VALIDATE_FAILURE;
 	}
 
 	if (conf->nice_list != NULL) {
@@ -650,23 +811,24 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 		if (!restore_config_parse_list("nice", 10, conf->nice_list, &nice_vec)) {
 			err("Error while parsing nice list");
 			as_vector_destroy(&nice_vec);
-			return RESTORE_CONFIG_INIT_FAILURE;
+			return RESTORE_CONFIG_VALIDATE_FAILURE;
 		}
 
 		if (nice_vec.size != 2) {
 			err("Invalid nice option");
 			as_vector_destroy(&nice_vec);
-			return RESTORE_CONFIG_INIT_FAILURE;
+			return RESTORE_CONFIG_VALIDATE_FAILURE;
 		}
 
 		char *item0 = as_vector_get_ptr(&nice_vec, 0);
 		char *item1 = as_vector_get_ptr(&nice_vec ,1);
 
+		int64_t tmp;
 		if (!better_atoi(item0, &tmp) || tmp < 1 ||
 					((uint64_t) tmp) > ULONG_MAX / (1024 * 1024)) {
 			err("Invalid bandwidth value %s", item0);
 			as_vector_destroy(&nice_vec);
-			return RESTORE_CONFIG_INIT_FAILURE;
+			return RESTORE_CONFIG_VALIDATE_FAILURE;
 		}
 
 		conf->bandwidth = ((uint64_t) tmp) * 1024 * 1024;
@@ -674,7 +836,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 		if (!better_atoi(item1, &tmp) || tmp < 1 || tmp > UINT32_MAX) {
 			err("Invalid TPS value %s", item1);
 			as_vector_destroy(&nice_vec);
-			return RESTORE_CONFIG_INIT_FAILURE;
+			return RESTORE_CONFIG_VALIDATE_FAILURE;
 		}
 
 		conf->tps = (uint32_t) tmp;
@@ -740,6 +902,10 @@ restore_config_default(restore_config_t *conf)
 
 	memset(&conf->tls, 0, sizeof(as_config_tls));
 	conf->tls_name = NULL;
+
+	sa_cfg_init(&conf->secret_cfg);
+	conf->secret_cfg.addr = safe_strdup(DEFAULT_SECRET_AGENT_HOST);
+	conf->secret_cfg.port = safe_strdup(DEFAULT_SECRET_AGENT_PORT);
 }
 
 void
@@ -819,6 +985,9 @@ restore_config_destroy(restore_config_t *conf)
 	}
 
 	tls_config_destroy(&conf->tls);
+
+	sa_config_destroy(&conf->secret_cfg);
+	
 }
 
 bool
@@ -1129,6 +1298,34 @@ usage(const char *name)
 	fprintf(stdout, " --config-file <path>\n");
 	fprintf(stdout, "                      Read this file after default configuration file.\n");
 	fprintf(stdout, " --only-config-file <path>\n");
-	fprintf(stdout, "                      Read only this configuration file.\n");
+	fprintf(stdout, "                      Read only this configuration file.\n\n");
+
+	fprintf(stdout, "[secret-agent]\n");
+	fprintf(stdout, " Options pertaining to the Aerospike secret agent https://docs.aerospike.com/tools/secret-agent.\n");
+	fprintf(stdout, " Asbackup and asrestore support getting most config file and command line options\n");
+	fprintf(stdout, " from the Aerospike secret agent. \n");
+	fprintf(stdout, " To use a secret as an option, use this format \"secrets:<resource_name>:<secret_name>\" \n");
+	fprintf(stdout, "    Examples:\n");
+	fprintf(stdout, "    asrestore -n secrets:resource1:namespace -d testout -h secrets:pass:pass --sa-address 0.0.0.0:3005\n");
+	fprintf(stdout, "    asbackup -n test -d testout --ca-file secrets:resource2:cacert\n");
+	fprintf(stdout, " --sa-address=<host_name>\n");
+	fprintf(stdout, "                      <host_name> is \"<host>[:<port>]\" \n");
+	fprintf(stdout, "                      Aerospike Secret agent hostname or IP address.\n");
+	fprintf(stdout, "                      Default: localhost:3005\n");
+	fprintf(stdout, "                      Examples:\n");
+	fprintf(stdout, "                        host1\n");
+	fprintf(stdout, "                        host1:3005\n");
+	fprintf(stdout, "                        192.168.1.10:3005\n");
+	fprintf(stdout, "                        [::]:3005\n");
+	fprintf(stdout, " --sa-port=<port>\n");
+	fprintf(stdout, "                      The port number used to connect to the Aerospike secret agent \n");
+	fprintf(stdout, "                      Default: 3005 \n");
+	fprintf(stdout, " --sa-timeout=<ms>\n");
+	fprintf(stdout, "                      Timeout in milliseconds applied when connecting\n");
+	fprintf(stdout, "                      to the Aerospike Secret agent and when requesting secrets.\n");
+	fprintf(stdout, "                      The default timeout is 1000ms.\n");
+	fprintf(stdout, " --sa-cafile=<tls_cafile>\n");
+	fprintf(stdout, "                      Path to a trusted CA certificate file.\n");
+	fprintf(stdout, "                      Used when authenticating with the Aerospike secret agent.\n");
 }
 

@@ -28,6 +28,10 @@ jobs:
       id: install-valgrind
       run: |
         sudo apt install -y valgrind
+    - name: install secret agent client requirements
+      id: install-secret-agent-client-requirements
+      run: |
+        sudo apt install -y libjansson-dev
     - name: install AWS requirements
       id: install-aws-requirements
       run: |
@@ -134,6 +138,31 @@ jobs:
     - name: Unit Test
       run: make unit
       working-directory: main
+    # - name: Set cores to get stored in /cores
+    #   run: |
+    #     sudo mkdir /cores
+    #     sudo chmod 777 /cores
+    #     # Core filenames will be of the form executable.pid.timestamp:
+    #     sudo bash -c 'echo "/cores/%e.%p.%t" > /proc/sys/kernel/core_pattern'
+    - name: Test secret agent
+      run: |
+        make run_test_secrets
+      working-directory: main
+    - name: Test secrets
+      run: |
+        make run_test_secret_agent
+      working-directory: main
+    # - name: Enable core directories
+    #   if: fails()
+    #   run: sudo chmod -R +rwx /cores/* # Enable access to core dumps (doesn't need to be in same run block)
+    # - name: Setup tmate session
+    #   if: fails()
+    #   uses: mxschmitt/action-tmate@v3
+    # - uses: actions/upload-artifact@master # capture all crashes as build artifacts
+    #   if: fails()
+    #   with:
+    #     name: crashes
+    #     path: /cores
     - name: Test Validate
       run: make run_test_validate
       working-directory: main

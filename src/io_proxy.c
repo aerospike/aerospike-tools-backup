@@ -111,40 +111,6 @@ encryption_key_clone(encryption_key_t* dst, const encryption_key_t* src)
 	}
 }
 
-int
-io_proxy_read_private_key_file(const char* pkey_file_path,
-		encryption_key_t* pkey_buf)
-{
-	FILE* pkey_file;
-	EVP_PKEY* pkey;
-
-	pkey_file = fopen(pkey_file_path, "r");
-	if (pkey_file == NULL) {
-		err("Could not open private key file \"%s\"",
-				pkey_file_path);
-		return -1;
-	}
-
-	// read the private key into the OpenSSL EVP_PKEY struct
-	pkey = PEM_read_PrivateKey(pkey_file, NULL, NULL, NULL);
-	fclose(pkey_file);
-	if (pkey == NULL) {
-		err("Unable to parse private key, make sure the key is in PEM format");
-		return -1;
-	}
-
-	pkey_buf->data = NULL;
-	// encode the key into a temporary buffer
-	pkey_buf->len = (uint64_t) i2d_PrivateKey(pkey, &pkey_buf->data);
-
-	EVP_PKEY_free(pkey);
-	if (((int64_t) pkey_buf->len) <= 0) {
-		err("OpenSSL error: %s", ERR_error_string(ERR_get_error(), NULL));
-		return -1;
-	}
-	return 0;
-}
-
 void
 encryption_key_free(encryption_key_t* key)
 {
@@ -348,7 +314,7 @@ io_proxy_init_encryption_file(io_proxy_t* io, const char* pkey_file_path,
 		return 0;
 	}
 
-	res = io_proxy_read_private_key_file(pkey_file_path, &pkey);
+	res = read_private_key_file(pkey_file_path, &pkey);
 	if (res < 0) {
 		return res;
 	}

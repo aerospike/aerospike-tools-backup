@@ -23,6 +23,11 @@
 #include <math.h>
 #include <stdatomic.h>
 
+#include <openssl/err.h>
+#include <openssl/evp.h>
+#include <openssl/pem.h>
+#include <openssl/modes.h>
+
 #include <utils.h>
 
 
@@ -188,6 +193,21 @@ err(const char *format, ...)
 
 	va_start(args, format);
 	log_line("ERR", "", format, args, false);
+	va_end(args);
+}
+
+/*
+ * Logs an error message from the secret agent client.
+ *
+ * @param format  The format string for the error message.
+ */
+void
+sa_log_err(const char *format, ...)
+{
+	va_list args;
+
+	va_start(args, format);
+	log_line("ERR", "secret-agent: ", format, args, false);
 	va_end(args);
 }
 
@@ -700,6 +720,51 @@ parse_date_time(const char *string, int64_t *nanos)
 
 	*nanos = (int64_t)secs * 1000000000;
 	return true;
+}
+
+bool
+parse_host(char** pp, char** host, char** port)
+{
+	// Format: address1:port1
+	// Destructive parse. String is modified.
+	// IPV6 addresses can start with bracket.
+	char* p = *pp;
+
+	if (*p == '[') {
+		*host = ++p;
+
+		while (*p) {
+			if (*p == ']') {
+				*p++ = 0;
+
+				if (*p == ':') {
+					p++;
+					*port = p;
+					*pp = p;
+					return true;
+				}
+				else {
+					break;
+				}
+			}
+			p++;
+		}
+	}
+	else {
+		*host = p;
+
+		while (*p) {
+			if (*p == ':') {
+				*p++ = 0;
+				*port = p;
+				*pp = p;
+				return true;
+			}
+			p++;
+		}
+	}
+	*port = 0;
+	return false;
 }
 
 /*
@@ -1994,6 +2059,18 @@ tls_config_destroy(as_config_tls* tls)
 		cf_free(tls->certfile);
 	}
 
+	if (tls->castring != NULL) {
+		cf_free(tls->castring);
+	}
+
+	if (tls->certstring != NULL) {
+		cf_free(tls->certstring);
+	}
+
+	if (tls->keystring != NULL) {
+		cf_free(tls->keystring);
+	}
+
 	memset(tls, 0, sizeof(as_config_tls));
 }
 
@@ -2011,3 +2088,193 @@ tls_config_clone(as_config_tls* clone, const as_config_tls* src)
 	clone->certfile = safe_strdup(src->certfile);
 }
 
+void
+sa_config_clone(sa_cfg* clone, const sa_cfg* src)
+{
+	memcpy(clone, src, sizeof(sa_cfg));
+	clone->addr = safe_strdup(src->addr);
+	clone->port = safe_strdup(src->port);
+	sa_tls_clone(&clone->tls, &src->tls);
+}
+
+void
+sa_config_destroy(sa_cfg* cfg)
+{
+	if (cfg->addr != NULL) {
+		cf_free((char*) cfg->addr);
+	}
+	
+	if (cfg->port != NULL) {
+		cf_free((char*) cfg->port);
+	}
+
+	sa_tls_destroy(&cfg->tls);
+
+	memset(cfg, 0, sizeof(sa_cfg));
+}
+
+void
+sa_tls_clone(sa_tls_cfg* clone, const sa_tls_cfg* src)
+{
+	memcpy(clone, src, sizeof(sa_tls_cfg));
+	clone->ca_string = safe_strdup(src->ca_string);
+}
+
+void
+sa_tls_destroy(sa_tls_cfg* cfg)
+{
+	if (cfg->ca_string != NULL) {
+		cf_free((char*) cfg->ca_string);
+	}
+
+	memset(cfg, 0, sizeof(sa_tls_cfg));
+}
+
+char* read_file_as_string(const char* path)
+{
+	FILE* fptr;
+	long flen;
+
+	fptr = fopen(path, "rb");
+	if (fptr == NULL) {
+		err("failed to open %s", path);
+		return NULL;
+	}
+
+	if (fseek(fptr, 0, SEEK_END) != 0) {
+		err("failed to seek to end of %s", path);
+		return NULL;
+	}
+
+	flen = ftell(fptr);
+	if (flen < 0) {
+		err("failed to get file length of %s", path);
+		return NULL;
+	}
+
+	rewind(fptr);
+
+	size_t fsize = (size_t) flen;
+	char* buf = (char*) cf_malloc(fsize + 1);
+	if (buf == NULL) {
+		err("failed to allocate memory for file buff, path: %s", path);
+		return NULL;
+	}
+
+	fread(buf, fsize, 1, fptr);
+	if (ferror(fptr)) {
+		cf_free(buf);
+		err("failed to read %s", path);
+		return NULL;
+	}
+
+	if (fclose(fptr) != 0) {
+		cf_free(buf);
+		err("failed closing %s", path);
+		return NULL;
+	}
+
+	buf[fsize] = 0;
+
+	return buf;
+}
+
+int
+get_secret_arg(sa_client* sc, char* path, char** res, bool* is_secret) {
+	*is_secret = false;
+	size_t secret_size = 0;
+
+	if (path && !strncmp(SA_SECRETS_PATH_REFIX, path, strlen(SA_SECRETS_PATH_REFIX))) {
+
+		if (!sc) {
+			err("secret agent client failed to initialize, this probably means a secret agent option is incorrect");
+			err("Unable to fetch secret: %s", path);
+			return 1;
+		}
+
+		if (!sc->cfg->addr || !sc->cfg->port) {
+			err("--sa-address and --sa-port must be used when using secrets");
+			return 1;
+		}
+
+		char* tmp_secret;
+		sa_err sa_status = sa_secret_get_bytes(sc, path, (uint8_t**) &tmp_secret, &secret_size);
+		if (sa_status.code == SA_OK) {
+			tmp_secret[secret_size] = 0;
+			*res = tmp_secret;
+			*is_secret = true;
+		}
+		else {
+			err("secret agent request failed err code: %d", sa_status.code);
+			return 1;
+		}
+	}
+
+	return 0;
+}
+
+int
+read_private_key_file(const char* pkey_file_path,
+		encryption_key_t* pkey_buf)
+{
+	FILE* pkey_file;
+	EVP_PKEY* pkey;
+
+	pkey_file = fopen(pkey_file_path, "r");
+	if (pkey_file == NULL) {
+		err("Could not open private key file \"%s\"",
+				pkey_file_path);
+		return -1;
+	}
+
+	// read the private key into the OpenSSL EVP_PKEY struct
+	pkey = PEM_read_PrivateKey(pkey_file, NULL, NULL, NULL);
+	fclose(pkey_file);
+	if (pkey == NULL) {
+		err("Unable to parse private key, make sure the key is in PEM format");
+		return -1;
+	}
+
+	pkey_buf->data = NULL;
+	// encode the key into a temporary buffer
+	pkey_buf->len = (uint64_t) i2d_PrivateKey(pkey, &pkey_buf->data);
+
+	EVP_PKEY_free(pkey);
+	if (((int64_t) pkey_buf->len) <= 0) {
+		err("OpenSSL error: %s", ERR_error_string(ERR_get_error(), NULL));
+		return -1;
+	}
+	return 0;
+}
+
+int
+read_private_key(char* pkey_data,
+		encryption_key_t* pkey_buf)
+{
+	BIO* key_bio = BIO_new_mem_buf(pkey_data, -1);
+
+	if (key_bio == NULL) {
+		err("Unable to allocate new BIO for private key");
+		return -1;
+	}
+
+	// read the private key into the OpenSSL EVP_PKEY struct
+	EVP_PKEY* pkey = PEM_read_bio_PrivateKey(key_bio, NULL, NULL, NULL);
+	if (pkey == NULL) {
+		err("Unable to parse private key, make sure the key is in PEM format");
+		BIO_free(key_bio);
+		return -1;
+	}
+
+	BIO_free(key_bio);
+	pkey_buf->data = NULL;
+	// encode the key into a temporary buffer
+	pkey_buf->len = (uint64_t) i2d_PrivateKey(pkey, &pkey_buf->data);
+
+	EVP_PKEY_free(pkey);
+	if (((int64_t) pkey_buf->len) <= 0) {
+		err("OpenSSL error: %s", ERR_error_string(ERR_get_error(), NULL));
+		return -1;
+	}
+	return 0;
+}
