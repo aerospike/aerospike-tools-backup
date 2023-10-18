@@ -7,8 +7,9 @@ This is the developer documentation. For user documentation, please consult http
 
 ## Building
 
-Make sure you have all dependencies installed for the Aerospike C client and asbackup.
+Make sure you have all dependencies installed for the Aerospike C client, Aerospike secret agent C client, and asbackup.
 See https://github.com/aerospike/aerospike-client-c#build-prerequisites for more C client information.
+See https://github.com/aerospike/secret-agent-client-c#building for more secret agent C client information.
 Below are dependencies for asbackup only.
 - openssl 3
 - An event library: libuv, libevent, or libev (also used by the C client submodule)
@@ -36,6 +37,8 @@ This gives you two binaries in the `bin` subdirectory -- `asbackup` and `asresto
 apt-get update
 
 # Install C client dependencies...
+
+# Install secret agent C client dependencies...
 
 # asbackup dependencies
 apt-get install build-essential libssl-dev libuv1-dev libcurl4-openssl-dev libzstd-dev
@@ -67,6 +70,8 @@ make EVENT_LIB=libuv
 yum update
 
 # Install C client dependencies...
+
+# Install secret agent C client dependencies...
 
 # asbackup dependencies
 yum groupinstall 'Development Tools'
@@ -109,6 +114,8 @@ make EVENT_LIB=libuv
 ```shell
 # Install C client dependencies...
 
+# Install secret agent C client dependencies...
+
 brew install openssl libuv curl zstd libssh2 aws-sdk-cpp
 make EVENT_LIB=libuv
 ```
@@ -118,6 +125,8 @@ Note: Some brew installs don't come with static libraries so source install are 
 
 ```shell
 # Install C client dependencies...
+
+# Install secret agent C client dependencies...
 
 # curl and aws don't come with static objects so get those later, from source
 # brew installed libssh2 currently depends on openssl 1.1.1. We source install it to link with a different openssl.
