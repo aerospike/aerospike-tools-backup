@@ -22,7 +22,7 @@
 #include <restore_config.h>
 
 #include <getopt.h>
-#include <sc_client.h>
+#include <sa_client.h>
 
 #include <conf.h>
 #include <utils.h>
@@ -299,21 +299,21 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 	// with an attached port, ex 127.0.0.1:3005
 	// then parse and use the addr and port only
 	// if the user did not also provide an explicit port
-	char* sc_addr = NULL;
-	char* sc_port = NULL;
+	char* sa_addr = NULL;
+	char* sa_port = NULL;
 	char *sa_addr_p = conf->secret_cfg.addr;
-	bool is_addr_and_port = parse_host(&conf->secret_cfg.addr, &sc_addr, &sc_port);
+	bool is_addr_and_port = parse_host(&conf->secret_cfg.addr, &sa_addr, &sa_port);
 	if (is_addr_and_port && !used_sa_port_arg) {
 		cf_free(conf->secret_cfg.port);
-		conf->secret_cfg.addr = safe_strdup(sc_addr);
-		conf->secret_cfg.port = safe_strdup(sc_port);
+		conf->secret_cfg.addr = safe_strdup(sa_addr);
+		conf->secret_cfg.port = safe_strdup(sa_port);
 		cf_free(sa_addr_p);
 	}
 
-	sc_client sac;
-	sc_client_init(&sac, &conf->secret_cfg);
+	sa_client sac;
+	sa_client_init(&sac, &conf->secret_cfg);
     
-	sc_set_log_function(&err);
+	sa_set_log_function(&sa_log_err);
 
 	// Reset optind (internal variable)
 	// to parse all options again
@@ -903,7 +903,7 @@ restore_config_default(restore_config_t *conf)
 	memset(&conf->tls, 0, sizeof(as_config_tls));
 	conf->tls_name = NULL;
 
-	sc_cfg_init(&conf->secret_cfg);
+	sa_cfg_init(&conf->secret_cfg);
 	conf->secret_cfg.addr = safe_strdup(DEFAULT_SECRET_AGENT_HOST);
 	conf->secret_cfg.port = safe_strdup(DEFAULT_SECRET_AGENT_PORT);
 }
@@ -986,7 +986,7 @@ restore_config_destroy(restore_config_t *conf)
 
 	tls_config_destroy(&conf->tls);
 
-	sc_config_destroy(&conf->secret_cfg);
+	sa_config_destroy(&conf->secret_cfg);
 	
 }
 

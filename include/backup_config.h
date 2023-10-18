@@ -38,7 +38,7 @@ extern "C" {
 
 #include <aerospike/as_scan.h>
 #include <aerospike/as_tls.h>
-#include <sc_client.h>
+#include <sa_client.h>
 
 #pragma GCC diagnostic pop
 
@@ -182,7 +182,7 @@ typedef struct backup_config {
 	char *filter_exp;
 
 	// secret agent client configs
-	sc_cfg secret_cfg;
+	sa_cfg secret_cfg;
 } backup_config_t;
 
 

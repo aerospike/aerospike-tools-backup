@@ -64,7 +64,7 @@ extern atomic_bool g_silent;
 #include <aerospike/as_node.h>
 #include <aerospike/as_vector.h>
 
-#include <sc_client.h>
+#include <sa_client.h>
 
 #pragma GCC diagnostic pop
 
@@ -360,6 +360,7 @@ void log_line(const char *tag, const char *prefix, const char *format,
 void _ver_fn(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
 void inf(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
 void err(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
+void sa_log_err(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
 void err_code(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
 const char* boolstr(bool val);
 void hex_dump_ver(const void *data, uint32_t len);
@@ -408,15 +409,15 @@ bool read_block(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
 bool read_block_dec(io_read_proxy_t *fd, uint32_t *line_no, uint32_t *col_no,
 		void *buffer, size_t size, b64_context *b64c);
 
-void sc_config_clone(sc_cfg* clone, const sc_cfg* src);
-void sc_config_destroy(sc_cfg* cfg);
-void sc_tls_clone(sc_tls_cfg* clone, const sc_tls_cfg* src);
-void sc_tls_destroy(sc_tls_cfg* cfg);
+void sa_config_clone(sa_cfg* clone, const sa_cfg* src);
+void sa_config_destroy(sa_cfg* cfg);
+void sa_tls_clone(sa_tls_cfg* clone, const sa_tls_cfg* src);
+void sa_tls_destroy(sa_tls_cfg* cfg);
 
 // the following functions are only valid in C, not C++
 #ifndef __cplusplus
 
-int get_secret_arg(sc_client* sc, char* path, char** res, bool* is_secret);
+int get_secret_arg(sa_client* sc, char* path, char** res, bool* is_secret);
 void get_node_names(as_cluster *clust, node_spec *node_specs, uint32_t n_node_specs,
 		char (**node_names)[][AS_NODE_NAME_SIZE], uint32_t *n_node_names);
 bool get_info(aerospike *as, const char *value, const char *node_name, void *context,

@@ -28,7 +28,7 @@
 #include <dirent.h>
 #include <sys/stat.h>
 
-#include <sc_client.h>
+#include <sa_client.h>
 #include "toml.h"
 
 #include <backup.h>
@@ -78,13 +78,13 @@ static bool _config_bool(const char *raw_val, void *ptr);
 
 static bool config_parse_file(const char *fname, toml_table_t **tab, char errbuf[]);
 
-static bool config_backup_cluster(toml_table_t *config_table, backup_config_t *c, const char *instance, char errbuf[], sc_client* sc);
-static bool config_backup(toml_table_t *config_table, backup_config_t *c, const char *instance, char errbuf[], sc_client* sc);
+static bool config_backup_cluster(toml_table_t *config_table, backup_config_t *c, const char *instance, char errbuf[], sa_client* sc);
+static bool config_backup(toml_table_t *config_table, backup_config_t *c, const char *instance, char errbuf[], sa_client* sc);
 
-static bool config_restore_cluster(toml_table_t *config_table, restore_config_t *c, const char *instance, char errbuf[], sc_client* sc);
-static bool config_restore(toml_table_t *config_table, restore_config_t *c, const char *instance, char errbuf[], sc_client* sc);
+static bool config_restore_cluster(toml_table_t *config_table, restore_config_t *c, const char *instance, char errbuf[], sa_client* sc);
+static bool config_restore(toml_table_t *config_table, restore_config_t *c, const char *instance, char errbuf[], sa_client* sc);
 
-static bool config_secret_agent(toml_table_t *config_table, sc_cfg *c, const char *instance, char errbuf[]);
+static bool config_secret_agent(toml_table_t *config_table, sa_cfg *c, const char *instance, char errbuf[]);
 
 static bool config_include(toml_table_t *config_table, void *c, const char *instance, int level, bool is_backup);
 static bool config_from_dir(void *c, const char *instance, char *dirname, int level, bool is_backup);
@@ -95,7 +95,7 @@ static bool password_file(const char *path, char **ptr);
 // returns 0 on success or if rtoml cannot be a secret path
 // returns a value not equal to 0 on failure
 // res is only set if a secret is successfully retrieved
-static bool get_secret_rtoml(sc_client *sc, const char *rtoml, char **res, bool *is_secret);
+static bool get_secret_rtoml(sa_client *sc, const char *rtoml, char **res, bool *is_secret);
 
 
 //=========================================================
@@ -119,18 +119,18 @@ config_from_file(void *c, const char *instance, const char *fname,
 	}
 
 	if (status && config_table) {
-		sc_set_log_function(err);
-		sc_client sc;
+		sa_set_log_function(&sa_log_err);
+		sa_client sc;
 
 		if (is_backup) {
 
-			sc_cfg* secret_cfg = &((backup_config_t*)c)->secret_cfg;
+			sa_cfg* secret_cfg = &((backup_config_t*)c)->secret_cfg;
 			if (! config_secret_agent(config_table, secret_cfg, instance, errbuf)) {
 				status = false;
 				goto cleanup;
 			}
 
-			sc_client_init(&sc, secret_cfg);
+			sa_client_init(&sc, secret_cfg);
 
 			if (! config_backup_cluster(config_table, (backup_config_t*)c, instance, errbuf, &sc)) {
 				status = false;
@@ -141,13 +141,13 @@ config_from_file(void *c, const char *instance, const char *fname,
 			}
 		} else {
 
-			sc_cfg* secret_cfg = &((restore_config_t*)c)->secret_cfg;
+			sa_cfg* secret_cfg = &((restore_config_t*)c)->secret_cfg;
 			if (! config_secret_agent(config_table, secret_cfg, instance, errbuf)) {
 				status = false;
 				goto cleanup;
 			}
 
-			sc_client_init(&sc, secret_cfg);
+			sa_client_init(&sc, secret_cfg);
 
 			if (! config_restore_cluster(config_table, (restore_config_t*)c, instance, errbuf, &sc)) {
 				status = false;
@@ -326,7 +326,7 @@ _config_bool(const char *raw_val, void *ptr)
 }
 
 static bool
-config_secret_agent(toml_table_t *config_table, sc_cfg *c, const char *instance,
+config_secret_agent(toml_table_t *config_table, sa_cfg *c, const char *instance,
 		char errbuf[])
 {
 	// Defaults to "secret-agent" section in case present.
@@ -402,14 +402,14 @@ config_secret_agent(toml_table_t *config_table, sc_cfg *c, const char *instance,
 	// with an attached port, ex 127.0.0.1:3005
 	// then parse and use the addr and port only
 	// if the user did not also provide an explicit port
-	char* sc_addr = NULL;
-	char* sc_port = NULL;
+	char* sa_addr = NULL;
+	char* sa_port = NULL;
 	char *sa_addr_p = c->addr;
-	bool is_addr_and_port = parse_host(&c->addr, &sc_addr, &sc_port);
+	bool is_addr_and_port = parse_host(&c->addr, &sa_addr, &sa_port);
 	if (is_addr_and_port && !used_sa_port_arg) {
 		cf_free(c->port);
-		c->addr = safe_strdup(sc_addr);
-		c->port = safe_strdup(sc_port);
+		c->addr = safe_strdup(sa_addr);
+		c->port = safe_strdup(sa_port);
 		cf_free(sa_addr_p);
 	}
 
@@ -418,7 +418,7 @@ config_secret_agent(toml_table_t *config_table, sc_cfg *c, const char *instance,
 
 static bool
 config_restore_cluster(toml_table_t *config_table, restore_config_t *c, const char *instance,
-		char errbuf[], sc_client* sc)
+		char errbuf[], sa_client* sc)
 {
 	// Defaults to "cluster" section in case present.
 	toml_table_t *current_table = toml_table_in(config_table, "cluster");
@@ -546,7 +546,7 @@ config_restore_cluster(toml_table_t *config_table, restore_config_t *c, const ch
 
 static bool
 config_backup_cluster(toml_table_t *config_table, backup_config_t *c, const char *instance,
-		char errbuf[], sc_client* sc)
+		char errbuf[], sa_client* sc)
 {
 	// Defaults to "cluster" section in case present.
 	toml_table_t *current_table = toml_table_in(config_table, "cluster");
@@ -801,7 +801,7 @@ config_parse_file(const char *fname, toml_table_t **tab, char errbuf[])
 
 static bool
 config_backup(toml_table_t *config_table, backup_config_t *c, const char *instance,
-		char errbuf[], sc_client* sc)
+		char errbuf[], sa_client* sc)
 {
 	// Defaults to "asbackup" section in case present.
 	toml_table_t *current_table = toml_table_in(config_table, "asbackup");
@@ -1142,7 +1142,7 @@ config_backup(toml_table_t *config_table, backup_config_t *c, const char *instan
 
 static bool
 config_restore(toml_table_t *config_table, restore_config_t *c, const char *instance,
-		char errbuf[], sc_client* sc)
+		char errbuf[], sa_client* sc)
 {
 	// Defaults to "asrestore" section in case present.
 	toml_table_t *current_table = toml_table_in(config_table, "asrestore");
@@ -1515,7 +1515,7 @@ password_file(const char *path, char **ptr)
 }
 
 static bool
-get_secret_rtoml(sc_client *sc, const char *rtoml, char **res, bool *is_secret)
+get_secret_rtoml(sa_client *sc, const char *rtoml, char **res, bool *is_secret)
 {
 	*is_secret = false;
 

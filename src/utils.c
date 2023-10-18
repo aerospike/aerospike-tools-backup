@@ -192,6 +192,21 @@ err(const char *format, ...)
 }
 
 /*
+ * Logs an error message from the secret agent client.
+ *
+ * @param format  The format string for the error message.
+ */
+void
+sa_log_err(const char *format, ...)
+{
+	va_list args;
+
+	va_start(args, format);
+	log_line("ERR", "secret-agent: ", format, args, false);
+	va_end(args);
+}
+
+/*
  * Logs an error message and includes errno information.
  *
  * @param format  The format string for the error message.
@@ -2069,16 +2084,16 @@ tls_config_clone(as_config_tls* clone, const as_config_tls* src)
 }
 
 void
-sc_config_clone(sc_cfg* clone, const sc_cfg* src)
+sa_config_clone(sa_cfg* clone, const sa_cfg* src)
 {
-	memcpy(clone, src, sizeof(sc_cfg));
+	memcpy(clone, src, sizeof(sa_cfg));
 	clone->addr = safe_strdup(src->addr);
 	clone->port = safe_strdup(src->port);
-	sc_tls_clone(&clone->tls, &src->tls);
+	sa_tls_clone(&clone->tls, &src->tls);
 }
 
 void
-sc_config_destroy(sc_cfg* cfg)
+sa_config_destroy(sa_cfg* cfg)
 {
 	if (cfg->addr != NULL) {
 		cf_free((char*) cfg->addr);
@@ -2088,26 +2103,26 @@ sc_config_destroy(sc_cfg* cfg)
 		cf_free((char*) cfg->port);
 	}
 
-	sc_tls_destroy(&cfg->tls);
+	sa_tls_destroy(&cfg->tls);
 
-	memset(cfg, 0, sizeof(sc_cfg));
+	memset(cfg, 0, sizeof(sa_cfg));
 }
 
 void
-sc_tls_clone(sc_tls_cfg* clone, const sc_tls_cfg* src)
+sa_tls_clone(sa_tls_cfg* clone, const sa_tls_cfg* src)
 {
-	memcpy(clone, src, sizeof(sc_tls_cfg));
+	memcpy(clone, src, sizeof(sa_tls_cfg));
 	clone->ca_string = safe_strdup(src->ca_string);
 }
 
 void
-sc_tls_destroy(sc_tls_cfg* cfg)
+sa_tls_destroy(sa_tls_cfg* cfg)
 {
 	if (cfg->ca_string != NULL) {
 		cf_free((char*) cfg->ca_string);
 	}
 
-	memset(cfg, 0, sizeof(sc_tls_cfg));
+	memset(cfg, 0, sizeof(sa_tls_cfg));
 }
 
 char* read_file_as_string(const char* path)
@@ -2160,11 +2175,11 @@ char* read_file_as_string(const char* path)
 }
 
 int
-get_secret_arg(sc_client* sc, char* path, char** res, bool* is_secret) {
+get_secret_arg(sa_client* sc, char* path, char** res, bool* is_secret) {
 	*is_secret = false;
 	size_t secret_size = 0;
 
-	if (path && !strncmp(SC_SECRETS_PATH_REFIX, path, strlen(SC_SECRETS_PATH_REFIX))) {
+	if (path && !strncmp(SA_SECRETS_PATH_REFIX, path, strlen(SA_SECRETS_PATH_REFIX))) {
 
 		if (!sc) {
 			err("secret agent client failed to initialize, this probably means a secret agent option is incorrect");
@@ -2178,14 +2193,14 @@ get_secret_arg(sc_client* sc, char* path, char** res, bool* is_secret) {
 		}
 
 		char* tmp_secret;
-		sc_err sc_status = sc_secret_get_bytes(sc, path, (uint8_t**) &tmp_secret, &secret_size);
-		if (sc_status.code == SC_OK) {
+		sa_err sa_status = sa_secret_get_bytes(sc, path, (uint8_t**) &tmp_secret, &secret_size);
+		if (sa_status.code == SA_OK) {
 			tmp_secret[secret_size] = 0;
 			*res = tmp_secret;
 			*is_secret = true;
 		}
 		else {
-			err("secret agent request failed err code: %d", sc_status.code);
+			err("secret agent request failed err code: %d", sa_status.code);
 			return 1;
 		}
 	}

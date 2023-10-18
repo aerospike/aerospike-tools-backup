@@ -37,7 +37,7 @@ extern "C" {
 #pragma GCC diagnostic ignored "-Wsign-conversion"
 
 #include <aerospike/as_tls.h>
-#include <sc_client.h>
+#include <sa_client.h>
 
 #pragma GCC diagnostic pop
 
@@ -173,7 +173,7 @@ typedef struct restore_config {
 	char *auth_mode;
 
 	// secret agent client configs
-	sc_cfg secret_cfg;
+	sa_cfg secret_cfg;
 } restore_config_t;
 
 

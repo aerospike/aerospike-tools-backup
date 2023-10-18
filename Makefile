@@ -131,7 +131,7 @@ DIR_C_CLIENT ?= $(DIR_MODULES)/c-client
 C_CLIENT_LIB := $(DIR_C_CLIENT)/target/$(PLATFORM)/lib/libaerospike.a
 
 DIR_SECRET_CLIENT ?= $(DIR_MODULES)/secret-agent-client
-SECRET_CLIENT_LIB := $(DIR_SECRET_CLIENT)/target/$(PLATFORM)/lib/libsecrets-client-c.a
+SECRET_CLIENT_LIB := $(DIR_SECRET_CLIENT)/target/$(PLATFORM)/lib/libsecret-agent-client-c.a
 
 INCLUDES := -I$(DIR_INC)
 INCLUDES += -I$(DIR_TOML)
