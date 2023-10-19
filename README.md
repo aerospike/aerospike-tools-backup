@@ -178,7 +178,7 @@ sudo make install
 cd ../..
 
 # build asbackup
-make EVENT_LIB=libuv ZSTD_STATIC_PATH=/opt/homebrew/lib AWS_SDK_STATIC_PATH=/usr/local/lib CURL_STATIC_PATH=/usr/local/lib OPENSSL_STATIC_PATH=/opt/homebrew/opt/openssl/lib LIBSSH2_STATIC_PATH=/usr/local/lib LIBUV_STATIC_PATH=/opt/homebrew/lib
+make EVENT_LIB=libuv ZSTD_STATIC_PATH=/opt/homebrew/lib AWS_SDK_STATIC_PATH=/usr/local/lib CURL_STATIC_PATH=/usr/local/lib OPENSSL_STATIC_PATH=/opt/homebrew/opt/openssl/lib LIBSSH2_STATIC_PATH=/usr/local/lib LIBUV_STATIC_PATH=/opt/homebrew/lib JANSSON_STATIC_PATH=/opt/homebrew/lib
 ```
 
 ## Tests
