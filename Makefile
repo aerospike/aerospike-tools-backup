@@ -150,7 +150,11 @@ ifdef M1_HOME_BREW
   INCLUDES += -I/opt/homebrew/include
 endif
 
-LIBRARIES += -ljansson
+ifeq ($(JANSSON_STATIC_PATH),)
+  LIBRARIES += -ljansson
+else
+  LIBRARIES += $(JANSSON_STATIC_PATH)/libjansson.a
+endif
 
 ifeq ($(AWS_SDK_STATIC_PATH),)
   # do not change the order of these
