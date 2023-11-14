@@ -1548,6 +1548,8 @@ parse_index_info(char *ns, char *index_str, index_param *index)
 				type = PATH_TYPE_NUMERIC;
 			} else if (strcasecmp(arg, "INT SIGNED") == 0) {
 				type = PATH_TYPE_NUMERIC;
+			}else if (strcasecmp(arg, "BLOB") == 0) {
+				type = PATH_TYPE_BLOB;
 			} else if (strcasecmp(arg, "GEO2DSPHERE") == 0 || strcasecmp(arg, "GEOJSON") == 0) {
 				type = PATH_TYPE_GEO2DSPHERE;
 			} else {

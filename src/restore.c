@@ -1411,6 +1411,10 @@ restore_index(aerospike *as, index_param *index, as_vector *set_vec,
 		case PATH_TYPE_GEO2DSPHERE:
 			dtype = AS_INDEX_GEO2DSPHERE;
 			break;
+
+		case PATH_TYPE_BLOB:
+			dtype = AS_INDEX_BLOB;
+			break;
 	}
 
 	as_policy_info policy;

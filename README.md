@@ -317,7 +317,7 @@ Let's look at the placeholders, there are quite a few.
 | `{name}`       | The name of the index. |
 | `{index-type}` | The type of index: `N` = index on bins, `L` = index on list elements, `K` = index on map keys, `V` = index on map values |
 | `{path}`       | The bin name |
-| `{data-type}`  | The data type of the indexed value: `N` = numeric, `S` = string |
+| `{data-type}`  | The data type of the indexed value: `N` = numeric, `S` = string, `G` = geo2dsphere, `B` = bytes/blob, `I` = invalid |
 
 The `["1"]` token is actually the number of values covered by the index. This is for future extensibility, i.e., for composite indexes that span more than one value. Right now, this token is always `["1"]`, though.
 

@@ -26,6 +26,8 @@ NAMESPACE = "test"
 SET = "test"
 CLIENT_ATTEMPTS = 20
 
+AEROSPIKE_VERSION_BLOB_SINDEX = "7.0.0.0"
+
 if sys.platform == "linux":
 	USE_VALGRIND = False
 else:
@@ -555,6 +557,23 @@ def create_geo_index(set_name, bin_name, index_name):
 	for _ in range(CLIENT_ATTEMPTS):
 		try:
 			ret = get_client().index_geo2dsphere_create(NAMESPACE, set_name, str(bin_name), index_name)
+			break
+		except aerospike.exception.IndexFoundError:
+			# found the index in the database, meaning it wasn't fully deleted, pause and try again
+			safe_sleep(0.5)
+	assert ret == 0, "Unexpected error while creating index"
+	GLOBALS["indexes"].append(index_name)
+
+def create_blob_index(set_name, bin_name, index_name):
+	"""
+	Creates a blob index.
+	"""
+	print("create blob index", index_name)
+	validate_index_creation(set_name, bin_name, index_name)
+	ret = -1
+	for _ in range(CLIENT_ATTEMPTS):
+		try:
+			ret = get_client().index_blob_create(NAMESPACE, set_name, bin_name, index_name)
 			break
 		except aerospike.exception.IndexFoundError:
 			# found the index in the database, meaning it wasn't fully deleted, pause and try again
