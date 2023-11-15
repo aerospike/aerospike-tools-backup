@@ -366,6 +366,7 @@ info:
 	@echo "  ARCH:       " $(ARCH)
 	@echo "  CLIENTREPO: " $(DIR_C_CLIENT)
 	@echo "  WD:         " $(shell pwd)
+	@echo "  EVENT_LIB:  " $(EVENT_LIB)
 	@echo
 	@echo "  PATHS:"
 	@echo "      source:     " $(DIR_SRC)
