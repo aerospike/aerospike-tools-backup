@@ -128,8 +128,8 @@ jobs:
     - name: Info
       run: make info
       working-directory: main
-    - name: Setup tmate session
-      uses: mxschmitt/action-tmate@v3
+    # - name: Setup tmate session
+    #   uses: mxschmitt/action-tmate@v3
     - name: Initialize codecov
       run: make coverage-init
       working-directory: main
