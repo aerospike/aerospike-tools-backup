@@ -2,9 +2,9 @@ name: Build and Test All
 
 on:
   push:
-    branches: [ master, test-ready ]
+    branches: [ master, test-ready, ]
   pull_request:
-    branches: [ master, test-ready ]
+    branches: [ master, test-ready, "bugfix/*" ]
 jobs:
   build:
     runs-on: ubuntu-22.04
@@ -128,6 +128,8 @@ jobs:
     - name: Info
       run: make info
       working-directory: main
+    # - name: Setup tmate session
+    #   uses: mxschmitt/action-tmate@v3
     - name: Initialize codecov
       run: make coverage-init
       working-directory: main

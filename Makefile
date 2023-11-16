@@ -366,6 +366,7 @@ info:
 	@echo "  ARCH:       " $(ARCH)
 	@echo "  CLIENTREPO: " $(DIR_C_CLIENT)
 	@echo "  WD:         " $(shell pwd)
+	@echo "  EVENT_LIB:  " $(EVENT_LIB)
 	@echo
 	@echo "  PATHS:"
 	@echo "      source:     " $(DIR_SRC)
@@ -414,7 +415,7 @@ $(TOML):
 	$(MAKE) -C $(DIR_TOML)
 
 $(C_CLIENT_LIB):
-	$(MAKE) -C $(DIR_C_CLIENT)
+	$(MAKE) -C $(DIR_C_CLIENT) EVENT_LIB=$(EVENT_LIB)
 
 -include $(BACKUP_DEP)
 -include $(RESTORE_DEP)
