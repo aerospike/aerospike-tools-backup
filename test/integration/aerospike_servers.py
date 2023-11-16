@@ -23,6 +23,7 @@ N_NODES = 2
 WORK_DIRECTORY = lib.WORK_DIRECTORY
 
 SERVER_IMAGE = "aerospike/aerospike-server"
+SERVER_VERSION = ""
 
 
 STATE_DIRECTORIES = ["state-%d" % i for i in range(1, N_NODES+1)]
@@ -252,6 +253,11 @@ def start_aerospike_servers(keep_work_dir=False):
 
 		print("Client connected")
 		lib.safe_sleep(1)
+
+def get_aerospike_version():
+	client = get_client()
+	resp = client.info_random_node("build")
+	return resp.split("\t")[1].strip()
 
 def stop_aerospike_servers(keep_work_dir=False):
 	"""

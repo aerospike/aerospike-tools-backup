@@ -1544,6 +1544,10 @@ text_parse_index(io_read_proxy_t *fd, as_vector *ns_vec, uint32_t *line_no,
 		case 'G':
 			path.type = PATH_TYPE_GEO2DSPHERE;
 			break;
+		
+		case 'B':
+			path.type = PATH_TYPE_BLOB;
+			break;
 
 		default:
 			err("Invalid path type character %s in block (line %u, col %u)", print_char(ch),

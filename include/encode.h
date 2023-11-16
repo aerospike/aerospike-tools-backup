@@ -88,7 +88,9 @@ typedef enum {
 	// The path results in an integer.
 	PATH_TYPE_NUMERIC,
 	// The path results in a geo2dsphere value.
-	PATH_TYPE_GEO2DSPHERE
+	PATH_TYPE_GEO2DSPHERE,
+	// The path results in a bytes/blob value.
+	PATH_TYPE_BLOB
 } path_type;
 
 /*
