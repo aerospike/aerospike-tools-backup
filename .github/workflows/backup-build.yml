@@ -2,9 +2,9 @@ name: Build and Test All
 
 on:
   push:
-    branches: [ master, test-ready, "bugfix-*" ]
+    branches: [ master, test-ready, ]
   pull_request:
-    branches: [ master, test-ready, "bugfix-*" ]
+    branches: [ master, test-ready, "bugfix/*" ]
 jobs:
   build:
     runs-on: ubuntu-22.04
