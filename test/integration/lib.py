@@ -218,7 +218,7 @@ def get_key_digest(set_name, key):
 	"""
 	Calculate the digest of the given key in the given set.
 	"""
-	return get_client().get_key_digest(NAMESPACE, set_name, key)
+	return aerospike.calc_digest(NAMESPACE, set_name, key)
 
 def test_record(set_name, key):
 	"""
