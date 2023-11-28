@@ -350,7 +350,7 @@ all: $(BINS)
 # used as a pre-requisite for make shared
 # this rule is not meant for manual use by a user
 .PHONY: _set_dynamic_options
-_set_dynamic_options: $(TOML)
+_set_dynamic_options:
 	$(eval CFLAGS += -DASB_SHARED_LIB)
 	$(eval CFLAGS += -fPIC)
 
@@ -358,7 +358,7 @@ _set_dynamic_options: $(TOML)
 # asbackup is designed as a standalone exe, use at your own risk
 # run this with the same options you would use in a normal build
 .PHONY: shared
-shared: _set_dynamic_options $(BACKUP_DYNAMIC) $(RESTORE_DYNAMIC)
+shared: _set_dynamic_options $(TOML) $(BACKUP_DYNAMIC) $(RESTORE_DYNAMIC)
 
 .PHONY: clean
 clean:
