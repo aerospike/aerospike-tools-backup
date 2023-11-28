@@ -55,7 +55,6 @@ else
   DYNAMIC_SUFFIX = so
   DYNAMIC_FLAG = -shared
 endif
-DYNAMIC_OPTIONS =
 
 CC ?= cc
 
@@ -353,14 +352,13 @@ all: $(BINS)
 .PHONY: _set_dynamic_options
 _set_dynamic_options: $(TOML)
 	$(eval CFLAGS += -DASB_SHARED_LIB)
-	$(eval DYNAMIC_OPTIONS = -fPIC)
+	$(eval CFLAGS += -fPIC)
 
 # builds asbackup and asrestore as shared libraries
 # asbackup is designed as a standalone exe, use at your own risk
 # run this with the same options you would use in a normal build
 .PHONY: shared
 shared: _set_dynamic_options $(BACKUP_DYNAMIC) $(RESTORE_DYNAMIC)
-	$(eval DYNAMIC_OPTIONS =)
 
 .PHONY: clean
 clean:
@@ -410,10 +408,10 @@ $(DIR_BIN):
 	mkdir $(DIR_BIN)
 
 $(DIR_OBJ)/%_c.o: $(DIR_SRC)/%.c | $(DIR_OBJ)
-	$(CC) $(DYNAMIC_OPTIONS) $(CFLAGS) -MMD -o $@ -c $(INCLUDES) $<
+	$(CC) $(CFLAGS) -MMD -o $@ -c $(INCLUDES) $<
 
 $(DIR_OBJ)/%_cc.o: $(DIR_SRC)/%.cc | $(DIR_OBJ)
-	$(CXX) $(DYNAMIC_OPTIONS) $(CXXFLAGS) -MMD -o $@ -c $(INCLUDES) $<
+	$(CXX) $(CXXFLAGS) -MMD -o $@ -c $(INCLUDES) $<
 
 $(BACKUP): $(BACKUP_OBJ) $(TOML) $(C_CLIENT_LIB) $(SECRET_CLIENT_LIB) | $(DIR_BIN)
 	$(CXX) $(LDFLAGS) -o $(BACKUP) $(BACKUP_OBJ) $(LIBRARIES)
@@ -428,7 +426,7 @@ $(RESTORE_DYNAMIC): $(RESTORE_OBJ) $(TOML) $(C_CLIENT_LIB) $(SECRET_CLIENT_LIB) 
 	$(CXX) $(DYNAMIC_FLAG) $(LDFLAGS) -o $(RESTORE_DYNAMIC) $(RESTORE_OBJ) $(LIBRARIES)
 
 $(TOML):
-	$(MAKE) -C $(DIR_TOML)
+	$(MAKE) -C $(DIR_TOML) CFLAGS=-fpic
 
 $(C_CLIENT_LIB):
 	$(MAKE) -C $(DIR_C_CLIENT)
