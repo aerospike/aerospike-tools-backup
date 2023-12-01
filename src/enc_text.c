@@ -487,7 +487,7 @@ text_index_type_to_label(index_type type)
 static int32_t
 text_path_type_to_label(path_type type)
 {
-	return "ISNG"[(int32_t)type];
+	return "ISNGB"[(int32_t)type];
 }
 
 /*
