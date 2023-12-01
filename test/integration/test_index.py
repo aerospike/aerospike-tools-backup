@@ -6,6 +6,7 @@ Tests the representation of indexes in backup files.
 import aerospike
 import lib
 from run_backup import backup_and_restore
+import aerospike_servers
 
 SET_NAMES = [None] + lib.index_variations(63)
 INDEX_NAMES = ["normal"] + lib.index_variations(63)
@@ -152,6 +153,25 @@ def test_geo_index():
 		lambda context: create_indexes(lib.create_geo_index),
 		None,
 		lambda context: check_indexes(lib.check_geo_index, (0.0, 0.0)),
+		restore_delay=1
+	)
+
+def test_blob_index():
+	"""
+	Tests bytes/blob indexes across all set names, index names, and index paths.
+	"""
+	# servers older than 7.0 don't support sindexes on blob bins
+	# so skip these older servers
+	aerospike_servers.start_aerospike_servers()
+	build = aerospike_servers.get_aerospike_version()
+	if build[0] < lib.AEROSPIKE_VERSION_BLOB_SINDEX[0]:
+		print("skipping test_blob_index, detected aerospike: " + build)
+		return
+
+	backup_and_restore(
+		lambda context: create_indexes(lib.create_blob_index),
+		None,
+		lambda context: check_indexes(lib.check_simple_index, bytes("testblob", "UTF-8")),
 		restore_delay=1
 	)
 
