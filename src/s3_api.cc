@@ -26,6 +26,7 @@
 #pragma GCC diagnostic ignored "-Wsign-conversion"
 
 #include <aws/core/Aws.h>
+#include <aws/core/auth/AWSCredentialsProviderChain.h>
 
 #pragma GCC diagnostic pop
 
@@ -291,7 +292,9 @@ S3API::_init_api(S3API& s3_api)
 	
 	conf.connectTimeoutMs = s3_api.connect_timeout_ms;
 
-	s3_api.client = new Aws::S3::S3Client(conf,
+	s3_api.client = new Aws::S3::S3Client(
+			std::make_shared<Aws::Auth::DefaultAWSCredentialsProviderChain>(),
+			conf,
 			Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Always,
 			false);
 
