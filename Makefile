@@ -200,17 +200,18 @@ else
     LIBRARIES += -lcurl
   else
     LIBRARIES += $(CURL_STATIC_PATH)/libcurl.a
+  endif
 
-    ifeq ($(OS),Darwin)
-      LIBRARIES += -framework SystemConfiguration
+  ifeq ($(OS),Darwin)
+    LIBRARIES += -framework SystemConfiguration
 
-      ifeq ($(LIBSSH2_STATIC_PATH),)
-        LIBRARIES += -lssh2
-      else
-        LIBRARIES += $(LIBSSH2_STATIC_PATH)/libssh2.a
-      endif
+    ifeq ($(LIBSSH2_STATIC_PATH),)
+      LIBRARIES += -lssh2
+    else
+      LIBRARIES += $(LIBSSH2_STATIC_PATH)/libssh2.a
     endif
   endif
+
 endif
 
 ifeq ($(OPENSSL_STATIC_PATH),)

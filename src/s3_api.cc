@@ -63,6 +63,9 @@ S3API::TryInitialize()
 void
 S3API::Shutdown()
 {
+	// TODO this lock probably doesn't make sense
+	// if this object is being shutdown, then no other threads
+	// should be using it
 	std::unique_lock<std::mutex> lg(s3_init_lock);
 	if (initialized) {
 		inf("Closing S3 API");
@@ -71,6 +74,18 @@ S3API::Shutdown()
 		}
 
 		Aws::ShutdownAPI(options);
+
+		this->region.clear();
+		this->bucket.clear();
+		this->profile.clear();
+		this->endpoint.clear();
+		// NOTE: logLevel should be reset to match
+		// whatever S3_DEFAULT_LOG_LEVEL is if it changes
+		this->logLevel = Aws::Utils::Logging::LogLevel::Fatal;
+		this->max_async_downloads = S3_DEFAULT_MAX_ASYNC_DOWNLOADS;
+		this->max_async_uploads = S3_DEFAULT_MAX_ASYNC_UPLOADS;
+		this->connect_timeout_ms = S3_DEFAULT_CONNECT_TIMEOUT_MS;
+
 		initialized = false;
 	}
 }
