@@ -194,6 +194,11 @@ void s3_set_log_level(s3_log_level_t log_level);
 void s3_disable_request_processing();
 
 /*
+* Indicates whether the global S3 API is initialized.
+*/
+bool s3_initialized();
+
+/*
  * Must be called just before exit, shuts down and cleans up all cloud API
  * instances.
  */
