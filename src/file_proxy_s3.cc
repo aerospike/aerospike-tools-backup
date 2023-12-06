@@ -52,6 +52,7 @@
 
 extern "C" {
 
+bool s3_initialized();
 void file_proxy_s3_shutdown();
 
 bool s3_delete_object(const char* file_path);
@@ -129,6 +130,11 @@ s3_parse_log_level(const char* log_level_str, s3_log_level_t* log_level)
 	}
 
 	return false;
+}
+
+bool
+s3_initialized() {
+	return g_api.IsInitialized();
 }
 
 /*
@@ -977,4 +983,3 @@ _calc_part_size(uint64_t max_file_size)
 	uint64_t part_size = (max_file_size + S3_MAX_N_PARTS - 1) / S3_MAX_N_PARTS;
 	return part_size < S3_MIN_PART_SIZE ? S3_MIN_PART_SIZE : part_size;
 }
-
