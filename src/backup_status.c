@@ -1326,7 +1326,7 @@ static bool
 ns_count_callback(void *context_, const char *key, const char *value)
 {
 	ns_count_context *context = (ns_count_context *)context_;
-	int64_t repl_factor;
+	int64_t effective_repl_factor;
 	int64_t object_count;
 
 	if (strcmp(key, "objects") == 0) {
@@ -1339,13 +1339,13 @@ ns_count_callback(void *context_, const char *key, const char *value)
 		return true;
 	}
 
-	if (strcmp(key, "replication-factor") == 0) {
-		if (!better_atoi(value, &repl_factor) || repl_factor < 0 || repl_factor > 100) {
+	if (strcmp(key, "effective_replication_factor") == 0) {
+		if (!better_atoi(value, &effective_repl_factor) || effective_repl_factor < 0 || effective_repl_factor > 100) {
 			err("Invalid replication factor %s", value);
 			return false;
 		}
 
-		context->factor = (uint32_t) repl_factor;
+		context->factor = (uint32_t) effective_repl_factor;
 		return true;
 	}
 
@@ -1447,7 +1447,7 @@ get_object_count(aerospike *as, const char *namespace, as_vector* set_list,
 	ver("Getting cluster object count");
 
 	*obj_count = 0;
-	uint32_t repl_factor = 0;
+	uint32_t effective_repl_factor = 0;
 
 	size_t value_size = sizeof "namespace/" - 1 + strlen(namespace) + 1;
 	char value[value_size];
@@ -1469,7 +1469,7 @@ get_object_count(aerospike *as, const char *namespace, as_vector* set_list,
 			return false;
 		}
 		if (ns_context.factor == -1u) {
-			err("Failed to find replication_factor field in namespace info result");
+			err("Failed to find effective_replication_factor field in namespace info result");
 			return false;
 		}
 
@@ -1494,12 +1494,13 @@ get_object_count(aerospike *as, const char *namespace, as_vector* set_list,
 		}
 
 		if (i == 0) {
-			repl_factor = ns_context.factor;
+			effective_repl_factor = ns_context.factor;
 		}
-		else if (ns_context.factor != repl_factor) {
-			err("Inconsitent replication factor across nodes (found two nodes "
+		else if (ns_context.factor != effective_repl_factor) {
+			inf("Warning: Inconsitent effective replication factor across nodes. " 
+					"Estimate size may be inaccurate. (found two nodes "
 					"with replication factors %" PRIu32 " and %" PRIu32 ")",
-					ns_context.factor, repl_factor);
+					ns_context.factor, effective_repl_factor);
 			return false;
 		}
 
@@ -1507,7 +1508,7 @@ get_object_count(aerospike *as, const char *namespace, as_vector* set_list,
 		*obj_count += count;
 	}
 
-	*obj_count /= repl_factor;
+	*obj_count /= effective_repl_factor;
 
 	return true;
 }
