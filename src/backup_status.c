@@ -1501,7 +1501,6 @@ get_object_count(aerospike *as, const char *namespace, as_vector* set_list,
 					"Estimate size may be inaccurate. (found two nodes "
 					"with replication factors %" PRIu32 " and %" PRIu32 ")",
 					ns_context.factor, effective_repl_factor);
-			return false;
 		}
 
 		inf("%-20s%-15" PRIu64 "%-15d", (*node_names)[i], count, ns_context.factor);
