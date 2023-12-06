@@ -280,7 +280,7 @@ S3API::_init_api(S3API& s3_api)
 		conf.region = s3_api.region;
 	}
 	if (!s3_api.profile.empty()) {
-		setenv("AWS_PROFILE", s3_api.profile.c_str(), true);
+		conf.profileName = s3_api.profile;
 	}
 	if (!s3_api.endpoint.empty()) {
 		conf.endpointOverride = s3_api.endpoint;
