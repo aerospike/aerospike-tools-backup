@@ -2597,6 +2597,10 @@ no_op(int32_t sig)
 static void
 set_s3_configs(const backup_config_t* conf)
 {
+	if (s3_initialized()) {
+		return;
+	}
+
 	if (conf->s3_region != NULL) {
 		s3_set_region(conf->s3_region);
 	}
