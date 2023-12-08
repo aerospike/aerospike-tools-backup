@@ -2088,6 +2088,9 @@ tls_config_clone(as_config_tls* clone, const as_config_tls* src)
 	clone->keyfile = safe_strdup(src->keyfile);
 	clone->keyfile_pw = safe_strdup(src->keyfile_pw);
 	clone->certfile = safe_strdup(src->certfile);
+	clone->castring = safe_strdup(src->castring);
+	clone->certstring = safe_strdup(src->certstring);
+	clone->keystring = safe_strdup(src->keystring);
 }
 
 void

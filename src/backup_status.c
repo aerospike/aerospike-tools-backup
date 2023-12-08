@@ -486,6 +486,7 @@ backup_status_destroy(backup_status_t* status)
 	as_error ae;
 	aerospike_close(status->as, &ae);
 	aerospike_destroy(status->as);
+
 	cf_free(status->as);
 
 	as_exp_destroy(status->policy->base.filter_exp);
