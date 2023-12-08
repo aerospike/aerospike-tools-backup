@@ -486,6 +486,13 @@ backup_status_destroy(backup_status_t* status)
 	as_error ae;
 	aerospike_close(status->as, &ae);
 	aerospike_destroy(status->as);
+
+	// tls_cf is shared with backup_config and also destroyed by its destructor, backup_config_destroy
+	// setting tls_cf's members to NULL will protect them from a double free
+	// (backup_config_destroy won't free NULL ptrs, and sets ptrs it frees to NULL)
+	as_config_tls* tls_cf = &status->as->config.tls;
+	memset(tls_cf, 0, sizeof(as_config_tls));
+
 	cf_free(status->as);
 
 	as_exp_destroy(status->policy->base.filter_exp);
