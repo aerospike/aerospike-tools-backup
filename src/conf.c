@@ -59,7 +59,7 @@
 // Globals.
 //
 
-char *DEFAULTPASSWORD = "SomeDefaultRandomPassword";
+char *DEFAULT_PASSWORD = "SomeDefaultRandomPassword";
 
 
 //=========================================================

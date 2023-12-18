@@ -188,7 +188,7 @@ typedef struct restore_config {
  * The restore_config_t struct returned by this method is always destroyable (and
  * should be destroyed) regardless of the return value
  */
-int restore_config_init(int argc, char* argv[], restore_config_t* conf);
+int restore_config_set(int argc, char* argv[], restore_config_t* conf);
 
 /*
  * Validates the restore config, checking for mutually exclusive options,
@@ -198,7 +198,18 @@ int restore_config_init(int argc, char* argv[], restore_config_t* conf);
  */
 int restore_config_validate(restore_config_t *conf);
 
-void restore_config_default(restore_config_t* conf);
+/* restore_config_set_defaults sets conf fields that are heap allocated
+ * to their default value. This is used internally to allow users of the shared library
+ * this function should be called after restore_config_init and before restore_config_set
+ * to set their conf values without leaking the heap allocated default values
+ */
+void restore_config_set_heap_defaults(restore_config_t *conf);
+
+/*
+ * restore_config_init initializes all conf fields to their
+ * zero value or a default value.
+ */
+void restore_config_init(restore_config_t* conf);
 
 void restore_config_destroy(restore_config_t* conf);
 

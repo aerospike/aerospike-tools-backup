@@ -83,7 +83,7 @@ restore_main(int32_t argc, char **argv)
 
 	restore_config_t conf;
 
-	int restore_config_res = restore_config_init(argc, argv, &conf);
+	int restore_config_res = restore_config_set(argc, argv, &conf);
 	if (restore_config_res != 0) {
 		if (restore_config_res == RESTORE_CONFIG_INIT_EXIT) {
 			res = EXIT_SUCCESS;
@@ -129,6 +129,7 @@ cleanup:
  */
 restore_status_t*
 restore_run(restore_config_t *conf) {
+	restore_config_set_heap_defaults(conf);
 	restore_status_t *status = start_restore(conf);
 	file_proxy_cloud_shutdown();
 

@@ -163,8 +163,8 @@ START_TEST(test_init_empty)
 	tmp_file_init("", "", "", "");
 	backup_config_t c1;
 	backup_config_t c2;
-	backup_config_default(&c1);
-	backup_config_default(&c2);
+	backup_config_init(&c1);
+	backup_config_init(&c2);
 
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0);
 
@@ -181,8 +181,8 @@ START_TEST(test_name) \
 	tmp_file_init(str_name "=true\n", "", "", ""); \
 	backup_config_t c1; \
 	backup_config_t c2; \
-	backup_config_default(&c1); \
-	backup_config_default(&c2); \
+	backup_config_init(&c1); \
+	backup_config_init(&c2); \
 	\
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0); \
 	c2.field_name = true; \
@@ -203,8 +203,8 @@ START_TEST(test_name) \
 	tmp_file_init(str_name "=314159\n", "", "", ""); \
 	backup_config_t c1; \
 	backup_config_t c2; \
-	backup_config_default(&c1); \
-	backup_config_default(&c2); \
+	backup_config_init(&c1); \
+	backup_config_init(&c2); \
 	\
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0); \
 	c2.field_name = 314159lu * (mult); \
@@ -224,8 +224,8 @@ START_TEST(test_name) \
 	tmp_file_init(str_name "=\"" str_val "\"\n", "", "", ""); \
 	backup_config_t c1; \
 	backup_config_t c2; \
-	backup_config_default(&c1); \
-	backup_config_default(&c2); \
+	backup_config_init(&c1); \
+	backup_config_init(&c2); \
 	\
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0); \
 	cf_free(c2.field_name); \
@@ -243,8 +243,8 @@ START_TEST(test_name) \
 	tmp_file_init("", "", "", str_name "=\"" str_val "\"\n"); \
 	backup_config_t c1; \
 	backup_config_t c2; \
-	backup_config_default(&c1); \
-	backup_config_default(&c2); \
+	backup_config_init(&c1); \
+	backup_config_init(&c2); \
 	\
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0); \
 	cf_free((void*)c2.field_name); \
@@ -262,8 +262,8 @@ START_TEST(test_name) \
 	tmp_file_init("", "", "", str_name "=314159\n"); \
 	backup_config_t c1; \
 	backup_config_t c2; \
-	backup_config_default(&c1); \
-	backup_config_default(&c2); \
+	backup_config_init(&c1); \
+	backup_config_init(&c2); \
 	\
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0); \
 	c2.field_name = 314159lu; \
@@ -311,8 +311,8 @@ START_TEST(test_init_set_list_single)
 	tmp_file_init("", "set=\"set-1\"", "", "");
 	backup_config_t c1;
 	backup_config_t c2;
-	backup_config_default(&c1);
-	backup_config_default(&c2);
+	backup_config_init(&c1);
+	backup_config_init(&c2);
 
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0);
 
@@ -330,8 +330,8 @@ START_TEST(test_init_set_list)
 	tmp_file_init("", "set=\"set-1,set-2,set-3\"", "", "");
 	backup_config_t c1;
 	backup_config_t c2;
-	backup_config_default(&c1);
-	backup_config_default(&c2);
+	backup_config_init(&c1);
+	backup_config_init(&c2);
 
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0);
 
@@ -351,8 +351,8 @@ START_TEST(test_init_bin_list)
 	tmp_file_init("", "bin-list=\"bin-1,bin-2,bin-3\"", "", "");
 	backup_config_t c1;
 	backup_config_t c2;
-	backup_config_default(&c1);
-	backup_config_default(&c2);
+	backup_config_init(&c1);
+	backup_config_init(&c2);
 
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0);
 
@@ -370,8 +370,8 @@ START_TEST(test_init_mod_after)
 	tmp_file_init("", "modified-after=\"2000-01-01_00:00:00\"", "", "");
 	backup_config_t c1;
 	backup_config_t c2;
-	backup_config_default(&c1);
-	backup_config_default(&c2);
+	backup_config_init(&c1);
+	backup_config_init(&c2);
 
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0);
 
@@ -400,8 +400,8 @@ START_TEST(test_init_mod_before)
 	tmp_file_init("", "modified-before=\"2000-01-01_00:00:00\"", "", "");
 	backup_config_t c1;
 	backup_config_t c2;
-	backup_config_default(&c1);
-	backup_config_default(&c2);
+	backup_config_init(&c1);
+	backup_config_init(&c2);
 
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0);
 
@@ -430,8 +430,8 @@ START_TEST(test_init_s3_log_level)
 	tmp_file_init("", "s3-log-level=\"Debug\"\n", "", "");
 	backup_config_t c1;
 	backup_config_t c2;
-	backup_config_default(&c1);
-	backup_config_default(&c2);
+	backup_config_init(&c1);
+	backup_config_init(&c2);
 
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0);
 
@@ -449,8 +449,8 @@ START_TEST(test_init_compress_mode)
 	tmp_file_init("", "compress=\"zstd\"\n", "", "");
 	backup_config_t c1;
 	backup_config_t c2;
-	backup_config_default(&c1);
-	backup_config_default(&c2);
+	backup_config_init(&c1);
+	backup_config_init(&c2);
 
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0);
 
@@ -468,8 +468,8 @@ START_TEST(test_init_encryption_mode)
 	tmp_file_init("", "encrypt=\"aes128\"\n", "", "");
 	backup_config_t c1;
 	backup_config_t c2;
-	backup_config_default(&c1);
-	backup_config_default(&c2);
+	backup_config_init(&c1);
+	backup_config_init(&c2);
 
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0);
 
@@ -640,8 +640,8 @@ START_TEST(test_init_encrypt_key_file)
 	tmp_file_init("", "encryption-key-file=\"test/test_key.pem\"\n", "", "");
 	backup_config_t c1;
 	backup_config_t c2;
-	backup_config_default(&c1);
-	backup_config_default(&c2);
+	backup_config_init(&c1);
+	backup_config_init(&c2);
 
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0);
 
@@ -669,8 +669,8 @@ START_TEST(test_init_encryption_key_env)
 
 	backup_config_t c1;
 	backup_config_t c2;
-	backup_config_default(&c1);
-	backup_config_default(&c2);
+	backup_config_init(&c1);
+	backup_config_init(&c2);
 
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0);
 	unsetenv("TEST_ENCRYPT_KEY_ENV_VAR");
@@ -721,8 +721,8 @@ START_TEST(test_init_sa_ca_file)
 	tmp_file_init("", "", "", "sa-cafile=\"test/test_key.pem\"\n");
 	backup_config_t c1;
 	backup_config_t c2;
-	backup_config_default(&c1);
-	backup_config_default(&c2);
+	backup_config_init(&c1);
+	backup_config_init(&c2);
 
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0);
 
@@ -743,8 +743,8 @@ START_TEST(test_name) \
 	tmp_file_init("", str_name "=true\n", "", ""); \
 	backup_config_t c1; \
 	backup_config_t c2; \
-	backup_config_default(&c1); \
-	backup_config_default(&c2); \
+	backup_config_init(&c1); \
+	backup_config_init(&c2); \
 	\
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0); \
 	c2.field_name = true; \
@@ -765,8 +765,8 @@ START_TEST(test_name) \
 	tmp_file_init("", str_name "=314159\n", "", ""); \
 	backup_config_t c1; \
 	backup_config_t c2; \
-	backup_config_default(&c1); \
-	backup_config_default(&c2); \
+	backup_config_init(&c1); \
+	backup_config_init(&c2); \
 	\
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0); \
 	c2.field_name = 314159lu * (mult); \
@@ -786,8 +786,8 @@ START_TEST(test_name) \
 	tmp_file_init("", str_name "=\"" str_val "\"\n", "", ""); \
 	backup_config_t c1; \
 	backup_config_t c2; \
-	backup_config_default(&c1); \
-	backup_config_default(&c2); \
+	backup_config_init(&c1); \
+	backup_config_init(&c2); \
 	\
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0); \
 	c2.field_name = strdup(str_val); \
@@ -805,8 +805,8 @@ START_TEST(test_name) \
 	tmp_file_init("", str_name "=\"" str_val "\"\n", "", ""); \
 	backup_config_t c1; \
 	backup_config_t c2; \
-	backup_config_default(&c1); \
-	backup_config_default(&c2); \
+	backup_config_init(&c1); \
+	backup_config_init(&c2); \
 	\
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0); \
 	strcpy(c2.field_name, val); \

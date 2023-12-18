@@ -50,7 +50,7 @@ static void usage(const char* name);
 //
 
 int
-restore_config_init(int argc, char* argv[], restore_config_t* conf)
+restore_config_set(int argc, char* argv[], restore_config_t* conf)
 {
 	static struct option options[] = {
 
@@ -159,7 +159,8 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 		{ NULL, 0, NULL, 0 }
 	};
 
-	restore_config_default(conf);
+	restore_config_init(conf);
+	restore_config_set_heap_defaults(conf);
 
 	int32_t optcase;
 	int64_t tmp;
@@ -374,7 +375,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 					// No password specified should
 					// force it to default password
 					// to trigger prompt.
-					conf->password = safe_strdup(DEFAULTPASSWORD);
+					conf->password = safe_strdup(DEFAULT_PASSWORD);
 				}
 			}
 			break;
@@ -612,7 +613,7 @@ restore_config_init(int argc, char* argv[], restore_config_t* conf)
 					// No password specified should
 					// force it to default password
 					// to trigger prompt.
-					conf->tls.keyfile_pw = safe_strdup(DEFAULTPASSWORD);
+					conf->tls.keyfile_pw = safe_strdup(DEFAULT_PASSWORD);
 				}
 			}
 			break;
@@ -846,13 +847,34 @@ restore_config_validate(restore_config_t *conf) {
 }
 
 void
-restore_config_default(restore_config_t *conf)
+restore_config_set_heap_defaults(restore_config_t *conf) {
+	if (conf->host == NULL) {
+		conf->host = safe_strdup(DEFAULT_HOST);
+	}
+	
+	if (conf->password == NULL) {
+		conf->password = safe_strdup(DEFAULT_PASSWORD);
+	}
+
+	if (conf->secret_cfg.addr == NULL) {
+		conf->secret_cfg.addr = safe_strdup(DEFAULT_SECRET_AGENT_HOST);
+	}
+
+	if (conf->secret_cfg.port == NULL) {
+		conf->secret_cfg.port = safe_strdup(DEFAULT_SECRET_AGENT_PORT);
+	}
+}
+
+void
+restore_config_init(restore_config_t *conf)
 {
-	conf->host = safe_strdup(DEFAULT_HOST);
+	memset(conf, 0, sizeof(restore_config_t));
+
+	conf->host = NULL;
 	conf->use_services_alternate = false;
 	conf->port = DEFAULT_PORT;
 	conf->user = NULL;
-	conf->password = safe_strdup(DEFAULTPASSWORD);
+	conf->password = NULL;
 	conf->auth_mode = NULL;
 
 	conf->s3_region = NULL;
@@ -904,8 +926,6 @@ restore_config_default(restore_config_t *conf)
 	conf->tls_name = NULL;
 
 	sa_cfg_init(&conf->secret_cfg);
-	conf->secret_cfg.addr = safe_strdup(DEFAULT_SECRET_AGENT_HOST);
-	conf->secret_cfg.port = safe_strdup(DEFAULT_SECRET_AGENT_PORT);
 }
 
 void

@@ -39,7 +39,7 @@ extern "C" {
 // Globals.
 //
 
-extern char *DEFAULTPASSWORD;
+extern char *DEFAULT_PASSWORD;
 
 
 //==========================================================
