@@ -22,14 +22,18 @@ Clone the source code of the Aerospike backup tools from GitHub.
 
     git clone https://github.com/aerospike/aerospike-tools-backup
 
-Then build the backup tools.
+Then checkout submodules and build the backup tools.
 
     cd aerospike-tools-backup
+    git submodule update --init --recursive
     make
 
 This gives you two binaries in the `bin` subdirectory -- `asbackup` and `asrestore`.
 
 ## Build Examples
+
+These examples assume you have checked out and initialized the asbackup submodules
+and are in the root directory of the asbackup project.
 
 ### Debian and Ubuntu (dynamic linking)
 
@@ -74,13 +78,16 @@ apt-get update -y
 # Install secret agent C client dependencies...
 
 # asbackup dependencies
-apt-get install -y build-essential libssl-dev libuv1-dev libzstd-dev libjansson-dev
+apt-get install -y build-essential libssl-dev libcurl4-openssl-dev libzstd-dev libjansson-dev
 
 # for aws-sdk-cpp build
 apt-get install -y cmake pkg-config zlib1g-dev
 
-# build libuv from source since the headers
-# aren't in the libuv yum package
+# for libuv source build
+apt-get install -y autotools-dev automake libtool
+
+# build libuv from source since asbackup makefile expects libuv.a
+# but libuv1-dev installs libuv_a.a #TODO support both or an override in the makefile
 git clone https://github.com/libuv/libuv
 cd libuv
 sh autogen.sh
@@ -89,6 +96,21 @@ make
 make install
 cd ..
 
+# install curl from source to leave out nghttp2
+git clone https://github.com/curl/curl.git
+cd curl
+git submodule update --init --recursive
+
+# build curl
+mkdir build
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=OFF -DBUILD_CURL_EXE=OFF
+make -C build
+
+# install curl
+cd build
+make install
+cd ../..
+
 # download aws sdk
 git clone https://github.com/aws/aws-sdk-cpp.git
 cd aws-sdk-cpp
@@ -96,7 +118,7 @@ git submodule update --init --recursive
 
 # build aws sdk dynamic
 mkdir build
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=ON -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_UNITY_BUILD=ON
 make -C build
 
 # install aws static sdk
@@ -107,8 +129,8 @@ cd ../..
 # Build asbackup
 # Each of asbackup's dependencies have corresponding environment variables
 # that are used to force static linking.
-ARCH = $(uname -m)
-make EVENT_LIB=libuv ZSTD_STATIC_PATH=/usr/lib/$(ARCH)-linux-gnu AWS_SDK_STATIC_PATH=/usr/local/lib CURL_STATIC_PATH=/usr/lib/$(ARCH)-linux-gnu OPENSSL_STATIC_PATH=/usr/lib/$(ARCH)-linux-gnu LIBUV_STATIC_PATH=/usr/local/lib JANSSON_STATIC_PATH=/usr/lib/$(ARCH)-linux-gnu
+ARCH=$(uname -m)
+make EVENT_LIB=libuv ZSTD_STATIC_PATH=/usr/lib/$ARCH-linux-gnu AWS_SDK_STATIC_PATH=/usr/local/lib CURL_STATIC_PATH=/usr/lib/$ARCH-linux-gnu OPENSSL_STATIC_PATH=/usr/lib/$ARCH-linux-gnu LIBUV_STATIC_PATH=/usr/local/lib JANSSON_STATIC_PATH=/usr/lib/$ARCH-linux-gnu
 ```
 
 ### Red Hat Enterprise Linux or CentOS (dynamic linking)
@@ -192,7 +214,7 @@ cmake -DOPENSSL_ROOT_DIR=/opt/homebrew/opt/openssl/ -DCMAKE_BUILD_TYPE=Release .
 cmake --build .
 
 # install libssh2
-sudo make install
+make install
 cd ../..
 
 # downlad curl
@@ -207,7 +229,7 @@ make -C build
 
 # install curl
 cd build
-sudo make install
+make install
 cd ../..
 
 # download aws sdk
@@ -222,7 +244,7 @@ make -C build_static
 
 # install aws static sdk
 cd build_static
-sudo make install
+make install
 cd ../..
 
 # build asbackup
