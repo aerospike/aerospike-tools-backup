@@ -165,6 +165,7 @@ START_TEST(test_init_empty)
 	backup_config_t c2;
 	backup_config_init(&c1);
 	backup_config_init(&c2);
+	backup_config_set_heap_defaults(&c2);
 
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0);
 
@@ -183,6 +184,7 @@ START_TEST(test_name) \
 	backup_config_t c2; \
 	backup_config_init(&c1); \
 	backup_config_init(&c2); \
+	backup_config_set_heap_defaults(&c2); \
 	\
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0); \
 	c2.field_name = true; \
@@ -205,6 +207,7 @@ START_TEST(test_name) \
 	backup_config_t c2; \
 	backup_config_init(&c1); \
 	backup_config_init(&c2); \
+	backup_config_set_heap_defaults(&c2); \
 	\
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0); \
 	c2.field_name = 314159lu * (mult); \
@@ -226,6 +229,7 @@ START_TEST(test_name) \
 	backup_config_t c2; \
 	backup_config_init(&c1); \
 	backup_config_init(&c2); \
+	backup_config_set_heap_defaults(&c2); \
 	\
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0); \
 	cf_free(c2.field_name); \
@@ -245,6 +249,7 @@ START_TEST(test_name) \
 	backup_config_t c2; \
 	backup_config_init(&c1); \
 	backup_config_init(&c2); \
+	backup_config_set_heap_defaults(&c2); \
 	\
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0); \
 	cf_free((void*)c2.field_name); \
@@ -264,6 +269,7 @@ START_TEST(test_name) \
 	backup_config_t c2; \
 	backup_config_init(&c1); \
 	backup_config_init(&c2); \
+	backup_config_set_heap_defaults(&c2); \
 	\
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0); \
 	c2.field_name = 314159lu; \
@@ -313,6 +319,7 @@ START_TEST(test_init_set_list_single)
 	backup_config_t c2;
 	backup_config_init(&c1);
 	backup_config_init(&c2);
+	backup_config_set_heap_defaults(&c2);
 
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0);
 
@@ -332,6 +339,7 @@ START_TEST(test_init_set_list)
 	backup_config_t c2;
 	backup_config_init(&c1);
 	backup_config_init(&c2);
+	backup_config_set_heap_defaults(&c2);
 
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0);
 
@@ -353,6 +361,7 @@ START_TEST(test_init_bin_list)
 	backup_config_t c2;
 	backup_config_init(&c1);
 	backup_config_init(&c2);
+	backup_config_set_heap_defaults(&c2);
 
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0);
 
@@ -372,6 +381,7 @@ START_TEST(test_init_mod_after)
 	backup_config_t c2;
 	backup_config_init(&c1);
 	backup_config_init(&c2);
+	backup_config_set_heap_defaults(&c2);
 
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0);
 
@@ -402,6 +412,7 @@ START_TEST(test_init_mod_before)
 	backup_config_t c2;
 	backup_config_init(&c1);
 	backup_config_init(&c2);
+	backup_config_set_heap_defaults(&c2);
 
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0);
 
@@ -432,6 +443,7 @@ START_TEST(test_init_s3_log_level)
 	backup_config_t c2;
 	backup_config_init(&c1);
 	backup_config_init(&c2);
+	backup_config_set_heap_defaults(&c2);
 
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0);
 
@@ -451,6 +463,7 @@ START_TEST(test_init_compress_mode)
 	backup_config_t c2;
 	backup_config_init(&c1);
 	backup_config_init(&c2);
+	backup_config_set_heap_defaults(&c2);
 
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0);
 
@@ -470,6 +483,7 @@ START_TEST(test_init_encryption_mode)
 	backup_config_t c2;
 	backup_config_init(&c1);
 	backup_config_init(&c2);
+	backup_config_set_heap_defaults(&c2);
 
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0);
 
@@ -642,6 +656,7 @@ START_TEST(test_init_encrypt_key_file)
 	backup_config_t c2;
 	backup_config_init(&c1);
 	backup_config_init(&c2);
+	backup_config_set_heap_defaults(&c2);
 
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0);
 
@@ -671,6 +686,7 @@ START_TEST(test_init_encryption_key_env)
 	backup_config_t c2;
 	backup_config_init(&c1);
 	backup_config_init(&c2);
+	backup_config_set_heap_defaults(&c2);
 
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0);
 	unsetenv("TEST_ENCRYPT_KEY_ENV_VAR");
@@ -723,6 +739,7 @@ START_TEST(test_init_sa_ca_file)
 	backup_config_t c2;
 	backup_config_init(&c1);
 	backup_config_init(&c2);
+	backup_config_set_heap_defaults(&c2);
 
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0);
 
@@ -745,6 +762,7 @@ START_TEST(test_name) \
 	backup_config_t c2; \
 	backup_config_init(&c1); \
 	backup_config_init(&c2); \
+	backup_config_set_heap_defaults(&c2); \
 	\
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0); \
 	c2.field_name = true; \
@@ -767,6 +785,7 @@ START_TEST(test_name) \
 	backup_config_t c2; \
 	backup_config_init(&c1); \
 	backup_config_init(&c2); \
+	backup_config_set_heap_defaults(&c2); \
 	\
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0); \
 	c2.field_name = 314159lu * (mult); \
@@ -788,6 +807,7 @@ START_TEST(test_name) \
 	backup_config_t c2; \
 	backup_config_init(&c1); \
 	backup_config_init(&c2); \
+	backup_config_set_heap_defaults(&c2); \
 	\
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0); \
 	c2.field_name = strdup(str_val); \
@@ -807,6 +827,7 @@ START_TEST(test_name) \
 	backup_config_t c2; \
 	backup_config_init(&c1); \
 	backup_config_init(&c2); \
+	backup_config_set_heap_defaults(&c2); \
 	\
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0); \
 	strcpy(c2.field_name, val); \
