@@ -130,7 +130,7 @@ cd ../..
 # Each of asbackup's dependencies have corresponding environment variables
 # that are used to force static linking.
 ARCH=$(uname -m)
-make EVENT_LIB=libuv ZSTD_STATIC_PATH=/usr/lib/$ARCH-linux-gnu AWS_SDK_STATIC_PATH=/usr/local/lib CURL_STATIC_PATH=/usr/lib/$ARCH-linux-gnu OPENSSL_STATIC_PATH=/usr/lib/$ARCH-linux-gnu LIBUV_STATIC_PATH=/usr/local/lib JANSSON_STATIC_PATH=/usr/lib/$ARCH-linux-gnu
+make EVENT_LIB=libuv ZSTD_STATIC_PATH=/usr/lib/$ARCH-linux-gnu AWS_SDK_STATIC_PATH=/usr/local/lib CURL_STATIC_PATH=/usr/local/lib OPENSSL_STATIC_PATH=/usr/lib/$ARCH-linux-gnu LIBUV_STATIC_PATH=/usr/local/lib JANSSON_STATIC_PATH=/usr/lib/$ARCH-linux-gnu
 ```
 
 ### Red Hat Enterprise Linux or CentOS (dynamic linking)
