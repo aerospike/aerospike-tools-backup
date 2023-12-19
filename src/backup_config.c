@@ -163,6 +163,7 @@ backup_config_set(int argc, char* argv[], backup_config_t* conf)
 	};
 
 	backup_config_init(conf);
+	backup_config_set_heap_defaults(conf);
 
 	int32_t opt;
 	int64_t tmp;

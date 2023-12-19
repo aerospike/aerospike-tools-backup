@@ -124,6 +124,8 @@ config_from_file(void *c, const char *instance, const char *fname,
 
 		if (is_backup) {
 
+			backup_config_set_heap_defaults((backup_config_t*)c);
+
 			sa_cfg* secret_cfg = &((backup_config_t*)c)->secret_cfg;
 			if (! config_secret_agent(config_table, secret_cfg, instance, errbuf)) {
 				status = false;
@@ -140,6 +142,8 @@ config_from_file(void *c, const char *instance, const char *fname,
 				status = false;
 			}
 		} else {
+
+			restore_config_set_heap_defaults((restore_config_t*)c);
 
 			sa_cfg* secret_cfg = &((restore_config_t*)c)->secret_cfg;
 			if (! config_secret_agent(config_table, secret_cfg, instance, errbuf)) {
