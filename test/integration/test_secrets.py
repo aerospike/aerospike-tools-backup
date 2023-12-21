@@ -623,7 +623,7 @@ def test_backup_conf_file():
 
 	conf = BackupConfigT()
 	p_conf = ctypes.POINTER(BackupConfigT)(conf)
-	backup_so.backup_config_default(p_conf)
+	backup_so.backup_config_init(p_conf)
 
 	agent = sa.get_secret_agent(config=SA_CONF_PATH)
 	try:
@@ -672,7 +672,7 @@ def test_asrestore_conf_file():
 
 	conf = RestoreConfigT()
 	p_conf = ctypes.POINTER(RestoreConfigT)(conf)
-	restore_so.restore_config_default(p_conf)
+	restore_so.restore_config_init(p_conf)
 
 	agent = sa.get_secret_agent(config=SA_CONF_PATH)
 	try:
