@@ -489,14 +489,14 @@ def setup_function(function):
     os.system("rm -rf " + SA_RSRC_PATH)
     os.system("mkdir " + SA_RSRC_PATH)
 
-def test_restore_config_init():
+def test_restore_config_set():
 	exp_argc, exp_argv = gen_args(RESTORE_SECRET_OPTIONS, "asrestore")
 	
 	expected_conf = RestoreConfigT()
 	p_exp_conf = ctypes.POINTER(RestoreConfigT)(expected_conf)
 	c_exp_argv = (ctypes.c_char_p * exp_argc)(*exp_argv)
 	p_exp_argv = ctypes.POINTER(ctypes.c_char_p)(c_exp_argv)
-	restore_so.restore_config_init(exp_argc, p_exp_argv, p_exp_conf)
+	restore_so.restore_config_set(exp_argc, p_exp_argv, p_exp_conf)
 
 	# configs that don't use secrets for these fields will fill
 	# the ~file fields instead of the ~string fields
@@ -528,7 +528,7 @@ def test_restore_config_init():
 	agent = sa.get_secret_agent(config=SA_CONF_PATH)
 	try:
 		agent.start()
-		restore_so.restore_config_init(argc, p_argv, p_conf)
+		restore_so.restore_config_set(argc, p_argv, p_conf)
 	except Exception as e:
 		raise e
 	finally:
@@ -540,14 +540,14 @@ def test_restore_config_init():
 
 	assert expected_conf == conf
 
-def test_backup_config_init():
+def test_backup_config_set():
 	exp_argc, exp_argv = gen_args(BACKUP_SECRET_OPTIONS, "asbackup")
 
 	expected_conf = BackupConfigT()
 	p_exp_conf = ctypes.POINTER(BackupConfigT)(expected_conf)
 	c_exp_argv = (ctypes.c_char_p * exp_argc)(*exp_argv)
 	p_exp_argv = ctypes.POINTER(ctypes.c_char_p)(c_exp_argv)
-	backup_so.backup_config_init(exp_argc, p_exp_argv, p_exp_conf)
+	backup_so.backup_config_set(exp_argc, p_exp_argv, p_exp_conf)
 
 	# configs that don't use secrets for these fields will file
 	# the ~file fields instead of the ~string fields
@@ -579,7 +579,7 @@ def test_backup_config_init():
 	agent = sa.get_secret_agent(config=SA_CONF_PATH)
 	try:
 		agent.start()
-		backup_so.backup_config_init(argc, p_argv, p_conf)
+		backup_so.backup_config_set(argc, p_argv, p_conf)
 	except Exception as e:
 		raise e
 	finally:
@@ -598,7 +598,7 @@ def test_backup_conf_file():
 	p_exp_conf = ctypes.POINTER(BackupConfigT)(expected_conf)
 	c_exp_argv = (ctypes.c_char_p * exp_argc)(*exp_argv)
 	p_exp_argv = ctypes.POINTER(ctypes.c_char_p)(c_exp_argv)
-	backup_so.backup_config_init(exp_argc, p_exp_argv, p_exp_conf)
+	backup_so.backup_config_set(exp_argc, p_exp_argv, p_exp_conf)
 
 	# configs that don't use secrets for these fields will fill
 	# the ~file fields instead of the ~string fields
@@ -647,7 +647,7 @@ def test_asrestore_conf_file():
 	p_exp_conf = ctypes.POINTER(RestoreConfigT)(expected_conf)
 	c_exp_argv = (ctypes.c_char_p * exp_argc)(*exp_argv)
 	p_exp_argv = ctypes.POINTER(ctypes.c_char_p)(c_exp_argv)
-	restore_so.restore_config_init(exp_argc, p_exp_argv, p_exp_conf)
+	restore_so.restore_config_set(exp_argc, p_exp_argv, p_exp_conf)
 
 	# configs that don't use secrets for these fields will fill
 	# the ~file fields instead of the ~string fields
