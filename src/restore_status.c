@@ -425,7 +425,7 @@ _init_as_config(as_config* as_conf, const restore_config_t* conf,
 
 	char* password;
 	if (conf->user) {
-		if (strcmp(conf->password, DEFAULTPASSWORD) == 0) {
+		if (strcmp(conf->password, DEFAULT_PASSWORD) == 0) {
 			password = getpass("Enter Password: ");
 		}
 		else {
@@ -443,7 +443,7 @@ _init_as_config(as_config* as_conf, const restore_config_t* conf,
 	}
 	else if (conf->tls.keyfile && conf->tls.keyfile_pw) {
 		char* keyfile_pw;
-		if (strcmp(conf->tls.keyfile_pw, DEFAULTPASSWORD) == 0) {
+		if (strcmp(conf->tls.keyfile_pw, DEFAULT_PASSWORD) == 0) {
 			keyfile_pw = getpass("Enter TLS-Keyfile Password: ");
 		}
 		else {

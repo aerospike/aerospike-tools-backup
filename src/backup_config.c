@@ -49,7 +49,7 @@ static void usage(const char *name);
 //
 
 int
-backup_config_init(int argc, char* argv[], backup_config_t* conf)
+backup_config_set(int argc, char* argv[], backup_config_t* conf)
 {
 	static struct option options[] = {
 
@@ -162,7 +162,8 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 		{ NULL, 0, NULL, 0 }
 	};
 
-	backup_config_default(conf);
+	backup_config_init(conf);
+	backup_config_set_heap_defaults(conf);
 
 	int32_t opt;
 	int64_t tmp;
@@ -377,7 +378,7 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 					// No password specified should
 					// force it to default password
 					// to trigger prompt.
-					conf->password = safe_strdup(DEFAULTPASSWORD);
+					conf->password = safe_strdup(DEFAULT_PASSWORD);
 				}
 			}
 			break;
@@ -665,7 +666,7 @@ backup_config_init(int argc, char* argv[], backup_config_t* conf)
 				} else {
 					// No password specified should force it to default password
 					// to trigger prompt.
-					conf->tls.keyfile_pw = safe_strdup(DEFAULTPASSWORD);
+					conf->tls.keyfile_pw = safe_strdup(DEFAULT_PASSWORD);
 				}
 			}
 			break;
@@ -820,10 +821,6 @@ backup_config_validate(backup_config_t* conf)
 		conf->port = DEFAULT_PORT;
 	}
 
-	if (conf->host == NULL) {
-		conf->host = safe_strdup(DEFAULT_HOST);
-	}
-
 	if (conf->ns[0] == 0 && !conf->remove_artifacts) {
 		err("Please specify a namespace (-n option)");
 		return BACKUP_CONFIG_VALIDATE_FAILURE;
@@ -923,13 +920,32 @@ backup_config_validate(backup_config_t* conf)
 }
 
 void
-backup_config_default(backup_config_t* conf)
+backup_config_set_heap_defaults(backup_config_t* conf) {
+	if (conf->host == NULL) {
+		conf->host = safe_strdup(DEFAULT_HOST);
+	}
+	
+	if (conf->password == NULL) {
+		conf->password = safe_strdup(DEFAULT_PASSWORD);
+	}
+
+	if (conf->secret_cfg.addr == NULL) {
+		conf->secret_cfg.addr = safe_strdup(DEFAULT_SECRET_AGENT_HOST);
+	}
+
+	if (conf->secret_cfg.port == NULL) {
+		conf->secret_cfg.port = safe_strdup(DEFAULT_SECRET_AGENT_PORT);
+	}
+}
+
+void
+backup_config_init(backup_config_t* conf)
 {
 	conf->host = NULL;
 	conf->port = -1;
 	conf->use_services_alternate = false;
 	conf->user = NULL;
-	conf->password = safe_strdup(DEFAULTPASSWORD);
+	conf->password = NULL;
 	conf->auth_mode = NULL;
 
 	conf->s3_region = NULL;
@@ -988,8 +1004,6 @@ backup_config_default(backup_config_t* conf)
 	conf->retry_delay = 0;
 
 	sa_cfg_init(&conf->secret_cfg);
-	conf->secret_cfg.addr = safe_strdup(DEFAULT_SECRET_AGENT_HOST);
-	conf->secret_cfg.port = safe_strdup(DEFAULT_SECRET_AGENT_PORT);
 }
 
 void

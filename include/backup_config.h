@@ -197,7 +197,7 @@ typedef struct backup_config {
  * The backup_config_t struct returned by this method is always destroyable (and
  * should be destroyed) regardless of the return value
  */
-int backup_config_init(int argc, char* argv[], backup_config_t* conf);
+int backup_config_set(int argc, char* argv[], backup_config_t* conf);
 
 /*
  * Validates the backup config, checking for mutually exclusive options,
@@ -207,7 +207,18 @@ int backup_config_init(int argc, char* argv[], backup_config_t* conf);
  */
 int backup_config_validate(backup_config_t* conf);
 
-void backup_config_default(backup_config_t* conf);
+/* backup_config_set_defaults sets conf fields that are heap allocated
+ * to their default value. This is used internally to allow users of the shared library
+ * this function should be called after backup_config_init and before backup_config_set
+ * to set their conf values without leaking the heap allocated default values
+ */
+void backup_config_set_heap_defaults(backup_config_t *conf);
+
+/*
+ * backup_config_init initializes all conf fields to their
+ * zero value or a default value.
+ */
+void backup_config_init(backup_config_t* conf);
 
 void backup_config_destroy(backup_config_t* conf);
 

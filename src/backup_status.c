@@ -319,7 +319,7 @@ backup_status_init(backup_status_t* status, backup_config_t* conf)
 
 	char* password;
 	if (conf->user) {
-		if (strcmp(conf->password, DEFAULTPASSWORD) == 0) {
+		if (strcmp(conf->password, DEFAULT_PASSWORD) == 0) {
 			password = getpass("Enter Password: ");
 		}
 		else {
@@ -334,7 +334,7 @@ backup_status_init(backup_status_t* status, backup_config_t* conf)
 
 	if (conf->tls.keyfile && conf->tls.keyfile_pw) {
 		char* tls_keyfile_pw;
-		if (strcmp(conf->tls.keyfile_pw, DEFAULTPASSWORD) == 0) {
+		if (strcmp(conf->tls.keyfile_pw, DEFAULT_PASSWORD) == 0) {
 			tls_keyfile_pw = getpass("Enter TLS-Keyfile Password: ");
 		}
 		else {

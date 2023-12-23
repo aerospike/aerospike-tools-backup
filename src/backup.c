@@ -209,7 +209,7 @@ backup_main(int32_t argc, char **argv)
 
 	backup_config_t conf;
 
-	int backup_config_res = backup_config_init(argc, argv, &conf);
+	int backup_config_res = backup_config_set(argc, argv, &conf);
 	if (backup_config_res != 0) {
 		if (backup_config_res == BACKUP_CONFIG_INIT_EXIT) {
 			res = EXIT_SUCCESS;
@@ -259,6 +259,7 @@ backup_status_t*
 backup_run(backup_config_t* conf) {
 	as_vector_init(&g_globals, sizeof(backup_globals_t), 1);
 
+	backup_config_set_heap_defaults(conf);
 	backup_status_t* status = start_backup(conf);
 
 	file_proxy_cloud_shutdown();
