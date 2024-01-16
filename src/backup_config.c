@@ -145,6 +145,7 @@ backup_config_set(int argc, char* argv[], backup_config_t* conf)
 		{ "sleep-between-retries", required_argument, NULL, COMMAND_OPT_RETRY_DELAY },
 		// support the `--retry-delay` option until a major version bump.
 		{ "retry-delay", required_argument, NULL, COMMAND_OPT_RETRY_DELAY },
+		{ "prefer-racks", required_argument, NULL, COMMAND_OPT_PREFER_RACKS },
 
 		{ "s3-region", required_argument, NULL, COMMAND_OPT_S3_REGION },
 		{ "s3-profile", required_argument, NULL, COMMAND_OPT_S3_PROFILE },
@@ -732,6 +733,10 @@ backup_config_set(int argc, char* argv[], backup_config_t* conf)
 			conf->retry_delay = (uint32_t) tmp;
 			break;
 
+		case COMMAND_OPT_PREFER_RACKS:
+			conf->prefer_racks = strdup(optarg);
+			break;
+
 		case COMMAND_OPT_S3_REGION:
 			conf->s3_region = strdup(optarg);
 			break;
@@ -1003,6 +1008,8 @@ backup_config_init(backup_config_t* conf)
 	conf->max_retries = 5;
 	conf->retry_delay = 0;
 
+	conf->prefer_racks = NULL;
+
 	sa_cfg_init(&conf->secret_cfg);
 }
 
@@ -1093,6 +1100,10 @@ backup_config_destroy(backup_config_t* conf)
 		cf_free(conf->tls_name);
 	}
 
+	if (conf->prefer_racks != NULL) {
+		cf_free(conf->prefer_racks);
+	}
+
 	tls_config_destroy(&conf->tls);
 
 	sa_config_destroy(&conf->secret_cfg);
@@ -1169,6 +1180,7 @@ backup_config_clone(backup_config_t* conf)
 	clone->partition_list = safe_strdup(conf->partition_list);
 	clone->after_digest = safe_strdup(conf->after_digest);
 	clone->filter_exp = safe_strdup(conf->filter_exp);
+	clone->prefer_racks = safe_strdup(conf->prefer_racks);
 
 	sa_config_clone(&clone->secret_cfg, &conf->secret_cfg);
 
@@ -1476,6 +1488,8 @@ usage(const char *name)
 	fprintf(stdout, "                      The default is 5.\n");
 	fprintf(stdout, "      --sleep-between-retries <ms>\n");
 	fprintf(stdout, "                      The amount of time to sleep between retries. Default is 0.\n");
+	fprintf(stdout, "      --prefer-racks <rack id 1>[,<rack id 2>[,...]]\n");
+	fprintf(stdout, "                      A list of Aerospike Server rack IDs to prefer when reading records for a backup.\n");
 	fprintf(stdout, "      --s3-region <region>\n");
 	fprintf(stdout, "                      The S3 region that the bucket(s) exist in.\n");
 	fprintf(stdout, "      --s3-profile <profile_name>\n");

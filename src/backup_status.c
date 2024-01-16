@@ -217,7 +217,7 @@ backup_status_init(backup_status_t* status, backup_config_t* conf)
 
 		if (!cf_b64_validate_and_decode(conf->filter_exp, b64_len,
 					expr->packed, &expr->packed_sz)) {
-			err("Invalide base64 encoded string: %s", conf->filter_exp);
+			err("Invalid base64 encoded string: %s", conf->filter_exp);
 			cf_free(expr);
 			goto cleanup2;
 		}
@@ -346,6 +346,32 @@ backup_status_init(backup_status_t* status, backup_config_t* conf)
 		if (!tls_read_password(tls_keyfile_pw, &as_conf.tls.keyfile_pw)) {
 			goto cleanup2;
 		}
+	}
+
+	if (conf->prefer_racks) {
+		as_vector rackids;
+		as_vector_init(&rackids, sizeof(char*), 1);
+
+		char* racks_clone = strdup(conf->prefer_racks);
+		split_string(racks_clone, ',', true, &rackids);
+
+		for (uint32_t i = 0; i < rackids.size; i++) {
+			char* id_str = (char*) as_vector_get_ptr(&rackids, i);
+			int64_t id = 0;
+			if (!better_atoi(id_str, &id) || id < 0 || id > MAX_RACKID) {
+				err("Invalid rack id %s", id_str);
+
+				cf_free(racks_clone);
+				as_vector_destroy(&rackids);
+
+				goto cleanup2;
+			}
+
+			as_config_add_rack_id(&as_conf, (int)id);
+		}
+
+		cf_free(racks_clone);
+		as_vector_destroy(&rackids);
 	}
 
 	status->as = cf_malloc(sizeof(aerospike));

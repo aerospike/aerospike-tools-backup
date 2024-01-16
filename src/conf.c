@@ -1076,6 +1076,9 @@ config_backup(toml_table_t *config_table, backup_config_t *c, const char *instan
 				status = false;
 			}
 
+		} else if (! strcasecmp("prefer-racks", name)) {
+			status = config_str(config_value, (void*)&c->prefer_racks, override);
+
 		} else if (! strcasecmp("s3-region", name)) {
 			status = config_str(config_value, (void*)&c->s3_region, override);
 

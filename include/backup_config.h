@@ -72,6 +72,9 @@ extern "C" {
 // The max number of parallel scan calls made at any one time
 #define MAX_PARALLEL 100
 
+// The largest allowable rack id
+#define MAX_RACKID 1000000
+
 /*
  * The global backup configuration and stats shared by all backup threads and the counter thread.
  */
@@ -180,6 +183,9 @@ typedef struct backup_config {
 
 	// custom b64-encoded filter expression to use in the scan calls
 	char *filter_exp;
+
+	// racks that will be preferred during record backup
+	char *prefer_racks;
 
 	// secret agent client configs
 	sa_cfg secret_cfg;
