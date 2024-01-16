@@ -1340,8 +1340,8 @@ ns_count_callback(void *context_, const char *key, const char *value)
 	}
 
 	if (strcmp(key, "effective_replication_factor") == 0) {
-		if (!better_atoi(value, &effective_repl_factor) || effective_repl_factor < 0 || effective_repl_factor > 100) {
-			err("Invalid replication factor %s", value);
+		if (!better_atoi(value, &effective_repl_factor) || effective_repl_factor < 0 || effective_repl_factor > 256) {
+			err("Invalid effective replication factor %s", value);
 			return false;
 		}
 
@@ -1497,7 +1497,7 @@ get_object_count(aerospike *as, const char *namespace, as_vector* set_list,
 			effective_repl_factor = ns_context.factor;
 		}
 		else if (ns_context.factor != effective_repl_factor) {
-			inf("Warning: Inconsitent effective replication factor across nodes. " 
+			inf("Warning: Inconsistent effective replication factor across nodes. " 
 					"Estimate size may be inaccurate. (found two nodes "
 					"with replication factors %" PRIu32 " and %" PRIu32 ")",
 					ns_context.factor, effective_repl_factor);
@@ -1506,6 +1506,9 @@ get_object_count(aerospike *as, const char *namespace, as_vector* set_list,
 		inf("%-20s%-15" PRIu64 "%-15d", (*node_names)[i], count, ns_context.factor);
 		*obj_count += count;
 	}
+
+	// if effective replication factor is 0 set it to 1 to prevent division by 0
+	effective_repl_factor = effective_repl_factor == 0 ? 1 : effective_repl_factor;
 
 	*obj_count /= effective_repl_factor;
 
