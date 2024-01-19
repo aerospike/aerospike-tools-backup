@@ -1508,7 +1508,10 @@ get_object_count(aerospike *as, const char *namespace, as_vector* set_list,
 	}
 
 	// if effective replication factor is 0 set it to 1 to prevent division by 0
-	effective_repl_factor = effective_repl_factor == 0 ? 1 : effective_repl_factor;
+	if (effective_repl_factor == 0) {
+		inf("Warning: effective replication factor is 0");
+		effective_repl_factor = 1;
+	}
 
 	*obj_count /= effective_repl_factor;
 
