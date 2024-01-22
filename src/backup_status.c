@@ -349,6 +349,9 @@ backup_status_init(backup_status_t* status, backup_config_t* conf)
 	}
 
 	if (conf->prefer_racks) {
+		as_conf.rack_aware = true;
+		status->policy->replica = AS_POLICY_REPLICA_PREFER_RACK;
+
 		as_vector rackids;
 		as_vector_init(&rackids, sizeof(char*), 1);
 
