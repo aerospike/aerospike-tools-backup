@@ -324,6 +324,7 @@ class BackupConfigT(ComparableCtStructure):
         ("partition_list", ctypes.c_char_p),
         ("after_digest", ctypes.c_char_p),
         ("filter_exp", ctypes.c_char_p),
+		("prefer_racks", ctypes.c_char_p),
 		("secret_cfg", SCCFG)
     ]
 
@@ -360,6 +361,7 @@ BACKUP_SECRET_OPTIONS = [
 	{"name": "partition-list", "value": string_val, "config_section": "asbackup"},
 	{"name": "after-digest", "value": string_val, "config_section": "asbackup"},
 	{"name": "filter-exp", "value": string_val, "config_section": "asbackup"},
+	{"name": "prefer-racks", "value": string_val, "config_section": "asbackup"},
 	{"name": "modified-after", "value": modified_by_val, "config_section": "asbackup"},
 	{"name": "modified-before", "value": modified_by_val, "config_section": "asbackup"},
 	{"name": "records-per-second", "value": int_val, "config_section": "asbackup"},

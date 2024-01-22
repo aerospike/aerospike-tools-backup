@@ -140,6 +140,7 @@ assert_bup_config_eq(backup_config_t *c1, backup_config_t *c2)
 	CMP_STR_FIELD(c1->after_digest, c2->after_digest);
 	CMP_STR_FIELD(c1->partition_list, c2->partition_list);
 	CMP_STR_FIELD(c1->after_digest, c2->after_digest);
+	CMP_STR_FIELD(c1->prefer_racks, c2->prefer_racks);
 
 	CMP_STR_FIELD(c1->s3_region, c2->s3_region);
 	CMP_STR_FIELD(c1->s3_profile, c2->s3_profile);
@@ -366,6 +367,26 @@ START_TEST(test_init_bin_list)
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0);
 
 	c2.bin_list = strdup("bin-1,bin-2,bin-3");
+
+	assert_bup_config_eq(&c1, &c2);
+
+	backup_config_destroy(&c2);
+	backup_config_destroy(&c1);
+}
+END_TEST
+
+START_TEST(test_init_prefer_racks)
+{
+	tmp_file_init("", "prefer-racks=\"4,2,0\"", "", "");
+	backup_config_t c1;
+	backup_config_t c2;
+	backup_config_init(&c1);
+	backup_config_init(&c2);
+	backup_config_set_heap_defaults(&c2);
+
+	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, true), 0);
+
+	c2.prefer_racks = strdup("4,2,0");
 
 	assert_bup_config_eq(&c1, &c2);
 
@@ -896,6 +917,7 @@ Suite* backup_conf_suite()
 	tcase_add_test(tc_init, test_init_mod_after);
 	tcase_add_test(tc_init, test_init_mod_before);
 	tcase_add_test(tc_init, test_init_ttl_zero);
+	tcase_add_test(tc_init, test_init_prefer_racks);
 
 	tcase_add_test(tc_init, test_init_tls_enable);
 	tcase_add_test(tc_init, test_init_tls_protocols);

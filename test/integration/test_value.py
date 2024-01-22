@@ -82,7 +82,8 @@ def test_string_value():
 	backup_and_restore(
 		lambda context: put_values(lib.SET, "key", STRING_VALUES),
 		None,
-		lambda context: check_values(lib.SET, "key", STRING_VALUES)
+		lambda context: check_values(lib.SET, "key", STRING_VALUES),
+		backup_opts= ["--prefer-racks", "0"]
 	)
 
 def test_blob_value():
@@ -92,7 +93,8 @@ def test_blob_value():
 	backup_and_restore(
 		lambda context: put_values(lib.SET, "key", BLOB_VALUES),
 		None,
-		lambda context: check_values(lib.SET, "key", BLOB_VALUES)
+		lambda context: check_values(lib.SET, "key", BLOB_VALUES),
+		backup_opts= ["--prefer-racks", "0,2,3"]
 	)
 
 def test_blob_value_compact():
