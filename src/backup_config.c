@@ -41,7 +41,7 @@ extern char *aerospike_client_version;
 // Forward Declarations.
 //
 
-static void print_version(void);
+static void print_version();
 static void usage(const char *name);
 
 //==========================================================
@@ -1244,12 +1244,31 @@ backup_config_allow_uncovered_partitions(const backup_config_t* conf)
  * Print the tool's version information.
  */
 static void
-print_version(void)
+print_version()
 {
-	fprintf(stdout, "Aerospike Backup Utility\n");
-	fprintf(stdout, "Version %s\n", TOOL_VERSION);
-	fprintf(stdout, "C Client Version %s\n", aerospike_client_version);
-	fprintf(stdout, "Copyright 2015-2021 Aerospike. All rights reserved.\n");
+	char* build = NULL;
+	char* version_cpy = strdup(TOOL_VERSION);
+	char* token = strtok(version_cpy, "-");
+	char* version = token;
+
+	token = strtok(NULL, "-");
+
+	while (token != NULL) {
+		token = strtok(NULL, "-");
+
+		if (token != NULL) {
+			build = token;
+		}
+	}
+	
+	fprintf(stdout, "Aerospike Backup\n");
+	fprintf(stdout, "Version %s\n", version);
+
+	if (build != NULL) {
+		fprintf(stdout, "Build %s\n", build);
+	}
+
+	free(version_cpy);
 }
 
 /*
