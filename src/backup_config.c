@@ -41,7 +41,7 @@ extern char *aerospike_client_version;
 // Forward Declarations.
 //
 
-static void print_version(void);
+static void print_version();
 static void usage(const char *name);
 
 //==========================================================
