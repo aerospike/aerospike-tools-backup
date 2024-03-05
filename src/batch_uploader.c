@@ -679,6 +679,8 @@ _categorize_write_result(as_error* ae, const restore_config_t* conf)
 
 		default: 
 			// Default to retrying the transaction.
+			err_code("RETRYABLE Error while storing record, will retry - code %d: %s at %s:%d",
+					ae->code, ae->message, ae->file, ae->line);
 			return WRITE_RESULT_RETRY;
 	}
 }
