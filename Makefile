@@ -172,6 +172,13 @@ ifeq ($(AWS_SDK_STATIC_PATH),)
   LIBRARIES += -laws-checksums
   LIBRARIES += -laws-c-cal
   LIBRARIES += -laws-c-common
+
+  ifeq ($(CURL_STATIC_PATH),)
+    LIBRARIES += -lcurl
+  else
+    LIBRARIES += $(CURL_STATIC_PATH)/libcurl.a
+  endif
+
 else
   # do not change the order of these
   LIBRARIES += $(AWS_SDK_STATIC_PATH)/libaws-cpp-sdk-s3.a
