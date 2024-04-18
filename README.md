@@ -364,7 +364,7 @@ The header line is always followed by zero or more lines that contain meta infor
 
   * The first line specifies the namespace from which this backup file was created.
 
-  * The second line marks this backup file as the first in a set of backup files. We discussed above what exactly this means and why it is important.
+  * The second line is optional and marks this backup file as the first in a set of backup files. We discussed above what exactly this means and why it is important.
 
 We also introduced a new notation, `escape(...)`. Technically, a namespace identifier can contain space characters or line feeds. As the backup file format uses spaces and line feeds as token separators, they need to be escaped when they appear inside a token. We escape a token by adding a backslash ("\\") character before any spaces, line feeds, and backslashes in the token. And that's what `escape(...)` means.
 
@@ -384,8 +384,14 @@ The meta data section is always followed by zero or more lines that contain glob
 
 Lines in the global section always start with a `["*"] [SP]` prefix. Let's first look at lines that describe secondary indexes.
 
-    ["*"] [SP] [escape({namespace})] [SP] [escape({set})] [SP] [escape({name})] [SP]
+    ["*"] [SP] ["i"] [SP] [escape({namespace})] [SP] [escape({set})] [SP] [escape({name})] [SP]
                [{index-type}] [SP] ["1"] [SP] [escape({path})] [SP] [{data-type}] [LF]
+
+Or if a secondary index has a context defined on it.
+
+    ["*"] [SP] ["i"] [SP] [escape({namespace})] [SP] [escape({set})] [SP] [escape({name})] [SP]
+               [{index-type}] [SP] ["1"] [SP] [escape({path})] [SP] [{data-type}] [SP] [{context}] [LF]
+
 
 Let's look at the placeholders, there are quite a few.
 
@@ -397,12 +403,13 @@ Let's look at the placeholders, there are quite a few.
 | `{index-type}` | The type of index: `N` = index on bins, `L` = index on list elements, `K` = index on map keys, `V` = index on map values |
 | `{path}`       | The bin name |
 | `{data-type}`  | The data type of the indexed value: `N` = numeric, `S` = string, `G` = geo2dsphere, `B` = bytes/blob, `I` = invalid |
+| `{context}` | This and the white space character before it are optional. It is the base64 encoded CDT context for secondary index defined on a CDT element.  |
 
 The `["1"]` token is actually the number of values covered by the index. This is for future extensibility, i.e., for composite indexes that span more than one value. Right now, this token is always `["1"]`, though.
 
 Let's now look at how UDF files are represented in the global section.
 
-    ["*"] [SP] [{type}] [SP] [escape({name})] [SP] [{length}] [SP] [{content}] [LF]
+    ["*"] [SP] ["u"] [SP] [{type}] [SP] [escape({name})] [SP] [{length}] [SP] [{content}] [LF]
 
 Here's what the placeholders stand for.
 
@@ -466,14 +473,14 @@ Here's what the above placeholders stand for.
 
 The record header lines are followed by `{bin-count}`-many lines of bin data. Each bin data line starts with a `["-"] [SP]` prefix. Depending on the bin data type, a bin data line can generally have one of the following five forms.
 
-    ["-"] [SP] ["N"] [SP] [escape({bin-name})]
+    ["-"] [SP] ["N"] [SP] [escape({bin-name})] [LF]
     ["-"] [SP] ["Z"] [SP] [escape({bin-name})] [SP] [{bool-value}] [LF]
     ["-"] [SP] ["I"] [SP] [escape({bin-name})] [SP] [{int-value}] [LF]
     ["-"] [SP] ["D"] [SP] [escape({bin-name})] [SP] [{float-value}] [LF]
     ["-"] [SP] ["S"] [SP] [escape({bin-name})] [SP] [{string-length}] [SP] [{string-data}] [LF]
     ["-"] [SP] ["B"] ["!"]? [SP] [escape({bin-name})] [SP] [{bytes-length}] [SP] [{bytes-data}] [LF]
 
-The first form represents a `NIL`-valued bin. The remaining four forms represent an integer-valued, a double-valued, a string-valued, and a bytes-valued bin. They are completely analogous to the above four forms for an integer, a double, a string, and a bytes record key value. Accordingly, the placeholders `{int-value}`, `{float-value}`, `{string-length}`, `{string-data}`, `{bytes-length}`, and `{bytes-data}` work in exactly the same way -- just for bin values instead of key values.
+The first form represents a `NIL`-valued bin. The remaining five forms represent a boolean-valued, an integer-valued, a double-valued, a string-valued, and a bytes-valued bin. Except for the boolean bins, they are completely analogous to the above four forms for an integer, a double, a string, and a bytes record key value. Accordingly, the placeholders `{int-value}`, `{float-value}`, `{string-length}`, `{string-data}`, `{bytes-length}`, and `{bytes-data}` work in exactly the same way -- just for bin values instead of key values.
 
 | Placeholder       | Content |
 |-------------------|---------|
