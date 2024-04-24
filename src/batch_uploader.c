@@ -879,7 +879,7 @@ _batch_submit_callback(as_error* ae, as_batch_records* batch, void* udata,
 			else { // delay == -1
 				err("Max batch-write retries exceeded (%" PRIu32 ")",
 						tracker->retry_status.attempts);
-				if (!uploader->conf->ignore_rec_error) {
+				if (uploader->conf->ignore_rec_error) {
 					status.ignored_records += records->size;
 				}
 			}
@@ -1022,7 +1022,7 @@ _key_put_submit_finish(record_batch_tracker_t* tracker)
 		else { // delay == -1
 			err("Max key-put retries exceeded (%" PRIu32 ")",
 					tracker->retry_status.attempts);
-			if (!uploader->conf->ignore_rec_error) {
+			if (uploader->conf->ignore_rec_error) {
 				tracker->status.ignored_records += tracker->records.size;
 			}
 		}
