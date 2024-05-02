@@ -305,6 +305,8 @@ DEFINE_STR_SECRET_TEST(test_init_sa_address, "sa-address", secret_cfg.addr, "127
 DEFINE_STR_SECRET_TEST(test_init_sa_port, "sa-port", secret_cfg.port, "3005");
 DEFINE_INT_SECRET_TEST(test_init_sa_timeout, "sa-timeout", secret_cfg.timeout);
 
+DEFINE_INT_TEST(test_init_login_timeout_ms, "login-timeout-ms", login_timeout_ms);
+
 #undef DEFINE_BOOL_TEST
 #undef DEFINE_INT_TEST_MULT
 #undef DEFINE_INT_TEST
