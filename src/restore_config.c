@@ -144,6 +144,13 @@ restore_config_set(int argc, char* argv[], restore_config_t* conf)
 		{ "max-async-batches", required_argument, NULL, COMMAND_OPT_MAX_ASYNC_BATCHES },
 		{ "batch-size", required_argument, NULL, COMMAND_OPT_BATCH_SIZE },
 		{ "event-loops", required_argument, NULL, COMMAND_OPT_EVENT_LOOPS },
+		{ "max-commands-in-process", required_argument, NULL, COMMAND_OPT_MAX_COMMANDS_IN_PROCESS },
+		{ "max-commands-in-queue", required_argument, NULL, COMMAND_OPT_MAX_COMMANDS_IN_QUEUE },
+		{ "login-timeout-ms", required_argument, NULL, COMMAND_OPT_LOGIN_TIMEOUT_MS },
+		{ "async-min-conns-per-node", required_argument, NULL, COMMAND_OPT_ASYNC_MIN_CONNS_PER_NODE },
+		{ "async-max-conns-per-node", required_argument, NULL, COMMAND_OPT_ASYNC_MAX_CONNS_PER_NODE },
+		{ "error-rate-window", required_argument, NULL, COMMAND_OPT_ERROR_RATE_WINDOW },
+		{ "max-error-rate", required_argument, NULL, COMMAND_OPT_MAX_ERROR_RATE },
 
 		{ "s3-region", required_argument, NULL, COMMAND_OPT_S3_REGION },
 		{ "s3-profile", required_argument, NULL, COMMAND_OPT_S3_PROFILE },
@@ -694,12 +701,60 @@ restore_config_set(int argc, char* argv[], restore_config_t* conf)
 			conf->batch_size = (uint32_t) tmp;
 			break;
 
+		case COMMAND_OPT_MAX_COMMANDS_IN_PROCESS:
+			if (!better_atoi(optarg, &tmp) || tmp < 0 || tmp > UINT32_MAX) {
+				err("Invalid max_commands_in_process value %s", optarg);
+				return RESTORE_CONFIG_INIT_FAILURE;
+			} conf->max_commands_in_process = (uint32_t) tmp;
+			break;
+
+		case COMMAND_OPT_MAX_COMMANDS_IN_QUEUE:
+			if (!better_atoi(optarg, &tmp) || tmp < 0 || tmp > UINT32_MAX) {
+				err("Invalid max_commands_in_queue value %s", optarg);
+				return RESTORE_CONFIG_INIT_FAILURE;
+			} conf->max_commands_in_queue = (uint32_t) tmp;
+			break;
+
+		case COMMAND_OPT_LOGIN_TIMEOUT_MS:
+			if (!better_atoi(optarg, &tmp) || tmp < 0 || tmp > UINT32_MAX) {
+				err("Invalid login_timeout_ms value %s", optarg);
+				return RESTORE_CONFIG_INIT_FAILURE;
+			} conf->login_timeout_ms = (uint32_t) tmp;
+			break;
+
+		case COMMAND_OPT_ASYNC_MIN_CONNS_PER_NODE:
+			if (!better_atoi(optarg, &tmp) || tmp < 0 || tmp > UINT32_MAX) {
+				err("Invalid async_min_conns_per_node value %s", optarg);
+				return RESTORE_CONFIG_INIT_FAILURE;
+			} conf->async_min_conns_per_node = (uint32_t) tmp;
+			break;
+
+		case COMMAND_OPT_ASYNC_MAX_CONNS_PER_NODE:
+			if (!better_atoi(optarg, &tmp) || tmp < 0 || tmp > UINT32_MAX) {
+				err("Invalid async_max_conns_per_node value %s", optarg);
+				return RESTORE_CONFIG_INIT_FAILURE;
+			} conf->async_max_conns_per_node = (uint32_t) tmp;
+			break;
+
+		case COMMAND_OPT_ERROR_RATE_WINDOW:
+			if (!better_atoi(optarg, &tmp) || tmp < 0 || tmp > UINT32_MAX) {
+				err("Invalid value error_rate_window %s", optarg);
+				return RESTORE_CONFIG_INIT_FAILURE;
+			} conf->error_rate_window = (uint32_t) tmp;
+			break;
+
+		case COMMAND_OPT_MAX_ERROR_RATE:
+			if (!better_atoi(optarg, &tmp) || tmp < 0 || tmp > UINT32_MAX) {
+				err("Invalid max_error_rate value %s", optarg);
+				return RESTORE_CONFIG_INIT_FAILURE;
+			} conf->max_error_rate = (uint32_t) tmp;
+			break;
+		
 		case COMMAND_OPT_EVENT_LOOPS:
 			if (!better_atoi(optarg, &tmp) || tmp < 0 || tmp > UINT32_MAX) {
 				err("Invalid event-loops value %s", optarg);
 				return RESTORE_CONFIG_INIT_FAILURE;
-			}
-			conf->event_loops = (uint32_t) tmp;
+			} conf->event_loops = (uint32_t) tmp;
 			break;
 
 		case COMMAND_OPT_S3_REGION:
@@ -713,7 +768,6 @@ restore_config_set(int argc, char* argv[], restore_config_t* conf)
 		case COMMAND_OPT_S3_ENDPOINT_OVERRIDE:
 			conf->s3_endpoint_override = strdup(optarg);
 			break;
-
 		case COMMAND_OPT_S3_MAX_ASYNC_DOWNLOADS:
 			if (!better_atoi(optarg, &tmp) || tmp <= 0 || tmp > UINT32_MAX) {
 				err("Invalid S3 max async downloads value %s", optarg);
@@ -916,11 +970,18 @@ restore_config_init(restore_config_t *conf)
 
 	conf->socket_timeout = 10 * 1000;
 	conf->total_timeout = 0;
+	conf->login_timeout_ms = DEFAULT_LOGIN_TIMEOUT_MS;
 
 	conf->disable_batch_writes = false;
 	conf->max_async_batches = DEFAULT_MAX_ASYNC_BATCHES;
 	conf->batch_size = BATCH_SIZE_UNDEFINED;
 	conf->event_loops = DEFAULT_EVENT_LOOPS;
+	conf->max_commands_in_process = 0;
+	conf->max_commands_in_queue = DEFAULT_MAX_COMMANDS_IN_QUEUE;
+	conf->async_min_conns_per_node = 0;
+	conf->async_max_conns_per_node = DEFAULT_ASYNC_MAX_CONNS_PER_NODE;
+	conf->error_rate_window = DEFAULT_ERROR_RATE_WINDOW;
+	conf->max_error_rate = DEFAULT_MAX_ERROR_RATE;
 
 	memset(&conf->tls, 0, sizeof(as_config_tls));
 	conf->tls_name = NULL;
@@ -1261,7 +1322,9 @@ usage(const char *name)
 	fprintf(stdout, "                      Wait for restored secondary indexes to finish building.\n");
 	fprintf(stdout, "                      Wait for restored UDFs to be distributed across the cluster.\n");
 	fprintf(stdout, "  -T TIMEOUT, --timeout=TIMEOUT\n");
-	fprintf(stdout, "                      Set the timeout (ms) for commands. Default: 10000\n");
+	fprintf(stdout, "                      Set the timeout (ms) for commands.\n");
+	fprintf(stdout, "                      Default: 10000.\n");
+	fprintf(stdout, "                      Corresponds to the conn_timeout_ms config in the C client.\n");
 	fprintf(stdout, "      --socket-timeout <ms>\n");
 	fprintf(stdout, "                      Socket timeout for write transactions in milliseconds.\n");
 	fprintf(stdout, "                      Default is 10 seconds.\n");
@@ -1272,6 +1335,9 @@ usage(const char *name)
 	fprintf(stdout, "                      If this value is 0 and --timeout is set, then the --timeout\n");
 	fprintf(stdout, "                      value is used as the write transaction timeout.\n");
 	fprintf(stdout, "                      Default is 0, i.e. no timeout.\n");
+	fprintf(stdout, "      --login-timeout-ms <ms>\n");
+	fprintf(stdout, "                      Timeout used when first logging into Aerospike nodes.\n");
+	fprintf(stdout, "                      Default is 5000.\n");
 	fprintf(stdout, "      --max-retries <n>\n");
 	fprintf(stdout, "                      Maximum number of retries before aborting the current write transaction.\n");
 	fprintf(stdout, "                      The default is 5.\n");
@@ -1300,6 +1366,30 @@ usage(const char *name)
 	fprintf(stdout, "                      The number of c-client event loops to initialize for\n");
 	fprintf(stdout, "                      processing of asynchronous Aerospike transactions.\n");
 	fprintf(stdout, "                      Default is 1.\n");
+	fprintf(stdout, "      --async-min-conns-per-node <n>\n");
+	fprintf(stdout, "                      The minimum number of asynchronous connections to maintain to each node.\n");
+	fprintf(stdout, "                      Can be used preallocate connections to nodes.\n");
+	fprintf(stdout, "                      The C client will periodically open new connections to maintain this number.\n");
+	fprintf(stdout, "      --async-max-conns-per-node <n>\n");
+	fprintf(stdout, "                      The maximum number of asynchronous connections allowed for each node.\n");
+	fprintf(stdout, "                      This limit will be enforced at the node/event loop level.\n");
+	fprintf(stdout, "                      If the value is 100 and 2 event loops are created,\n");
+	fprintf(stdout, "                      then each node/event loop asynchronous (non-pipeline) connection pool will have a limit of 50.\n");
+	fprintf(stdout, "                      New restore transactions will be rejected and retried later if starting them would exceed this limit.\n");
+	fprintf(stdout, "      --max-commands-in-process <n>\n");
+	fprintf(stdout, "                      The maximum number of restore transactions (write/batch-write transactions)\n");
+	fprintf(stdout, "                      that can be processed in each event loop at any point in time.\n");
+	fprintf(stdout, "                      If this limit is reached, the next transaction will be placed on the delay queue.\n");
+	fprintf(stdout, "                      Default is --async_max_conns_per_node / --event-loops.\n");
+	fprintf(stdout, "                      Values for --max-commands-in-process may not be less than the default.\n");
+	fprintf(stdout, "      --max-commands-in-queue <n>\n");
+	fprintf(stdout, "                      The maximum amount transactions that can be stored on the delay queue.\n");
+	fprintf(stdout, "                      When this limit is reached transactions will be rejected and retried later.\n");
+	fprintf(stdout, "                      Default is 10000.\n");
+	fprintf(stdout, "      --max-commands-in-process <n>\n");
+	fprintf(stdout, "                      The minimum number of asynchronous connections to maintain to each node.\n");
+	fprintf(stdout, "                      Can be used preallocate connections to nodes.\n");
+	fprintf(stdout, "                      The C client will periodically open new connections to maintain this number.\n");
 	fprintf(stdout, "      --s3-region <region>\n");
 	fprintf(stdout, "                      The S3 region that the bucket(s) exist in.\n");
 	fprintf(stdout, "      --s3-profile <profile_name>\n");

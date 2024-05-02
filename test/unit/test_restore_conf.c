@@ -771,6 +771,14 @@ DEFINE_INT_TEST(test_init_extra_ttl, "extra-ttl", extra_ttl);
 DEFINE_STR_TEST(test_init_bandwidth, "nice", nice_list, "1024,100");
 DEFINE_INT_TEST(test_init_tps, "tps", tps);
 
+DEFINE_INT_TEST(test_init_event_loops, "event-loops", event_loops);
+DEFINE_INT_TEST(test_init_max_commands_in_process, "max_commands_process", max_commands_in_process);
+DEFINE_INT_TEST(test_init_login_timeout_ms, "login_timeout_ms", login_timeout_ms);
+DEFINE_INT_TEST(test_init_async_min_conns_per_node, "async_min_conns_per_node", async_min_conns_per_node);
+DEFINE_INT_TEST(test_init_async_max_conns_per_node, "async_max_conns_per_node", async_max_conns_per_node);
+DEFINE_INT_TEST(test_init_error_rate_window, "error_rate_window", error_rate_window);
+DEFINE_INT_TEST(test_init_max_error_rate, "max_error_rate", max_error_rate);
+
 DEFINE_STR_TEST(test_init_s3_region, "s3-region", s3_region, "us-west-1");
 DEFINE_STR_TEST(test_init_s3_profile, "s3-profile", s3_profile, "default");
 DEFINE_STR_TEST(test_init_s3_endpoint_override, "s3-endpoint-override", s3_endpoint_override,
