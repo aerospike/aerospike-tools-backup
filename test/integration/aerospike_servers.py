@@ -22,7 +22,7 @@ N_NODES = 2
 
 WORK_DIRECTORY = lib.WORK_DIRECTORY
 
-SERVER_IMAGE = "aerospike/aerospike-server"
+SERVER_IMAGE = "aerospike/aerospike-server:7.0.0.5"
 SERVER_VERSION = ""
 
 
