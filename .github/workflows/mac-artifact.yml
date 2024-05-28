@@ -15,7 +15,7 @@ jobs:
     strategy:
       matrix:
         os: [macos-11, macos-14]
-    runs-on: macos-11
+    runs-on: ${{ matrix.os }}
     env:
       AWS_SDK_CPP_VERSION: 1.10.55
       LIBCURL_VERSION: curl-7_83_1
