@@ -14,7 +14,25 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [macos-14]
+        os: [macos-11, macos-14]
+        include:
+          - os: macos-11
+            openssl-path: /usr/local/opt/openssl
+            zstd-path: /usr/local
+            aws-sdk-path: /usr/local
+            curl-path: /usr/local
+            ssh2-path: /usr/local
+            uv-path: /usr/local
+            jansson-path: /usr/local
+          - os: macos-14
+            openssl-path: /opt/homebrew/opt/openssl
+            zstd-path: /opt/homebrew
+            aws-sdk-path: /usr/local
+            curl-path: /usr/local
+            ssh2-path: /usr/local
+            uv-path: /opt/homebrew
+            jansson-path: /opt/homebrew
+
     runs-on: ${{ matrix.os }}
     env:
       AWS_SDK_CPP_VERSION: 1.10.55
@@ -23,7 +41,6 @@ jobs:
       ZSTD_VERSION: 1.4.9
       LD_LIBRARY_PATH: /usr/local/lib
       EVENT_LIB: libuv
-      OPENSSL_PATH: /opt/homebrew/opt/openssl
     steps:
     - name: Get checkout directory
       uses: haya14busa/action-cond@v1
@@ -84,7 +101,7 @@ jobs:
       if: steps.cache-aws-sdk-cpp.outputs.cache-hit != 'true'
       run: |
         mkdir build_static
-        cmake -S . -B build_static -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib
+        cmake -S . -B build_static -DOPENSSL_ROOT_DIR=${{ matrix.openssl-path }} -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib
         make -C build_static
       working-directory: aws-sdk-cpp-${{ env.AWS_SDK_CPP_VERSION }}
     - name: Cache libssh2
@@ -109,7 +126,7 @@ jobs:
       run: |
         mkdir build_static
         pushd build_static
-        cmake -DOPENSSL_ROOT_DIR=/usr/local/opt/openssl -DCMAKE_BUILD_TYPE=Release ..
+        cmake -DOPENSSL_ROOT_DIR=${{ matrix.openssl-path }} -DCMAKE_BUILD_TYPE=Release ..
         cmake --build .
       working-directory: libssh2-${{ env.LIBSSH2_VERSION }}
     - name: Install libssh2
@@ -137,7 +154,7 @@ jobs:
       if: steps.cache-libcurl.outputs.cache-hit != 'true'
       run: |
         mkdir build
-        cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=OFF -DBUILD_CURL_EXE=OFF -DOPENSSL_ROOT_DIR=/usr/local/opt/openssl OPENSSL_USE_STATIC_LIBS=TRUE -DHTTP_ONLY=ON
+        cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=OFF -DBUILD_CURL_EXE=OFF -DOPENSSL_ROOT_DIR=${{ matrix.openssl-path }} OPENSSL_USE_STATIC_LIBS=TRUE -DHTTP_ONLY=ON
         make -C build
       working-directory: curl-${{ env.LIBCURL_VERSION }}
     - name: Install libcurl
@@ -205,8 +222,7 @@ jobs:
     - name: Build asbackup with static link to zstd and aws-sdk-cpp
       if: steps.cache-asbackup.outputs.cache-hit != 'true'
       run: |
-        make DEFAULT_EVENT_LIB=libuv ZSTD_STATIC_PATH=/opt/homebrew/lib  AWS_SDK_STATIC_PATH=/usr/local/lib CURL_STATIC_PATH=/usr/local/lib OPENSSL_STATIC_PATH=${{ env.OPENSSL_PATH }}/lib LIBSSH2_STATIC_PATH=/usr/local/lib LIBUV_STATIC_PATH=/opt/homebrew/lib JANSSON_STATIC_PATH=/opt/homebrew/lib
-        # make ZSTD_STATIC_PATH=/usr/local/lib AWS_SDK_STATIC_PATH=/usr/local/lib CURL_STATIC_PATH=/usr/local/lib OPENSSL_STATIC_PATH=/usr/local/opt/openssl/lib LIBSSH2_STATIC_PATH=/usr/local/lib LIBUV_STATIC_PATH=/usr/local/lib JANSSON_STATIC_PATH=/usr/local/lib
+        make ZSTD_STATIC_PATH=${{ matrix.zstd-path }}/lib  AWS_SDK_STATIC_PATH=${{ matrix.aws-sdk-path }}/lib CURL_STATIC_PATH=${{ matrix.curl-path }}/lib OPENSSL_STATIC_PATH=${{ matrix.openssl-path }}/lib LIBSSH2_STATIC_PATH=${{ matrix.ssh2-path }}/lib LIBUV_STATIC_PATH=${{ matrix.uv-path }}/lib JANSSON_STATIC_PATH=${{ matrix.jansson-path }}/lib
         mkdir -p binaries
         cp -r bin binaries/static_bin
         make clean
