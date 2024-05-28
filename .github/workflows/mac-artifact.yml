@@ -85,7 +85,7 @@ jobs:
       uses: actions/cache@v3
       env:
         cache-name: aws-sdk-cpp
-        cache-index: "1"
+        cache-index: "2"
       with:
         path: aws-sdk-cpp-${{ env.AWS_SDK_CPP_VERSION }}
         key: aws-sdk-cpp-${{ env.cache-index }}-mac-artifact-${{ env.AWS_SDK_CPP_VERSION }}-${{ runner.os }}-cmake-${{ env.CMAKE_VERSION }}
@@ -109,7 +109,7 @@ jobs:
       uses: actions/cache@v3
       env:
         cache-name: libssh2
-        cache-index: "1"
+        cache-index: "2"
       with:
         path: libssh2-${{ env.LIBSSH2_VERSION }}
         key: libssh2-v2-${{ env.LIBSSH2_VERSION }}-${{ env.cache-index }}-${{ runner.os }}-cmake-${{ env.CMAKE_VERSION }}
@@ -138,7 +138,7 @@ jobs:
       uses: actions/cache@v3
       env:
         cache-name: libcurl
-        cache-index: "1"
+        cache-index: "2"
       with:
         path: curl-${{ env.LIBCURL_VERSION }}
         key: curl-v2-${{ env.LIBCURL_VERSION }}-${{ env.cache-index }}-${{ runner.os }}-cmake-${{ env.CMAKE_VERSION }}
