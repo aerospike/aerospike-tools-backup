@@ -1,9 +1,9 @@
 name: Mac Artifact
 on:
   push:
-    branches: [ master, "bugfix-*" ]
+    branches: [ master, "bugfix-*", actions-hub ]
   pull_request:
-    branches: [ master, "bugfix-*" ]
+    branches: [ master, "bugfix-*", actions-hub ]
   workflow_call:
     inputs:
       submodule:
@@ -218,7 +218,7 @@ jobs:
         path: ${{ steps.working-dir.outputs.value }}/binaries/static_bin/asbackup
         if-no-files-found: error
     - name: Upload static asrestore artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v3
       with: 
         name: ${{ steps.system-info.outputs.platform }}-${{ runner.arch }}-${{ runner.os }}-${{ steps.system-info.outputs.release }}-asrestore-static
         path: ${{ steps.working-dir.outputs.value }}/binaries/static_bin/asrestore
@@ -235,7 +235,7 @@ jobs:
         uses: actions/download-artifact@v2
         with:
           path: binaries
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v3
         with:
           name: binaries
           path: binaries
