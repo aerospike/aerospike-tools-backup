@@ -171,57 +171,57 @@ def test_s3_state_file_to_s3():
 def test_s3_backup_multiple_files_state_file_to_s3():
 	do_s3_backup(10, n_records=10000, backup_opts=['--file-limit', '1'], state_file_to_s3=True, state_file_explicit=True)
 
-# def test_s3_backup_small():
-# 	do_s3_backup(0, n_records=100, backup_opts=['--s3-region', S3_REGION])
+def test_s3_backup_small():
+	do_s3_backup(0, n_records=100, backup_opts=['--s3-region', S3_REGION])
 
-# def test_s3_backup():
-# 	do_s3_backup(0)
+def test_s3_backup():
+	do_s3_backup(0)
 
-# def test_s3_backup_multiple_files():
-# 	do_s3_backup(0, n_records=10000, backup_opts=['--file-limit', '1', '--s3-connect-timeout', '2000'], restore_opts=['--s3-connect-timeout', '2000'])
+def test_s3_backup_multiple_files():
+	do_s3_backup(0, n_records=10000, backup_opts=['--file-limit', '1', '--s3-connect-timeout', '2000'], restore_opts=['--s3-connect-timeout', '2000'])
 
-# def test_s3_backup_interrupt():
-# 	do_s3_backup(1, n_records=10000, backup_opts=['--records-per-second', '200'])
+def test_s3_backup_interrupt():
+	do_s3_backup(1, n_records=10000, backup_opts=['--records-per-second', '200'])
 
-# def test_s3_backup_multiple_files_interrupt():
-# 	do_s3_backup(10, n_records=10000, backup_opts=['--file-limit', '1'])
+def test_s3_backup_multiple_files_interrupt():
+	do_s3_backup(10, n_records=10000, backup_opts=['--file-limit', '1'])
 
-# def test_s3_restore_directory_list():
-# 	as_srv.start_aerospike_servers()
+def test_s3_restore_directory_list():
+	as_srv.start_aerospike_servers()
 
-# 	backup_files_loc = lib.temporary_path("minio_dir")
-# 	os.mkdir(backup_files_loc, 0o755)
-# 	min_srv.start_minio_server(MINIO_NAME, backup_files_loc)
+	backup_files_loc = lib.temporary_path("minio_dir")
+	os.mkdir(backup_files_loc, 0o755)
+	min_srv.start_minio_server(MINIO_NAME, backup_files_loc)
 
-# 	# make the buckets
-# 	backup_bucket_names = ["dir1", "dir2"]
-# 	paths = []
-# 	restore_dirs = ""
-# 	for bucket in backup_bucket_names:
+	# make the buckets
+	backup_bucket_names = ["dir1", "dir2"]
+	paths = []
+	restore_dirs = ""
+	for bucket in backup_bucket_names:
 
-# 		path_string = backup_files_loc + "/" + bucket
-# 		os.mkdir(path_string, 0o755)
+		path_string = backup_files_loc + "/" + bucket
+		os.mkdir(path_string, 0o755)
 
-# 		s3_path = "s3://" + bucket + "/test_dir"
-# 		restore_dirs += s3_path + ","
-# 		paths.append(s3_path)
+		s3_path = "s3://" + bucket + "/test_dir"
+		restore_dirs += s3_path + ","
+		paths.append(s3_path)
 
-# 	# trim trailing comma
-# 	restore_dirs = restore_dirs[:-1]
+	# trim trailing comma
+	restore_dirs = restore_dirs[:-1]
 
-# 	n_records = 8000
-# 	filler = lambda context: record_gen.put_records(n_records, context, lib.SET, False, 0)
-# 	checker = lambda context: record_gen.check_records(n_records, context, lib.SET, False, 0)
+	n_records = 8000
+	filler = lambda context: record_gen.put_records(n_records, context, lib.SET, False, 0)
+	checker = lambda context: record_gen.check_records(n_records, context, lib.SET, False, 0)
 
-# 	backup_options1 = COMMON_S3_OPTS + ["-d", paths[0], "--partition-list", "0-2048"]
-# 	backup_options2 = COMMON_S3_OPTS + ["-d", paths[1], "--partition-list", "2048-2048"]
-# 	restore_options = COMMON_S3_OPTS + ["--directory-list", restore_dirs]
+	backup_options1 = COMMON_S3_OPTS + ["-d", paths[0], "--partition-list", "0-2048"]
+	backup_options2 = COMMON_S3_OPTS + ["-d", paths[1], "--partition-list", "2048-2048"]
+	restore_options = COMMON_S3_OPTS + ["--directory-list", restore_dirs]
 
-# 	multi_backup_and_restore(filler, None, checker, backup_opts=[backup_options1, backup_options2],
-# 		 restore_opts=restore_options, env=S3_ENV, do_compress_and_encrypt=False)
+	multi_backup_and_restore(filler, None, checker, backup_opts=[backup_options1, backup_options2],
+		 restore_opts=restore_options, env=S3_ENV, do_compress_and_encrypt=False)
 
-# 	# remove backup artifacts
-# 	for path in paths:
-# 		backup_to_directory(path, *COMMON_S3_OPTS, '--remove-artifacts', env=S3_ENV)
+	# remove backup artifacts
+	for path in paths:
+		backup_to_directory(path, *COMMON_S3_OPTS, '--remove-artifacts', env=S3_ENV)
 	
-# 	min_srv.stop_minio_server(MINIO_NAME)
+	min_srv.stop_minio_server(MINIO_NAME)
