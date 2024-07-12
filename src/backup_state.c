@@ -136,8 +136,11 @@ backup_state_save(backup_state_t* state)
 	}
 
 	if (file_proxy_truncate(state->file) != 0) {
-		err("Unable to truncate backup state file");
+		inf("Warning: Unable to truncate backup state file");
 		// don't treat this as a critical error
+		// this always happens when the backup state is 
+		// being written to S3 because file_proxy_s3_truncate
+		// is a no-op that returns EOF
 	}
 
 	// commit the backup state to the file

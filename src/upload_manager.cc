@@ -372,14 +372,9 @@ bool
 UploadManager::_UploadPart(int part_number,
 		std::shared_ptr<Aws::StringStream>& body)
 {
-	// Don't try uploading this part if the backup has been stopped, just
-	// immediately mark the part as failed and return.
 	backup_status_t* backup_status = get_g_backup_status();
 	if (backup_status_has_stopped(backup_status)) {
-		async_finished_mutex.lock();
-		failed_part_list.emplace_back(part_number, body);
-		async_finished_mutex.unlock();
-		return true;
+		inf("Upload manager received stop signal, finishing part: %d", part_number);
 	}
 
 	g_api.RegisterAsyncUpload();

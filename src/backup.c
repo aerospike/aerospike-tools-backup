@@ -634,6 +634,30 @@ start_backup(backup_config_t* conf)
 			goto cleanup4;
 		}
 
+		if (conf->directory != NULL) {
+			// check if state_file_loc is an s3 path and matches
+			// conf->directory, this is not allowed. Allowing them to match
+			// means the state file would overwrite the backup files.
+
+			uint8_t file_proxy_type = file_proxy_path_type(state_file_loc);
+			if (file_proxy_type == FILE_PROXY_TYPE_S3) {
+				// what if one path ends with a '/' and the other doesn't?
+				if (state_file_loc[strlen(state_file_loc) - 1] == '/') {
+					state_file_loc[strlen(state_file_loc) - 1] = '\0';
+				}
+
+				if (conf->directory[strlen(conf->directory) - 1] == '/') {
+					conf->directory[strlen(conf->directory) - 1] = '\0';
+				}
+
+				if (strcmp(state_file_loc, conf->directory) == 0) {
+					err("--state-file-dst cannot be the same S3 path as --directory");
+					cf_free(state_file_loc);
+					goto cleanup4;
+				}
+			}
+		}
+
 		cf_free(conf->state_file_dst);
 		conf->state_file_dst = state_file_loc;
 	}
