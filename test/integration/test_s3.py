@@ -77,10 +77,10 @@ def do_s3_backup(max_interrupts, n_records=10000, backup_opts=None,
 				state_path = "s3://" + S3_BUCKET + "/test_dir"
 				state_file = state_path + "/" + lib.NAMESPACE + '.asb.state'
 				state_path = state_file
-			elif state_file_dir:
+			else:
 				# state path cannot be the same as backup directory
-				state_path = "s3://" + S3_BUCKET + "/state_dir"
-				state_file = state_path + "/" + lib.NAMESPACE + '.asb.state'
+				state_path = "s3://" + S3_BUCKET + "/state_file.asb.state"
+				state_file = state_path
 
 		while True:
 			opts = comp_enc_mode + backup_opts
