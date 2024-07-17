@@ -56,7 +56,7 @@ jobs:
         cond: ${{ inputs.submodule != '' }}
         if_true: aerospike-tools/${{ inputs.submodule }}  # In this case we are expecting to checkout the tools package.
         if_false: asbackup
-    - uses: kenchan0130/actions-system-info@master
+    - uses: kenchan0130/actions-system-info@v1.3.0
       id: system-info
     - name: install libuv
       id: install-libuv
@@ -250,7 +250,7 @@ jobs:
     if: "${{ inputs.submodule == '' }}"
 
     steps: 
-      - uses: kenchan0130/actions-system-info@master
+      - uses: kenchan0130/actions-system-info@v1.3.0
         id: system-info
       - name: Get artifacts
         uses: actions/download-artifact@v2
