@@ -26,7 +26,8 @@ COMMON_S3_OPTS = ['--s3-endpoint-override', '127.0.0.1:9000']
 
 
 def do_s3_backup(max_interrupts, n_records=10000, backup_opts=None,
-		restore_opts=None, state_file_dir=False, state_file_explicit=False, backup_cout=0):
+		restore_opts=None, state_file_dir=False, state_file_explicit=False,
+		backup_cout=0, state_file_to_s3=False):
 	if backup_opts == None:
 		backup_opts = []
 	if restore_opts == None:
@@ -70,6 +71,16 @@ def do_s3_backup(max_interrupts, n_records=10000, backup_opts=None,
 		elif state_file_explicit:
 			state_path = lib.temporary_path("asb.state")
 			state_file = state_path
+		
+		if state_file_to_s3:
+			if state_file_explicit:
+				state_path = "s3://" + S3_BUCKET + "/test_dir"
+				state_file = state_path + "/" + lib.NAMESPACE + '.asb.state'
+				state_path = state_file
+			else:
+				# state path cannot be the same as backup directory
+				state_path = "s3://" + S3_BUCKET + "/state_file.asb.state"
+				state_file = state_path
 
 		while True:
 			opts = comp_enc_mode + backup_opts
@@ -86,7 +97,7 @@ def do_s3_backup(max_interrupts, n_records=10000, backup_opts=None,
 				filler = lambda context: record_gen.put_records(n_records, context,
 						lib.SET, False, 0)
 
-			if state_file_dir or state_file_explicit:
+			if state_file_dir or state_file_explicit or state_file_to_s3:
 				opts += ['--state-file-dst', state_path]
 
 			opts += COMMON_S3_OPTS
@@ -157,6 +168,12 @@ def do_s3_backup(max_interrupts, n_records=10000, backup_opts=None,
 			backup_to_file(path, *COMMON_S3_OPTS, '--remove-artifacts', env=env)
 		
 	min_srv.stop_minio_server(MINIO_NAME)
+
+def test_s3_state_file_to_s3():
+	do_s3_backup(1, n_records=50000, backup_opts=['--records-per-second', '2000'], state_file_to_s3=True)
+
+def test_s3_backup_multiple_files_state_file_to_s3():
+	do_s3_backup(10, n_records=10000, backup_opts=['--file-limit', '1'], state_file_to_s3=True, state_file_explicit=True)
 
 def test_s3_backup_small():
 	do_s3_backup(0, n_records=100, backup_opts=['--s3-region', S3_REGION])
