@@ -14,9 +14,9 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [macos-11, macos-14]
+        os: [macos-12, macos-14]
         include:
-          - os: macos-11
+          - os: macos-12
             openssl-path: /usr/local/opt/openssl
             zstd-path: /usr/local
             aws-sdk-path: /usr/local
