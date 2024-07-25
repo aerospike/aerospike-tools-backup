@@ -1,9 +1,9 @@
 name: Mac Artifact
 on:
   push:
-    branches: [ master, "bugfix-*", actions-hub ]
+    branches: [ master, "bugfix-*", actions-hub]
   pull_request:
-    branches: [ master, "bugfix-*", actions-hub ]
+    branches: [ master, "bugfix-*", actions-hub]
   workflow_call:
     inputs:
       submodule:
@@ -12,7 +12,28 @@ on:
         type: string
 jobs:
   build:
-    runs-on: macos-11
+    strategy:
+      matrix:
+        os: [macos-12, macos-14]
+        include:
+          - os: macos-12
+            openssl-path: /usr/local/opt/openssl
+            zstd-path: /usr/local
+            aws-sdk-path: /usr/local
+            curl-path: /usr/local
+            ssh2-path: /usr/local
+            uv-path: /usr/local
+            jansson-path: /usr/local
+          - os: macos-14
+            openssl-path: /opt/homebrew/opt/openssl
+            zstd-path: /opt/homebrew
+            aws-sdk-path: /usr/local
+            curl-path: /usr/local
+            ssh2-path: /usr/local
+            uv-path: /opt/homebrew
+            jansson-path: /opt/homebrew
+
+    runs-on: ${{ matrix.os }}
     env:
       AWS_SDK_CPP_VERSION: 1.10.55
       LIBCURL_VERSION: curl-7_83_1
@@ -64,7 +85,7 @@ jobs:
       uses: actions/cache@v3
       env:
         cache-name: aws-sdk-cpp
-        cache-index: "1"
+        cache-index: "2"
       with:
         path: aws-sdk-cpp-${{ env.AWS_SDK_CPP_VERSION }}
         key: aws-sdk-cpp-${{ env.cache-index }}-mac-artifact-${{ env.AWS_SDK_CPP_VERSION }}-${{ runner.os }}-cmake-${{ env.CMAKE_VERSION }}
@@ -80,7 +101,7 @@ jobs:
       if: steps.cache-aws-sdk-cpp.outputs.cache-hit != 'true'
       run: |
         mkdir build_static
-        cmake -S . -B build_static -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib
+        cmake -S . -B build_static -DOPENSSL_ROOT_DIR=${{ matrix.openssl-path }} -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib
         make -C build_static
       working-directory: aws-sdk-cpp-${{ env.AWS_SDK_CPP_VERSION }}
     - name: Cache libssh2
@@ -88,7 +109,7 @@ jobs:
       uses: actions/cache@v3
       env:
         cache-name: libssh2
-        cache-index: "1"
+        cache-index: "2"
       with:
         path: libssh2-${{ env.LIBSSH2_VERSION }}
         key: libssh2-v2-${{ env.LIBSSH2_VERSION }}-${{ env.cache-index }}-${{ runner.os }}-cmake-${{ env.CMAKE_VERSION }}
@@ -105,7 +126,7 @@ jobs:
       run: |
         mkdir build_static
         pushd build_static
-        cmake -DOPENSSL_ROOT_DIR=/usr/local/opt/openssl -DCMAKE_BUILD_TYPE=Release ..
+        cmake -DOPENSSL_ROOT_DIR=${{ matrix.openssl-path }} -DCMAKE_BUILD_TYPE=Release ..
         cmake --build .
       working-directory: libssh2-${{ env.LIBSSH2_VERSION }}
     - name: Install libssh2
@@ -117,7 +138,7 @@ jobs:
       uses: actions/cache@v3
       env:
         cache-name: libcurl
-        cache-index: "1"
+        cache-index: "2"
       with:
         path: curl-${{ env.LIBCURL_VERSION }}
         key: curl-v2-${{ env.LIBCURL_VERSION }}-${{ env.cache-index }}-${{ runner.os }}-cmake-${{ env.CMAKE_VERSION }}
@@ -133,7 +154,7 @@ jobs:
       if: steps.cache-libcurl.outputs.cache-hit != 'true'
       run: |
         mkdir build
-        cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=OFF -DBUILD_CURL_EXE=OFF -DOPENSSL_ROOT_DIR=/usr/local/opt/openssl OPENSSL_USE_STATIC_LIBS=TRUE -DHTTP_ONLY=ON
+        cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=OFF -DBUILD_CURL_EXE=OFF -DOPENSSL_ROOT_DIR=${{ matrix.openssl-path }} OPENSSL_USE_STATIC_LIBS=TRUE -DHTTP_ONLY=ON
         make -C build
       working-directory: curl-${{ env.LIBCURL_VERSION }}
     - name: Install libcurl
@@ -201,7 +222,7 @@ jobs:
     - name: Build asbackup with static link to zstd and aws-sdk-cpp
       if: steps.cache-asbackup.outputs.cache-hit != 'true'
       run: |
-        make ZSTD_STATIC_PATH=/usr/local/lib AWS_SDK_STATIC_PATH=/usr/local/lib CURL_STATIC_PATH=/usr/local/lib OPENSSL_STATIC_PATH=/usr/local/opt/openssl/lib LIBSSH2_STATIC_PATH=/usr/local/lib LIBUV_STATIC_PATH=/usr/local/lib JANSSON_STATIC_PATH=/usr/local/lib
+        make ZSTD_STATIC_PATH=${{ matrix.zstd-path }}/lib  AWS_SDK_STATIC_PATH=${{ matrix.aws-sdk-path }}/lib CURL_STATIC_PATH=${{ matrix.curl-path }}/lib OPENSSL_STATIC_PATH=${{ matrix.openssl-path }}/lib LIBSSH2_STATIC_PATH=${{ matrix.ssh2-path }}/lib LIBUV_STATIC_PATH=${{ matrix.uv-path }}/lib JANSSON_STATIC_PATH=${{ matrix.jansson-path }}/lib
         mkdir -p binaries
         cp -r bin binaries/static_bin
         make clean
