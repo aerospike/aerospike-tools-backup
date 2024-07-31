@@ -233,13 +233,13 @@ jobs:
         ./asrestore -n test -d backupdir 2>&1 | grep "Failed to connect"
       working-directory:  ${{ steps.working-dir.outputs.value }}/binaries/static_bin
     - name: Upload static asbackup artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with: 
         name: ${{ steps.system-info.outputs.platform }}-${{ runner.arch }}-${{ runner.os }}-${{ steps.system-info.outputs.release }}-asbackup-static
         path: ${{ steps.working-dir.outputs.value }}/binaries/static_bin/asbackup
         if-no-files-found: error
     - name: Upload static asrestore artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with: 
         name: ${{ steps.system-info.outputs.platform }}-${{ runner.arch }}-${{ runner.os }}-${{ steps.system-info.outputs.release }}-asrestore-static
         path: ${{ steps.working-dir.outputs.value }}/binaries/static_bin/asrestore
