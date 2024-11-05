@@ -1,6 +1,6 @@
 ## Aerospike Backup Tools
 
-![Build:Main](https://github.com/citrusleaf/aerospike-tools-backup/workflows/Build:Main/badge.svg)
+[![Build and Test All](https://github.com/aerospike/aerospike-tools-backup/actions/workflows/backup-build.yml/badge.svg?branch=master)](https://github.com/aerospike/aerospike-tools-backup/actions/workflows/backup-build.yml)
 [![codecov](https://codecov.io/gh/aerospike/aerospike-tools-backup/branch/main/graph/badge.svg)](https://codecov.io/gh/aerospike/aerospike-tools-backup)
 
 This is the developer documentation. For user documentation, please consult http://www.aerospike.com/docs/tools/backup.
