@@ -121,7 +121,6 @@ jobs:
       with:
         path: libssh2-${{ env.LIBSSH2_VERSION }}
         key: libssh2-v2-${{ env.LIBSSH2_VERSION }}-${{ env.cache-index }}-${{ matrix.os }}-${{ runner.arch }}-cmake-${{ env.CMAKE_VERSION }}
-        libssh2-v2-libssh2-1.10.0-2-macOS-ARM64-cmake-3.30.5
     - name: Download libssh2
       uses: actions/checkout@v3
       if: steps.cache-libssh2.outputs.cache-hit != 'true'
