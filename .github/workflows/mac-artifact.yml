@@ -244,13 +244,13 @@ jobs:
     - name: Upload static asbackup artifact
       uses: actions/upload-artifact@v4
       with: 
-        name: ${{ steps.system-info.outputs.platform }}-${{ runner.arch }}-${{ runner.os }}-${{ steps.system-info.outputs.release }}-asbackup-static
+        name: ${{ steps.system-info.outputs.platform }}-${{ runner.arch }}-${{ matrix.os }}-${{ steps.system-info.outputs.release }}-asbackup-static
         path: ${{ steps.working-dir.outputs.value }}/binaries/static_bin/asbackup
         if-no-files-found: error
     - name: Upload static asrestore artifact
       uses: actions/upload-artifact@v4
       with: 
-        name: ${{ steps.system-info.outputs.platform }}-${{ runner.arch }}-${{ runner.os }}-${{ steps.system-info.outputs.release }}-asrestore-static
+        name: ${{ steps.system-info.outputs.platform }}-${{ runner.arch }}-${{ matrix.os }}-${{ steps.system-info.outputs.release }}-asrestore-static
         path: ${{ steps.working-dir.outputs.value }}/binaries/static_bin/asrestore
         if-no-files-found: error
   bundle-binaries:
