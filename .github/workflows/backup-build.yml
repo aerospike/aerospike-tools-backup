@@ -119,7 +119,7 @@ jobs:
       with:
         repository: aerospike/aerospike-client-c
         submodules: recursive
-        ref: 6.0.0
+        ref: 7.0.3
         path: client
     - name: Build client lib
       run: make
