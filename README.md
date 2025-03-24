@@ -562,3 +562,4 @@ Let's also look at the corresponding hex dump for a little more insight regardin
     0120: 6364 650a                                cde.
 
 The content of the Lua file consists of the 27 bytes at offsets 0x096 through 0x0b0. The line feed at 0xb0 still belongs to the Lua file, the line feed at 0xb1 is the line feed dictated by the backup file format.
+
