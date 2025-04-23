@@ -10,6 +10,7 @@ on:
         description: The directory of the submodule, if this workflow is being called on a submodule
         required: false
         type: string
+  workflow_dispatch:
 jobs:
   build:
     strategy:
@@ -85,7 +86,7 @@ jobs:
     - name: install AWS requirements
       id: install-aws-requirements
       run: |
-        brew install openssl@3 readline cmake
+        brew install openssl@3 readline
         CMAKE_VERSION=$(brew info cmake | grep -m 1 -Eo '[0-9]+\.[0-9]+\.[0-9]+')
         echo "CMAKE_VERSION=$CMAKE_VERSION" >> $GITHUB_ENV
     - name: Cache AWS C++ sdk
