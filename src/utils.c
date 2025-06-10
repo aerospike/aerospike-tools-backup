@@ -357,15 +357,29 @@ str_vector_tostring(const as_vector* v)
 
 	if (v->size == 0) {
 		buf[0] = '\0';
+		return buf;
 	}
 
+	char* dots = "...";
+	uint32_t needed = 0;
+
 	for (uint32_t i = 0; i < v->size; i++) {
-		pos += (uint64_t) snprintf(buf + pos, sizeof(buf) - pos, "%s",
-				(const char*) as_vector_get((as_vector*) v, i));
-		if (i < v->size - 1) {
-			pos += (uint64_t) snprintf(buf + pos, sizeof(buf) - pos, ",");
+		const char* str = (const char*) as_vector_get((as_vector*) v, i);
+
+		// Add the set-name only if there is space for the dots after it.
+		needed = (uint32_t)strlen(str) + 1 + 3; // 1 for comma, 3 for dots
+
+		if (pos + needed > 1024) {
+			// Space for the dots was reserved in the previous iteration.
+			pos += (uint64_t) sprintf(buf + pos, "%s", dots);
+			return buf;
 		}
+
+		pos += (uint64_t) sprintf(buf + pos, "%s,", str);
 	}
+
+	buf[pos - 1] = '\0'; // remove the trailing comma
+
 	return buf;
 }
 
