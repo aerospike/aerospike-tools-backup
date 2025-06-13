@@ -141,6 +141,7 @@ backup_config_set(int argc, char* argv[], backup_config_t* conf)
 		{ "nice", required_argument, NULL, 'N' },
 		{ "socket-timeout", required_argument, NULL, COMMAND_OPT_SOCKET_TIMEOUT },
 		{ "total-timeout", required_argument, NULL, COMMAND_OPT_TOTAL_TIMEOUT },
+		{ "login-timeout-ms", required_argument, NULL, COMMAND_OPT_LOGIN_TIMEOUT_MS },
 		{ "max-retries", required_argument, NULL, COMMAND_OPT_MAX_RETRIES },
 		{ "sleep-between-retries", required_argument, NULL, COMMAND_OPT_RETRY_DELAY },
 		// support the `--retry-delay` option until a major version bump.
@@ -717,6 +718,14 @@ backup_config_set(int argc, char* argv[], backup_config_t* conf)
 			conf->total_timeout = (uint32_t) tmp;
 			break;
 
+		case COMMAND_OPT_LOGIN_TIMEOUT_MS:
+			if (!better_atoi(optarg, &tmp) || tmp < 0 || tmp > UINT_MAX) {
+				err("Invalid login timeout value %s", optarg);
+				return BACKUP_CONFIG_INIT_FAILURE;
+			}
+			conf->login_timeout_ms = (uint32_t) tmp;
+			break;
+
 		case COMMAND_OPT_MAX_RETRIES:
 			if (!better_atoi(optarg, &tmp) || tmp < 0 || tmp > UINT_MAX) {
 				err("Invalid max retries value %s", optarg);
@@ -1005,6 +1014,7 @@ backup_config_init(backup_config_t* conf)
 
 	conf->socket_timeout = 10 * 1000;
 	conf->total_timeout = 0;
+	conf->login_timeout_ms = DEFAULT_LOGIN_TIMEOUT_MS;
 	conf->max_retries = 5;
 	conf->retry_delay = 0;
 
@@ -1502,6 +1512,9 @@ usage(const char *name)
 	fprintf(stdout, "                      there is no socket idle time limit\n");
 	fprintf(stdout, "      --total-timeout <ms>\n");
 	fprintf(stdout, "                      Total socket timeout in milliseconds. Default is 0, i.e. no timeout.\n");
+	fprintf(stdout, "      --login-timeout-ms <ms>\n");
+	fprintf(stdout, "                      Timeout used when first logging into Aerospike nodes.\n");
+	fprintf(stdout, "                      Default is 5000.\n");
 	fprintf(stdout, "      --max-retries <n>\n");
 	fprintf(stdout, "                      Maximum number of retries before aborting the current transaction.\n");
 	fprintf(stdout, "                      The default is 5.\n");
