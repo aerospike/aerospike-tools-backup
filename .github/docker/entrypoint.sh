@@ -14,7 +14,9 @@ fi
 
 
 function build_container() {
-  docker build -t asbackup-pkg-builder-"$1"-"$VERSION" -f .github/docker/Dockerfile-"$1" .
+  docker build --progress=plain -t asbackup-pkg-builder-"$1"-"$VERSION" -f .github/docker/Dockerfile-"$1" .
+# DOCKER_BUILDKIT=0 docker build  -t asbackup-pkg-builder-"$1"-"$VERSION" -f .github/docker/Dockerfile-"$1" .
+
 }
 
 

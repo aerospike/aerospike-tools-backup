@@ -1,0 +1,57 @@
+name: build-artifacts.yml
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, SERVER-216,  SERVER-216-debug-jfrog ]
+
+jobs:
+  build-artifacts:
+    strategy:
+      matrix:
+        distro: [ debian11, debian12, ubuntu20.04, ubuntu22.04, ubuntu24.04 ] # redhat-ubi9 ]
+    uses: aerospike/shared-workflows/.github/workflows/reusable_execute-build.yaml@main
+    with:
+      project: database
+      build-name: asbackup
+      build-version: v1.0.0
+      build-script: set -x && chmod o+rw dist &&  cd local && git checkout ${{ github.ref_name }} && git submodule update --init --recursive && .github/docker/entrypoint.sh -c -d ${{ matrix.distro }} && .github/docker/entrypoint.sh -e -d ${{ matrix.distro }} && find ../dist
+      artifact-directory: dist
+      artifact-name: unsigned-artifacts-${{ matrix.distro }}
+      retention-days: 7
+      dry-run: false
+      artifactory-url: https://aerospike.jfrog.io # default
+      artifactory-oidc-provider-name: database-gh-aerospike # default
+      artifactory-oidc-audience: database-gh-aerospike # default
+  sign-artifacts:
+    strategy:
+      matrix:
+        distro: [ debian11, debian12, ubuntu20.04, ubuntu22.04, ubuntu24.04, redhat-ubi9 ]
+    needs: build-artifacts
+    uses: aerospike/shared-workflows/.github/workflows/reusable_sign-artifacts.yaml@main # vn.n.n
+    with:
+      artifact-name: signed-artifacts-${{ matrix.distro }}
+      unsigned-artifacts: unsigned-artifacts-${{ matrix.distro }}
+      # artifact-name: signed-artifacts  # optional, defaults to signed-artifacts
+      # retention-days: 7               # optional, defaults to 7
+      # dry-run: false                  # optional, for future compatibility
+    secrets:
+      gpg-private-key: ${{ secrets.GPG_SECRET_KEY }}
+      gpg-public-key: ${{ secrets.GPG_PUBLIC_KEY }}
+      gpg-key-pass: ${{ secrets.GPG_PASS }}
+
+  upload-artifacts:
+    strategy:
+      matrix:
+        distro: [ debian11, debian12, ubuntu20.04, ubuntu22.04, ubuntu24.04 ] # redhat-ubi9 ]
+    needs: sign-artifacts
+    uses: aerospike/shared-workflows/.github/workflows/reusable_deploy-artifacts.yaml@main # vn.n.n
+    with:
+      project: database
+      build-name: asbackup
+      version: ${{ github.ref_name }}
+      artifactory-url: https://aerospike.jfrog.io
+      artifactory-oidc-provider-name: database-gh-aerospike
+      artifactory-oidc-audience: database-gh-aerospike
+      artifact-name: signed-artifacts-${{ matrix.distro }}
+      retention-days: 1
+      dry-run: false
