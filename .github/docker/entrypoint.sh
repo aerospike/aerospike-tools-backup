@@ -72,8 +72,12 @@ elif grep -q 22.04 /etc/os-release; then
   ENV_DISTRO="ubuntu22.04"
 elif grep -q 24.04 /etc/os-release; then
   ENV_DISTRO="ubuntu24.04"
+elif grep -q "platform:el8" /etc/os-release; then
+  ENV_DISTRO="redhat-el8"
 elif grep -q "platform:el9" /etc/os-release; then
-  ENV_DISTRO="redhat-ubi9"
+  ENV_DISTRO="redhat-el9"
+elif grep -q "amazon_linux:2023" /etc/os-release; then
+  ENV_DISTRO="amazon-2023"
 elif grep -q "bullseye" /etc/os-release; then
   ENV_DISTRO="debian11"
 elif grep -q "bookworm" /etc/os-release; then
@@ -96,9 +100,15 @@ if [ "$INSTALL" = "true" ]; then
   elif [ "$ENV_DISTRO" = "ubuntu24.04" ]; then
       echo "installing dependencies for Ubuntu 24.04"
       install_deps_ubuntu24.04
-  elif [ "$ENV_DISTRO" = "redhat-ubi9" ]; then
-      echo "installing dependencies for RedHat UBI9"
-      install_deps_redhat-ubi9
+  elif [ "$ENV_DISTRO" = "redhat-el8" ]; then
+      echo "installing dependencies for RedHat el8"
+      install_deps_redhat-el8
+  elif [ "$ENV_DISTRO" = "redhat-el9" ]; then
+      echo "installing dependencies for RedHat el9"
+      install_deps_redhat-el9
+  elif [ "$ENV_DISTRO" = "amazon-2023" ]; then
+      echo "installing dependencies for Amazon 2023"
+      install_deps_redhat-amazon-2023
   elif [ "$ENV_DISTRO" = "debian11" ]; then
       echo "installing dependencies for Debian 11"
       install_deps_debian11
@@ -122,7 +132,9 @@ elif [ "$BUILD_CONTAINERS" = "true" ]; then
     build_container ubuntu20.04
     build_container ubuntu22.04
     build_container ubuntu24.04
-    build_container redhat-ubi9
+    build_container redhat-el8
+    build_container redhat-el9
+    build_container amazon-2023
   else
     build_container $BUILD_DISTRO
   fi
@@ -142,8 +154,12 @@ if [ "$EXECUTE_BUILD" = "true" ]; then
         execute_build_image ubuntu22.04
         echo "building package for Ubuntu 24.04"
         execute_build_image ubuntu24.04
-        echo "building package for RedHat UBI9"
-        execute_build_image redhat-ubi9
+        echo "building package for RedHat el8"
+        execute_build_image redhat-el8
+        echo "building package for RedHat el9"
+        execute_build_image redhat-el9
+        echo "building package for Amazon 2023"
+        execute_build_image amazon-2023
     else
         echo "building package for $BUILD_DISTRO"
         execute_build_image $BUILD_DISTRO
