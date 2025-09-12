@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
+alias make='make -j8'
+
 VERSION=$(git rev-parse HEAD | cut -c -8)
 BUILD_DEPS_REDHAT="readline which autoconf libtool" #readline-devel flex
-BUILD_DEPS_UBUNTU="libpsl-dev autotools-dev automake libtool cmake pkg-config zlib1g-dev build-essential libssl-dev libcurl4-openssl-dev libzstd-dev libjansson-dev"
-BUILD_DEPS_DEBIAN="libpsl-dev autotools-dev automake libtool cmake pkg-config zlib1g-dev build-essential libssl-dev libcurl4-openssl-dev libzstd-dev libjansson-dev"
+BUILD_DEPS_UBUNTU="libpsl-dev autotools-dev automake libtool cmake pkg-config zlib1g-dev build-essential libssl-dev libzstd-dev libjansson-dev"
+BUILD_DEPS_DEBIAN="libpsl-dev autotools-dev automake libtool cmake pkg-config zlib1g-dev build-essential libssl-dev libzstd-dev libjansson-dev"
 FPM_DEPS_DEBIAN="ruby-rubygems make rpm git rsync binutils"
 FPM_DEPS_UBUNTU_2004="ruby make rpm git rsync binutils"
 FPM_DEPS_UBUNTU="ruby-rubygems make rpm git rsync binutils"
@@ -84,6 +86,45 @@ function install_deps_debian12() {
   make install
   cd ../..
 }
+
+
+function install_deps_debian13() {
+  apt -y install $BUILD_DEPS_DEBIAN $FPM_DEPS_DEBIAN
+  gem install fpm
+
+  cd /opt
+  git clone https://github.com/libuv/libuv
+  cd libuv
+  git checkout v1.43.0
+  sh autogen.sh
+  ./configure
+  make
+  make install
+  cd ..
+
+  git clone https://github.com/curl/curl.git
+  cd curl
+  git checkout curl-8_14_1
+  git submodule update --init --recursive
+  mkdir build
+  cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=OFF -DBUILD_CURL_EXE=OFF
+  make -C build
+  cd build
+  make install
+  cd ../..
+
+  git clone https://github.com/aws/aws-sdk-cpp.git
+  cd aws-sdk-cpp
+  git checkout $AWS_SDK_VERSION
+  git submodule update --init --recursive
+  mkdir build
+  cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_UNITY_BUILD=ON
+  make -C build
+  cd build
+  make install
+  cd ../..
+}
+
 
 function install_deps_ubuntu20.04() {
   apt -y install $BUILD_DEPS_UBUNTU $FPM_DEPS_UBUNTU_2004

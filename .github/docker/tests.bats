@@ -23,6 +23,17 @@ VERSION=$(git rev-parse HEAD | cut -c -8)
   [ $? -eq 0 ] && [ -f $TEMP_DIR/debian12/*.deb ]
 }
 
+@test "build debian13" {
+  .github/docker/entrypoint.sh -c -d debian13
+  [ "$?" -eq 0 ]
+}
+
+@test "build debian13 package" {
+  TEMP_DIR=$(mktemp -d)
+  docker run -e BUILD_DISTRO="debian12" -v $TEMP_DIR:/tmp/output "asbackup-pkg-builder-debian13-$VERSION"
+  [ $? -eq 0 ] && [ -f $TEMP_DIR/debian12/*.deb ]
+}
+
 @test "build ubuntu20.04" {
   .github/docker/entrypoint.sh -c -d ubuntu20.04
   [ "$?" -eq 0 ]

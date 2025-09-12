@@ -4,6 +4,9 @@ env
 VERSION=$(git rev-parse HEAD | cut -c -8)
 
 SCRIPT_DIR="$(dirname "$(realpath "$0")")"
+
+
+
 source $SCRIPT_DIR/build_package.sh
 
 if [ -d ".git" ]; then
@@ -15,8 +18,6 @@ fi
 
 function build_container() {
   docker build --progress=plain -t asbackup-pkg-builder-"$1"-"$VERSION" -f .github/docker/Dockerfile-"$1" .
-# DOCKER_BUILDKIT=0 docker build  -t asbackup-pkg-builder-"$1"-"$VERSION" -f .github/docker/Dockerfile-"$1" .
-
 }
 
 
@@ -77,6 +78,8 @@ elif grep -q "bullseye" /etc/os-release; then
   ENV_DISTRO="debian11"
 elif grep -q "bookworm" /etc/os-release; then
   ENV_DISTRO="debian12"
+elif grep -q "trixie" /etc/os-release; then
+  ENV_DISTRO="debian13"
 else
   cat /etc/os-release
   echo "os not supported"
@@ -102,6 +105,9 @@ if [ "$INSTALL" = "true" ]; then
   elif [ "$ENV_DISTRO" = "debian12" ]; then
       echo "installing dependencies for Debian 12"
       install_deps_debian12
+  elif [ "$ENV_DISTRO" = "debian13" ]; then
+      echo "installing dependencies for Debian 13"
+      install_deps_debian13
   else
       cat /etc/os-release
       echo "distro not supported"
@@ -112,6 +118,7 @@ elif [ "$BUILD_CONTAINERS" = "true" ]; then
   if  [ "$BUILD_DISTRO" = "all" ]; then
     build_container debian11
     build_container debian12
+    build_container debian13
     build_container ubuntu20.04
     build_container ubuntu22.04
     build_container ubuntu24.04
@@ -127,6 +134,8 @@ if [ "$EXECUTE_BUILD" = "true" ]; then
         execute_build_image debian11
         echo "building package for Debian 12"
         execute_build_image debian12
+        echo "building package for Debian 13"
+        execute_build_image debian13
         echo "building package for Ubuntu 20.04"
         execute_build_image ubuntu20.04
         echo "building package for Ubuntu 22.04"

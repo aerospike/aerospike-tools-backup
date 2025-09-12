@@ -1,4 +1,4 @@
-
+alias make='make -j8'
 function build_packages(){
   if [ "$ENV_DISTRO" = "" ]; then
     echo "ENV_DISTRO is not set"
