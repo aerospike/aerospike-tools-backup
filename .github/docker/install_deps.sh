@@ -293,23 +293,23 @@ function install_deps_amazon-2023() {
   make install
   cd ..
 
-  git clone https://github.com/curl/curl.git
-  cd curl
-  git checkout curl-7_81_0
-  git submodule update --init --recursive
-  mkdir build
-  cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=OFF -DBUILD_CURL_EXE=OFF
-  make -C build
-  cd build
-  make install
-  cd ../..
+#  git clone https://github.com/curl/curl.git
+#  cd curl
+#  git checkout curl-7_81_0
+#  git submodule update --init --recursive
+#  mkdir build
+#  cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=OFF -DBUILD_CURL_EXE=OFF
+#  make -C build
+#  cd build
+#  make install
+#  cd ../..
 
   git clone https://github.com/aws/aws-sdk-cpp.git
   cd aws-sdk-cpp
   git checkout $AWS_SDK_VERSION
   git submodule update --init --recursive
   mkdir build
-  cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_UNITY_BUILD=ON
+  cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=ON -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib
   make -C build
   cd build
   make install
