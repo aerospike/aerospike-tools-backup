@@ -28,7 +28,7 @@ deb: prep
 		--output-type deb \
 		--chdir $(BUILD_DIR)/ \
 		--name $(NAME) \
-		--version $(VERSION) \
+		--version "$(VERSION)" \
 		--maintainer $(MAINTAINER) \
 		--description $(DESCRIPTION) \
 		--license $(LICENSE) \
@@ -44,7 +44,7 @@ rpm: prep
 		--output-type rpm \
 		--chdir $(BUILD_DIR)/ \
 		--name $(NAME) \
-		--version $(VERSION) \
+		--version "$(VERSION)" \
 		--maintainer $(MAINTAINER) \
 		--description $(DESCRIPTION) \
 		--license $(LICENSE) \
@@ -60,7 +60,7 @@ tar: prep
 		--output-type tar \
 		--chdir $(BUILD_DIR)/ \
 		--name $(NAME) \
-		--version $(VERSION) \
+		--version "$(VERSION)" \
 		--maintainer $(MAINTAINER) \
 		--description $(DESCRIPTION) \
 		--license $(LICENSE) \
