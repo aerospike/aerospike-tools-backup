@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -xeuo pipefail
 env
-VERSION=$(git rev-parse HEAD | cut -c -8)
+
 
 SCRIPT_DIR="$(dirname "$(realpath "$0")")"
 
@@ -17,7 +17,7 @@ fi
 
 
 function build_container() {
-  docker build --progress=plain -t asbackup-pkg-builder-"$1"-"$VERSION" -f .github/docker/Dockerfile-"$1" .
+  docker build --progress=plain -t asbackup-pkg-builder-"$1"-"$(git rev-parse HEAD | cut -c -8)" -f .github/docker/Dockerfile-"$1" .
 }
 
 

@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 alias make='make -j8'
 
-VERSION=$(git rev-parse HEAD | cut -c -8)
 BUILD_DEPS_AMAZON="cmake openssl-devel libcurl-devel libzstd-devel jansson-devel"
 BUILD_DEPS_REDHAT="readline which autoconf libtool" #readline-devel flex
 BUILD_DEPS_UBUNTU="libpsl-dev autotools-dev automake libtool cmake pkg-config zlib1g-dev build-essential libssl-dev libzstd-dev libjansson-dev"
