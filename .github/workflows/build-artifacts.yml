@@ -16,7 +16,7 @@ jobs:
       project: database
       build-name: asbackup
       build-version: v1.0.0
-      build-script: set -x && ls -laht && git rev-parse HEAD && chmod o+rw dist &&  cd local && git checkout ${{ github.ref_name }} && git submodule update --init --recursive && .github/docker/entrypoint.sh -c -d ${{ matrix.distro }} && .github/docker/entrypoint.sh -e -d ${{ matrix.distro }} && find ../dist
+      build-script: set -x && ls -laht && cd shared-workflows && ls -laht && git rev-parse HEAD && chmod o+rw dist &&  cd local && git checkout ${{ github.ref_name }} && git submodule update --init --recursive && .github/docker/entrypoint.sh -c -d ${{ matrix.distro }} && .github/docker/entrypoint.sh -e -d ${{ matrix.distro }} && find ../dist
       artifact-directory: dist
       artifact-name: unsigned-artifacts-${{ matrix.distro }}-${{ matrix.host }}
       retention-days: 7
