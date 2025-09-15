@@ -23,7 +23,7 @@ function build_container() {
 
 function execute_build_image() {
   export BUILD_DISTRO="$1"
-  docker run -e BUILD_DISTRO -v $(realpath ../dist):/tmp/output asbackup-pkg-builder-"$BUILD_DISTRO"-"$VERSION"
+  docker run -e BUILD_DISTRO -v $(realpath ../dist):/tmp/output asbackup-pkg-builder-"$BUILD_DISTRO"-"$(git rev-parse HEAD | cut -c -8)"
   ls -laht ../dist
 }
 
