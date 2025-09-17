@@ -203,7 +203,7 @@ DownloadManager::deserialize(file_proxy_t* src)
 		return -1;
 	}
 
-	err("Derialization of DownloadManager is unimplemented");
+	err("Deserialization of DownloadManager is unimplemented");
 	return -1;
 }
 
@@ -243,7 +243,7 @@ DownloadManager::GetObjectFinished(
 	uint64_t download_idx = async_ctx->GetPartN();
 
 	if (!outcome.IsSuccess()) {
-    	err("DM download error part=%llu: %s",
+		err("DM download error part=%llu: %s",
 			(unsigned long long)download_idx,
 			outcome.GetError().GetMessage().c_str());
 
