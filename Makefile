@@ -72,6 +72,12 @@ CXXFLAGS := -std=c++14 $(DWARF) -O2 -fno-common -fno-strict-aliasing \
 		-D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_FORTIFY_SOURCE=2 -DMARCH_$(ARCH) \
 		-DTOOL_VERSION=\"$(VERSION)\"
 
+# HACK: This fixes build errors where the aws-sdk-cpp lib is not compatible
+# with newer versions of cmake. We should update the aws-sdk-cpp lib or pin
+# the versions of cmake we use.
+CXXFLAGS += -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+TEST_CXXFLAGS += -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+
 LD := $(CC)
 LDFLAGS += $(CXXFLAGS)
 
