@@ -76,32 +76,26 @@ public:
 	AsyncPartManager& push(T&& t, uint64_t idx)
 	{
 		std::unique_lock<std::mutex> lg(access_lock);
-		uint64_t start = this->start;
 		_Accomodate(idx);
 
 		buf[idx % buf_size] = new T(std::move(t));
 		n_items++;
 		lg.unlock();
 
-		if (idx == start) {
-			cv.notify_one();
-		}
+		cv.notify_one();
 		return *this;
 	}
 
 	AsyncPartManager& push_error(uint64_t idx)
 	{
 		std::unique_lock<std::mutex> lg(access_lock);
-		uint64_t start = this->start;
 		_Accomodate(idx);
 
 		buf[idx % buf_size] = reinterpret_cast<T*>(error_placeholder);
 		n_items++;
 		lg.unlock();
 
-		if (idx == start) {
-			cv.notify_one();
-		}
+		cv.notify_one();
 		return *this;
 	}
 
@@ -293,14 +287,6 @@ public:
 	bool RegisterDownloadManager(DownloadManager* dm);
 
 	void RemoveDownloadManager(DownloadManager* dm);
-
-	/*
-	 * Called when a download part is fully downloaded and no longer queued for
-	 * consuming.
-	 */
-	void PartComplete(bool success);
-
-	void PartsComplete(bool success, uint32_t n_parts);
 
 private:
 	std::mutex access_lock;

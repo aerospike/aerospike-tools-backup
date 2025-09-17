@@ -182,8 +182,6 @@ DownloadManager::AwaitAllDownloads()
 	outstanding_calls_cv.wait(lg, [&]() { return this->outstanding_calls == 0; });
 	lg.unlock();
 
-	// Mark all of the parts in result_queue as complete
-	gdm->PartsComplete(false, uint32_t(result_queue.get_n_items()));
 	return true;
 }
 
@@ -219,7 +217,9 @@ void
 DownloadManager::DecrementOutstandingCalls()
 {
 	outstanding_calls_lock.lock();
-	outstanding_calls--;
+	if (outstanding_calls > 0) {
+		outstanding_calls--;
+	}
 	outstanding_calls_lock.unlock();
 	outstanding_calls_cv.notify_one();
 }
@@ -243,11 +243,16 @@ DownloadManager::GetObjectFinished(
 	uint64_t download_idx = async_ctx->GetPartN();
 
 	if (!outcome.IsSuccess()) {
-		err("%s", outcome.GetError().GetMessage().c_str());
-		received_cb(std::const_pointer_cast<Aws::Client::AsyncCallerContext>(context), false);
+    	err("DM download error part=%llu: %s",
+			(unsigned long long)download_idx,
+			outcome.GetError().GetMessage().c_str());
 
 		download_manager->result_queue.push_error(download_idx);
 		download_manager->SetError();
+
+		// Decrement the group download manager's outstanding calls
+		received_cb(std::const_pointer_cast<Aws::Client::AsyncCallerContext>(context), false);
+		// Decrement this manager's ongoing download count
 		download_manager->DecrementOutstandingCalls();
 		return;
 	}
@@ -266,8 +271,8 @@ bool
 DownloadManager::AwaitDownloadPart()
 {
 	std::pair<Aws::S3::Model::GetObjectResult, uint64_t>* res = result_queue.pop();
-	g_api.GetGroupDownloadManager()->PartComplete(true);
-	if (res == nullptr) {
+
+    if (res == nullptr) {
 		SetError();
 		return false;
 	}
@@ -321,38 +326,15 @@ GroupDownloadManager::RemoveDownloadManager(DownloadManager* dm)
 }
 
 void
-GroupDownloadManager::PartComplete(bool success)
-{
-	std::unique_lock<std::mutex> lg(access_lock);
-	async_downloads--;
-
-	if (success) {
-		StartNextPart();
-	}
-}
-
-void
-GroupDownloadManager::PartsComplete(bool success, uint32_t n_parts)
-{
-	std::unique_lock<std::mutex> lg(access_lock);
-	async_downloads -= n_parts;
-
-	if (success) {
-		for (uint32_t i = 0; i < n_parts; i++) {
-			StartNextPart();
-		}
-	}
-}
-
-void
 GroupDownloadManager::PartDownloadComplete(GroupDownloadManager* gdm,
 		std::shared_ptr<Aws::Client::AsyncCallerContext> context,
 		bool success)
 {
 	(void) context;
 
+	std::unique_lock<std::mutex> lg(gdm->access_lock);
+	gdm->async_downloads--;
 	if (success) {
-		std::unique_lock<std::mutex> lg(gdm->access_lock);
 
 		// for exponential rampup, try initiating two downloads
 		gdm->StartNextPart();
