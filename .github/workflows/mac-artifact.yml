@@ -135,7 +135,7 @@ jobs:
       run: |
         mkdir build_static
         pushd build_static
-        cmake -DOPENSSL_ROOT_DIR=${{ matrix.openssl-path }} -DCMAKE_BUILD_TYPE=Release ..
+        cmake -DOPENSSL_ROOT_DIR=${{ matrix.openssl-path }} -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ..
         cmake --build .
       working-directory: libssh2-${{ env.LIBSSH2_VERSION }}
     - name: Install libssh2
@@ -163,7 +163,7 @@ jobs:
       if: steps.cache-libcurl.outputs.cache-hit != 'true'
       run: |
         mkdir build
-        cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=OFF -DBUILD_CURL_EXE=OFF -DOPENSSL_ROOT_DIR=${{ matrix.openssl-path }} OPENSSL_USE_STATIC_LIBS=TRUE -DHTTP_ONLY=ON
+        cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=OFF -DBUILD_CURL_EXE=OFF -DOPENSSL_ROOT_DIR=${{ matrix.openssl-path }} OPENSSL_USE_STATIC_LIBS=TRUE -DHTTP_ONLY=ON -DCMAKE_POLICY_VERSION_MINIMUM=3.5
         make -C build
       working-directory: curl-${{ env.LIBCURL_VERSION }}
     - name: Install libcurl
