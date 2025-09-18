@@ -267,7 +267,40 @@ jobs:
           path: binaries
       - uses: actions/upload-artifact@v4
         with:
-          name: binaries
+          name: binaries-${{ matrix.os }}
           path: binaries
           if-no-files-found: error
+#
+#  sign-artifacts:
+#    strategy:
+#      matrix:
+#        os: [macos-13, macos-14, macos-15]
+#    needs: bundle-binaries
+#    uses: aerospike/shared-workflows/.github/workflows/reusable_sign-artifacts.yaml@8b68c4e071050d18ecccc5f3e6911a4127b455ae # vn.n.n
+#    with:
+#      artifact-name: signed-binaries-${{ matrix.os }}
+#      unsigned-artifacts: binaries-${{ matrix.os }}
+#      # artifact-name: signed-artifacts  # optional, defaults to signed-artifacts
+#      # retention-days: 7               # optional, defaults to 7
+#      # dry-run: false                  # optional, for future compatibility
+#    secrets:
+#      gpg-private-key: ${{ secrets.GPG_SECRET_KEY }}
+#      gpg-public-key: ${{ secrets.GPG_PUBLIC_KEY }}
+#      gpg-key-pass: ${{ secrets.GPG_PASS }}
 
+  upload-artifacts:
+    strategy:
+      matrix:
+        os: [macos-13, macos-14, macos-15]
+    needs: bundle-binaries
+    uses: aerospike/shared-workflows/.github/workflows/reusable_deploy-artifacts.yaml@8b68c4e071050d18ecccc5f3e6911a4127b455ae # vn.n.n
+    with:
+      project: database
+      build-name: asbackup
+      version: ${{ github.ref_name }}
+      artifactory-url: https://aerospike.jfrog.io
+      artifactory-oidc-provider-name: database-gh-aerospike
+      artifactory-oidc-audience: database-gh-aerospike
+      artifact-name: binaries-${{ matrix.os }}
+      retention-days: 1
+      dry-run: false
