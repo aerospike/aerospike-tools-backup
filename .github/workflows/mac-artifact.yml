@@ -9,7 +9,7 @@ on:
       submodule:
         description: The directory of the submodule, if this workflow is being called on a submodule
         required: false
-        type: strin g
+        type: string
   workflow_dispatch:
 jobs:
   build:
