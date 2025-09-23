@@ -2,13 +2,16 @@
 alias make='make -j8'
 
 BUILD_DEPS_AMAZON="cmake openssl-devel libcurl-devel libzstd-devel jansson-devel"
-BUILD_DEPS_REDHAT="libtool wget cmake openssl-devel libcurl-devel libzstd-devel which autoconf libtool git" #readline-devel flex
+BUILD_DEPS_REDHAT_8="gcc-c++ libtool wget cmake openssl-devel libcurl-devel libzstd-devel which autoconf libtool git" #readline-devel flex
+BUILD_DEPS_REDHAT_9="gcc-c++ libtool wget cmake openssl-devel libcurl-devel libzstd-devel which autoconf libtool git" #readline-devel flex
 BUILD_DEPS_UBUNTU="libpsl-dev autotools-dev automake libtool cmake pkg-config zlib1g-dev build-essential libssl-dev libzstd-dev libjansson-dev"
 BUILD_DEPS_DEBIAN="libpsl-dev autotools-dev automake libtool cmake pkg-config zlib1g-dev build-essential libssl-dev libzstd-dev libjansson-dev"
 FPM_DEPS_DEBIAN="ruby-rubygems make rpm git rsync binutils"
 FPM_DEPS_UBUNTU_2004="ruby make rpm git rsync binutils"
 FPM_DEPS_UBUNTU="ruby-rubygems make rpm git rsync binutils"
 FPM_DEPS_AMAZON="ruby rpmdevtools make git python3 python3-pip rsync"
+FPM_DEPS_REDHAT_8="ruby rpmdevtools make git python3 python3-pip rsync"
+FPM_DEPS_REDHAT_9="ruby rpmdevtools make git python3 python3-pip rsync zlib zlib-devel"
 
 AWS_SDK_VERSION="1.10.55"
 function install_deps_debian11() {
@@ -258,7 +261,7 @@ function install_deps_redhat-el8() {
 }
 function install_deps_redhat-el9() {
 
-  dnf -y install $BUILD_DEPS_REDHAT $FPM_DEPS_AMAZON
+  dnf -y install $BUILD_DEPS_REDHAT_9 $FPM_DEPS_REDHAT_9
 
   cd /opt
   wget https://ftp.gnu.org/pub/gnu/gettext/gettext-0.21.tar.gz
