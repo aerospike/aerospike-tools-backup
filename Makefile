@@ -72,6 +72,7 @@ CXXFLAGS := -std=c++14 $(DWARF) -O2 -fno-common -fno-strict-aliasing \
 		-D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_FORTIFY_SOURCE=2 -DMARCH_$(ARCH) \
 		-DTOOL_VERSION=\"$(VERSION)\"
 
+
 LD := $(CC)
 LDFLAGS += $(CXXFLAGS)
 
