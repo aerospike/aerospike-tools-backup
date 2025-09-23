@@ -1,9 +1,9 @@
 name: Mac Artifact
 on:
   push:
-    branches: [ master, "bugfix-*", actions-hub]
+    branches: [ master, "bugfix-*", actions-hub ]
   pull_request:
-    branches: [ master, "bugfix-*", actions-hub]
+    branches: [ master, "bugfix-*", actions-hub ]
   workflow_call:
     inputs:
       submodule:
@@ -15,7 +15,7 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [macos-13, macos-14, macos-15]
+        os: [ macos-13, macos-14, macos-15 ]
         include:
           - os: macos-13
             openssl-path: /usr/local/opt/openssl
@@ -51,214 +51,217 @@ jobs:
       LD_LIBRARY_PATH: /usr/local/lib
       EVENT_LIB: libuv
     steps:
-    - name: Get checkout directory
-      uses: haya14busa/action-cond@v1
-      id: checkout-dir
-      with:
-        cond: ${{ inputs.submodule != '' }}
-        if_true: aerospike-tools  # In this case we are expecting to checkout the tools package.
-        if_false: asbackup
-    - name: Get asbackup working directory
-      uses: haya14busa/action-cond@v1
-      id: working-dir
-      with:
-        cond: ${{ inputs.submodule != '' }}
-        if_true: aerospike-tools/${{ inputs.submodule }}  # In this case we are expecting to checkout the tools package.
-        if_false: asbackup
-    - uses: kenchan0130/actions-system-info@v1.3.0
-      id: system-info
-    - name: install libuv
-      id: install-libuv
-      run: |
-        brew install libuv
-    - name: install openssl
-      id: install-openssl
-      run: |
-        brew install openssl@1.1
-    - name: install libssh2
-      id: install-libssh2
-      run: |
-        brew install libssh2
-    - name: install secret agent client requirements
-      id: install-secret-agent-client-requirements
-      run: |
-        brew install jansson
-    - name: install AWS requirements
-      id: install-aws-requirements
-      run: |
-        brew install openssl@3 readline
-        CMAKE_VERSION=$(brew info cmake | grep -m 1 -Eo '[0-9]+\.[0-9]+\.[0-9]+')
-        echo "CMAKE_VERSION=$CMAKE_VERSION" >> $GITHUB_ENV
-    - name: Cache AWS C++ sdk
-      id: cache-aws-sdk-cpp
-      uses: actions/cache@v3
-      env:
-        cache-name: aws-sdk-cpp
-        cache-index: "2"
-      with:
-        path: aws-sdk-cpp-${{ env.AWS_SDK_CPP_VERSION }}
-        key: aws-sdk-cpp-${{ env.cache-index }}-mac-artifact-${{ env.AWS_SDK_CPP_VERSION }}-${{ matrix.os }}-${{ runner.arch }}-cmake-${{ env.CMAKE_VERSION }}
-    - name: Download AWS C++ sdk
-      uses: actions/checkout@v3
-      if: steps.cache-aws-sdk-cpp.outputs.cache-hit != 'true'
-      with:
-        repository: aws/aws-sdk-cpp
-        submodules: recursive
-        ref: ${{ env.AWS_SDK_CPP_VERSION }}
-        path: aws-sdk-cpp-${{ env.AWS_SDK_CPP_VERSION }}
-    - name: Build AWS C++ sdk static library
-      if: steps.cache-aws-sdk-cpp.outputs.cache-hit != 'true'
-      run: |
-        mkdir build_static
-        cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -S . -B build_static -DOPENSSL_ROOT_DIR=${{ matrix.openssl-path }} -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib
-        make -C build_static
-      working-directory: aws-sdk-cpp-${{ env.AWS_SDK_CPP_VERSION }}
-    - name: Cache libssh2
-      id: cache-libssh2
-      uses: actions/cache@v3
-      env:
-        cache-name: libssh2
-        cache-index: "2"
-      with:
-        path: libssh2-${{ env.LIBSSH2_VERSION }}
-        key: libssh2-v2-${{ env.LIBSSH2_VERSION }}-${{ env.cache-index }}-${{ matrix.os }}-${{ runner.arch }}-cmake-${{ env.CMAKE_VERSION }}
-    - name: Download libssh2
-      uses: actions/checkout@v3
-      if: steps.cache-libssh2.outputs.cache-hit != 'true'
-      with:
-        repository: libssh2/libssh2
-        submodules: recursive
-        ref: ${{ env.LIBSSH2_VERSION }}
-        path: libssh2-${{ env.LIBSSH2_VERSION }}
-    - name: Build libssh2
-      if: steps.cache-libssh2.outputs.cache-hit != 'true'
-      run: |
-        mkdir build_static
-        pushd build_static
-        cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5  -DOPENSSL_ROOT_DIR=${{ matrix.openssl-path }} -DCMAKE_BUILD_TYPE=Release ..
-        cmake --build .
-      working-directory: libssh2-${{ env.LIBSSH2_VERSION }}
-    - name: Install libssh2
-      run: |
-        sudo make install
-      working-directory: libssh2-${{ env.LIBSSH2_VERSION }}/build_static
-    - name: Cache libcurl
-      id: cache-libcurl
-      uses: actions/cache@v3
-      env:
-        cache-name: libcurl
-        cache-index: "2"
-      with:
-        path: curl-${{ env.LIBCURL_VERSION }}
-        key: curl-v2-${{ env.LIBCURL_VERSION }}-${{ env.cache-index }}-${{ matrix.os }}-${{ runner.arch }}-cmake-${{ env.CMAKE_VERSION }}
-    - name: Download libcurl
-      uses: actions/checkout@v3
-      if: steps.cache-libcurl.outputs.cache-hit != 'true'
-      with:
-        repository: curl/curl
-        submodules: recursive
-        ref: ${{ env.LIBCURL_VERSION }}
-        path: curl-${{ env.LIBCURL_VERSION }}
-    - name: Build libcurl
-      if: steps.cache-libcurl.outputs.cache-hit != 'true'
-      run: |
-        mkdir build
-        cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5  -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=OFF -DBUILD_CURL_EXE=OFF -DOPENSSL_ROOT_DIR=${{ matrix.openssl-path }} OPENSSL_USE_STATIC_LIBS=TRUE -DHTTP_ONLY=ON
-        make -C build
-      working-directory: curl-${{ env.LIBCURL_VERSION }}
-    - name: Install libcurl
-      run: |
-        sudo make install
-      working-directory: curl-${{ env.LIBCURL_VERSION }}/build
-    - name: Download zstd
-      uses: actions/checkout@v3
-      with:
-        repository: facebook/zstd
-        submodules: recursive
-        ref: v${{ env.ZSTD_VERSION }}
-        path: zstd-${{ env.ZSTD_VERSION }}
-    - name: Cache zstd
-      id: cache-zstd
-      uses: actions/cache@v3
-      env:
-        cache-name: zstd
-      with:
-        path: zstd-${{ env.ZSTD_VERSION }}
-        key: zstd-${{ env.ZSTD_VERSION }}-${{ matrix.os }}-${{ runner.arch }}
-    - name: Build zstd
-      id: build-zstd
-      if: steps.cache-zstd.outputs.cache-hit != 'true'
-      run: |
-        make
-      working-directory: zstd-${{ env.ZSTD_VERSION }}
-    - name: install zstd
-      run: |
-        sudo make install
-      working-directory: zstd-${{ env.ZSTD_VERSION }}
-      # this will checkout the whole tools repo when run from aerospike-tools, but we will
-      # just cd into the correct directory calculated from working-dir
-    - uses: actions/checkout@v2
-      if: steps.cache-asbackup.outputs.cache-hit != 'true'
-      with: 
-        path: ${{ steps.checkout-dir.outputs.value }}
-        fetch-depth: 0 # fetch the entire commit history for all branches
-    - name: Checkout asbackup
-      run: |
-        git config --global url."https://github.com/".insteadOf "git@github.com:"
-        git submodule update --init --recursive -- ${{ inputs.submodule || '.' }}
-      working-directory: ${{ steps.checkout-dir.outputs.value }}
-    - name: Print and get version
-      working-directory: ${{ steps.working-dir.outputs.value }}
-      id: tag
-      run: |
-        git describe --tags --always
-        echo "tag=$(git describe --tags --always)" >> $GITHUB_OUTPUT
-    - name: Cache asbackup build
-      id: cache-asbackup
-      uses: actions/cache@v3
-      env:
-        cache-name: cache-asbackup
-        cache-index: "1"
-      with:
-        path: |
-          ${{ steps.working-dir.outputs.value }}/binaries
-        key: ${{ env.cache-name }}-${{ env.cache-index }}-${{ matrix.os }}-${{ runner.arch }}-${{ steps.system-info.outputs.release }}-${{ env.AWS_SDK_CPP_VERSION }}-${{ env.ZSTD_VERSION }}-${{ steps.tag.outputs.tag }}
-    - name: Install AWS C++ sdk static library
-      if: steps.cache-asbackup.outputs.cache-hit != 'true'
-      run: |
-        sudo make install
-      working-directory: aws-sdk-cpp-${{ env.AWS_SDK_CPP_VERSION }}/build_static
-    - name: Build asbackup with static link to zstd and aws-sdk-cpp
-      if: steps.cache-asbackup.outputs.cache-hit != 'true'
-      run: |
-        make ZSTD_STATIC_PATH=${{ matrix.zstd-path }}/lib  AWS_SDK_STATIC_PATH=${{ matrix.aws-sdk-path }}/lib CURL_STATIC_PATH=${{ matrix.curl-path }}/lib OPENSSL_STATIC_PATH=${{ matrix.openssl-path }}/lib LIBSSH2_STATIC_PATH=${{ matrix.ssh2-path }}/lib LIBUV_STATIC_PATH=${{ matrix.uv-path }}/lib JANSSON_STATIC_PATH=${{ matrix.jansson-path }}/lib
-        mkdir -p binaries
-        cp -r bin binaries/static_bin
-        make clean
-      working-directory: ${{ steps.working-dir.outputs.value }}
-    - name: Sanity test static lib backup artifacts
-      run: |
-        ./asbackup -n test -d backupdir 2>&1 | grep "Failed to connect"
-        ./asrestore -n test -d backupdir 2>&1 | grep "Failed to connect"
-      working-directory:  ${{ steps.working-dir.outputs.value }}/binaries/static_bin
-    - name: Upload static asbackup artifact
-      uses: actions/upload-artifact@v4
-      with: 
-        name: ${{ steps.system-info.outputs.platform }}-${{ runner.arch }}-${{ matrix.os }}-${{ steps.system-info.outputs.release }}-asbackup-static
-        path: ${{ steps.working-dir.outputs.value }}/binaries/static_bin/asbackup
-        if-no-files-found: error
-    - name: Upload static asrestore artifact
-      uses: actions/upload-artifact@v4
-      with: 
-        name: ${{ steps.system-info.outputs.platform }}-${{ runner.arch }}-${{ matrix.os }}-${{ steps.system-info.outputs.release }}  -asrestore-static
-        path: ${{ steps.working-dir.outputs.value }}/binaries/static_bin/asrestore
-        if-no-files-found: error
+      - name: Get checkout directory
+        uses: haya14busa/action-cond@v1
+        id: checkout-dir
+        with:
+          cond: ${{ inputs.submodule != '' }}
+          if_true: aerospike-tools  # In this case we are expecting to checkout the tools package.
+          if_false: asbackup
+      - name: Get asbackup working directory
+        uses: haya14busa/action-cond@v1
+        id: working-dir
+        with:
+          cond: ${{ inputs.submodule != '' }}
+          if_true: aerospike-tools/${{ inputs.submodule }}  # In this case we are expecting to checkout the tools package.
+          if_false: asbackup
+      - uses: kenchan0130/actions-system-info@v1.3.0
+        id: system-info
+      - name: install libuv
+        id: install-libuv
+        run: |
+          brew install libuv
+      - name: install openssl
+        id: install-openssl
+        run: |
+          brew install openssl@1.1
+      - name: install libssh2
+        id: install-libssh2
+        run: |
+          brew install libssh2
+      - name: install secret agent client requirements
+        id: install-secret-agent-client-requirements
+        run: |
+          brew install jansson
+      - name: install AWS requirements
+        id: install-aws-requirements
+        run: |
+          brew install openssl@3 readline
+          CMAKE_VERSION=$(brew info cmake | grep -m 1 -Eo '[0-9]+\.[0-9]+\.[0-9]+')
+          echo "CMAKE_VERSION=$CMAKE_VERSION" >> $GITHUB_ENV
+      - name: Cache AWS C++ sdk
+        id: cache-aws-sdk-cpp
+        uses: actions/cache@v3
+        env:
+          cache-name: aws-sdk-cpp
+          cache-index: "2"
+        with:
+          path: aws-sdk-cpp-${{ env.AWS_SDK_CPP_VERSION }}
+          key: aws-sdk-cpp-${{ env.cache-index }}-mac-artifact-${{ env.AWS_SDK_CPP_VERSION }}-${{ matrix.os }}-${{ runner.arch }}-cmake-${{ env.CMAKE_VERSION }}
+      - name: Download AWS C++ sdk
+        uses: actions/checkout@v3
+        if: steps.cache-aws-sdk-cpp.outputs.cache-hit != 'true'
+        with:
+          repository: aws/aws-sdk-cpp
+          submodules: recursive
+          ref: ${{ env.AWS_SDK_CPP_VERSION }}
+          path: aws-sdk-cpp-${{ env.AWS_SDK_CPP_VERSION }}
+      - name: Build AWS C++ sdk static library
+        if: steps.cache-aws-sdk-cpp.outputs.cache-hit != 'true'
+        run: |
+          mkdir build_static
+          cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -S . -B build_static -DOPENSSL_ROOT_DIR=${{ matrix.openssl-path }} -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib
+          make -C build_static
+        working-directory: aws-sdk-cpp-${{ env.AWS_SDK_CPP_VERSION }}
+      - name: Cache libssh2
+        id: cache-libssh2
+        uses: actions/cache@v3
+        env:
+          cache-name: libssh2
+          cache-index: "2"
+        with:
+          path: libssh2-${{ env.LIBSSH2_VERSION }}
+          key: libssh2-v2-${{ env.LIBSSH2_VERSION }}-${{ env.cache-index }}-${{ matrix.os }}-${{ runner.arch }}-cmake-${{ env.CMAKE_VERSION }}
+      - name: Download libssh2
+        uses: actions/checkout@v3
+        if: steps.cache-libssh2.outputs.cache-hit != 'true'
+        with:
+          repository: libssh2/libssh2
+          submodules: recursive
+          ref: ${{ env.LIBSSH2_VERSION }}
+          path: libssh2-${{ env.LIBSSH2_VERSION }}
+      - name: Build libssh2
+        if: steps.cache-libssh2.outputs.cache-hit != 'true'
+        run: |
+          mkdir build_static
+          pushd build_static
+          cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5  -DOPENSSL_ROOT_DIR=${{ matrix.openssl-path }} -DCMAKE_BUILD_TYPE=Release ..
+          cmake --build .
+        working-directory: libssh2-${{ env.LIBSSH2_VERSION }}
+      - name: Install libssh2
+        run: |
+          sudo make install
+        working-directory: libssh2-${{ env.LIBSSH2_VERSION }}/build_static
+      - name: Cache libcurl
+        id: cache-libcurl
+        uses: actions/cache@v3
+        env:
+          cache-name: libcurl
+          cache-index: "2"
+        with:
+          path: curl-${{ env.LIBCURL_VERSION }}
+          key: curl-v2-${{ env.LIBCURL_VERSION }}-${{ env.cache-index }}-${{ matrix.os }}-${{ runner.arch }}-cmake-${{ env.CMAKE_VERSION }}
+      - name: Download libcurl
+        uses: actions/checkout@v3
+        if: steps.cache-libcurl.outputs.cache-hit != 'true'
+        with:
+          repository: curl/curl
+          submodules: recursive
+          ref: ${{ env.LIBCURL_VERSION }}
+          path: curl-${{ env.LIBCURL_VERSION }}
+      - name: Build libcurl
+        if: steps.cache-libcurl.outputs.cache-hit != 'true'
+        run: |
+          mkdir build
+          cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5  -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=OFF -DBUILD_CURL_EXE=OFF -DOPENSSL_ROOT_DIR=${{ matrix.openssl-path }} OPENSSL_USE_STATIC_LIBS=TRUE -DHTTP_ONLY=ON
+          make -C build
+        working-directory: curl-${{ env.LIBCURL_VERSION }}
+      - name: Install libcurl
+        run: |
+          sudo make install
+        working-directory: curl-${{ env.LIBCURL_VERSION }}/build
+      - name: Download zstd
+        uses: actions/checkout@v3
+        with:
+          repository: facebook/zstd
+          submodules: recursive
+          ref: v${{ env.ZSTD_VERSION }}
+          path: zstd-${{ env.ZSTD_VERSION }}
+      - name: Cache zstd
+        id: cache-zstd
+        uses: actions/cache@v3
+        env:
+          cache-name: zstd
+        with:
+          path: zstd-${{ env.ZSTD_VERSION }}
+          key: zstd-${{ env.ZSTD_VERSION }}-${{ matrix.os }}-${{ runner.arch }}
+      - name: Build zstd
+        id: build-zstd
+        if: steps.cache-zstd.outputs.cache-hit != 'true'
+        run: |
+          make
+        working-directory: zstd-${{ env.ZSTD_VERSION }}
+      - name: install zstd
+        run: |
+          sudo make install
+        working-directory: zstd-${{ env.ZSTD_VERSION }}
+        # this will checkout the whole tools repo when run from aerospike-tools, but we will
+        # just cd into the correct directory calculated from working-dir
+      - uses: actions/checkout@v2
+        if: steps.cache-asbackup.outputs.cache-hit != 'true'
+        with:
+          path: ${{ steps.checkout-dir.outputs.value }}
+          fetch-depth: 0 # fetch the entire commit history for all branches
+      - name: Checkout asbackup
+        run: |
+          git config --global url."https://github.com/".insteadOf "git@github.com:"
+          git submodule update --init --recursive -- ${{ inputs.submodule || '.' }}
+        working-directory: ${{ steps.checkout-dir.outputs.value }}
+      - name: Print and get version
+        working-directory: ${{ steps.working-dir.outputs.value }}
+        id: tag
+        run: |
+          git describe --tags --always
+          echo "tag=$(git describe --tags --always)" >> $GITHUB_OUTPUT
+      - name: Cache asbackup build
+        id: cache-asbackup
+        uses: actions/cache@v3
+        env:
+          cache-name: cache-asbackup
+          cache-index: "1"
+        with:
+          path: |
+            ${{ steps.working-dir.outputs.value }}/binaries
+          key: ${{ env.cache-name }}-${{ env.cache-index }}-${{ matrix.os }}-${{ runner.arch }}-${{ steps.system-info.outputs.release }}-${{ env.AWS_SDK_CPP_VERSION }}-${{ env.ZSTD_VERSION }}-${{ steps.tag.outputs.tag }}
+      - name: Install AWS C++ sdk static library
+        if: steps.cache-asbackup.outputs.cache-hit != 'true'
+        run: |
+          sudo make install
+        working-directory: aws-sdk-cpp-${{ env.AWS_SDK_CPP_VERSION }}/build_static
+      - name: Build asbackup with static link to zstd and aws-sdk-cpp
+        if: steps.cache-asbackup.outputs.cache-hit != 'true'
+        run: |
+          make ZSTD_STATIC_PATH=${{ matrix.zstd-path }}/lib  AWS_SDK_STATIC_PATH=${{ matrix.aws-sdk-path }}/lib CURL_STATIC_PATH=${{ matrix.curl-path }}/lib OPENSSL_STATIC_PATH=${{ matrix.openssl-path }}/lib LIBSSH2_STATIC_PATH=${{ matrix.ssh2-path }}/lib LIBUV_STATIC_PATH=${{ matrix.uv-path }}/lib JANSSON_STATIC_PATH=${{ matrix.jansson-path }}/lib
+          mkdir -p binaries
+          cp -r bin binaries/static_bin
+          make clean
+        working-directory: ${{ steps.working-dir.outputs.value }}
+      - name: Sanity test static lib backup artifacts
+        run: |
+          ./asbackup -n test -d backupdir 2>&1 | grep "Failed to connect"
+          ./asrestore -n test -d backupdir 2>&1 | grep "Failed to connect"
+        working-directory: ${{ steps.working-dir.outputs.value }}/binaries/static_bin
+      - name: Upload static asbackup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.os }}-asbackup-static
+          path: ${{ steps.working-dir.outputs.value }}/binaries/static_bin/asbackup
+          if-no-files-found: error
+      - name: Upload static asrestore artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.os }}-asrestore-static
+          path: ${{ steps.working-dir.outputs.value }}/binaries/static_bin/asrestore
+          if-no-files-found: error
   bundle-binaries:
+    strategy:
+      matrix:
+        os: [ macos-13, macos-14, macos-15 ]
     needs: build
     runs-on: macos-14
     if: "${{ inputs.submodule == '' }}"
 
-    steps: 
+    steps:
       - uses: kenchan0130/actions-system-info@v1.3.0
         id: system-info
       - name: Get artifacts
@@ -270,28 +273,28 @@ jobs:
           name: binaries-${{ matrix.os }}
           path: binaries
           if-no-files-found: error
-#
-#  sign-artifacts:
-#    strategy:
-#      matrix:
-#        os: [macos-13, macos-14, macos-15]
-#    needs: bundle-binaries
-#    uses: aerospike/shared-workflows/.github/workflows/reusable_sign-artifacts.yaml@8b68c4e071050d18ecccc5f3e6911a4127b455ae # vn.n.n
-#    with:
-#      artifact-name: signed-binaries-${{ matrix.os }}
-#      unsigned-artifacts: binaries-${{ matrix.os }}
-#      # artifact-name: signed-artifacts  # optional, defaults to signed-artifacts
-#      # retention-days: 7               # optional, defaults to 7
-#      # dry-run: false                  # optional, for future compatibility
-#    secrets:
-#      gpg-private-key: ${{ secrets.GPG_SECRET_KEY }}
-#      gpg-public-key: ${{ secrets.GPG_PUBLIC_KEY }}
-#      gpg-key-pass: ${{ secrets.GPG_PASS }}
+  #
+  #  sign-artifacts:
+  #    strategy:
+  #      matrix:
+  #        os: [macos-13, macos-14, macos-15]
+  #    needs: bundle-binaries
+  #    uses: aerospike/shared-workflows/.github/workflows/reusable_sign-artifacts.yaml@8b68c4e071050d18ecccc5f3e6911a4127b455ae # vn.n.n
+  #    with:
+  #      artifact-name: signed-binaries-${{ matrix.os }}
+  #      unsigned-artifacts: binaries-${{ matrix.os }}
+  #      # artifact-name: signed-artifacts  # optional, defaults to signed-artifacts
+  #      # retention-days: 7               # optional, defaults to 7
+  #      # dry-run: false                  # optional, for future compatibility
+  #    secrets:
+  #      gpg-private-key: ${{ secrets.GPG_SECRET_KEY }}
+  #      gpg-public-key: ${{ secrets.GPG_PUBLIC_KEY }}
+  #      gpg-key-pass: ${{ secrets.GPG_PASS }}
 
   upload-artifacts:
     strategy:
       matrix:
-        os: [macos-13, macos-14, macos-15]
+        os: [ macos-13, macos-14, macos-15 ]
     needs: bundle-binaries
     uses: aerospike/shared-workflows/.github/workflows/reusable_deploy-artifacts.yaml@8b68c4e071050d18ecccc5f3e6911a4127b455ae # vn.n.n
     with:
