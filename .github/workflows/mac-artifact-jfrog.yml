@@ -136,7 +136,7 @@ jobs:
         mkdir build_static
         pushd build_static
         cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5  -DOPENSSL_ROOT_DIR=${{ matrix.openssl-path }} -DCMAKE_BUILD_TYPE=Release ..
-        cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5  --build .
+        cmake --build .
       working-directory: libssh2-${{ env.LIBSSH2_VERSION }}
     - name: Install libssh2
       run: |
