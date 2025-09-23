@@ -110,7 +110,7 @@ jobs:
       if: steps.cache-aws-sdk-cpp.outputs.cache-hit != 'true'
       run: |
         mkdir build_static
-        cmake -S . -B build_static -DOPENSSL_ROOT_DIR=${{ matrix.openssl-path }} -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib
+        cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -S .  -B build_static -DOPENSSL_ROOT_DIR=${{ matrix.openssl-path }} -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib
         make -C build_static
       working-directory: aws-sdk-cpp-${{ env.AWS_SDK_CPP_VERSION }}
     - name: Cache libssh2
@@ -135,7 +135,7 @@ jobs:
       run: |
         mkdir build_static
         pushd build_static
-        cmake -DOPENSSL_ROOT_DIR=${{ matrix.openssl-path }} -DCMAKE_BUILD_TYPE=Release ..
+        cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DOPENSSL_ROOT_DIR=${{ matrix.openssl-path }} -DCMAKE_BUILD_TYPE=Release ..
         cmake --build .
       working-directory: libssh2-${{ env.LIBSSH2_VERSION }}
     - name: Install libssh2
@@ -163,7 +163,7 @@ jobs:
       if: steps.cache-libcurl.outputs.cache-hit != 'true'
       run: |
         mkdir build
-        cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=OFF -DBUILD_CURL_EXE=OFF -DOPENSSL_ROOT_DIR=${{ matrix.openssl-path }} OPENSSL_USE_STATIC_LIBS=TRUE -DHTTP_ONLY=ON
+        cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=OFF -DBUILD_CURL_EXE=OFF -DOPENSSL_ROOT_DIR=${{ matrix.openssl-path }} OPENSSL_USE_STATIC_LIBS=TRUE -DHTTP_ONLY=ON
         make -C build
       working-directory: curl-${{ env.LIBCURL_VERSION }}
     - name: Install libcurl
