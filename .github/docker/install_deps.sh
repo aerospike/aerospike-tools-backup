@@ -91,7 +91,6 @@ function install_deps_debian12() {
   cd ../..
 }
 
-
 function install_deps_debian13() {
   apt -y install $BUILD_DEPS_DEBIAN $FPM_DEPS_DEBIAN
   gem install fpm
@@ -128,7 +127,6 @@ function install_deps_debian13() {
   make install
   cd ../..
 }
-
 
 function install_deps_ubuntu20.04() {
   apt -y install $BUILD_DEPS_UBUNTU $FPM_DEPS_UBUNTU_2004
@@ -320,6 +318,7 @@ function install_deps_redhat-el8() {
 
   gem install fpm
 }
+
 function install_deps_redhat-el9() {
 
   dnf -y install $BUILD_DEPS_REDHAT_9 $FPM_DEPS_REDHAT_9
@@ -401,8 +400,6 @@ function install_deps_redhat-el9() {
 
   gem install fpm
 }
-
-
 
 function install_deps_amazon-2023() {
   yum groupinstall -y 'Development Tools'

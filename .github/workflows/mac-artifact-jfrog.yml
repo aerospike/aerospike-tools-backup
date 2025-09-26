@@ -1,7 +1,7 @@
 name: Mac Artifact
 on:
   push:
-    branches: [ master, "bugfix-*", actions-hub ]
+    branches: [ master, "bugfix-*", actions-hub, SERVER-216 ]
   pull_request:
     branches: [ master, "bugfix-*", actions-hub ]
   workflow_call:
