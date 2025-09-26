@@ -317,6 +317,16 @@ function install_deps_redhat-el9() {
   make install
 
   cd /opt
+  git clone https://github.com/aws/s2n-tls.git
+  cd s2n-tls
+
+  cmake . -Bbuild \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_INSTALL_PREFIX=./s2n-tls-install
+  cmake --build build -j8
+  make install
+
+  cd /opt
   git clone https://github.com/aws/aws-sdk-cpp.git
   cd aws-sdk-cpp
   git checkout $AWS_SDK_VERSION
