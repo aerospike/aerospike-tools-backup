@@ -245,7 +245,7 @@ function install_deps_redhat-el8() {
   dnf -y install $BUILD_DEPS_REDHAT_8 $FPM_DEPS_REDHAT_8
 
   cd /opt
-  wget https://ftp.gnu.org/pub/gnu/gettext/gettext-0.21.tar.gz
+  wget https://mirrors.ocf.berkeley.edu/gnu/gettext/gettext-0.21.tar.gz
   tar -zxvf gettext-0.21.tar.gz
   cd gettext-0.21
   autoconf
@@ -325,7 +325,7 @@ function install_deps_redhat-el9() {
   dnf -y install $BUILD_DEPS_REDHAT_9 $FPM_DEPS_REDHAT_9
 
   cd /opt
-  wget https://ftp.gnu.org/pub/gnu/gettext/gettext-0.21.tar.gz
+  wget https://mirrors.ocf.berkeley.edu/gnu/gettext/gettext-0.21.tar.gz
   tar -zxvf gettext-0.21.tar.gz
   cd gettext-0.21
   autoconf
@@ -410,7 +410,7 @@ function install_deps_amazon-2023() {
 
 
   cd /opt
-  wget https://ftp.gnu.org/pub/gnu/gettext/gettext-0.21.tar.gz
+  wget https://mirrors.ocf.berkeley.edu/gnu/gettext/gettext-0.21.tar.gz
   tar -zxvf gettext-0.21.tar.gz
   cd gettext-0.21
   autoconf
