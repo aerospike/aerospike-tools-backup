@@ -34,7 +34,7 @@ function install_deps_debian11() {
   git submodule update --init --recursive
   mkdir build
   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=OFF -DBUILD_CURL_EXE=OFF
-  make -C build
+  make -C build -j8
   cd build
   make install
   cd ../..
@@ -45,7 +45,7 @@ function install_deps_debian11() {
   git submodule update --init --recursive
   mkdir build
   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_UNITY_BUILD=ON
-  make -C build
+  make -C build -j8
   cd build
   make install
   cd ../..
@@ -74,7 +74,7 @@ function install_deps_debian12() {
   git submodule update --init --recursive
   mkdir build
   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=OFF -DBUILD_CURL_EXE=OFF
-  make -C build
+  make -C build -j8
   cd build
   make install
   cd ../..
@@ -85,7 +85,7 @@ function install_deps_debian12() {
   git submodule update --init --recursive
   mkdir build
   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_UNITY_BUILD=ON
-  make -C build
+  make -C build -j8
   cd build
   make install
   cd ../..
@@ -112,7 +112,7 @@ function install_deps_debian13() {
   git submodule update --init --recursive
   mkdir build
   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=OFF -DBUILD_CURL_EXE=OFF
-  make -C build
+  make -C build -j8
   cd build
   make install
   cd ../..
@@ -123,7 +123,7 @@ function install_deps_debian13() {
   git submodule update --init --recursive
   mkdir build
   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_UNITY_BUILD=ON
-  make -C build
+  make -C build -j8
   cd build
   make install
   cd ../..
@@ -150,7 +150,7 @@ function install_deps_ubuntu20.04() {
   git submodule update --init --recursive
   mkdir build
   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=OFF -DBUILD_CURL_EXE=OFF
-  make -C build
+  make -C build -j8
   cd build
   make install
   cd ../..
@@ -161,7 +161,7 @@ function install_deps_ubuntu20.04() {
   git submodule update --init --recursive
   mkdir build
   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_UNITY_BUILD=ON
-  make -C build
+  make -C build -j8
   cd build
   make install
   cd ../..
@@ -187,7 +187,7 @@ function install_deps_ubuntu22.04() {
   git submodule update --init --recursive
   mkdir build
   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=OFF -DBUILD_CURL_EXE=OFF
-  make -C build
+  make -C build -j8
   cd build
   make install
   cd ../..
@@ -198,7 +198,7 @@ function install_deps_ubuntu22.04() {
   git submodule update --init --recursive
   mkdir build
   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_UNITY_BUILD=ON
-  make -C build
+  make -C build -j8
   cd build
   make install
   cd ../..
@@ -224,7 +224,7 @@ function install_deps_ubuntu24.04() {
   git submodule update --init --recursive
   mkdir build
   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=OFF -DBUILD_CURL_EXE=OFF
-  make -C build
+  make -C build -j8
   cd build
   make install
   cd ../..
@@ -235,7 +235,7 @@ function install_deps_ubuntu24.04() {
   git submodule update --init --recursive
   mkdir build
   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_UNITY_BUILD=ON
-  make -C build
+  make -C build -j8
   cd build
   make install
   cd ../..
@@ -304,7 +304,7 @@ function install_deps_redhat-el8() {
   cmake . -Bbuild \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_INSTALL_PREFIX=./s2n-tls-install
-  cmake --build build -j8
+  cmake --build build
   make install
 
   cd /opt
@@ -384,7 +384,7 @@ function install_deps_redhat-el9() {
   cmake . -Bbuild \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_INSTALL_PREFIX=./s2n-tls-install
-  cmake --build build -j8
+  cmake --build build
   make install
 
   cd /opt
@@ -394,7 +394,7 @@ function install_deps_redhat-el9() {
   git submodule update --init --recursive
   mkdir build
   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_UNITY_BUILD=ON
-  make -C build
+  make -C build -j8
   cd build
   make install
   cd ../..
@@ -469,7 +469,7 @@ function install_deps_amazon-2023() {
   cmake . -Bbuild \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_INSTALL_PREFIX=./s2n-tls-install
-  cmake --build build -j8
+  cmake --build build
   make install
 
   cd /opt
@@ -479,7 +479,7 @@ function install_deps_amazon-2023() {
   git submodule update --init --recursive
   mkdir build
   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_UNITY_BUILD=ON
-  make -C build
+  make -C build -j8
   cd build
   make install
   cd
