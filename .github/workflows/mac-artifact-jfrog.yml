@@ -305,5 +305,5 @@ jobs:
       artifactory-oidc-provider-name: database-gh-aerospike
       artifactory-oidc-audience: database-gh-aerospike
       artifact-name: binaries-${{ matrix.os }}
-      retention-days: 1
+      retention-days: 7
       dry-run: false
