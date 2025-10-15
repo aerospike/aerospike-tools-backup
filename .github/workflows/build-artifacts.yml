@@ -8,15 +8,25 @@ jobs:
   build-artifacts:
     strategy:
       matrix:
-        distro: [ debian11, debian12, debian13, ubuntu20.04, ubuntu22.04, ubuntu24.04, redhat-el8, redhat-el9, amazon-2023 ] # redhat-ubi9 ]
+        distro: [ debian11, debian12, debian13, ubuntu20.04, ubuntu22.04, ubuntu24.04,  redhat-el9, amazon-2023 ] # redhat-el8 disable redhat 8 due to fpm issue
         host: [ ubuntu-24.04-arm, ubuntu-24.04 ]
-    uses: aerospike/shared-workflows/.github/workflows/reusable_execute-build.yaml@8b68c4e071050d18ecccc5f3e6911a4127b455ae
+    uses: aerospike/shared-workflows/.github/workflows/reusable_execute-build.yaml@0da06cb2182165b125dc219ca2fda09732ca0fa4
     with:
       runs-on: ${{ matrix.host }}
       project: database
       build-name: asbackup
-      build-version: v1.0.0
-      build-script: set -x && ls -laht && cd shared-workflows && ls -laht && git log | head && git branch -v && cd .. && chmod o+rw dist &&  cd local && git checkout ${{ github.ref_name }} && git submodule update --init --recursive && .github/docker/entrypoint.sh -c -d ${{ matrix.distro }} && .github/docker/entrypoint.sh -e -d ${{ matrix.distro }} && find ../dist
+      build-id: ${{ github.run_number }}
+      build-script: |
+        set -x &&
+        cd local && 
+        git fetch --unshallow --tags --no-recurse-submodules &&
+        git submodule update --init &&
+        ls -laht &&
+        echo ref_name ${{ github.ref_name }} &&
+        git branch -v &&
+        .github/docker/entrypoint.sh -c -d ${{ matrix.distro }} &&
+        .github/docker/entrypoint.sh -e -d ${{ matrix.distro }} &&
+        ls -laht ../dist
       artifact-directory: dist
       artifact-name: unsigned-artifacts-${{ matrix.distro }}-${{ matrix.host }}
       retention-days: 7
@@ -27,10 +37,10 @@ jobs:
   sign-artifacts:
     strategy:
       matrix:
-        distro: [ debian11, debian12, debian13, ubuntu20.04, ubuntu22.04, ubuntu24.04, redhat-el8, redhat-el9, amazon-2023 ] # redhat-ubi9 ]
+        distro: [ debian11, debian12, debian13, ubuntu20.04, ubuntu22.04, ubuntu24.04,  redhat-el9, amazon-2023 ] # redhat-el8 disable redhat 8 due to fpm issue
         host: [ ubuntu-24.04-arm, ubuntu-24.04 ]
     needs: build-artifacts
-    uses: aerospike/shared-workflows/.github/workflows/reusable_sign-artifacts.yaml@8b68c4e071050d18ecccc5f3e6911a4127b455ae # vn.n.n
+    uses: aerospike/shared-workflows/.github/workflows/reusable_sign-artifacts.yaml@0da06cb2182165b125dc219ca2fda09732ca0fa4 # vn.n.n
     with:
       artifact-name: signed-artifacts-${{ matrix.distro }}-${{ matrix.host }}
       unsigned-artifacts: unsigned-artifacts-${{ matrix.distro }}-${{ matrix.host }}
@@ -45,10 +55,10 @@ jobs:
   upload-artifacts:
     strategy:
       matrix:
-        distro: [ debian11, debian12, debian13, ubuntu20.04, ubuntu22.04, ubuntu24.04, redhat-el8, redhat-el9, amazon-2023 ] # redhat-ubi9 ]
+        distro: [ debian11, debian12, debian13, ubuntu20.04, ubuntu22.04, ubuntu24.04, redhat-el9, amazon-2023 ] # disable redhat 8 due to fpm issue
         host: [ ubuntu-24.04-arm, ubuntu-24.04 ]
     needs: sign-artifacts
-    uses: aerospike/shared-workflows/.github/workflows/reusable_deploy-artifacts.yaml@8b68c4e071050d18ecccc5f3e6911a4127b455ae # vn.n.n
+    uses: aerospike/shared-workflows/.github/workflows/reusable_deploy-artifacts.yaml@0da06cb2182165b125dc219ca2fda09732ca0fa4 # vn.n.n
     with:
       project: database
       build-name: asbackup
@@ -59,3 +69,5 @@ jobs:
       artifact-name: signed-artifacts-${{ matrix.distro }}-${{ matrix.host }}
       retention-days: 1
       dry-run: false
+      build-id: ${{ github.run_number }}
+      metadata-build-id: ${{ github.run_number }}-metadata
