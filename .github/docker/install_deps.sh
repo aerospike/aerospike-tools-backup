@@ -261,9 +261,9 @@ function install_deps_redhat-el8() {
   make install
 
   cd /opt
-  wget  http://git.savannah.gnu.org/cgit/readline.git/snapshot/readline-master.tar.gz
-  tar -zxvf readline-master.tar.gz
-  cd readline-master
+  git clone https://https.git.savannah.gnu.org/git/readline.git
+  cd readline
+  git checkout readline-8.3
   ./configure
   make
   make install
@@ -342,9 +342,9 @@ function install_deps_redhat-el9() {
   make install
 
   cd /opt
-  wget  http://git.savannah.gnu.org/cgit/readline.git/snapshot/readline-master.tar.gz
-  tar -zxvf readline-master.tar.gz
-  cd readline-master
+  git clone https://https.git.savannah.gnu.org/git/readline.git
+  cd readline
+  git checkout readline-8.3
   ./configure
   make
   make install
@@ -425,9 +425,9 @@ function install_deps_amazon-2023() {
   make install
 
   cd /opt
-  wget  http://git.savannah.gnu.org/cgit/readline.git/snapshot/readline-master.tar.gz
-  tar -zxvf readline-master.tar.gz
-  cd readline-master
+  git clone https://https.git.savannah.gnu.org/git/readline.git
+  cd readline
+  git checkout readline-8.3
   ./configure
   make
   make install
