@@ -420,6 +420,7 @@ function install_deps_redhat-el10() {
   make -j"$(nproc)"
   make install
   ldconfig
+  cd /opt
   rm -rf libunistring-1.2 libunistring-1.2.tar.xz
 
   # sanity
@@ -435,7 +436,6 @@ Version: 1.2
 Libs: -L${libdir} -lunistring
 Cflags: -I${includedir}
 EOF
-  cat /usr/lib64/pkgconfig/libunistring.pc
   export PKG_CONFIG_PATH=/usr/lib64/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig
   pkg-config --modversion libunistring
   pkg-config --cflags --libs libunistring
