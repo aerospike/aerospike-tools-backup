@@ -491,13 +491,26 @@ function install_deps_redhat-el10() {
 #  dnf config-manager --set-enabled ubi-10-crb || true
 #  dnf install -y libunistring-devel libidn2-devel pkgconf-pkg-config
 
-  curl -LO https://ftp.gnu.org/gnu/libunistring/libunistring-1.2.tar.xz && \
-  tar xf libunistring-1.2.tar.xz && \
-  cd libunistring-1.2 && \
-    ./configure --prefix=/usr && \
-    make -j"$(nproc)" && make install && \
-    ldconfig && \
-    cd / && rm -rf libunistring-1.2 libunistring-1.2.tar.xz
+  curl -LO https://ftp.gnu.org/gnu/libunistring/libunistring-1.2.tar.xz
+  tar xf libunistring-1.2.tar.xz
+  cd libunistring-1.2
+  ./configure --prefix=/usr
+  make -j"$(nproc)"
+  make install
+  ldconfig
+  cd /
+  rm -rf libunistring-1.2 libunistring-1.2.tar.xz
+
+# (optional but common) libidn2 devel from source if your build later needs headers
+# curl -LO https://ftp.gnu.org/gnu/libidn/libidn2-2.3.7.tar.gz
+# tar xf libidn2-2.3.7.tar.gz && cd libidn2-2.3.7 && ./configure --prefix=/usr && make -j && make install && ldconfig && cd / && rm -rf libidn2-*
+
+# prove pkg-config can see it
+  pkg-config --modversion libunistring || true
+  pkg-config --cflags --libs libunistring || true
+
+# now run your configure
+  ./configure   # or your project’s exact configure invocation
 
   gem install fpm
 }
