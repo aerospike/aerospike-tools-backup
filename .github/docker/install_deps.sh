@@ -411,31 +411,23 @@ function install_deps_redhat-el9() {
 function install_deps_redhat-el10() {
   dnf -y install $BUILD_DEPS_REDHAT_10 $FPM_DEPS_REDHAT_10
 
-  cd /
   curl -LO https://ftp.gnu.org/gnu/libunistring/libunistring-1.2.tar.xz
   tar xf libunistring-1.2.tar.xz
-  export PKG_CONFIG_PATH=/usr/lib64/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig
   cd libunistring-1.2
-  ./configure --prefix=/usr
+  ./configure --prefix=/usr --libdir=/usr/lib64 --with-pkgconfigdir=/usr/lib64/pkgconfig
   make -j"$(nproc)"
   make install
   ldconfig
-  cd /
   rm -rf libunistring-1.2 libunistring-1.2.tar.xz
-  find /usr -name 'libunistring.pc' -print
-  ls -l /usr/lib*/libunistring*
 
-# (optional but common) libidn2 devel from source if your build later needs headers
-# curl -LO https://ftp.gnu.org/gnu/libidn/libidn2-2.3.7.tar.gz
-# tar xf libidn2-2.3.7.tar.gz && cd libidn2-2.3.7 && ./configure --prefix=/usr && make -j && make install && ldconfig && cd / && rm -rf libidn2-*
-
-# prove pkg-config can see it
-  pkg-config --modversion libunistring || true
-  pkg-config --cflags --libs libunistring || true
+  # sanity
+  ls /usr/lib64/pkgconfig/libunistring.pc
+  export PKG_CONFIG_PATH=/usr/lib64/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig
+  pkg-config --modversion libunistring
+  pkg-config --cflags --libs libunistring
 
 # now run your configure
   ./configure   # or your project’s exact configure invocation
-
 
   cd /opt
   wget https://mirrors.ocf.berkeley.edu/gnu/gettext/gettext-0.21.tar.gz
