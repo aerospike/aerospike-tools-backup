@@ -410,9 +410,7 @@ function install_deps_redhat-el9() {
 
 function install_deps_redhat-el10() {
   dnf install -y dnf-plugins-core
-  # Some *-devel RPMs live in CodeReady Builder; enable it if not already:
-  dnf config-manager --set-enabled ubi-10-codeready-builder || true
-
+  dnf config-manager --set-enabled ubi-10-crb
   dnf install -y libunistring-devel libidn2-devel pkgconf-pkg-config
 
   dnf -y install $BUILD_DEPS_REDHAT_10 $FPM_DEPS_REDHAT_10
