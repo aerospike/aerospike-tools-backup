@@ -411,8 +411,10 @@ function install_deps_redhat-el9() {
 function install_deps_redhat-el10() {
   dnf -y install $BUILD_DEPS_REDHAT_10 $FPM_DEPS_REDHAT_10
 
+  cd /
   curl -LO https://ftp.gnu.org/gnu/libunistring/libunistring-1.2.tar.xz
   tar xf libunistring-1.2.tar.xz
+  export PKG_CONFIG_PATH=/usr/lib64/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig
   cd libunistring-1.2
   ./configure --prefix=/usr
   make -j"$(nproc)"
