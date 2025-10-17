@@ -426,9 +426,6 @@ function install_deps_redhat-el10() {
   pkg-config --modversion libunistring
   pkg-config --cflags --libs libunistring
 
-# now run your configure
-  ./configure   # or your project’s exact configure invocation
-
   cd /opt
   wget https://mirrors.ocf.berkeley.edu/gnu/gettext/gettext-0.21.tar.gz
   tar -zxvf gettext-0.21.tar.gz
@@ -462,7 +459,6 @@ function install_deps_redhat-el10() {
   ./configure
   make
   make install
-
 
   cd /opt
   git clone https://github.com/libuv/libuv
