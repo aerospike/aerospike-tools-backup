@@ -421,6 +421,18 @@ function install_deps_redhat-el10() {
   rm -rf libunistring-1.2 libunistring-1.2.tar.xz
 
   # sanity
+cat >/usr/lib64/pkgconfig/libunistring.pc <<'EOF'
+prefix=/usr
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib64
+includedir=${prefix}/include
+
+Name: libunistring
+Description: Unicode string library
+Version: 1.2
+Libs: -L${libdir} -lunistring
+Cflags: -I${includedir}
+EOF
   ls /usr/lib64/pkgconfig/libunistring.pc
   export PKG_CONFIG_PATH=/usr/lib64/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig
   pkg-config --modversion libunistring
