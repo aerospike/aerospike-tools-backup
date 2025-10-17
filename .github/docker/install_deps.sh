@@ -411,6 +411,8 @@ function install_deps_redhat-el9() {
 function install_deps_redhat-el10() {
   dnf -y install $BUILD_DEPS_REDHAT_10 $FPM_DEPS_REDHAT_10
 
+  # install libunistring
+  cd /opt
   curl -LO https://ftp.gnu.org/gnu/libunistring/libunistring-1.2.tar.xz
   tar xf libunistring-1.2.tar.xz
   cd libunistring-1.2
@@ -433,7 +435,7 @@ Version: 1.2
 Libs: -L${libdir} -lunistring
 Cflags: -I${includedir}
 EOF
-  ls /usr/lib64/pkgconfig/libunistring.pc
+  cat /usr/lib64/pkgconfig/libunistring.pc
   export PKG_CONFIG_PATH=/usr/lib64/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig
   pkg-config --modversion libunistring
   pkg-config --cflags --libs libunistring
