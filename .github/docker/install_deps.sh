@@ -409,8 +409,9 @@ function install_deps_redhat-el9() {
 }
 
 function install_deps_redhat-el10() {
+  curl -fsSL https://cdn-ubi.redhat.com/ubi.repo -o /etc/yum.repos.d/ubi.repo
   dnf install -y dnf-plugins-core
-  dnf config-manager --set-enabled ubi-10-crb
+  dnf config-manager --set-enabled ubi-10-crb || true
   dnf install -y libunistring-devel libidn2-devel pkgconf-pkg-config
 
   dnf -y install $BUILD_DEPS_REDHAT_10 $FPM_DEPS_REDHAT_10
