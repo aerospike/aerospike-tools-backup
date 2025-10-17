@@ -409,6 +409,86 @@ function install_deps_redhat-el9() {
 }
 
 function install_deps_redhat-el10() {
+  dnf install -y dnf-plugins-core
+  dnf config-manager --set-enabled ubi-10-crb
+  dnf install -y libunistring-devel libidn2-devel pkgconf-pkg-config
+
+  dnf -y install $BUILD_DEPS_REDHAT_10 $FPM_DEPS_REDHAT_10
+
+  cd /opt
+  wget https://mirrors.ocf.berkeley.edu/gnu/gettext/gettext-0.21.tar.gz
+  tar -zxvf gettext-0.21.tar.gz
+  cd gettext-0.21
+  autoconf
+  ./configure
+  make
+  make install
+
+  cd /opt
+  git clone  https://github.com/rockdaboot/libpsl.git
+  cd libpsl
+  git checkout 0.21.5
+  ./autogen.sh
+  ./configure
+  make
+  make install
+
+  cd /opt
+  git clone https://https.git.savannah.gnu.org/git/readline.git
+  cd readline
+  git checkout readline-8.3
+  ./configure
+  make
+  make install
+
+  cd /opt
+  git clone https://github.com/akheron/jansson.git
+  cd jansson
+  autoreconf -i
+  ./configure
+  make
+  make install
+
+
+  cd /opt
+  git clone https://github.com/libuv/libuv
+  cd libuv
+  git checkout v1.42.0
+  sh autogen.sh
+  ./configure
+  make
+  make install
+  cd ..
+
+  cd /opt
+  wget https://github.com/westes/flex/releases/download/v2.6.4/flex-2.6.4.tar.gz
+  tar -zxvf flex-2.6.4.tar.gz
+  cd flex-2.6.4
+  ./configure
+  make
+  make install
+
+  cd /opt
+  git clone https://github.com/aws/s2n-tls.git
+  cd s2n-tls
+
+  cmake . -Bbuild \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_INSTALL_PREFIX=./s2n-tls-install
+  cmake --build build
+  make install
+
+  cd /opt
+  git clone https://github.com/aws/aws-sdk-cpp.git
+  cd aws-sdk-cpp
+  git checkout $AWS_SDK_VERSION
+  git submodule update --init --recursive
+  mkdir build
+  cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_UNITY_BUILD=ON
+  make -C build -j8
+  cd build
+  make install
+  cd ../..
 
   gem install fpm
 }
