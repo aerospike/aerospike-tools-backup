@@ -152,9 +152,3 @@ RUN wget https://github.com/westes/flex/releases/download/v${FLEX_VERSION}/flex-
     make -j$(nproc) && \
     make install && \
     ln -s /usr/bin/flex /usr/bin/lex
-
-# Add the build script
-COPY build.sh /work/bin/build
-
-# Add docker for building containers
-COPY docker /work/bin/docker
