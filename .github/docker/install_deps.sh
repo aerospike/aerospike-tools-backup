@@ -423,6 +423,7 @@ function install_deps_redhat-el10() {
   cd /
   rm -rf libunistring-1.2 libunistring-1.2.tar.xz
   find /usr -name 'libunistring.pc' -print
+  ls -l /usr/lib*/libunistring*
 
 # (optional but common) libidn2 devel from source if your build later needs headers
 # curl -LO https://ftp.gnu.org/gnu/libidn/libidn2-2.3.7.tar.gz
