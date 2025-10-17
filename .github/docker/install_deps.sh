@@ -4,7 +4,7 @@ alias make='make -j8'
 BUILD_DEPS_AMAZON="gcc-c++ libtool wget cmake openssl-devel libcurl-devel libzstd-devel which autoconf git libidn2 libunistring libunistring-devel"
 BUILD_DEPS_REDHAT_8="gcc-c++ libtool wget cmake openssl-devel libcurl-devel libzstd-devel which autoconf git" #readline-devel flex
 BUILD_DEPS_REDHAT_9="gcc-c++ libtool wget cmake openssl-devel libcurl-devel libzstd-devel which autoconf git" #readline-devel flex
-BUILD_DEPS_REDHAT_10="gcc-c++ libtool wget cmake openssl-devel libcurl-devel libzstd-devel which autoconf dnf-plugins-core libunistring-devel libidn2-devel pkgconf-pkg-config" #readline-devel flex
+BUILD_DEPS_REDHAT_10="gcc-c++ libtool wget cmake openssl-devel libcurl-devel libzstd-devel which autoconf git" #readline-devel flex
 BUILD_DEPS_UBUNTU="libpsl-dev autotools-dev automake libtool cmake pkg-config zlib1g-dev build-essential libssl-dev libzstd-dev libjansson-dev"
 BUILD_DEPS_DEBIAN="libpsl-dev autotools-dev automake libtool cmake pkg-config zlib1g-dev build-essential libssl-dev libzstd-dev libjansson-dev"
 FPM_DEPS_DEBIAN="ruby-rubygems make rpm git rsync binutils"
@@ -409,6 +409,11 @@ function install_deps_redhat-el9() {
 }
 
 function install_deps_redhat-el10() {
+  dnf install -y dnf-plugins-core
+  # Some *-devel RPMs live in CodeReady Builder; enable it if not already:
+  dnf config-manager --set-enabled ubi-10-codeready-builder || true
+
+  dnf install -y libunistring-devel libidn2-devel pkgconf-pkg-config
 
   dnf -y install $BUILD_DEPS_REDHAT_10 $FPM_DEPS_REDHAT_10
 
