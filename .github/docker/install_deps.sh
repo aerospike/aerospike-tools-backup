@@ -18,7 +18,7 @@ FPM_DEPS_REDHAT_10="ruby rpmdevtools make git python3 python3-pip rsync zlib zli
 AWS_SDK_VERSION="1.10.55"
 function install_deps_debian11() {
   apt -y install $BUILD_DEPS_DEBIAN $FPM_DEPS_DEBIAN
-  gem install fpm
+  gem install fpm -v 1.17.0
 
   cd /opt
   git clone https://github.com/libuv/libuv
@@ -58,7 +58,7 @@ function install_deps_debian11() {
 
 function install_deps_debian12() {
   apt -y install $BUILD_DEPS_DEBIAN $FPM_DEPS_DEBIAN
-  gem install fpm
+  gem install fpm -v 1.17.0
 
   cd /opt
   git clone https://github.com/libuv/libuv
@@ -95,7 +95,7 @@ function install_deps_debian12() {
 
 function install_deps_debian13() {
   apt -y install $BUILD_DEPS_DEBIAN $FPM_DEPS_DEBIAN
-  gem install fpm
+  gem install fpm -v 1.17.0
 
   cd /opt
   git clone https://github.com/libuv/libuv
@@ -132,7 +132,7 @@ function install_deps_debian13() {
 
 function install_deps_ubuntu20.04() {
   apt -y install $BUILD_DEPS_UBUNTU $FPM_DEPS_UBUNTU_2004
-  gem install fpm
+  gem install fpm -v 1.17.0
 
   cd /opt
   git clone https://github.com/libuv/libuv
@@ -169,7 +169,7 @@ function install_deps_ubuntu20.04() {
 
 function install_deps_ubuntu22.04() {
   apt -y install $BUILD_DEPS_UBUNTU $FPM_DEPS_UBUNTU
-  gem install fpm
+  gem install fpm -v 1.17.0
 
   cd /opt
   git clone https://github.com/libuv/libuv
@@ -206,7 +206,7 @@ function install_deps_ubuntu22.04() {
 
 function install_deps_ubuntu24.04() {
   apt -y install $BUILD_DEPS_UBUNTU $FPM_DEPS_UBUNTU
-  gem install fpm
+  gem install fpm -v 1.17.0
 
   cd /opt
   git clone https://github.com/libuv/libuv
@@ -323,7 +323,7 @@ function install_deps_redhat-el8() {
   cd build
   make install
 
-  gem install fpm
+  gem install fpm -v 1.17.0
 }
 
 function install_deps_redhat-el9() {
@@ -514,7 +514,7 @@ EOF
   make install
   cd ../..
 
-  gem install fpm
+  gem install fpm -v 1.17.0
 }
 
 function install_deps_amazon-2023() {
@@ -597,5 +597,5 @@ function install_deps_amazon-2023() {
   make install
   cd
 
-  gem install fpm
+  gem install fpm -v 1.17.0
 }
