@@ -239,7 +239,7 @@ function install_deps_ubuntu24.04() {
   cd ../..
 }
 
-function install_deps_redhat-el8() {
+function install_deps_el8() {
   dnf -y install $BUILD_DEPS_REDHAT_8 $FPM_DEPS_REDHAT_8
 
   cd /opt
@@ -319,7 +319,7 @@ function install_deps_redhat-el8() {
   gem install fpm -v 1.17.0
 }
 
-function install_deps_redhat-el9() {
+function install_deps_el9() {
 
   dnf -y install $BUILD_DEPS_REDHAT_9 $FPM_DEPS_REDHAT_9
 
@@ -401,7 +401,7 @@ function install_deps_redhat-el9() {
   gem install fpm -v 1.17.0
 }
 
-function install_deps_amazon-2023() {
+function install_deps_amzn2023() {
   yum groupinstall -y 'Development Tools'
   dnf install -y $BUILD_DEPS_AMAZON $FPM_DEPS_AMAZON
 

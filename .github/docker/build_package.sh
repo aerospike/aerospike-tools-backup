@@ -8,7 +8,7 @@ function build_packages(){
   git submodule update --init --recursive
   export ARCH=$(uname -m)
 
-  if [ "$ENV_DISTRO" = "amazon-2023" ] || [ "$ENV_DISTRO" = "redhat-el8" ] || [ "$ENV_DISTRO" = "redhat-el9" ]; then
+  if [ "$ENV_DISTRO" = "amzn2023" ] || [ "$ENV_DISTRO" = "el8" ] || [ "$ENV_DISTRO" = "el9" ]; then
     make EVENT_LIB=libuv AWS_SDK_STATIC_PATH=/usr/local/lib JANSSON_STATIC_PATH=/usr/local/lib/
   else
     make EVENT_LIB=libuv ZSTD_STATIC_PATH=/usr/lib/$ARCH-linux-gnu AWS_SDK_STATIC_PATH=/usr/local/lib CURL_STATIC_PATH=/usr/local/lib OPENSSL_STATIC_PATH=/usr/lib/$ARCH-linux-gnu AWS_SDK_STATIC_PATH=/usr/local/lib JANSSON_STATIC_PATH=/usr/lib/$ARCH-linux-gnu
@@ -21,7 +21,7 @@ function build_packages(){
     make deb
   elif [[ $ENV_DISTRO == *"debian"* ]]; then
     make deb
-  elif [[ $ENV_DISTRO == *"redhat"* ]]; then
+  elif [[ $ENV_DISTRO == *"el"* ]]; then
     make rpm
   elif [[ $ENV_DISTRO == *"amazon"* ]]; then
     make rpm

@@ -1,8 +1,9 @@
-FROM redhat/ubi9:9.6
+FROM amazonlinux:2023
 SHELL ["/bin/bash", "-euox", "pipefail", "-c"]
+RUN dnf install -y shadow-utils
 ADD .github/docker/entrypoint.sh /tmp/entrypoint.sh
 ADD .github/docker/install_deps.sh /tmp/install_deps.sh
-RUN source /tmp/install_deps.sh && install_deps_redhat-el9
+RUN source /tmp/install_deps.sh && install_deps_amzn2023
 ADD . /opt/asbackup
 WORKDIR /opt/asbackup
 ENTRYPOINT ["/opt/asbackup/.github/docker/entrypoint.sh"]
