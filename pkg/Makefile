@@ -7,7 +7,7 @@ TARGET_DIR = $(PKG_DIR)/target
 CONFIG_DIR = /etc/aerospike
 
 # Package variables
-NAME = "aerospike-backup"
+NAME = "aerospike-asbackup"
 VERSION = $(shell git describe --tags --always)
 MAINTAINER = "Aerospike"
 DESCRIPTION = "ASBackup, a tool for backing up and restoring data for Aerospike database."
