@@ -68,13 +68,13 @@ VERSION=$(git rev-parse HEAD | cut -c -8)
   [ $? -eq 0 ] && [ -f $TEMP_DIR/ubuntu24.04/*.deb ]
 }
 
-@test "build redhat ubi9" {
-  .github/docker/entrypoint.sh -c -d redhat-ubi9
+@test "build redhat el9" {
+  .github/docker/entrypoint.sh -c -d redhat-el9
   [ "$?" -eq 0 ]
 }
 
-@test "build redhat ubi9 package" {
+@test "build redhat el9 package" {
   TEMP_DIR=$(mktemp -d)
-  docker run -e BUILD_DISTRO="redhat-ubi9" -v $TEMP_DIR:/tmp/output "asbackup-pkg-builder-redhat-ubi9-$VERSION"
-  [ $? -eq 0 ] && [ -f $TEMP_DIR/redhat-ubi9/*.deb ]
+  docker run -e BUILD_DISTRO="redhat-el9" -v $TEMP_DIR:/tmp/output "asbackup-pkg-builder-redhat-el9-$VERSION"
+  [ $? -eq 0 ] && [ -f $TEMP_DIR/redhat-el9/*.deb ]
 }
