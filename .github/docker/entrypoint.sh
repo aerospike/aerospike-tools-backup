@@ -165,7 +165,7 @@ if [ "$EXECUTE_BUILD" = "true" ]; then
         echo "building package for RedHat el9"
         execute_build_image el9
         echo "building package for RedHat el10"
-        execute_build_image redhat-el10
+        execute_build_image el10
         echo "building package for Amazon 2023"
         execute_build_image amzn2023
     else
