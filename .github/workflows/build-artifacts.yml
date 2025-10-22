@@ -8,7 +8,7 @@ jobs:
   build-artifacts:
     strategy:
       matrix:
-        distro: [ debian11, debian12, debian13, ubuntu20.04, ubuntu22.04, ubuntu24.04,  redhat-el9, amazon-2023 ] # redhat-el8 disable redhat 8 due to fpm issue
+        distro: [ debian11, debian12, debian13, ubuntu20.04, ubuntu22.04, ubuntu24.04,  el9, amzn2023 ] # el8 disable redhat 8 due to fpm issue
         host: [ ubuntu-24.04-arm, ubuntu-24.04 ]
     uses: aerospike/shared-workflows/.github/workflows/reusable_execute-build.yaml@0da06cb2182165b125dc219ca2fda09732ca0fa4
     with:
@@ -37,7 +37,7 @@ jobs:
   sign-artifacts:
     strategy:
       matrix:
-        distro: [ debian11, debian12, debian13, ubuntu20.04, ubuntu22.04, ubuntu24.04,  redhat-el9, amazon-2023 ] # redhat-el8 disable redhat 8 due to fpm issue
+        distro: [ debian11, debian12, debian13, ubuntu20.04, ubuntu22.04, ubuntu24.04,  el9, amzn2023 ] # el8 disable redhat 8 due to fpm issue
         host: [ ubuntu-24.04-arm, ubuntu-24.04 ]
     needs: build-artifacts
     uses: aerospike/shared-workflows/.github/workflows/reusable_sign-artifacts.yaml@0da06cb2182165b125dc219ca2fda09732ca0fa4 # vn.n.n

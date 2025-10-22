@@ -108,7 +108,7 @@ if [ "$INSTALL" = "true" ]; then
       install_deps_el9
   elif [ "$ENV_DISTRO" = "amzn2023" ]; then
       echo "installing dependencies for Amazon 2023"
-      install_deps_redhat-amzn2023
+      install_deps_amzn2023
   elif [ "$ENV_DISTRO" = "debian11" ]; then
       echo "installing dependencies for Debian 11"
       install_deps_debian11
