@@ -30,8 +30,8 @@ deb: prep
 		--name $(NAME) \
 		--version "$(VERSION)" \
 		--maintainer $(MAINTAINER) \
-		--description $(DESCRIPTION) \
 		--depends "libuv1" \
+		--description $(DESCRIPTION) \
 		--license $(LICENSE) \
 		--url $(URL) \
 		--vendor $(VENDOR) \
@@ -47,6 +47,7 @@ rpm: prep
 		--name $(NAME) \
 		--version "$(VERSION)" \
 		--maintainer $(MAINTAINER) \
+		--depends "libuv" \
 		--description $(DESCRIPTION) \
 		--license $(LICENSE) \
 		--url $(URL) \
