@@ -15,16 +15,8 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [macos-13, macos-14, macos-15]
+        os: [macos-14, macos-15]
         include:
-          - os: macos-13
-            openssl-path: /usr/local/opt/openssl
-            zstd-path: /usr/local
-            aws-sdk-path: /usr/local
-            curl-path: /usr/local
-            ssh2-path: /usr/local
-            uv-path: /usr/local
-            jansson-path: /usr/local
           - os: macos-14
             openssl-path: /opt/homebrew/opt/openssl
             zstd-path: /opt/homebrew
