@@ -91,7 +91,7 @@ jobs:
         path: aws-sdk-cpp-${{ env.AWS_SDK_CPP_VERSION }}
         key: aws-sdk-cpp-${{ env.cache-index }}-mac-artifact-${{ env.AWS_SDK_CPP_VERSION }}-${{ matrix.os }}-${{ runner.arch }}-cmake-${{ env.CMAKE_VERSION }}
     - name: Download AWS C++ sdk
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       if: steps.cache-aws-sdk-cpp.outputs.cache-hit != 'true'
       with:
         repository: aws/aws-sdk-cpp
@@ -115,7 +115,7 @@ jobs:
         path: libssh2-${{ env.LIBSSH2_VERSION }}
         key: libssh2-v2-${{ env.LIBSSH2_VERSION }}-${{ env.cache-index }}-${{ matrix.os }}-${{ runner.arch }}-cmake-${{ env.CMAKE_VERSION }}
     - name: Download libssh2
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       if: steps.cache-libssh2.outputs.cache-hit != 'true'
       with:
         repository: libssh2/libssh2
@@ -144,7 +144,7 @@ jobs:
         path: curl-${{ env.LIBCURL_VERSION }}
         key: curl-v2-${{ env.LIBCURL_VERSION }}-${{ env.cache-index }}-${{ matrix.os }}-${{ runner.arch }}-cmake-${{ env.CMAKE_VERSION }}
     - name: Download libcurl
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       if: steps.cache-libcurl.outputs.cache-hit != 'true'
       with:
         repository: curl/curl
@@ -163,7 +163,7 @@ jobs:
         sudo make install
       working-directory: curl-${{ env.LIBCURL_VERSION }}/build
     - name: Download zstd
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         repository: facebook/zstd
         submodules: recursive
@@ -189,7 +189,7 @@ jobs:
       working-directory: zstd-${{ env.ZSTD_VERSION }}
       # this will checkout the whole tools repo when run from aerospike-tools, but we will
       # just cd into the correct directory calculated from working-dir
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
       if: steps.cache-asbackup.outputs.cache-hit != 'true'
       with: 
         path: ${{ steps.checkout-dir.outputs.value }}
