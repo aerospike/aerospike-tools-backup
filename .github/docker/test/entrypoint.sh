@@ -7,7 +7,6 @@ SCRIPT_DIR="$(dirname "$(realpath "$0")")"
 
 
 
-source $SCRIPT_DIR/test_package.sh
 
 if [ -d ".git" ]; then
     GIT_DIR=$(pwd)
