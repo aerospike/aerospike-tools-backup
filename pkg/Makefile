@@ -31,6 +31,7 @@ deb: prep
 		--version "$(VERSION)" \
 		--maintainer $(MAINTAINER) \
 		--description $(DESCRIPTION) \
+		--depends "libuv1" \
 		--license $(LICENSE) \
 		--url $(URL) \
 		--vendor $(VENDOR) \
