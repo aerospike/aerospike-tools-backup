@@ -18,7 +18,7 @@ jobs:
         os: [macos-14, macos-15, macos-26]
         include:
           - os: macos-14
-            openssl-path: /opt/homebrew/opt/openssl
+            openssl-path: /opt/homebrew/opt/openssl@3
             zstd-path: /opt/homebrew
             aws-sdk-path: /usr/local
             curl-path: /usr/local
@@ -26,7 +26,7 @@ jobs:
             uv-path: /opt/homebrew
             jansson-path: /opt/homebrew
           - os: macos-15
-            openssl-path: /opt/homebrew/opt/openssl
+            openssl-path: /opt/homebrew/opt/openssl@3
             zstd-path: /opt/homebrew
             aws-sdk-path: /usr/local
             curl-path: /usr/local
@@ -34,7 +34,7 @@ jobs:
             uv-path: /opt/homebrew
             jansson-path: /opt/homebrew
           - os: macos-26
-            openssl-path: /opt/homebrew/opt/openssl
+            openssl-path: /opt/homebrew/opt/openssl@3
             zstd-path: /opt/homebrew
             aws-sdk-path: /usr/local
             curl-path: /usr/local
@@ -74,7 +74,7 @@ jobs:
     - name: install openssl
       id: install-openssl
       run: |
-        brew install openssl@1.1
+        brew install openssl@3
     - name: install libssh2
       id: install-libssh2
       run: |
@@ -94,7 +94,7 @@ jobs:
       uses: actions/cache@v3
       env:
         cache-name: aws-sdk-cpp
-        cache-index: "2"
+        cache-index: "3"
       with:
         path: aws-sdk-cpp-${{ env.AWS_SDK_CPP_VERSION }}
         key: aws-sdk-cpp-${{ env.cache-index }}-mac-artifact-${{ env.AWS_SDK_CPP_VERSION }}-${{ matrix.os }}-${{ runner.arch }}-cmake-${{ env.CMAKE_VERSION }}
@@ -118,7 +118,7 @@ jobs:
       uses: actions/cache@v3
       env:
         cache-name: libssh2
-        cache-index: "2"
+        cache-index: "3"
       with:
         path: libssh2-${{ env.LIBSSH2_VERSION }}
         key: libssh2-v2-${{ env.LIBSSH2_VERSION }}-${{ env.cache-index }}-${{ matrix.os }}-${{ runner.arch }}-cmake-${{ env.CMAKE_VERSION }}
@@ -147,7 +147,7 @@ jobs:
       uses: actions/cache@v3
       env:
         cache-name: libcurl
-        cache-index: "2"
+        cache-index: "3"
       with:
         path: curl-${{ env.LIBCURL_VERSION }}
         key: curl-v2-${{ env.LIBCURL_VERSION }}-${{ env.cache-index }}-${{ matrix.os }}-${{ runner.arch }}-cmake-${{ env.CMAKE_VERSION }}
@@ -218,7 +218,7 @@ jobs:
       uses: actions/cache@v3
       env:
         cache-name: cache-asbackup
-        cache-index: "1"
+        cache-index: "2"
       with:
         path: |
           ${{ steps.working-dir.outputs.value }}/binaries
