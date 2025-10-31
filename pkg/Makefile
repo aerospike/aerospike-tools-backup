@@ -3,16 +3,15 @@ PKG_DIR = $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 TOP_DIR = $(PKG_DIR)/../bin
 BUILD_DIR = $(PKG_DIR)/build
 TARGET_DIR = $(PKG_DIR)/target
-# asbackup doesn't support configs yet but fpm complains without this
 CONFIG_DIR = /etc/aerospike
-
 # Package variables
-NAME = "aerospike-asbackup"
-VERSION = $(shell git describe --tags --always)
+BUILD_DISTRO ?= $(shell .github/packaging/common/os_version.sh)
+NAME = "aerospike-$(PACKAGE_NAME)"
 MAINTAINER = "Aerospike"
+VERSION = $(shell git describe --tags --always)
 DESCRIPTION = "ASBackup, a tool for backing up and restoring data for Aerospike database."
 LICENSE = "Apache License 2.0"
-URL = "https://github.com/aerospike/aerospike-tools-backup"
+URL = "https://github.com/aerospike/$(PACKAGE_NAME)"
 VENDOR = "Aerospike, Inc."
 ARCH = $(shell uname -m)
 
@@ -28,7 +27,7 @@ deb: prep
 		--output-type deb \
 		--chdir $(BUILD_DIR)/ \
 		--name $(NAME) \
-		--version "$(VERSION)" \
+		--version $(VERSION) \
 		--maintainer $(MAINTAINER) \
 		--depends "libuv1" \
 		--description $(DESCRIPTION) \
@@ -45,7 +44,7 @@ rpm: prep
 		--output-type rpm \
 		--chdir $(BUILD_DIR)/ \
 		--name $(NAME) \
-		--version "$(VERSION)" \
+		--version $(VERSION) \
 		--maintainer $(MAINTAINER) \
 		--depends "libuv" \
 		--description $(DESCRIPTION) \
@@ -62,7 +61,7 @@ tar: prep
 		--output-type tar \
 		--chdir $(BUILD_DIR)/ \
 		--name $(NAME) \
-		--version "$(VERSION)" \
+		--version $(VERSION) \
 		--maintainer $(MAINTAINER) \
 		--description $(DESCRIPTION) \
 		--license $(LICENSE) \

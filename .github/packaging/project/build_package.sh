@@ -4,6 +4,8 @@ function build_packages(){
     echo "ENV_DISTRO is not set"
     return
   fi
+  GIT_DIR=$(git rev-parse --show-toplevel)
+  PKG_DIR=$GIT_DIR/pkg
   cd "$GIT_DIR"
   git submodule update --init --recursive
   export ARCH=$(uname -m)
