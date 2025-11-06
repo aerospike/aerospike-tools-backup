@@ -26,7 +26,7 @@ function install_deps_debian11() {
   git checkout v1.43.0
   sh autogen.sh
   ./configure
-  make
+  make -j8
   make install
   cd ..
 
@@ -66,7 +66,7 @@ function install_deps_debian12() {
   git checkout v1.43.0
   sh autogen.sh
   ./configure
-  make
+  make -j8
   make install
   cd ..
 
@@ -103,7 +103,7 @@ function install_deps_debian13() {
   git checkout v1.43.0
   sh autogen.sh
   ./configure
-  make
+  make -j8
   make install
   cd ..
 
@@ -140,7 +140,7 @@ function install_deps_ubuntu20.04() {
   git checkout v1.43.0
   sh autogen.sh
   ./configure
-  make
+  make -j8
   make install
   cd ..
 
@@ -177,7 +177,7 @@ function install_deps_ubuntu22.04() {
   git checkout v1.43.0
   sh autogen.sh
   ./configure
-  make
+  make -j8
   make install
   cd ..
 
@@ -214,7 +214,7 @@ function install_deps_ubuntu24.04() {
   git checkout v1.43.0
   sh autogen.sh
   ./configure
-  make
+  make -j8
   make install
   cd ..
 
@@ -255,7 +255,7 @@ function install_deps_el8() {
   cd gettext-0.21
   autoconf
   ./configure
-  make
+  make -j8
   make install
 
   cd /opt
@@ -264,7 +264,7 @@ function install_deps_el8() {
   git checkout 0.21.5
   ./autogen.sh
   ./configure
-  make
+  make -j8
   make install
 
   cd /opt
@@ -272,7 +272,7 @@ function install_deps_el8() {
   cd readline
   git checkout readline-8.3
   ./configure
-  make
+  make -j8
   make install
 
   cd /opt
@@ -280,7 +280,7 @@ function install_deps_el8() {
   cd jansson
   autoreconf -i
   ./configure
-  make
+  make -j8
   make install
 
 
@@ -290,7 +290,7 @@ function install_deps_el8() {
   git checkout v1.42.0
   sh autogen.sh
   ./configure
-  make
+  make -j8
   make install
   cd ..
 
@@ -299,7 +299,7 @@ function install_deps_el8() {
   tar -zxvf flex-2.6.4.tar.gz
   cd flex-2.6.4
   ./configure
-  make
+  make -j8
   make install
 
   cd /opt
@@ -336,7 +336,7 @@ function install_deps_el9() {
   cd gettext-0.21
   autoconf
   ./configure
-  make
+  make -j8
   make install
 
   cd /opt
@@ -345,7 +345,7 @@ function install_deps_el9() {
   git checkout 0.21.5
   ./autogen.sh
   ./configure
-  make
+  make -j8
   make install
 
   cd /opt
@@ -353,7 +353,7 @@ function install_deps_el9() {
   cd readline
   git checkout readline-8.3
   ./configure
-  make
+  make -j8
   make install
 
   cd /opt
@@ -361,7 +361,7 @@ function install_deps_el9() {
   cd jansson
   autoreconf -i
   ./configure
-  make
+  make -j8
   make install
 
 
@@ -371,7 +371,7 @@ function install_deps_el9() {
   git checkout v1.42.0
   sh autogen.sh
   ./configure
-  make
+  make -j8
   make install
   cd ..
 
@@ -380,7 +380,7 @@ function install_deps_el9() {
   tar -zxvf flex-2.6.4.tar.gz
   cd flex-2.6.4
   ./configure
-  make
+  make -j8
   make install
 
   cd /opt
@@ -446,7 +446,7 @@ EOF
   cd gettext-0.21
   autoconf
   ./configure
-  make
+  make -j8
   make install
 
   cd /opt
@@ -455,7 +455,7 @@ EOF
   git checkout 0.21.5
   ./autogen.sh
   ./configure
-  make
+  make -j8
   make install
 
   cd /opt
@@ -463,7 +463,7 @@ EOF
   cd readline
   git checkout readline-8.3
   ./configure
-  make
+  make -j8
   make install
 
   cd /opt
@@ -471,7 +471,7 @@ EOF
   cd jansson
   autoreconf -i
   ./configure
-  make
+  make -j8
   make install
 
   cd /opt
@@ -480,7 +480,7 @@ EOF
   git checkout v1.42.0
   sh autogen.sh
   ./configure
-  make
+  make -j8
   make install
   cd ..
 
@@ -489,7 +489,7 @@ EOF
   tar -zxvf flex-2.6.4.tar.gz
   cd flex-2.6.4
   ./configure
-  make
+  make -j8
   make install
 
   cd /opt
@@ -528,7 +528,7 @@ function install_deps_amzn2023() {
   cd gettext-0.21
   autoconf
   ./configure
-  make
+  make -j8
   make install
 
   cd /opt
@@ -537,7 +537,7 @@ function install_deps_amzn2023() {
   git checkout 0.21.5
   ./autogen.sh
   ./configure
-  make
+  make -j8
   make install
 
   cd /opt
@@ -545,7 +545,7 @@ function install_deps_amzn2023() {
   cd readline
   git checkout readline-8.3
   ./configure
-  make
+  make -j8
   make install
 
   cd /opt
@@ -553,9 +553,8 @@ function install_deps_amzn2023() {
   cd jansson
   autoreconf -i
   ./configure
-  make
+  make -j8
   make install
-
 
   cd /opt
   git clone https://github.com/libuv/libuv
@@ -563,7 +562,7 @@ function install_deps_amzn2023() {
   git checkout v1.42.0
   sh autogen.sh
   ./configure
-  make
+  make -j8
   make install
   cd ..
 
@@ -572,19 +571,17 @@ function install_deps_amzn2023() {
   tar -zxvf flex-2.6.4.tar.gz
   cd flex-2.6.4
   ./configure
-  make
-  make install
 
+  make -j8
+  make install
   cd /opt
   git clone https://github.com/aws/s2n-tls.git
   cd s2n-tls
-
   cmake . -Bbuild \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_INSTALL_PREFIX=./s2n-tls-install
   cmake --build build
   make install
-
   cd /opt
   git clone https://github.com/aws/aws-sdk-cpp.git
   cd aws-sdk-cpp
@@ -595,7 +592,7 @@ function install_deps_amzn2023() {
   make -C build -j8
   cd build
   make install
-  cd
+  cd ../..
 
   gem install fpm -v 1.17.0
 }
