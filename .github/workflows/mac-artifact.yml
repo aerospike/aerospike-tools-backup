@@ -15,18 +15,10 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [macos-13, macos-14, macos-15]
+        os: [macos-14, macos-15, macos-26]
         include:
-          - os: macos-13
-            openssl-path: /usr/local/opt/openssl
-            zstd-path: /usr/local
-            aws-sdk-path: /usr/local
-            curl-path: /usr/local
-            ssh2-path: /usr/local
-            uv-path: /usr/local
-            jansson-path: /usr/local
           - os: macos-14
-            openssl-path: /opt/homebrew/opt/openssl
+            openssl-path: /opt/homebrew/opt/openssl@3
             zstd-path: /opt/homebrew
             aws-sdk-path: /usr/local
             curl-path: /usr/local
@@ -34,7 +26,15 @@ jobs:
             uv-path: /opt/homebrew
             jansson-path: /opt/homebrew
           - os: macos-15
-            openssl-path: /opt/homebrew/opt/openssl
+            openssl-path: /opt/homebrew/opt/openssl@3
+            zstd-path: /opt/homebrew
+            aws-sdk-path: /usr/local
+            curl-path: /usr/local
+            ssh2-path: /usr/local
+            uv-path: /opt/homebrew
+            jansson-path: /opt/homebrew
+          - os: macos-26
+            openssl-path: /opt/homebrew/opt/openssl@3
             zstd-path: /opt/homebrew
             aws-sdk-path: /usr/local
             curl-path: /usr/local
@@ -74,7 +74,7 @@ jobs:
     - name: install openssl
       id: install-openssl
       run: |
-        brew install openssl@1.1
+        brew install openssl@3
     - name: install libssh2
       id: install-libssh2
       run: |
@@ -94,12 +94,12 @@ jobs:
       uses: actions/cache@v3
       env:
         cache-name: aws-sdk-cpp
-        cache-index: "2"
+        cache-index: "3"
       with:
         path: aws-sdk-cpp-${{ env.AWS_SDK_CPP_VERSION }}
         key: aws-sdk-cpp-${{ env.cache-index }}-mac-artifact-${{ env.AWS_SDK_CPP_VERSION }}-${{ matrix.os }}-${{ runner.arch }}-cmake-${{ env.CMAKE_VERSION }}
     - name: Download AWS C++ sdk
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       if: steps.cache-aws-sdk-cpp.outputs.cache-hit != 'true'
       with:
         repository: aws/aws-sdk-cpp
@@ -118,12 +118,12 @@ jobs:
       uses: actions/cache@v3
       env:
         cache-name: libssh2
-        cache-index: "2"
+        cache-index: "3"
       with:
         path: libssh2-${{ env.LIBSSH2_VERSION }}
         key: libssh2-v2-${{ env.LIBSSH2_VERSION }}-${{ env.cache-index }}-${{ matrix.os }}-${{ runner.arch }}-cmake-${{ env.CMAKE_VERSION }}
     - name: Download libssh2
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       if: steps.cache-libssh2.outputs.cache-hit != 'true'
       with:
         repository: libssh2/libssh2
@@ -147,12 +147,12 @@ jobs:
       uses: actions/cache@v3
       env:
         cache-name: libcurl
-        cache-index: "2"
+        cache-index: "3"
       with:
         path: curl-${{ env.LIBCURL_VERSION }}
         key: curl-v2-${{ env.LIBCURL_VERSION }}-${{ env.cache-index }}-${{ matrix.os }}-${{ runner.arch }}-cmake-${{ env.CMAKE_VERSION }}
     - name: Download libcurl
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       if: steps.cache-libcurl.outputs.cache-hit != 'true'
       with:
         repository: curl/curl
@@ -171,7 +171,7 @@ jobs:
         sudo make install
       working-directory: curl-${{ env.LIBCURL_VERSION }}/build
     - name: Download zstd
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         repository: facebook/zstd
         submodules: recursive
@@ -197,7 +197,7 @@ jobs:
       working-directory: zstd-${{ env.ZSTD_VERSION }}
       # this will checkout the whole tools repo when run from aerospike-tools, but we will
       # just cd into the correct directory calculated from working-dir
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
       if: steps.cache-asbackup.outputs.cache-hit != 'true'
       with: 
         path: ${{ steps.checkout-dir.outputs.value }}
@@ -218,7 +218,7 @@ jobs:
       uses: actions/cache@v3
       env:
         cache-name: cache-asbackup
-        cache-index: "1"
+        cache-index: "2"
       with:
         path: |
           ${{ steps.working-dir.outputs.value }}/binaries

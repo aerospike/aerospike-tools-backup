@@ -45,7 +45,7 @@ jobs:
         path: aws-sdk-cpp
         key: aws-sdk-cpp-build-and-test-${{ env.AWS_SDK_CPP_VERSION }}-${{ runner.os }}
     - name: Download AWS C++ sdk
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       if: steps.cache-aws-sdk-cpp.outputs.cache-hit != 'true'
       with:
         repository: aws/aws-sdk-cpp
@@ -64,7 +64,7 @@ jobs:
         cd aws-sdk-cpp/build
         sudo make install
     - name: Download zstd
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         repository: facebook/zstd
         submodules: recursive
@@ -115,7 +115,7 @@ jobs:
         sudo make install
         sudo ldconfig
     - name: Checkout c client
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         repository: aerospike/aerospike-client-c
         submodules: recursive
@@ -125,7 +125,7 @@ jobs:
       run: make
       working-directory: client
     - name: Checkout asbackup
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with: 
         path: main
         submodules: recursive
