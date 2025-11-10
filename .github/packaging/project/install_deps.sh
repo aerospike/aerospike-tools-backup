@@ -347,7 +347,7 @@ function compile_deps_el8() {
 
 function install_deps_el9() {
   dnf -y install $BUILD_DEPS_REDHAT_9 $FPM_DEPS_REDHAT_9
-  gem install fpm
+  gem install fpm -v 1.17.0
 }
 function compile_deps_el9() {
 
@@ -430,7 +430,7 @@ function compile_deps_el9() {
 
 function install_deps_el10() {
   dnf -y install $BUILD_DEPS_REDHAT_10 $FPM_DEPS_REDHAT_10
-  gem install fpm
+  gem install fpm -v 1.17.0
 }
 function compile_deps_el10() {
   # install libunistring
@@ -536,12 +536,12 @@ EOF
   make install
   popd; popd
 
-  gem install fpm -v 1.17.0
 }
 
 function install_deps_amzn2023() {
   yum groupinstall -y 'Development Tools'
   dnf install -y $BUILD_DEPS_AMAZON $FPM_DEPS_AMAZON
+  gem install fpm -v 1.17.0
 
 
   pushd /opt
