@@ -1,5 +1,16 @@
 #!/usr/bin/env bash
-alias make='make -j8'
+PROCESSOR_COUNT=$(cat /proc/cpuinfo | grep processor | wc -l)
+export CMAKE_BUILD_PARALLEL_LEVEL=$PROCESSOR_COUNT
+function make_parallel() {
+ make -j$PROCESSOR_COUNT $@
+}
+
+function clone_parallel() {
+  # Run in parallel
+  echo $1 | tr ' ' '\n' | \
+    parallel -j$PROCESSOR_COUNT --bar 'git clone {}'
+}
+
 
 BUILD_DEPS_AMAZON="gcc-c++ libtool wget cmake openssl-devel libcurl-devel libzstd-devel which autoconf git libidn2 libunistring libunistring-devel"
 BUILD_DEPS_REDHAT_8="gcc-c++ libtool wget cmake openssl-devel libcurl-devel libzstd-devel which autoconf git" #readline-devel flex
@@ -19,292 +30,301 @@ AWS_SDK_VERSION="1.10.55"
 function install_deps_debian11() {
   apt -y install $BUILD_DEPS_DEBIAN $FPM_DEPS_DEBIAN
   gem install fpm -v 1.17.0
+}
+function compile_deps_debian11() {
+  pushd /opt
 
-  cd /opt
   git clone https://github.com/libuv/libuv
-  cd libuv
+  pushd libuv
   git checkout v1.43.0
   sh autogen.sh
   ./configure
-  make -j8
+  make_parallel
   make install
-  cd ..
+  popd
 
   git clone https://github.com/curl/curl.git
-  cd curl
+  pushd curl
   git checkout curl-7_81_0
   git submodule update --init --recursive
   mkdir build
   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=OFF -DBUILD_CURL_EXE=OFF
-  make -C build -j8
-  cd build
+  make_parallel -C build
+  pushd build
   make install
-  cd ../..
+  popd
+  popd
 
   git clone https://github.com/aws/aws-sdk-cpp.git
-  cd aws-sdk-cpp
+  pushd aws-sdk-cpp
   git checkout $AWS_SDK_VERSION
   git submodule update --init --recursive
   mkdir build
   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_UNITY_BUILD=ON
-  make -C build -j8
-  cd build
+  make_parallel -C build
+  pushd build
   make install
-  cd ../..
-
-
-
+  popd
+  popd
 }
 
 function install_deps_debian12() {
   apt -y install $BUILD_DEPS_DEBIAN $FPM_DEPS_DEBIAN
   gem install fpm -v 1.17.0
-
-  cd /opt
+}
+function compile_deps_debian12() {
+  pushd /opt
   git clone https://github.com/libuv/libuv
-  cd libuv
+  pushd libuv
   git checkout v1.43.0
   sh autogen.sh
   ./configure
-  make -j8
+  make_parallel
   make install
-  cd ..
+  popd
 
   git clone https://github.com/curl/curl.git
-  cd curl
+  pushd curl
   git checkout curl-7_81_0
   git submodule update --init --recursive
   mkdir build
   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=OFF -DBUILD_CURL_EXE=OFF
-  make -C build -j8
-  cd build
+  make_parallel -C build
+  pushd build
   make install
-  cd ../..
+  popd; popd
 
   git clone https://github.com/aws/aws-sdk-cpp.git
-  cd aws-sdk-cpp
+  pushd aws-sdk-cpp
   git checkout $AWS_SDK_VERSION
   git submodule update --init --recursive
   mkdir build
   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_UNITY_BUILD=ON
-  make -C build -j8
-  cd build
+  make_parallel -C build
+  pushd build
   make install
-  cd ../..
+  popd; popd
 }
 
 function install_deps_debian13() {
   apt -y install $BUILD_DEPS_DEBIAN $FPM_DEPS_DEBIAN
   gem install fpm -v 1.17.0
+}
 
-  cd /opt
+function compile_deps_debian13() {
+  pushd /opt
   git clone https://github.com/libuv/libuv
-  cd libuv
+  pushd libuv
   git checkout v1.43.0
   sh autogen.sh
   ./configure
-  make -j8
+  make_parallel
   make install
-  cd ..
+  popd
 
   git clone https://github.com/curl/curl.git
-  cd curl
+  pushd curl
   git checkout curl-8_14_1
   git submodule update --init --recursive
   mkdir build
   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=OFF -DBUILD_CURL_EXE=OFF
-  make -C build -j8
-  cd build
+  make_parallel -C build
+  pushd build
   make install
-  cd ../..
+  popd; popd
 
   git clone https://github.com/aws/aws-sdk-cpp.git
-  cd aws-sdk-cpp
+  pushd aws-sdk-cpp
   git checkout $AWS_SDK_VERSION
   git submodule update --init --recursive
   mkdir build
   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_UNITY_BUILD=ON
-  make -C build -j8
-  cd build
+  make_parallel -C build
+  pushd build
   make install
-  cd ../..
+  popd; popd
 }
 
 function install_deps_ubuntu20.04() {
   apt -y install $BUILD_DEPS_UBUNTU $FPM_DEPS_UBUNTU_2004
   gem install fpm -v 1.17.0
-
-  cd /opt
+}
+function compile_deps_ubuntu20.04() {
+  pushd /opt
   git clone https://github.com/libuv/libuv
-  cd libuv
+  pushd libuv
   git checkout v1.43.0
   sh autogen.sh
   ./configure
-  make -j8
+  make_parallel
   make install
-  cd ..
+  popd
 
   git clone https://github.com/curl/curl.git
-  cd curl
+  pushd curl
   git checkout curl-7_81_0
   git submodule update --init --recursive
   mkdir build
   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=OFF -DBUILD_CURL_EXE=OFF
-  make -C build -j8
-  cd build
+  make_parallel -C build
+  pushd build
   make install
-  cd ../..
+  popd; popd
 
   git clone https://github.com/aws/aws-sdk-cpp.git
-  cd aws-sdk-cpp
+  pushd aws-sdk-cpp
   git checkout $AWS_SDK_VERSION
   git submodule update --init --recursive
   mkdir build
   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_UNITY_BUILD=ON
-  make -C build -j8
-  cd build
+  make_parallel -C build
+  pushd build
   make install
-  cd ../..
+  popd; popd
 }
 
 function install_deps_ubuntu22.04() {
   apt -y install $BUILD_DEPS_UBUNTU $FPM_DEPS_UBUNTU
   gem install fpm -v 1.17.0
-
-  cd /opt
+}
+function compile_deps_ubuntu22.04() {
+  pushd /opt
   git clone https://github.com/libuv/libuv
-  cd libuv
+  pushd libuv
   git checkout v1.43.0
   sh autogen.sh
   ./configure
-  make -j8
+  make_parallel
   make install
-  cd ..
+  popd
 
   git clone https://github.com/curl/curl.git
-  cd curl
+  pushd curl
   git checkout curl-7_81_0
   git submodule update --init --recursive
   mkdir build
   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=OFF -DBUILD_CURL_EXE=OFF
-  make -C build -j8
-  cd build
+  make_parallel -C build
+  pushd build
   make install
-  cd ../..
+  popd; popd
 
   git clone https://github.com/aws/aws-sdk-cpp.git
-  cd aws-sdk-cpp
+  pushd aws-sdk-cpp
   git checkout $AWS_SDK_VERSION
   git submodule update --init --recursive
   mkdir build
   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_UNITY_BUILD=ON
-  make -C build -j8
-  cd build
+  make_parallel -C build
+  pushd build
   make install
-  cd ../..
+  popd; popd
 }
 
 function install_deps_ubuntu24.04() {
   apt -y install $BUILD_DEPS_UBUNTU $FPM_DEPS_UBUNTU
   gem install fpm -v 1.17.0
+}
+function compile_deps_ubuntu24.04() {
 
-  cd /opt
+  pushd /opt
   git clone https://github.com/libuv/libuv
-  cd libuv
+  pushd libuv
   git checkout v1.43.0
   sh autogen.sh
   ./configure
-  make -j8
+  make_parallel
   make install
-  cd ..
+  popd
 
   git clone https://github.com/curl/curl.git
-  cd curl
+  pushd curl
   git checkout curl-7_81_0
   git submodule update --init --recursive
   mkdir build
   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=OFF -DBUILD_CURL_EXE=OFF
-  make -C build -j8
-  cd build
+  make_parallel -C build
+  pushd build
   make install
-  cd ../..
+  popd; popd
 
   git clone https://github.com/aws/aws-sdk-cpp.git
-  cd aws-sdk-cpp
+  pushd aws-sdk-cpp
   git checkout $AWS_SDK_VERSION
   git submodule update --init --recursive
   mkdir build
   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_UNITY_BUILD=ON
-  make -C build -j8
-  cd build
+  make_parallel -C build
+  pushd build
   make install
-  cd ../..
+  popd; popd
 }
 
 function install_deps_el8() {
   # install fpm
   dnf module enable -y ruby:2.7
   dnf -y install ruby ruby-devel redhat-rpm-config rubygems rpm-build make git
-  gem install --no-document fpm
-
+  gem install fpm -v 1.17.0
   dnf -y install $BUILD_DEPS_REDHAT_8 $FPM_DEPS_REDHAT_8
+}
+function compile_deps_el8() {
 
-  cd /opt
+  pushd /opt
   wget https://mirrors.ocf.berkeley.edu/gnu/gettext/gettext-0.21.tar.gz
   tar -zxvf gettext-0.21.tar.gz
-  cd gettext-0.21
+  pushd gettext-0.21
   autoconf
   ./configure
-  make -j8
+  make_parallel
   make install
 
-  cd /opt
+  pushd /opt
   git clone  https://github.com/rockdaboot/libpsl.git
-  cd libpsl
+  pushd libpsl
   git checkout 0.21.5
   ./autogen.sh
   ./configure
-  make -j8
+  make_parallel
   make install
 
-  cd /opt
+  pushd /opt
   git clone https://https.git.savannah.gnu.org/git/readline.git
-  cd readline
+  pushd readline
   git checkout readline-8.3
   ./configure
-  make -j8
+  make_parallel
   make install
 
-  cd /opt
+  pushd /opt
   git clone https://github.com/akheron/jansson.git
-  cd jansson
+  pushd jansson
   autoreconf -i
   ./configure
-  make -j8
+  make_parallel
   make install
 
 
-  cd /opt
+  pushd /opt
   git clone https://github.com/libuv/libuv
-  cd libuv
+  pushd libuv
   git checkout v1.42.0
   sh autogen.sh
   ./configure
-  make -j8
+  make_parallel
   make install
-  cd ..
+  popd
 
-  cd /opt
+  pushd /opt
   wget https://github.com/westes/flex/releases/download/v2.6.4/flex-2.6.4.tar.gz
   tar -zxvf flex-2.6.4.tar.gz
-  cd flex-2.6.4
+  pushd flex-2.6.4
   ./configure
-  make -j8
+  make_parallel
   make install
 
-  cd /opt
+  pushd /opt
   git clone https://github.com/aws/s2n-tls.git
-  cd s2n-tls
+  pushd s2n-tls
 
   cmake . -Bbuild \
       -DCMAKE_BUILD_TYPE=Release \
@@ -312,80 +332,82 @@ function install_deps_el8() {
   cmake --build build
   make install
 
-  cd /opt
+  pushd /opt
   git clone https://github.com/aws/aws-sdk-cpp.git
-  cd aws-sdk-cpp
+  pushd aws-sdk-cpp
   git checkout $AWS_SDK_VERSION
   git submodule update --init --recursive
   mkdir build
   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_UNITY_BUILD=ON
-  make -C build -j8
-  cd build
+  make_parallel -C build
+  pushd build
   make install
 
-  gem install fpm -v 1.17.0
 }
 
 function install_deps_el9() {
-
   dnf -y install $BUILD_DEPS_REDHAT_9 $FPM_DEPS_REDHAT_9
+  gem install fpm
+}
+function compile_deps_el9() {
 
-  cd /opt
+  pushd /opt
+
   wget https://mirrors.ocf.berkeley.edu/gnu/gettext/gettext-0.21.tar.gz
   tar -zxvf gettext-0.21.tar.gz
-  cd gettext-0.21
+  pushd gettext-0.21
   autoconf
   ./configure
-  make -j8
+  make_parallel
   make install
 
-  cd /opt
+  pushd /opt
   git clone  https://github.com/rockdaboot/libpsl.git
-  cd libpsl
+  pushd libpsl
   git checkout 0.21.5
   ./autogen.sh
   ./configure
-  make -j8
+  make_parallel
   make install
 
-  cd /opt
+  pushd /opt
   git clone https://https.git.savannah.gnu.org/git/readline.git
-  cd readline
+  pushd readline
   git checkout readline-8.3
   ./configure
-  make -j8
+  make_parallel
   make install
 
-  cd /opt
+  pushd /opt
   git clone https://github.com/akheron/jansson.git
-  cd jansson
+  pushd jansson
   autoreconf -i
   ./configure
-  make -j8
+  make_parallel
   make install
 
 
-  cd /opt
+  pushd /opt
   git clone https://github.com/libuv/libuv
-  cd libuv
+  pushd libuv
   git checkout v1.42.0
   sh autogen.sh
   ./configure
-  make -j8
+  make_parallel
   make install
-  cd ..
+  popd
 
-  cd /opt
+  pushd /opt
   wget https://github.com/westes/flex/releases/download/v2.6.4/flex-2.6.4.tar.gz
   tar -zxvf flex-2.6.4.tar.gz
-  cd flex-2.6.4
+  pushd flex-2.6.4
   ./configure
-  make -j8
+  make_parallel
   make install
 
-  cd /opt
+  pushd /opt
   git clone https://github.com/aws/s2n-tls.git
-  cd s2n-tls
+  pushd s2n-tls
 
   cmake . -Bbuild \
       -DCMAKE_BUILD_TYPE=Release \
@@ -393,34 +415,34 @@ function install_deps_el9() {
   cmake --build build
   make install
 
-  cd /opt
+  pushd /opt
   git clone https://github.com/aws/aws-sdk-cpp.git
-  cd aws-sdk-cpp
+  pushd aws-sdk-cpp
   git checkout $AWS_SDK_VERSION
   git submodule update --init --recursive
   mkdir build
   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_UNITY_BUILD=ON
-  make -C build -j8
-  cd build
+  make_parallel -C build
+  pushd build
   make install
-  cd ../..
-
-  gem install fpm
+  popd; popd
 }
 
 function install_deps_el10() {
   dnf -y install $BUILD_DEPS_REDHAT_10 $FPM_DEPS_REDHAT_10
-
+  gem install fpm
+}
+function compile_deps_el10() {
   # install libunistring
-  cd /opt
+  pushd /opt
   curl -LO https://ftp.gnu.org/gnu/libunistring/libunistring-1.2.tar.xz
   tar xf libunistring-1.2.tar.xz
-  cd libunistring-1.2
+  pushd libunistring-1.2
   ./configure --prefix=/usr --libdir=/usr/lib64 --with-pkgconfigdir=/usr/lib64/pkgconfig
   make -j"$(nproc)"
   make install
   ldconfig
-  cd /opt
+  pushd /opt
   rm -rf libunistring-1.2 libunistring-1.2.tar.xz
 
   # sanity
@@ -440,79 +462,79 @@ EOF
   pkg-config --modversion libunistring
   pkg-config --cflags --libs libunistring
 
-  cd /opt
+  pushd /opt
   wget https://mirrors.ocf.berkeley.edu/gnu/gettext/gettext-0.21.tar.gz
   tar -zxvf gettext-0.21.tar.gz
-  cd gettext-0.21
+  pushd gettext-0.21
   autoconf
   ./configure
-  make -j8
+  make_parallel
   make install
 
-  cd /opt
+  pushd /opt
   git clone  https://github.com/rockdaboot/libpsl.git
-  cd libpsl
+  pushd libpsl
   git checkout 0.21.5
   ./autogen.sh
   ./configure
-  make -j8
+  make_parallel
   make install
 
-  cd /opt
+  pushd /opt
   git clone https://https.git.savannah.gnu.org/git/readline.git
-  cd readline
+  pushd readline
   git checkout readline-8.3
   ./configure
-  make -j8
+  make_parallel
   make install
 
-  cd /opt
+  pushd /opt
   git clone https://github.com/akheron/jansson.git
-  cd jansson
+  pushd jansson
   autoreconf -i
   ./configure
-  make -j8
+  make_parallel
   make install
 
-  cd /opt
+  pushd /opt
   git clone https://github.com/libuv/libuv
-  cd libuv
+  pushd libuv
   git checkout v1.42.0
   sh autogen.sh
   ./configure
-  make -j8
+  make_parallel
   make install
-  cd ..
+  popd
 
-  cd /opt
+  pushd /opt
   wget https://github.com/westes/flex/releases/download/v2.6.4/flex-2.6.4.tar.gz
   tar -zxvf flex-2.6.4.tar.gz
-  cd flex-2.6.4
+  pushd flex-2.6.4
   ./configure
-  make -j8
+  make_parallel
   make install
 
-  cd /opt
+  pushd /opt
   git clone https://github.com/aws/s2n-tls.git
-  cd s2n-tls
+  pushd s2n-tls
 
   cmake . -Bbuild \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_INSTALL_PREFIX=./s2n-tls-install
   cmake --build build
   make install
-
-  cd /opt
+  make_parallel -C build
+  pushd /opt
   git clone https://github.com/aws/aws-sdk-cpp.git
-  cd aws-sdk-cpp
+  pushd aws-sdk-cpp
   git checkout $AWS_SDK_VERSION
   git submodule update --init --recursive
   mkdir build
   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_UNITY_BUILD=ON
-  make -C build -j8
-  cd build
+  make_parallel -C build
+  pushd build
   make install
-  cd ../..
+  popd; popd
 
   gem install fpm -v 1.17.0
 }
@@ -522,77 +544,75 @@ function install_deps_amzn2023() {
   dnf install -y $BUILD_DEPS_AMAZON $FPM_DEPS_AMAZON
 
 
-  cd /opt
+  pushd /opt
   wget https://mirrors.ocf.berkeley.edu/gnu/gettext/gettext-0.21.tar.gz
   tar -zxvf gettext-0.21.tar.gz
-  cd gettext-0.21
+  pushd gettext-0.21
   autoconf
   ./configure
-  make -j8
+  make_parallel
   make install
 
-  cd /opt
+  pushd /opt
   git clone  https://github.com/rockdaboot/libpsl.git
-  cd libpsl
+  pushd libpsl
   git checkout 0.21.5
   ./autogen.sh
   ./configure
-  make -j8
+  make_parallel
   make install
 
-  cd /opt
+  pushd /opt
   git clone https://https.git.savannah.gnu.org/git/readline.git
-  cd readline
+  pushd readline
   git checkout readline-8.3
   ./configure
-  make -j8
+  make_parallel
   make install
 
-  cd /opt
+  pushd /opt
   git clone https://github.com/akheron/jansson.git
-  cd jansson
+  pushd jansson
   autoreconf -i
   ./configure
-  make -j8
+  make_parallel
   make install
 
-  cd /opt
+  pushd /opt
   git clone https://github.com/libuv/libuv
-  cd libuv
+  pushd libuv
   git checkout v1.42.0
   sh autogen.sh
   ./configure
-  make -j8
+  make_parallel
   make install
-  cd ..
+  popd
 
-  cd /opt
+  pushd /opt
   wget https://github.com/westes/flex/releases/download/v2.6.4/flex-2.6.4.tar.gz
   tar -zxvf flex-2.6.4.tar.gz
-  cd flex-2.6.4
+  pushd flex-2.6.4
   ./configure
 
-  make -j8
+  make_parallel
   make install
-  cd /opt
+  pushd /opt
   git clone https://github.com/aws/s2n-tls.git
-  cd s2n-tls
+  pushd s2n-tls
   cmake . -Bbuild \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_INSTALL_PREFIX=./s2n-tls-install
   cmake --build build
   make install
-  cd /opt
+  pushd /opt
   git clone https://github.com/aws/aws-sdk-cpp.git
-  cd aws-sdk-cpp
+  pushd aws-sdk-cpp
   git checkout $AWS_SDK_VERSION
   git submodule update --init --recursive
   mkdir build
   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_UNITY_BUILD=ON
-  make -C build -j8
-  cd build
+  make_parallel -C build
+  pushd build
   make install
-  cd ../..
-
-  gem install fpm -v 1.17.0
+  popd; popd
 }
