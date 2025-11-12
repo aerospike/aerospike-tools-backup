@@ -6,4 +6,4 @@
 	url = https://github.com/aerospike/secrets-client-c.git
 [submodule ".github/packaging/common"]
 	path = .github/packaging/common
-	url = https://github.com/aerospike/server-packaging-common.git
+	url = https://github.com/aerospike/tools-packaging-common.git
