@@ -47,6 +47,7 @@ rpm: prep
 		--version $(VERSION) \
 		--maintainer $(MAINTAINER) \
 		--depends "libuv" \
+		--depends "openssl" \
 		--description $(DESCRIPTION) \
 		--license $(LICENSE) \
 		--url $(URL) \
