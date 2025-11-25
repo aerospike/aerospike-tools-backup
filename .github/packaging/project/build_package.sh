@@ -13,7 +13,7 @@ function build_packages(){
   if [ "$ENV_DISTRO" = "debian13" ]; then
     export CMAKE_ROOT=/opt/cmake-3.27.0-linux-x86_64/
   fi
-  if [ "$ENV_DISTRO" = "amzn2023" ] || [ "$ENV_DISTRO" = "el8" ] || [ "$ENV_DISTRO" = "el9" ]; then
+  if [ "$ENV_DISTRO" = "amzn2023" ] || [ "$ENV_DISTRO" = "el8" ] || [ "$ENV_DISTRO" = "el9" ] || [ "$ENV_DISTRO" = "el10" ]; then
     make EVENT_LIB=libuv AWS_SDK_STATIC_PATH=/usr/local/lib JANSSON_STATIC_PATH=/usr/local/lib/
   else
     make EVENT_LIB=libuv ZSTD_STATIC_PATH=/usr/lib/$ARCH-linux-gnu AWS_SDK_STATIC_PATH=/usr/local/lib CURL_STATIC_PATH=/usr/local/lib OPENSSL_STATIC_PATH=/usr/lib/$ARCH-linux-gnu AWS_SDK_STATIC_PATH=/usr/local/lib JANSSON_STATIC_PATH=/usr/lib/$ARCH-linux-gnu
