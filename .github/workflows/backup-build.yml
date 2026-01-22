@@ -15,6 +15,11 @@ jobs:
       EVENT_LIB: libuv
       ZSTD_VERSION: 1.4.9
     steps:
+    - name: Harden the runner (Audit all outbound calls)
+      uses: step-security/harden-runner@df199fb7be9f65074067a9eb93f12bb4c5547cf2 # v2.13.3
+      with:
+        egress-policy: audit
+
     - name: install libuv
       id: install-libuv
       run: |
@@ -38,14 +43,14 @@ jobs:
         sudo apt install -y libcurl4-openssl-dev libssl-dev uuid-dev zlib1g-dev libpulse-dev
     - name: Cache AWS C++ sdk
       id: cache-aws-sdk-cpp
-      uses: actions/cache@v3
+      uses: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c # v3.5.0
       env:
         cache-name: aws-sdk-cpp
       with:
         path: aws-sdk-cpp
         key: aws-sdk-cpp-build-and-test-${{ env.AWS_SDK_CPP_VERSION }}-${{ runner.os }}
     - name: Download AWS C++ sdk
-      uses: actions/checkout@v4
+      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       if: steps.cache-aws-sdk-cpp.outputs.cache-hit != 'true'
       with:
         repository: aws/aws-sdk-cpp
@@ -64,7 +69,7 @@ jobs:
         cd aws-sdk-cpp/build
         sudo make install
     - name: Download zstd
-      uses: actions/checkout@v4
+      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       with:
         repository: facebook/zstd
         submodules: recursive
@@ -72,7 +77,7 @@ jobs:
         path: zstd-${{ env.ZSTD_VERSION }}
     - name: Cache zstd
       id: cache-zstd
-      uses: actions/cache@v3
+      uses: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c # v3.5.0
       env:
         cache-name: zstd
       with:
@@ -89,14 +94,14 @@ jobs:
         cd zstd-${{ env.ZSTD_VERSION }}
         sudo make install
     - name: Download libcheck
-      uses: dsaltares/fetch-gh-release-asset@1.1.0
+      uses: dsaltares/fetch-gh-release-asset@3942ce82f1192754cd487a86f03eef6eeb89b5da # 1.1.0
       with:
         repo: "libcheck/check"
         version: "tags/0.15.2"
         file: check-0.15.2.tar.gz
     - name: Cache libcheck
       id: cache-libcheck
-      uses: actions/cache@v3
+      uses: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c # v3.5.0
       env:
         cache-name: libcheck
       with:
@@ -115,7 +120,7 @@ jobs:
         sudo make install
         sudo ldconfig
     - name: Checkout c client
-      uses: actions/checkout@v4
+      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       with:
         repository: aerospike/aerospike-client-c
         submodules: recursive
@@ -125,7 +130,7 @@ jobs:
       run: make
       working-directory: client
     - name: Checkout asbackup
-      uses: actions/checkout@v4
+      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       with: 
         path: main
         submodules: recursive
@@ -215,7 +220,7 @@ jobs:
         rm -rf client
         rm -rf main/target
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v3
+      uses: codecov/codecov-action@ab904c41d6ece82784817410c45d8b8c02684457 # v3.1.6
       with:
         verbose: false
         directory: main/test_target
