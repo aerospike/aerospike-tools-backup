@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+set -xeuo pipefail
+
 PROCESSOR_COUNT=$(cat /proc/cpuinfo | grep processor | wc -l)
 export CMAKE_BUILD_PARALLEL_LEVEL=$PROCESSOR_COUNT
 function make_parallel() {
@@ -30,9 +32,13 @@ FPM_DEPS_REDHAT_10="ruby rpmdevtools make git python3 python3-pip rsync zlib zli
 
 AWS_SDK_VERSION="1.10.55"
 function install_deps_debian11() {
-  apt -y install $BUILD_DEPS_DEBIAN $FPM_DEPS_DEBIAN
+  rm -rf /var/lib/apt/lists/*
+  apt-get clean
+  apt-get update -o Acquire::Retries=5
+  apt-get -y install $BUILD_DEPS_DEBIAN $FPM_DEPS_DEBIAN
   gem install fpm -v 1.17.0
 }
+
 function compile_deps_debian11() {
   pushd /opt
 
@@ -71,9 +77,13 @@ function compile_deps_debian11() {
 }
 
 function install_deps_debian12() {
+  rm -rf /var/lib/apt/lists/*
+  apt-get clean
+  apt-get update -o Acquire::Retries=5
   apt -y install $BUILD_DEPS_DEBIAN $FPM_DEPS_DEBIAN
   gem install fpm -v 1.17.0
 }
+
 function compile_deps_debian12() {
   pushd /opt
   git clone https://github.com/libuv/libuv
@@ -109,7 +119,10 @@ function compile_deps_debian12() {
 }
 
 function install_deps_debian13() {
-  apt -y install $BUILD_DEPS_DEBIAN_13 $FPM_DEPS_DEBIAN
+  rm -rf /var/lib/apt/lists/*
+  apt-get clean
+  apt-get update -o Acquire::Retries=5
+  apt-get -y install $BUILD_DEPS_DEBIAN_13 $FPM_DEPS_DEBIAN
   pushd /tmp
   wget https://github.com/Kitware/CMake/releases/download/v3.27.0/cmake-3.27.0-linux-$(uname -m).tar.gz
   tar -zxvf cmake-3.27.0-linux-$(uname -m).tar.gz -C /opt
@@ -120,9 +133,6 @@ function install_deps_debian13() {
   install /opt/cmake-3.27.0-linux-$(uname -m)/bin/cmake-gui /usr/local/bin/cmake-gui
   install /opt/cmake-3.27.0-linux-$(uname -m)/bin/cpack /usr/local/bin/cpack
   install /opt/cmake-3.27.0-linux-$(uname -m)/bin/ctest /usr/local/bin/ctest
-
-
-
   gem install fpm -v 1.17.0
 }
 
@@ -162,9 +172,13 @@ function compile_deps_debian13() {
 }
 
 function install_deps_ubuntu20.04() {
-  apt -y install $BUILD_DEPS_UBUNTU $FPM_DEPS_UBUNTU_2004
+  rm -rf /var/lib/apt/lists/*
+  apt-get clean
+  apt-get update -o Acquire::Retries=5
+  apt-get -y install $BUILD_DEPS_UBUNTU $FPM_DEPS_UBUNTU_2004
   gem install fpm -v 1.17.0
 }
+
 function compile_deps_ubuntu20.04() {
   pushd /opt
   git clone https://github.com/libuv/libuv
@@ -200,9 +214,13 @@ function compile_deps_ubuntu20.04() {
 }
 
 function install_deps_ubuntu22.04() {
-  apt -y install $BUILD_DEPS_UBUNTU $FPM_DEPS_UBUNTU
+  rm -rf /var/lib/apt/lists/*
+  apt-get clean
+  apt-get update -o Acquire::Retries=5
+  apt-get -y install $BUILD_DEPS_UBUNTU $FPM_DEPS_UBUNTU
   gem install fpm -v 1.17.0
 }
+
 function compile_deps_ubuntu22.04() {
   pushd /opt
   git clone https://github.com/libuv/libuv
@@ -239,11 +257,14 @@ function compile_deps_ubuntu22.04() {
 }
 
 function install_deps_ubuntu24.04() {
-  apt -y install $BUILD_DEPS_UBUNTU $FPM_DEPS_UBUNTU
+  rm -rf /var/lib/apt/lists/*
+  apt-get clean
+  apt-get update -o Acquire::Retries=5
+  apt-get -y install $BUILD_DEPS_UBUNTU $FPM_DEPS_UBUNTU
   gem install fpm -v 1.17.0
 }
-function compile_deps_ubuntu24.04() {
 
+function compile_deps_ubuntu24.04() {
   pushd /opt
   git clone https://github.com/libuv/libuv
   pushd libuv
@@ -278,14 +299,15 @@ function compile_deps_ubuntu24.04() {
 }
 
 function install_deps_el8() {
+  dnf -y update
   # install fpm
   dnf module enable -y ruby:2.7
   dnf -y install ruby ruby-devel redhat-rpm-config rubygems rpm-build make git
   gem install fpm -v 1.17.0
   dnf -y install $BUILD_DEPS_REDHAT_8 $FPM_DEPS_REDHAT_8
 }
-function compile_deps_el8() {
 
+function compile_deps_el8() {
   pushd /opt
   wget https://mirrors.ocf.berkeley.edu/gnu/gettext/gettext-0.21.tar.gz
   tar -zxvf gettext-0.21.tar.gz
@@ -319,7 +341,6 @@ function compile_deps_el8() {
   ./configure
   make_parallel
   make install
-
 
   pushd /opt
   git clone https://github.com/libuv/libuv
@@ -359,17 +380,16 @@ function compile_deps_el8() {
   make_parallel -C build
   pushd build
   make install
-
 }
 
 function install_deps_el9() {
+  dnf -y update
   dnf -y install $BUILD_DEPS_REDHAT_9 $FPM_DEPS_REDHAT_9
   gem install fpm -v 1.17.0
 }
+
 function compile_deps_el9() {
-
   pushd /opt
-
   wget https://mirrors.ocf.berkeley.edu/gnu/gettext/gettext-0.21.tar.gz
   tar -zxvf gettext-0.21.tar.gz
   pushd gettext-0.21
@@ -402,7 +422,6 @@ function compile_deps_el9() {
   ./configure
   make_parallel
   make install
-
 
   pushd /opt
   git clone https://github.com/libuv/libuv
@@ -446,9 +465,11 @@ function compile_deps_el9() {
 }
 
 function install_deps_el10() {
+  dnf -y update
   dnf -y install $BUILD_DEPS_REDHAT_10 $FPM_DEPS_REDHAT_10
   gem install fpm -v 1.17.0
 }
+
 function compile_deps_el10() {
   # install libunistring
   pushd /opt
@@ -552,14 +573,13 @@ EOF
   pushd build
   make install
   popd; popd
-
 }
 
 function install_deps_amzn2023() {
+  dnf -y update
   yum groupinstall -y 'Development Tools'
   dnf install -y $BUILD_DEPS_AMAZON $FPM_DEPS_AMAZON
   gem install fpm -v 1.17.0
-
 
   pushd /opt
   wget https://mirrors.ocf.berkeley.edu/gnu/gettext/gettext-0.21.tar.gz

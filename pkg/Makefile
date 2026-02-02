@@ -5,13 +5,15 @@ BUILD_DIR = $(PKG_DIR)/build
 TARGET_DIR = $(PKG_DIR)/target
 CONFIG_DIR = /etc/aerospike
 # Package variables
-BUILD_DISTRO ?= $(shell .github/packaging/common/os_version.sh)
+PACKAGE_NAME = asbackup
+VERSION ?= $(shell git describe --tags --always --abbrev=9)
+RPM_VERSION := $(subst -,_,$(VERSION))
+BUILD_DISTRO ?= $(shell $(PKG_DIR)/../.github/packaging/common/os_version.sh)
 NAME = "aerospike-$(PACKAGE_NAME)"
 MAINTAINER = "Aerospike"
-VERSION = $(shell git describe --tags --always)
 DESCRIPTION = "ASBackup, a tool for backing up and restoring data for Aerospike database."
 LICENSE = "Apache License 2.0"
-URL = "https://github.com/aerospike/$(PACKAGE_NAME)"
+URL = "https://github.com/aerospike/aerospike-tools-backup"
 VENDOR = "Aerospike, Inc."
 ARCH = $(shell uname -m)
 
@@ -39,6 +41,9 @@ deb: prep
 .PHONY: rpm
 rpm: prep
 	fpm --force \
+		--rpm-rpmbuild-define '_build_id_links none' \
+		--exclude 'usr/lib/.build-id/*' \
+		--exclude 'usr/lib64/*' \
 		--config-files $(CONFIG_DIR) \
 		--input-type dir \
 		--output-type rpm \
@@ -52,7 +57,7 @@ rpm: prep
 		--license $(LICENSE) \
 		--url $(URL) \
 		--vendor $(VENDOR) \
-		--package $(TARGET_DIR)/$(NAME)-$(VERSION).$(BUILD_DISTRO).$(ARCH).rpm
+		--package $(TARGET_DIR)/$(NAME)-$(RPM_VERSION).$(BUILD_DISTRO).$(ARCH).rpm
 
 .PHONY: tar
 tar: prep

@@ -357,6 +357,22 @@ TEST_DEPS := $(sort $(TEST_DEPS))
 .PHONY: all
 all: $(BINS)
 
+.PHONY: deb
+deb: prep
+	$(MAKE) -C $(SOURCE_ROOT)/pkg/ $@
+
+.PHONY: rpm
+rpm: prep
+	$(MAKE) -C $(SOURCE_ROOT)/pkg/ $@
+
+.PHONY: tar
+tar: prep
+	$(MAKE) -C $(SOURCE_ROOT)/pkg/ $@
+
+.PHONY: prep
+prep: $(BINS)
+	$(MAKE) -C $(SOURCE_ROOT)/pkg/ $@
+
 # used as a pre-requisite for make shared
 # this rule is not meant for manual use by a user
 .PHONY: _set_dynamic_options
