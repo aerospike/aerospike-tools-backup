@@ -8,6 +8,7 @@ function build_packages(){
   GIT_DIR=$(git rev-parse --show-toplevel)
   PKG_DIR=$GIT_DIR/pkg
   cd "$GIT_DIR"
+  git config --global --add safe.directory '*'
   git submodule update --init --recursive
   export ARCH=$(uname -m)
   if [ "$ENV_DISTRO" = "debian13" ]; then

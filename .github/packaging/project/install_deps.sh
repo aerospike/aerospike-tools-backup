@@ -18,17 +18,17 @@ BUILD_DEPS_AMAZON="gcc-c++ libtool wget cmake openssl-devel libcurl-devel libzst
 BUILD_DEPS_REDHAT_8="gcc-c++ libtool wget cmake openssl-devel libcurl-devel libzstd-devel which autoconf git" #readline-devel flex
 BUILD_DEPS_REDHAT_9="gcc-c++ libtool wget cmake openssl-devel libcurl-devel libzstd-devel which autoconf git" #readline-devel flex
 BUILD_DEPS_REDHAT_10="gcc-c++ libtool wget cmake openssl-devel libcurl-devel libzstd-devel which autoconf git" #readline-devel flex
-BUILD_DEPS_UBUNTU="libpsl-dev autotools-dev automake libtool cmake pkg-config zlib1g-dev build-essential libssl-dev libzstd-dev libjansson-dev"
-BUILD_DEPS_DEBIAN="libpsl-dev autotools-dev automake libtool cmake pkg-config zlib1g-dev build-essential libssl-dev libzstd-dev libjansson-dev"
-BUILD_DEPS_DEBIAN_13="libpsl-dev autotools-dev automake libtool pkg-config zlib1g-dev build-essential libssl-dev libzstd-dev libjansson-dev wget"
+BUILD_DEPS_UBUNTU="libpsl-dev autotools-dev automake libtool cmake pkg-config zlib1g-dev build-essential libssl-dev libzstd-dev libjansson-dev git"
+BUILD_DEPS_DEBIAN="libpsl-dev autotools-dev automake libtool cmake pkg-config zlib1g-dev build-essential libssl-dev libzstd-dev libjansson-dev git"
+BUILD_DEPS_DEBIAN_13="libpsl-dev autotools-dev automake libtool pkg-config zlib1g-dev build-essential libssl-dev libzstd-dev libjansson-dev wget git"
 
-FPM_DEPS_DEBIAN="ruby-rubygems make rpm git rsync binutils"
-FPM_DEPS_UBUNTU_2004="ruby make rpm git rsync binutils"
-FPM_DEPS_UBUNTU="ruby-rubygems make rpm git rsync binutils"
-FPM_DEPS_AMAZON="ruby rpmdevtools make git python3 python3-pip rsync"
+FPM_DEPS_DEBIAN="ruby-rubygems make rpm rsync binutils"
+FPM_DEPS_UBUNTU_2004="ruby make rpm rsync binutils"
+FPM_DEPS_UBUNTU="ruby-rubygems make rpm rsync binutils"
+FPM_DEPS_AMAZON="ruby rpmdevtools make python3 python3-pip rsync"
 FPM_DEPS_REDHAT_8="python3 python3-pip rsync"
-FPM_DEPS_REDHAT_9="ruby rpmdevtools make git python3 python3-pip rsync zlib zlib-devel"
-FPM_DEPS_REDHAT_10="ruby rpmdevtools make git python3 python3-pip rsync zlib zlib-devel"
+FPM_DEPS_REDHAT_9="ruby rpmdevtools make python3 python3-pip rsync zlib zlib-devel"
+FPM_DEPS_REDHAT_10="ruby rpmdevtools make python3 python3-pip rsync zlib zlib-devel"
 
 AWS_SDK_VERSION="1.10.55"
 function install_deps_debian11() {
