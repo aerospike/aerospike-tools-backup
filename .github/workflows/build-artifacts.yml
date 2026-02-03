@@ -34,7 +34,7 @@ on:
 jobs:
   validate-inputs:
     name: Validate workflow inputs
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: Harden the runner (Audit all outbound calls)
         uses: step-security/harden-runner@20cf305ff2072d973412fa9b1e3a4f227bda3c76 # v2.14.0
@@ -85,7 +85,7 @@ jobs:
       github.event_name == 'workflow_dispatch' &&
       github.ref == 'refs/heads/master' &&
       github.event.inputs.GIT_TAG != ''
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     environment: deploy-to-master
     permissions:
       contents: write
@@ -127,7 +127,7 @@ jobs:
       always() && 
       needs.validate-inputs.result == 'success' &&
       (needs.create-tag.result == 'success' || needs.create-tag.result == 'skipped')
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     outputs:
@@ -207,7 +207,7 @@ jobs:
     needs: [build-artifacts, get-version]
     # always() needed because upstream jobs use always()
     if: ${{ always() && needs.build-artifacts.result == 'success' }}
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: Harden the runner (Audit all outbound calls)
         uses: step-security/harden-runner@20cf305ff2072d973412fa9b1e3a4f227bda3c76 # v2.14.0
