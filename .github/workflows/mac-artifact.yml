@@ -15,8 +15,18 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [macos-14, macos-15, macos-26]
+        os: [macos-15-intel, macos-14, macos-15, macos-26]
         include:
+          # x86_64 native build
+          - os: macos-15-intel
+            openssl-path: /usr/local/opt/openssl@3
+            zstd-path: /usr/local
+            aws-sdk-path: /usr/local
+            curl-path: /usr/local
+            ssh2-path: /usr/local
+            uv-path: /usr/local
+            jansson-path: /usr/local
+          # ARM64 native builds
           - os: macos-14
             openssl-path: /opt/homebrew/opt/openssl@3
             zstd-path: /opt/homebrew
