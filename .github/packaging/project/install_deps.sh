@@ -150,7 +150,7 @@ function compile_deps_debian13() {
 
   git clone https://github.com/curl/curl.git
   pushd curl
-  git checkout curl-8_14_1
+  git checkout curl-7_81_0
   git submodule update --init --recursive
   mkdir build
   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=OFF -DBUILD_CURL_EXE=OFF
@@ -164,7 +164,7 @@ function compile_deps_debian13() {
   git checkout $AWS_SDK_VERSION
   git submodule update --init --recursive
   mkdir build
-  cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_UNITY_BUILD=ON -DCMAKE_PREFIX_PATH=/usr/local -DCURL_LIBRARY=/usr/local/lib/libcurl.a -DCURL_INCLUDE_DIR=/usr/local/include
+  cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_UNITY_BUILD=ON
   make_parallel -C build
   pushd build
   make install
