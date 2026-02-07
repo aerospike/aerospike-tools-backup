@@ -29,7 +29,6 @@ on:
     branches:
       # yamllint disable-line rule:quoted-strings
       - "master"
-      - 'pvinh/SERVER-550-Coalesce-reuse'
 
 jobs:
   validate-inputs:
