@@ -317,9 +317,9 @@ function install_deps_el8() {
   # install fpm
   dnf module enable -y ruby:2.7
   dnf -y install ruby ruby-devel redhat-rpm-config rubygems rpm-build make git
-  build_libyaml_static
   dnf -y install $BUILD_DEPS_REDHAT_8 $FPM_DEPS_REDHAT_8
   gem install fpm -v 1.17.0
+  build_libyaml_static
 }
 
 function compile_deps_el8() {
