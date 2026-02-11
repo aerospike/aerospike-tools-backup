@@ -51,10 +51,28 @@ endif
 ifeq ($(OS),Darwin)
   DYNAMIC_SUFFIX = dylib
   DYNAMIC_FLAG = -dynamiclib
+
+  ifdef M1_HOME_BREW
+    LIBYAML_STATIC := /opt/homebrew/lib/libyaml.a
+  else
+    LIBYAML_STATIC := /usr/local/lib/libyaml.a
+  endif
+
 else
   DYNAMIC_SUFFIX = so
   DYNAMIC_FLAG = -shared
+
+  # Linux: try common static library locations
+  ifneq ($(wildcard /usr/lib64/libyaml.a),)
+    LIBYAML_STATIC := /usr/lib64/libyaml.a
+  else ifneq ($(wildcard /usr/lib/$(shell uname -m)-linux-gnu/libyaml.a),)
+    LIBYAML_STATIC := /usr/lib/$(shell uname -m)-linux-gnu/libyaml.a
+  else ifneq ($(wildcard /usr/lib/libyaml.a),)
+    LIBYAML_STATIC := /usr/lib/libyaml.a
+  endif
+
 endif
+
 DYNAMIC_OPTIONS =
 
 CC ?= cc
@@ -275,6 +293,13 @@ LIBRARIES += -ldl -lrt
 LIBRARIES += -L$(DIR_TOML) -Wl,-l,:libtoml.a
 else
 LIBRARIES += $(DIR_TOML)/libtoml.a
+endif
+
+# Link libyaml (required by C client's as_config_file)
+ifdef LIBYAML_STATIC
+  LIBRARIES += $(LIBYAML_STATIC)
+else
+  LIBRARIES += -lyaml
 endif
 
 # if this is an m1 mac using homebrew

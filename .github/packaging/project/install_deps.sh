@@ -18,9 +18,9 @@ BUILD_DEPS_AMAZON="gcc-c++ libtool wget cmake openssl-devel libcurl-devel libzst
 BUILD_DEPS_REDHAT_8="gcc-c++ libtool wget cmake openssl-devel libcurl-devel libzstd-devel which autoconf git" #readline-devel flex
 BUILD_DEPS_REDHAT_9="gcc-c++ libtool wget cmake openssl-devel libcurl-devel libzstd-devel which autoconf git" #readline-devel flex
 BUILD_DEPS_REDHAT_10="gcc-c++ libtool wget cmake openssl-devel libcurl-devel libzstd-devel which autoconf git" #readline-devel flex
-BUILD_DEPS_UBUNTU="libpsl-dev autotools-dev automake libtool cmake pkg-config zlib1g-dev build-essential libssl-dev libzstd-dev libjansson-dev git"
-BUILD_DEPS_DEBIAN="libpsl-dev autotools-dev automake libtool cmake pkg-config zlib1g-dev build-essential libssl-dev libzstd-dev libjansson-dev git"
-BUILD_DEPS_DEBIAN_13="libpsl-dev autotools-dev automake libtool pkg-config zlib1g-dev build-essential libssl-dev libzstd-dev libjansson-dev wget git"
+BUILD_DEPS_UBUNTU="libpsl-dev autotools-dev automake libtool cmake pkg-config zlib1g-dev build-essential libssl-dev libzstd-dev libjansson-dev git libyaml-dev"
+BUILD_DEPS_DEBIAN="libpsl-dev autotools-dev automake libtool cmake pkg-config zlib1g-dev build-essential libssl-dev libzstd-dev libjansson-dev git libyaml-dev"
+BUILD_DEPS_DEBIAN_13="libpsl-dev autotools-dev automake libtool pkg-config zlib1g-dev build-essential libssl-dev libzstd-dev libjansson-dev wget git libyaml-dev"
 
 FPM_DEPS_DEBIAN="ruby-rubygems make rpm rsync binutils"
 FPM_DEPS_UBUNTU_2004="ruby make rpm rsync binutils"
@@ -31,6 +31,20 @@ FPM_DEPS_REDHAT_9="ruby rpmdevtools make python3 python3-pip rsync zlib zlib-dev
 FPM_DEPS_REDHAT_10="ruby rpmdevtools make python3 python3-pip rsync zlib zlib-devel"
 
 AWS_SDK_VERSION="1.10.55"
+
+# Build libyaml from source with static library (RHEL/Amazon packages don't include .a files)
+function build_libyaml_static() {
+  local LIBYAML_VERSION="0.2.5"
+  pushd /tmp
+  curl -sL "https://github.com/yaml/libyaml/releases/download/${LIBYAML_VERSION}/yaml-${LIBYAML_VERSION}.tar.gz" | tar xz
+  cd "yaml-${LIBYAML_VERSION}"
+  ./configure --prefix=/usr --enable-static
+  make -j$(nproc)
+  make install
+  popd
+  rm -rf /tmp/yaml-${LIBYAML_VERSION}
+}
+
 function install_deps_debian11() {
   rm -rf /var/lib/apt/lists/*
   apt-get clean
@@ -303,6 +317,7 @@ function install_deps_el8() {
   # install fpm
   dnf module enable -y ruby:2.7
   dnf -y install ruby ruby-devel redhat-rpm-config rubygems rpm-build make git
+  build_libyaml_static
   gem install fpm -v 1.17.0
   dnf -y install $BUILD_DEPS_REDHAT_8 $FPM_DEPS_REDHAT_8
 }
@@ -385,6 +400,7 @@ function compile_deps_el8() {
 function install_deps_el9() {
   dnf -y update
   dnf -y install $BUILD_DEPS_REDHAT_9 $FPM_DEPS_REDHAT_9
+  build_libyaml_static
   gem install fpm -v 1.17.0
 }
 
@@ -467,6 +483,7 @@ function compile_deps_el9() {
 function install_deps_el10() {
   dnf -y update
   dnf -y install $BUILD_DEPS_REDHAT_10 $FPM_DEPS_REDHAT_10
+  build_libyaml_static
   gem install fpm -v 1.17.0
 }
 
@@ -579,6 +596,7 @@ function install_deps_amzn2023() {
   dnf -y update
   yum groupinstall -y 'Development Tools'
   dnf install -y $BUILD_DEPS_AMAZON $FPM_DEPS_AMAZON
+  build_libyaml_static
   gem install fpm -v 1.17.0
 
   pushd /opt
