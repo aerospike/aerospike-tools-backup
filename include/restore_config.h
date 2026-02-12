@@ -73,6 +73,11 @@ extern "C" {
 
 #define DEFAULT_EVENT_LOOPS 1
 
+#define DEFAULT_MAX_COMMANDS_IN_QUEUE 10000
+#define DEFAULT_ASYNC_MAX_CONNS_PER_NODE 100
+#define DEFAULT_ERROR_RATE_WINDOW 1
+#define DEFAULT_MAX_ERROR_RATE 100
+
 /*
  * The global restore configuration and stats shared by all restore threads and the counter thread.
  */
@@ -101,8 +106,24 @@ typedef struct restore_config {
 	// C client socket timeout/retry policies.
 	uint32_t socket_timeout;
 	uint32_t total_timeout;
+	uint32_t login_timeout_ms;
+
 	// this option has been replaced by retry-scale-factor
 	uint32_t retry_delay;
+
+	// The minimum number of connections per node.
+	// If multiple event loops are used, each event loop gets this / event_loops.
+	uint32_t async_min_conns_per_node;
+
+	// The maximum number of connections per node.
+	// If multiple event loops are used, each event loop gets this / event_loops.
+	uint32_t async_max_conns_per_node;
+
+	// The error rate window configuration for the C client.
+	uint32_t error_rate_window;
+
+	// The error rate threshold for the C client.
+	uint32_t max_error_rate;
 
 	// When set, don't use batch writes.
 	bool disable_batch_writes;
@@ -114,6 +135,10 @@ typedef struct restore_config {
 	uint32_t batch_size;
 	// The number of c-client event loops to use.
 	uint32_t event_loops;
+	// Max number of commands allowed to run concurrently on each event loop.
+	uint32_t max_commands_in_process;
+	// Max number of commands allowed to wait in each event loop's delay queue.
+	uint32_t max_commands_in_queue;
 
 	// The region to use for S3.
 	char* s3_region;

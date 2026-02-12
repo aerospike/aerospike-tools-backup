@@ -122,6 +122,7 @@ typedef struct backup_config {
 	// C client socket timeout/retry policies.
 	uint32_t socket_timeout;
 	uint32_t total_timeout;
+	uint32_t login_timeout_ms;
 	uint32_t max_retries;
 	uint32_t retry_delay;
 
