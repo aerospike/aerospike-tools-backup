@@ -1791,10 +1791,17 @@ get_server_build(aerospike* as, server_build_t* build_info)
 		return -1;
 	}
 
-	if (sscanf(response, "%" PRIu32 ".%" PRIu32 ".%" PRIu32 ".%" PRIu32,
+	char* build_str = NULL;
+	if (as_info_parse_single_response(response, &build_str) != AEROSPIKE_OK) {
+		err("Failed to parse server build info response: %s\n", response);
+		cf_free(response);
+		return -1;
+	}
+
+	if (sscanf(build_str, "%" PRIu32 ".%" PRIu32 ".%" PRIu32 ".%" PRIu32,
 				&build_info->epoch, &build_info->major,
 				&build_info->minor, &build_info->patch) != 4) {
-		err("Invalid server build response: %s\n", response);
+		err("Invalid server build response: %s\n", build_str);
 		cf_free(response);
 		return -1;
 	}
