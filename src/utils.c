@@ -1779,30 +1779,22 @@ parse_encryption_key_env(const char* env_var_name)
 }
 
 int
-get_server_version(aerospike* as, server_version_t* version_info)
+get_server_build(aerospike* as, server_build_t* build_info)
 {
 	as_error ae;
 	char* response;
 
-	if (aerospike_info_any(as, &ae, NULL, "version", &response) != AEROSPIKE_OK) {
-		err("Error while querying server version - code %d:\n"
+	if (aerospike_info_any(as, &ae, NULL, "build", &response) != AEROSPIKE_OK) {
+		err("Error while querying server build - code %d:\n"
 				"%s at %s:%d",
 				ae.code, ae.message, ae.file, ae.line);
 		return -1;
 	}
 
-	char* build_str = strstr(response, "build");
-	if (build_str == NULL || strlen(build_str) <= 6) {
-		err("Invalid info request response from server: %s\n", response);
-		cf_free(response);
-		return -1;
-	}
-
-	char* version_str = build_str + 6;
-	if (sscanf(version_str, "%" PRIu32 ".%" PRIu32 ".%" PRIu32 ".%" PRIu32 "\n",
-				&version_info->major, &version_info->minor,
-				&version_info->patch, &version_info->build_id) != 4) {
-		err("Invalid info request build number: %s\n", version_str);
+	if (sscanf(response, "%" PRIu32 ".%" PRIu32 ".%" PRIu32 ".%" PRIu32,
+				&build_info->epoch, &build_info->major,
+				&build_info->minor, &build_info->patch) != 4) {
+		err("Invalid server build response: %s\n", response);
 		cf_free(response);
 		return -1;
 	}
@@ -1816,14 +1808,14 @@ get_server_version(aerospike* as, server_version_t* version_info)
  * while checking.
  */
 bool
-server_has_batch_writes(aerospike* as, const server_version_t* version_info,
+server_has_batch_writes(aerospike* as, const server_build_t* build_info,
 		bool* batch_writes_enabled)
 {
 	const char batch_idx_threads_param[] = "batch-index-threads";
 	char* info_res;
 	as_error ae;
 
-	if (SERVER_VERSION_BEFORE(version_info, 6, 0)) {
+	if (SERVER_BUILD_BEFORE(build_info, 6, 0)) {
 		// batch writes not available
 		*batch_writes_enabled = false;
 		return true;

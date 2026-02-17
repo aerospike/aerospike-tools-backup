@@ -48,8 +48,8 @@ typedef struct restore_status {
 	// The Aerospike client.
 	// NOTE this is NULL if validate is true
 	aerospike* as;
-	// Server version info struct.
-	server_version_t version_info;
+	// Server build info struct.
+	server_build_t build_info;
 
 	// The file format decoder to be used for reading data from a backup file.
 	backup_decoder_t decoder;
