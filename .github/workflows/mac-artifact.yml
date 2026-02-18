@@ -261,13 +261,13 @@ jobs:
         ./asrestore -n test -d backupdir 2>&1 | grep "Failed to connect"
       working-directory:  ${{ steps.working-dir.outputs.value }}/binaries/static_bin
     - name: Upload static asbackup artifact
-      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
       with: 
         name: ${{ steps.system-info.outputs.platform }}-${{ runner.arch }}-${{ matrix.os }}-${{ steps.system-info.outputs.release }}-asbackup-static
         path: ${{ steps.working-dir.outputs.value }}/binaries/static_bin/asbackup
         if-no-files-found: error
     - name: Upload static asrestore artifact
-      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
       with: 
         name: ${{ steps.system-info.outputs.platform }}-${{ runner.arch }}-${{ matrix.os }}-${{ steps.system-info.outputs.release }}-asrestore-static
         path: ${{ steps.working-dir.outputs.value }}/binaries/static_bin/asrestore
@@ -289,7 +289,7 @@ jobs:
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: binaries
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: binaries
           path: binaries
