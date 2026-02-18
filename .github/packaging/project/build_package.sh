@@ -11,6 +11,9 @@ function build_packages(){
   git config --global --add safe.directory '*'
   git submodule update --init --recursive
   export ARCH=$(uname -m)
+  if [ -n "${PKG_VERSION:-}" ]; then
+    export VERSION="$PKG_VERSION"
+  fi
   if [ "$ENV_DISTRO" = "debian13" ]; then
     export CMAKE_ROOT=/opt/cmake-3.27.0-linux-x86_64/
   fi

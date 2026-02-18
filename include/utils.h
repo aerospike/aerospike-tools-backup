@@ -300,15 +300,15 @@ typedef struct {
 } b64_context;
 
 /*
- * Struct containing server version information.
+ * Struct containing server build information.
+ * Build format: "<epoch>.<major>.<minor>.<patch>"
  */
-typedef struct server_version {
-	// server version looks like "<major>.<minor>.<patch>.<build_id>"
+typedef struct server_build {
+	uint32_t epoch;
 	uint32_t major;
 	uint32_t minor;
 	uint32_t patch;
-	uint32_t build_id;
-} server_version_t;
+} server_build_t;
 
 extern const uint8_t b64map[256];
 
@@ -340,9 +340,9 @@ extern const uint8_t b64map[256];
 
 #endif /* __APPLE__ */
 
-#define SERVER_VERSION_BEFORE(version_info, _major, _minor) \
-	((version_info)->major < _major || \
-	 ((version_info)->major == _major && (version_info)->minor < _minor))
+#define SERVER_BUILD_BEFORE(build_info, _epoch, _major) \
+	((build_info)->epoch < (_epoch) || \
+	 ((build_info)->epoch == (_epoch) && (build_info)->major < (_major)))
 
 
 //==========================================================
@@ -446,10 +446,10 @@ bool parse_index_info(char *ns, char *index_str, index_param *index);
 bool parse_set_list(as_vector* dst, const char* set_list);
 encryption_key_t* parse_encryption_key_env(const char* env_var_name);
 
-// Gets the current server version via an info command, returning 0 on success
-// and nonzero on failure.
-int get_server_version(aerospike* as, server_version_t*);
-bool server_has_batch_writes(aerospike* as, const server_version_t*,
+// Gets the current server build version via an info command, returning 0 on
+// success and nonzero on failure.
+int get_server_build(aerospike* as, server_build_t*);
+bool server_has_batch_writes(aerospike* as, const server_build_t*,
 		bool* batch_writes_enabled);
 
 /*

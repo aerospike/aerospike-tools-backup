@@ -174,20 +174,20 @@ restore_status_init(restore_status_t* status, const restore_config_t* conf)
 		goto cleanup4;
 	}
 
-	if (get_server_version(info_as, &status->version_info) != 0) {
+	if (get_server_build(info_as, &status->build_info) != 0) {
 		goto cleanup5;
 	}
 
-	ver("Connected to server version %u.%u.%u.%u",
-			status->version_info.major,
-			status->version_info.minor,
-			status->version_info.patch,
-			status->version_info.build_id);
+	ver("Connected to server build %u.%u.%u.%u",
+			status->build_info.epoch,
+			status->build_info.major,
+			status->build_info.minor,
+			status->build_info.patch);
 
 	if (conf->disable_batch_writes) {
 		status->batch_writes_enabled = false;
 	}
-	else if (!server_has_batch_writes(info_as, &status->version_info,
+	else if (!server_has_batch_writes(info_as, &status->build_info,
 				&status->batch_writes_enabled)) {
 		goto cleanup5;
 	}
@@ -208,10 +208,10 @@ restore_status_init(restore_status_t* status, const restore_config_t* conf)
 		goto cleanup5;
 	}
 
-	if (SERVER_VERSION_BEFORE(&status->version_info, 4, 9)) {
+	if (SERVER_BUILD_BEFORE(&status->build_info, 4, 9)) {
 		err("Aerospike Server version 4.9 or greater is required to run "
 				"asrestore, but version %" PRIu32 ".%" PRIu32 " is in use.",
-				status->version_info.major, status->version_info.minor);
+				status->build_info.epoch, status->build_info.major);
 		goto cleanup5;
 	}
 

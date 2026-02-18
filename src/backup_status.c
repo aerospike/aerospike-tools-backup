@@ -56,7 +56,7 @@ static bool ns_count_callback(void *context_, const char *key, const char *value
 static bool set_count_callback(void *context_, const char *key_, const char *value_);
 static bool get_object_count(aerospike *as, const char *namespace, as_vector* set_list,
 		char (*node_names)[][AS_NODE_NAME_SIZE], uint32_t n_node_names, uint64_t *obj_count);
-static bool check_server_version(backup_status_t* status, const backup_config_t* conf);
+static bool check_server_build(backup_status_t* status, const backup_config_t* conf);
 
 
 //==========================================================
@@ -454,7 +454,7 @@ backup_status_init(backup_status_t* status, backup_config_t* conf)
 		goto cleanup3;
 	}
 
-	if (!check_server_version(status, conf)) {
+	if (!check_server_build(status, conf)) {
 		goto cleanup3;
 	}
 
@@ -1553,46 +1553,46 @@ get_object_count(aerospike *as, const char *namespace, as_vector* set_list,
  * version of the server running.
  */
 static bool
-check_server_version(backup_status_t* status, const backup_config_t* conf)
+check_server_build(backup_status_t* status, const backup_config_t* conf)
 {
-	server_version_t version_info;
-	if (get_server_version(status->as, &version_info) != 0) {
+	server_build_t build_info;
+	if (get_server_build(status->as, &build_info) != 0) {
 		return false;
 	}
 
-	uint32_t major = version_info.major;
-	uint32_t minor = version_info.minor;
+	uint32_t epoch = build_info.epoch;
+	uint32_t major = build_info.major;
 
-	ver("Connected to server version %u.%u.%u.%u", major, minor,
-			version_info.patch, version_info.build_id);
+	ver("Connected to server build %u.%u.%u.%u", epoch, major,
+			build_info.minor, build_info.patch);
 
-	if (SERVER_VERSION_BEFORE(&version_info, 4, 9)) {
+	if (SERVER_BUILD_BEFORE(&build_info, 4, 9)) {
 		err("Aerospike Server version 4.9 or greater is required to run "
 				"asbackup, but version %" PRIu32 ".%" PRIu32 " is in use.",
-				major, minor);
+				epoch, major);
 		return false;
 	}
 
 	if ((conf->mod_before != 0 || conf->mod_after != 0) &&
-			SERVER_VERSION_BEFORE(&version_info, 5, 2)) {
+			SERVER_BUILD_BEFORE(&build_info, 5, 2)) {
 		err("Aerospike Server version 5.2 or greater is required for "
 				"--modified-before and --modified-after, but version "
 				"%" PRIu32 ".%" PRIu32 " is in use",
-				major, minor);
+				epoch, major);
 		return false;
 	}
 
-	if (conf->set_list.size > 1 && SERVER_VERSION_BEFORE(&version_info, 5, 2)) {
+	if (conf->set_list.size > 1 && SERVER_BUILD_BEFORE(&build_info, 5, 2)) {
 		err("Aerospike Server version 5.2 or greater is required for multi-set "
 				"backup, but version %" PRIu32 ".%" PRIu32 " is in use",
-				major, minor);
+				epoch, major);
 		return false;
 	}
 
-	if (conf->ttl_zero && SERVER_VERSION_BEFORE(&version_info, 5, 2)) {
+	if (conf->ttl_zero && SERVER_BUILD_BEFORE(&build_info, 5, 2)) {
 		err("Aerospike Server version 5.2 or greater is required for "
 				"--no-ttl-only, but version %" PRIu32 ".%" PRIu32 " is in use",
-				major, minor);
+				epoch, major);
 		return false;
 	}
 
