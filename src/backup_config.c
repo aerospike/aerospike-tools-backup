@@ -1501,7 +1501,7 @@ usage(const char *name)
 	fprintf(stdout, "                      This argument is mutually exclusive with --filter-exp.\n");
 	fprintf(stdout, "  -b, --modified-before <YYYY-MM-DD_HH:MM:SS>\n");
 	fprintf(stdout, "                      Only include records that last changed before the given\n");
-	fprintf(stdout, "                      date and time. May combined with --modified-after to specify\n");
+	fprintf(stdout, "                      date and time. May be combined with --modified-after to specify\n");
 	fprintf(stdout, "                      a range.\n");
 	fprintf(stdout, "                      This argument is mutually exclusive with --filter-exp.\n");
 	fprintf(stdout, "      --no-ttl-only\n");
