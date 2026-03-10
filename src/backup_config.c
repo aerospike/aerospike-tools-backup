@@ -836,6 +836,13 @@ backup_config_validate(backup_config_t* conf)
 		return BACKUP_CONFIG_VALIDATE_FAILURE;
 	}
 
+	if (conf->filter_exp != NULL &&
+			(conf->mod_after > 0 || conf->mod_before > 0 || conf->ttl_zero)) {
+		err("--filter-exp is mutually exclusive with --modified-after, "
+				"--modified-before, and --no-ttl-only");
+		return BACKUP_CONFIG_VALIDATE_FAILURE;
+	}
+
 	if (conf->compress_mode == IO_PROXY_COMPRESS_NONE &&
 			conf->compression_level != 0) {
 		err("Cannot set compression level without compression enabled");
@@ -1465,7 +1472,8 @@ usage(const char *name)
 	fprintf(stdout, "                      Use the encoded filter expression in each scan call,\n");
 	fprintf(stdout, "                      which can be used to do a partial backup.\n");
 	fprintf(stdout, "                      The expression to be used can be base64 encoded through any client.\n");
-	fprintf(stdout, "                      This argument is mutually exclusive with multi-set backup\n");
+	fprintf(stdout, "                      This argument is mutually exclusive with multi-set backup,\n");
+	fprintf(stdout, "                      --modified-after, --modified-before, and --no-ttl-only.\n");
 	fprintf(stdout, "  -M, --max-records <number of records>\n");
 	fprintf(stdout, "                      The number of records approximately to back up. Default: all records\n");
 	fprintf(stdout, "  -m, --machine <path>\n");
@@ -1490,12 +1498,15 @@ usage(const char *name)
 	fprintf(stdout, "                      local timezone applies. If only HH:MM:SS is specified, then\n");
 	fprintf(stdout, "                      today's date is assumed as the date. If only YYYY-MM-DD is \n");
 	fprintf(stdout, "                      specified, then 00:00:00 (midnight) is assumed as the time.\n");
+	fprintf(stdout, "                      This argument is mutually exclusive with --filter-exp.\n");
 	fprintf(stdout, "  -b, --modified-before <YYYY-MM-DD_HH:MM:SS>\n");
 	fprintf(stdout, "                      Only include records that last changed before the given\n");
 	fprintf(stdout, "                      date and time. May combined with --modified-after to specify\n");
 	fprintf(stdout, "                      a range.\n");
+	fprintf(stdout, "                      This argument is mutually exclusive with --filter-exp.\n");
 	fprintf(stdout, "      --no-ttl-only\n");
 	fprintf(stdout, "                      Only include records that have no ttl set (persistent records).\n");
+	fprintf(stdout, "                      This argument is mutually exclusive with --filter-exp.\n");
 	fprintf(stdout, "      --socket-timeout <ms>\n");
 	fprintf(stdout, "                      Socket timeout in milliseconds. Default is 10 seconds.\n");
 	fprintf(stdout, "                      If this value is 0, its set to total-timeout. If both are 0,\n");
