@@ -29,6 +29,7 @@ on:
     branches:
       # yamllint disable-line rule:quoted-strings
       - "master"
+      - "pvinh/OpensslDynamicLink"
 
 jobs:
   validate-inputs:

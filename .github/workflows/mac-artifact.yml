@@ -250,7 +250,7 @@ jobs:
     - name: Build asbackup with static link to zstd and aws-sdk-cpp
       if: steps.cache-asbackup.outputs.cache-hit != 'true'
       run: |
-        make ZSTD_STATIC_PATH=${{ matrix.zstd-path }}/lib  AWS_SDK_STATIC_PATH=${{ matrix.aws-sdk-path }}/lib CURL_STATIC_PATH=${{ matrix.curl-path }}/lib OPENSSL_STATIC_PATH=${{ matrix.openssl-path }}/lib LIBSSH2_STATIC_PATH=${{ matrix.ssh2-path }}/lib LIBUV_STATIC_PATH=${{ matrix.uv-path }}/lib JANSSON_STATIC_PATH=${{ matrix.jansson-path }}/lib
+        make ZSTD_STATIC_PATH=${{ matrix.zstd-path }}/lib  AWS_SDK_STATIC_PATH=${{ matrix.aws-sdk-path }}/lib CURL_STATIC_PATH=${{ matrix.curl-path }}/lib LIBSSH2_STATIC_PATH=${{ matrix.ssh2-path }}/lib LIBUV_STATIC_PATH=${{ matrix.uv-path }}/lib JANSSON_STATIC_PATH=${{ matrix.jansson-path }}/lib OPENSSL_PREFIX=${{ matrix.openssl-path }}
         mkdir -p binaries
         cp -r bin binaries/static_bin
         make clean

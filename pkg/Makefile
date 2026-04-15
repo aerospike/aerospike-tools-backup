@@ -32,6 +32,7 @@ deb: prep
 		--version $(VERSION) \
 		--maintainer $(MAINTAINER) \
 		--depends "libuv1" \
+		--depends "libssl3 | libssl1.1" \
 		--description $(DESCRIPTION) \
 		--license $(LICENSE) \
 		--url $(URL) \
