@@ -1384,7 +1384,7 @@ open_dir_file(backup_job_context_t *bjc)
 			return false;
 		}
 
-		uint64_t file_path_size = (size_t) snprintf(NULL, 0, "%s/%s_%05.asb",
+		uint64_t file_path_size = (size_t) snprintf(NULL, 0, "%s/%s_%05" PRId64 ".asb",
 				bjc->conf->directory,
 				bjc->conf->prefix == NULL ? bjc->conf->ns : bjc->conf->prefix,
 				file_count);
