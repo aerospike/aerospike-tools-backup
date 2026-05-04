@@ -1384,10 +1384,10 @@ open_dir_file(backup_job_context_t *bjc)
 			return false;
 		}
 
-		uint64_t file_path_size = (size_t) snprintf(NULL, 0, "%s/%s_%05d.asb",
+		uint64_t file_path_size = (size_t) snprintf(NULL, 0, "%s/%s_%05.asb",
 				bjc->conf->directory,
 				bjc->conf->prefix == NULL ? bjc->conf->ns : bjc->conf->prefix,
-				0);
+				file_count);
 
 		char* file_path = (char*) cf_malloc((file_path_size + 1) * sizeof(char));
 		if (file_path == NULL) {
