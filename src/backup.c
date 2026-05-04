@@ -1384,6 +1384,9 @@ open_dir_file(backup_job_context_t *bjc)
 			return false;
 		}
 
+		pthread_mutex_lock(&bjc->status->dir_file_init_mutex);
+		int64_t file_count = bjc->status->file_count;
+
 		uint64_t file_path_size = (size_t) snprintf(NULL, 0, "%s/%s_%05" PRId64 ".asb",
 				bjc->conf->directory,
 				bjc->conf->prefix == NULL ? bjc->conf->ns : bjc->conf->prefix,
@@ -1397,8 +1400,7 @@ open_dir_file(backup_job_context_t *bjc)
 			return false;
 		}
 
-		pthread_mutex_lock(&bjc->status->dir_file_init_mutex);
-		int64_t file_count = bjc->status->file_count;
+
 
 		snprintf(file_path, file_path_size + 1, "%s/%s_%05" PRId64 ".asb",
 				bjc->conf->directory,
