@@ -1394,13 +1394,12 @@ open_dir_file(backup_job_context_t *bjc)
 
 		char* file_path = (char*) cf_malloc((file_path_size + 1) * sizeof(char));
 		if (file_path == NULL) {
+			pthread_mutex_unlock(&bjc->status->dir_file_init_mutex);
 			cf_free(bjc->fd);
 			bjc->fd = NULL;
 			err("Unable to malloc file path name of length %" PRIu64, file_path_size);
 			return false;
 		}
-
-
 
 		snprintf(file_path, file_path_size + 1, "%s/%s_%05" PRId64 ".asb",
 				bjc->conf->directory,
