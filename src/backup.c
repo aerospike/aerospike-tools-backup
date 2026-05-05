@@ -1395,6 +1395,7 @@ open_dir_file(backup_job_context_t *bjc)
 			pthread_mutex_unlock(&bjc->status->dir_file_init_mutex);
 			cf_free(bjc->fd);
 			bjc->fd = NULL;
+			err("Unable to malloc file path name");
 			return false;
 		}
 
