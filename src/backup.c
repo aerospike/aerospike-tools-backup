@@ -1392,7 +1392,10 @@ open_dir_file(backup_job_context_t *bjc)
 				bjc->conf->prefix == NULL ? bjc->conf->ns : bjc->conf->prefix,
 				file_count);
 
-		char* file_path = (char*) cf_malloc((file_path_size + 1) * sizeof(char));
+		char* file_path = dyn_sprintf("%s/%s_%05" PRId64 ".asb",
+        bjc->conf->directory,
+        bjc->conf->prefix == NULL ? bjc->conf->ns : bjc->conf->prefix,
+        file_count);
 		if (file_path == NULL) {
 			pthread_mutex_unlock(&bjc->status->dir_file_init_mutex);
 			cf_free(bjc->fd);
