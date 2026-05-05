@@ -1384,26 +1384,20 @@ open_dir_file(backup_job_context_t *bjc)
 			return false;
 		}
 
-		uint64_t file_path_size = (size_t) snprintf(NULL, 0, "%s/%s_%05d.asb",
-				bjc->conf->directory,
-				bjc->conf->prefix == NULL ? bjc->conf->ns : bjc->conf->prefix,
-				0);
-
-		char* file_path = (char*) cf_malloc((file_path_size + 1) * sizeof(char));
-		if (file_path == NULL) {
-			cf_free(bjc->fd);
-			bjc->fd = NULL;
-			err("Unable to malloc file path name of length %" PRIu64, file_path_size);
-			return false;
-		}
-
 		pthread_mutex_lock(&bjc->status->dir_file_init_mutex);
 		int64_t file_count = bjc->status->file_count;
 
-		snprintf(file_path, file_path_size + 1, "%s/%s_%05" PRId64 ".asb",
+		char* file_path = dyn_sprintf("%s/%s_%05" PRId64 ".asb",
 				bjc->conf->directory,
 				bjc->conf->prefix == NULL ? bjc->conf->ns : bjc->conf->prefix,
 				file_count);
+		if (file_path == NULL) {
+			pthread_mutex_unlock(&bjc->status->dir_file_init_mutex);
+			cf_free(bjc->fd);
+			bjc->fd = NULL;
+			err("Unable to malloc file path name");
+			return false;
+		}
 
 		if (!open_file(file_path, bjc->conf->ns,
 					MIN(remaining_bytes, bjc->conf->file_limit), bjc->fd,
@@ -1416,7 +1410,6 @@ open_dir_file(backup_job_context_t *bjc)
 			cf_free(file_path);
 			return false;
 		}
-		cf_free(file_path);
 
 		bjc->rec_count_file = 0;
 		bjc->byte_count_file = 0;
@@ -1426,8 +1419,10 @@ open_dir_file(backup_job_context_t *bjc)
 			cf_free(bjc->fd);
 			bjc->fd = NULL;
 			err("New directory file %s, failed to get file position", file_path);
+			cf_free(file_path);
 			return false;
 		}
+		cf_free(file_path);
 
 		bjc->status->file_count = file_count + 1;
 		pthread_mutex_unlock(&bjc->status->dir_file_init_mutex);
