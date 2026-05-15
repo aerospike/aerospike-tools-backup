@@ -551,8 +551,8 @@ coverage: | $(DIR_TEST_BIN)/aerospike-tools-backup.info
 .PHONY: coverage-init
 coverage-init: $(TEST_BINS)
 	@lcov --zerocounters --directory $(DIR_TEST_BIN)
-	@lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup-baseline.info --directory $(DIR_TEST_BIN) --capture --initial
-	@lcov -o $(DIR_TEST_BIN)/aerospike-tools-backup-baseline.info --quiet --extract $(DIR_TEST_BIN)/aerospike-tools-backup-baseline.info '$(DIR_SRC)/*' '$(DIR_INC)/*'
+	@lcov --ignore-errors inconsistent,unsupported,format -o $(DIR_TEST_BIN)/aerospike-tools-backup-baseline.info --directory $(DIR_TEST_BIN) --capture --initial
+	@lcov --ignore-errors inconsistent,unsupported,format -o $(DIR_TEST_BIN)/aerospike-tools-backup-baseline.info --quiet --extract $(DIR_TEST_BIN)/aerospike-tools-backup-baseline.info '$(DIR_SRC)/*' '$(DIR_INC)/*'
 
 .PHONY: do-test
 do-test: | coverage-init

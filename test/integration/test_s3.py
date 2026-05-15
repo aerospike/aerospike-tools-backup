@@ -5,6 +5,7 @@ Tests backing up and restoring to S3.
 """
 
 import os
+import socket
 
 import aerospike_servers as as_srv
 import lib
@@ -227,5 +228,75 @@ def test_s3_restore_directory_list():
 	# remove backup artifacts
 	for path in paths:
 		backup_to_directory(path, *COMMON_S3_OPTS, '--remove-artifacts', env=S3_ENV)
-	
+
+	min_srv.stop_minio_server(MINIO_NAME)
+
+def _dead_proxy_env():
+	"""
+	Returns an env dict with HTTP_PROXY/HTTPS_PROXY pointing at an unreachable
+	port and NO_PROXY cleared, so libcurl will attempt (and fail) to reach even
+	localhost through the proxy when allowSystemProxy is enabled.
+	"""
+	# Bind to a random port then immediately close it — guaranteed unused.
+	with socket.socket() as s:
+		s.bind(('127.0.0.1', 0))
+		dead_port = s.getsockname()[1]
+	dead_addr = f"http://127.0.0.1:{dead_port}"
+	return {
+		**S3_ENV,
+		"HTTP_PROXY":  dead_addr,
+		"HTTPS_PROXY": dead_addr,
+		# Override any system NO_PROXY so 127.0.0.1 is not excluded.
+		"NO_PROXY": "",
+		"no_proxy": "",
+	}
+
+
+def test_s3_allow_system_proxy():
+	"""
+	Two-part behavioral test for --s3-allow-system-proxy:
+
+	1. Without the flag: HTTP_PROXY/HTTPS_PROXY env vars are ignored and the
+	   backup reaches MinIO directly — backup succeeds.
+	2. With the flag: libcurl honors HTTP_PROXY and routes through a dead proxy —
+	   backup fails, proving the env var is now in effect.
+	"""
+	as_srv.start_aerospike_servers()
+
+	backup_files_loc = lib.temporary_path("minio_proxy_dir")
+	os.mkdir(backup_files_loc, 0o755)
+	min_srv.start_minio_server(MINIO_NAME, backup_files_loc)
+	os.mkdir(backup_files_loc + "/" + S3_BUCKET, 0o755)
+
+	if lib.is_dir_mode():
+		path = "s3://" + S3_BUCKET + "/proxy_test_dir"
+	else:
+		path = "s3://" + S3_BUCKET + "/proxy_test.asb"
+
+	dead_env = _dead_proxy_env()
+
+	# Part 1: without --s3-allow-system-proxy the proxy env is ignored →
+	# direct connection to MinIO works.
+	bup, path = backup_async(
+		lambda context: record_gen.put_records(100, context, lib.SET, False, 0),
+		env=dead_env,
+		backup_opts=COMMON_S3_OPTS + ['--remove-files'],
+		path=path,
+	)
+	bup_ret = lib.sync_wait(bup.wait())
+	assert bup_ret == 0, \
+		"backup without --s3-allow-system-proxy should succeed even with a dead HTTP_PROXY set"
+
+	# Part 2: with --s3-allow-system-proxy libcurl honors HTTP_PROXY → routes
+	# through the dead proxy → backup fails.
+	bup, path = backup_async(
+		lambda context: None,
+		env=dead_env,
+		backup_opts=COMMON_S3_OPTS + ['--remove-files', '--s3-allow-system-proxy'],
+		path=path,
+	)
+	bup_ret = lib.sync_wait(bup.wait())
+	assert bup_ret != 0, \
+		"backup with --s3-allow-system-proxy and a dead HTTP_PROXY should fail"
+
 	min_srv.stop_minio_server(MINIO_NAME)

@@ -1128,6 +1128,10 @@ config_backup(toml_table_t *config_table, backup_config_t *c, const char *instan
 				status = false;
 			}
 
+		} else if (! strcasecmp("s3-allow-system-proxy", name)) {
+			status = config_bool(config_value, (void*)&c->s3_allow_system_proxy,
+					override);
+
 		} else {
 			fprintf(stderr, "Unknown parameter `%s` in `%s` section\n", name,
 					asbackup);
@@ -1438,6 +1442,10 @@ config_restore(toml_table_t *config_table, restore_config_t *c, const char *inst
 				err("Invalid S3 log level \"%s\"", s);
 				status = false;
 			}
+
+		} else if (! strcasecmp("s3-allow-system-proxy", name)) {
+			status = config_bool(config_value, (void*)&c->s3_allow_system_proxy,
+					override);
 
 		} else {
 			fprintf(stderr, "Unknown parameter `%s` in `%s` section\n", name,

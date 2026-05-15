@@ -47,6 +47,7 @@ S3API g_api;
 S3API::S3API() : initialized(false),
 				 logLevel(Aws::Utils::Logging::LogLevel::Off),
 				 client(nullptr),
+				 allowSystemProxy(false),
 				 async_uploads(0) {}
 
 bool
@@ -85,6 +86,7 @@ S3API::Shutdown()
 		this->max_async_downloads = S3_DEFAULT_MAX_ASYNC_DOWNLOADS;
 		this->max_async_uploads = S3_DEFAULT_MAX_ASYNC_UPLOADS;
 		this->connect_timeout_ms = S3_DEFAULT_CONNECT_TIMEOUT_MS;
+		this->allowSystemProxy = false;
 
 		initialized = false;
 	}
@@ -163,6 +165,13 @@ S3API&
 S3API::SetConnectTimeoutMS(uint32_t connect_timeout_ms)
 {
 	this->connect_timeout_ms = connect_timeout_ms;
+	return *this;
+}
+
+S3API&
+S3API::SetAllowSystemProxy(bool allow)
+{
+	this->allowSystemProxy = allow;
 	return *this;
 }
 
@@ -305,6 +314,7 @@ S3API::_init_api(S3API& s3_api)
 			s3_api.max_async_uploads);
 	
 	conf.connectTimeoutMs = s3_api.connect_timeout_ms;
+	conf.allowSystemProxy = s3_api.allowSystemProxy;
 
 	s3_api.client = new Aws::S3::S3Client(conf,
 			Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Always,

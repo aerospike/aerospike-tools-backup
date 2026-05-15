@@ -74,6 +74,8 @@ public:
 
 	S3API& SetConnectTimeoutMS(uint32_t connect_timeout_ms);
 
+	S3API& SetAllowSystemProxy(bool allow);
+
 	GroupDownloadManager* GetGroupDownloadManager();
 
 	const std::string& GetRegion() const;
@@ -138,6 +140,7 @@ private:
 	uint32_t max_async_uploads;
 	uint32_t max_async_downloads;
 	uint32_t connect_timeout_ms;
+	bool allowSystemProxy;
 
 	// the current number of concurrent async uploads
 	std::atomic<uint32_t> async_uploads;

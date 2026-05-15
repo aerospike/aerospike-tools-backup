@@ -189,6 +189,11 @@ s3_set_connect_timeout_ms(uint32_t connect_timeout_ms);
 void s3_set_log_level(s3_log_level_t log_level);
 
 /*
+ * When true, the S3 client honors HTTP_PROXY/HTTPS_PROXY/NO_PROXY env vars.
+ */
+void s3_set_allow_system_proxy(bool allow);
+
+/*
  * Immediately stop all async S3 requests currently being processed.
  */
 void s3_disable_request_processing();

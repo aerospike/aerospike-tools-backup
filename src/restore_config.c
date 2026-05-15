@@ -151,6 +151,7 @@ restore_config_set(int argc, char* argv[], restore_config_t* conf)
 		{ "s3-max-async-downloads", required_argument, NULL, COMMAND_OPT_S3_MAX_ASYNC_DOWNLOADS },
 		{ "s3-log-level", required_argument, NULL, COMMAND_OPT_S3_LOG_LEVEL },
 		{ "s3-connect-timeout", required_argument, NULL, COMMAND_OPT_S3_CONNECT_TIMEOUT },
+		{ "s3-allow-system-proxy", no_argument, NULL, COMMAND_OPT_S3_ALLOW_SYSTEM_PROXY },
 
 		{ "sa-address", required_argument, NULL, COMMAND_SA_ADDRESS },
 		{ "sa-port", required_argument, NULL, COMMAND_SA_PORT },
@@ -738,6 +739,10 @@ restore_config_set(int argc, char* argv[], restore_config_t* conf)
 			conf->s3_log_level = s3_log_level;
 			break;
 
+		case COMMAND_OPT_S3_ALLOW_SYSTEM_PROXY:
+			conf->s3_allow_system_proxy = true;
+			break;
+
 		case CONFIG_FILE_OPT_FILE:
 		case CONFIG_FILE_OPT_INSTANCE:
 		case CONFIG_FILE_OPT_NO_CONFIG_FILE:
@@ -883,6 +888,7 @@ restore_config_init(restore_config_t *conf)
 	conf->s3_max_async_downloads = S3_DEFAULT_MAX_ASYNC_DOWNLOADS;
 	conf->s3_connect_timeout = S3_DEFAULT_CONNECT_TIMEOUT_MS;
 	conf->s3_log_level = S3_DEFAULT_LOG_LEVEL;
+	conf->s3_allow_system_proxy = false;
 
 	conf->parallel = DEFAULT_THREADS;
 	conf->nice_list = NULL;
@@ -1323,6 +1329,10 @@ usage(const char *name)
 	fprintf(stdout, "                      The AWS S3 client's connection timeout in milliseconds.\n");
 	fprintf(stdout, "                      This is equivalent to cli-connect-timeout in the AWS CLI,\n");
 	fprintf(stdout, "                      or connectTimeoutMS in the aws-sdk-cpp client configuration.\n\n");
+	fprintf(stdout, "      --s3-allow-system-proxy\n");
+	fprintf(stdout, "                      Allow the S3 client to honor system proxy settings from the\n");
+	fprintf(stdout, "                      HTTP_PROXY, HTTPS_PROXY, and NO_PROXY environment variables.\n");
+	fprintf(stdout, "                      By default the S3 client ignores these variables.\n\n");
 
 	fprintf(stdout, "\n\n");
 	fprintf(stdout, "Default configuration files are read from the following files in the given order:\n");

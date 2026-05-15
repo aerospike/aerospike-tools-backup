@@ -218,6 +218,12 @@ s3_set_log_level(s3_log_level_t log_level)
 }
 
 void
+s3_set_allow_system_proxy(bool allow)
+{
+	g_api.SetAllowSystemProxy(allow);
+}
+
+void
 s3_disable_request_processing()
 {
 	if (g_api.IsInitialized()) {
