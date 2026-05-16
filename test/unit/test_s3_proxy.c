@@ -366,6 +366,73 @@ START_TEST(pick_no_proxy_env_null_when_unset)
 END_TEST
 
 
+//==========================================================
+// s3_proxy_scheme_for_endpoint
+//
+
+START_TEST(scheme_for_endpoint_https_lower)
+{
+	ck_assert_int_eq(s3_proxy_scheme_for_endpoint("https://wasabi.com"),
+			S3_PROXY_SCHEME_HTTPS);
+	ck_assert_int_eq(s3_proxy_scheme_for_endpoint("https://wasabi.com:443"),
+			S3_PROXY_SCHEME_HTTPS);
+}
+END_TEST
+
+START_TEST(scheme_for_endpoint_https_case_insensitive)
+{
+	ck_assert_int_eq(s3_proxy_scheme_for_endpoint("HTTPS://wasabi.com"),
+			S3_PROXY_SCHEME_HTTPS);
+	ck_assert_int_eq(s3_proxy_scheme_for_endpoint("Https://wasabi.com"),
+			S3_PROXY_SCHEME_HTTPS);
+	ck_assert_int_eq(s3_proxy_scheme_for_endpoint("hTtPs://wasabi.com"),
+			S3_PROXY_SCHEME_HTTPS);
+}
+END_TEST
+
+START_TEST(scheme_for_endpoint_http_explicit)
+{
+	ck_assert_int_eq(s3_proxy_scheme_for_endpoint("http://minio:9000"),
+			S3_PROXY_SCHEME_HTTP);
+	ck_assert_int_eq(s3_proxy_scheme_for_endpoint("HTTP://minio:9000"),
+			S3_PROXY_SCHEME_HTTP);
+}
+END_TEST
+
+START_TEST(scheme_for_endpoint_bare_host_defaults_http)
+{
+	// Bare host:port (the form COMMON_S3_OPTS already uses) must keep the
+	// historic HTTP default — important for backward compat with existing
+	// MinIO/Ceph integration tests.
+	ck_assert_int_eq(s3_proxy_scheme_for_endpoint("127.0.0.1:9000"),
+			S3_PROXY_SCHEME_HTTP);
+	ck_assert_int_eq(s3_proxy_scheme_for_endpoint("minio.internal"),
+			S3_PROXY_SCHEME_HTTP);
+}
+END_TEST
+
+START_TEST(scheme_for_endpoint_empty_and_null_default_http)
+{
+	ck_assert_int_eq(s3_proxy_scheme_for_endpoint(""),
+			S3_PROXY_SCHEME_HTTP);
+	ck_assert_int_eq(s3_proxy_scheme_for_endpoint(NULL),
+			S3_PROXY_SCHEME_HTTP);
+}
+END_TEST
+
+START_TEST(scheme_for_endpoint_https_prefix_substring_not_matched)
+{
+	// "https" without "://" is not a scheme; only the full prefix matches.
+	ck_assert_int_eq(s3_proxy_scheme_for_endpoint("httpsfoo.com"),
+			S3_PROXY_SCHEME_HTTP);
+	ck_assert_int_eq(s3_proxy_scheme_for_endpoint("https"),
+			S3_PROXY_SCHEME_HTTP);
+	ck_assert_int_eq(s3_proxy_scheme_for_endpoint("https:/wasabi.com"),
+			S3_PROXY_SCHEME_HTTP);
+}
+END_TEST
+
+
 Suite*
 s3_proxy_suite(void)
 {
@@ -406,6 +473,15 @@ s3_proxy_suite(void)
 	tcase_add_test(tc_env, pick_no_proxy_env_empty_is_unset);
 	tcase_add_test(tc_env, pick_no_proxy_env_null_when_unset);
 	suite_add_tcase(s, tc_env);
+
+	TCase* tc_scheme = tcase_create("scheme_for_endpoint");
+	tcase_add_test(tc_scheme, scheme_for_endpoint_https_lower);
+	tcase_add_test(tc_scheme, scheme_for_endpoint_https_case_insensitive);
+	tcase_add_test(tc_scheme, scheme_for_endpoint_http_explicit);
+	tcase_add_test(tc_scheme, scheme_for_endpoint_bare_host_defaults_http);
+	tcase_add_test(tc_scheme, scheme_for_endpoint_empty_and_null_default_http);
+	tcase_add_test(tc_scheme, scheme_for_endpoint_https_prefix_substring_not_matched);
+	suite_add_tcase(s, tc_scheme);
 
 	return s;
 }

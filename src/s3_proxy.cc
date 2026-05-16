@@ -30,6 +30,7 @@
 #include <cstring>
 #include <initializer_list>
 #include <string>
+#include <strings.h>
 
 namespace {
 
@@ -115,6 +116,16 @@ extern "C" const char*
 s3_proxy_pick_no_proxy_env(void)
 {
 	return read_first_env({"no_proxy", "NO_PROXY"});
+}
+
+extern "C" s3_proxy_scheme_t
+s3_proxy_scheme_for_endpoint(const char* endpoint)
+{
+	if (endpoint != nullptr &&
+			strncasecmp(endpoint, "https://", 8) == 0) {
+		return S3_PROXY_SCHEME_HTTPS;
+	}
+	return S3_PROXY_SCHEME_HTTP;
 }
 
 extern "C" s3_proxy_parse_status_t

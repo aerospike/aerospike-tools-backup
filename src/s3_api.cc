@@ -312,7 +312,17 @@ S3API::_init_api(S3API& s3_api)
 	}
 	if (!s3_api.endpoint.empty()) {
 		conf.endpointOverride = s3_api.endpoint;
-		conf.scheme = Aws::Http::Scheme::HTTP;
+		// Match the scheme to the override URL so downstream consumers of
+		// conf.scheme (including our proxy env-var picker below) agree with
+		// the actual destination. The SDK already uses the scheme prefix
+		// from endpointOverride when present (BuiltInParameters.cpp:15-27);
+		// this just keeps conf.scheme in sync. Bare host:port defaults to
+		// HTTP as before.
+		conf.scheme =
+				(s3_proxy_scheme_for_endpoint(s3_api.endpoint.c_str())
+						== S3_PROXY_SCHEME_HTTPS)
+						? Aws::Http::Scheme::HTTPS
+						: Aws::Http::Scheme::HTTP;
 	}
 
 	conf.maxConnections = std::max(s3_api.max_async_downloads,

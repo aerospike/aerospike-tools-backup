@@ -104,6 +104,21 @@ const char* s3_proxy_pick_url_env(s3_proxy_scheme_t dest_scheme);
  */
 const char* s3_proxy_pick_no_proxy_env(void);
 
+/*
+ * Returns the scheme implied by an S3 endpoint override string, used to keep
+ * Aws::ClientConfiguration::scheme in sync with --s3-endpoint-override and to
+ * select the right proxy env-var family.
+ *
+ *   - "https://..." (case-insensitive)         -> S3_PROXY_SCHEME_HTTPS
+ *   - "http://..."  (case-insensitive)         -> S3_PROXY_SCHEME_HTTP
+ *   - anything else (bare host:port, NULL, "") -> S3_PROXY_SCHEME_HTTP (default)
+ *
+ * The AWS SDK already uses the scheme prefix from the override URL when
+ * constructing request URLs (see BuiltInParameters.cpp in aws-sdk-cpp 1.10.55);
+ * this helper exists so the rest of the asbackup code can stay in sync.
+ */
+s3_proxy_scheme_t s3_proxy_scheme_for_endpoint(const char* endpoint);
+
 #ifdef __cplusplus
 }
 #endif
