@@ -88,13 +88,19 @@ s3_proxy_parse_status_t s3_proxy_parse_url(const char* url,
  * and wget convention introduced after CVE-2016-5385 ("httpoxy"), where the
  * uppercase form is reserved for CGI use.
  *
- * The returned pointer is owned by the environment and must not be freed.
+ * The returned pointer is owned by the environment block and must not be freed.
+ * It is only valid until the next setenv()/unsetenv()/putenv() on any of the
+ * names this function consults; copy the value if you need to outlive that.
  */
 const char* s3_proxy_pick_url_env(s3_proxy_scheme_t dest_scheme);
 
 /*
  * Returns the first non-empty value of no_proxy / NO_PROXY (in that order), or
  * NULL if neither is set. Lowercase preferred to match libcurl/wget convention.
+ *
+ * Same lifetime caveat as s3_proxy_pick_url_env: the returned pointer is owned
+ * by the environment block and is only valid until the next setenv/unsetenv on
+ * either name.
  */
 const char* s3_proxy_pick_no_proxy_env(void);
 

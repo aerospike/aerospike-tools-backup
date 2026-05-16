@@ -23,9 +23,7 @@
 #include <s3_api.h>
 
 #include <cstdlib>
-#include <sstream>
 #include <string>
-#include <vector>
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wsign-conversion"
