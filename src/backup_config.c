@@ -1557,9 +1557,17 @@ usage(const char *name)
 	fprintf(stdout, "                      This is equivalent to cli-connect-timeout in the AWS CLI,\n");
 	fprintf(stdout, "                      or connectTimeoutMS in the aws-sdk-cpp client configuration.\n\n");
 	fprintf(stdout, "      --s3-allow-system-proxy\n");
-	fprintf(stdout, "                      Allow the S3 client to honor system proxy settings from the\n");
-	fprintf(stdout, "                      HTTP_PROXY, HTTPS_PROXY, and NO_PROXY environment variables.\n");
-	fprintf(stdout, "                      By default the S3 client ignores these variables.\n\n");
+	fprintf(stdout, "                      Allow the S3 client to honor the following environment\n");
+	fprintf(stdout, "                      variables when contacting S3:\n");
+	fprintf(stdout, "                        https_proxy / HTTPS_PROXY  (for HTTPS endpoints)\n");
+	fprintf(stdout, "                        http_proxy                 (for HTTP endpoints; uppercase\n");
+	fprintf(stdout, "                                                    HTTP_PROXY is ignored per the\n");
+	fprintf(stdout, "                                                    libcurl/wget convention)\n");
+	fprintf(stdout, "                        all_proxy / ALL_PROXY      (fallback for either scheme)\n");
+	fprintf(stdout, "                        no_proxy  / NO_PROXY       (comma-separated host exemptions)\n");
+	fprintf(stdout, "                      Proxy URLs of the form [scheme://][user:pass@]host[:port] are\n");
+	fprintf(stdout, "                      accepted. SOCKS proxies are not supported. By default the S3\n");
+	fprintf(stdout, "                      client ignores these variables.\n\n");
 
 	fprintf(stdout, "\n\n");
 	fprintf(stdout, "Default configuration files are read from the following files in the given order:\n");

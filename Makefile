@@ -158,6 +158,15 @@ INCLUDES += -I$(DIR_C_CLIENT)/src/include
 INCLUDES += -I$(DIR_C_CLIENT)/modules/common/src/include
 INCLUDES += -I$(OPENSSL_PREFIX)/include
 INCLUDES += -I$(DIR_SECRET_CLIENT)/src/include
+
+# Optional: point at a cmake-built AWS SDK (e.g. the 1.10.55 used in CI) to avoid
+# picking up the system/Homebrew SDK headers. Set this to the cmake install prefix.
+# Example: make AWS_SDK_INCLUDE_PATH=~/aws-sdk-1.10.55/include
+# Must come before /usr/local/include and /opt/homebrew/include so it takes precedence.
+ifdef AWS_SDK_INCLUDE_PATH
+  INCLUDES += -I$(AWS_SDK_INCLUDE_PATH)
+endif
+
 INCLUDES += -I/usr/local/include
 
 LIBRARIES := $(C_CLIENT_LIB)

@@ -28,8 +28,6 @@
 // Includes.
 //
 
-#include <cstdarg>
-
 #include <aws/core/utils/logging/ConsoleLogSystem.h>
 
 
@@ -61,9 +59,6 @@ public:
 	 */
 	virtual void Log(Aws::Utils::Logging::LogLevel logLevel,
 			const char* tag, const char* formatStr, ...) override;
-
-	virtual void vaLog(Aws::Utils::Logging::LogLevel logLevel,
-			const char* tag, const char* formatStr, va_list args) override;
 
 	/*
 	 * Writes the stream to ProcessFormattedStatement.

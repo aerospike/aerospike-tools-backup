@@ -22,14 +22,21 @@
 
 #include <s3_api.h>
 
+#include <cstdlib>
+#include <sstream>
+#include <string>
+#include <vector>
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wsign-conversion"
 
 #include <aws/core/Aws.h>
+#include <aws/core/utils/memory/stl/AWSVector.h>
 
 #pragma GCC diagnostic pop
 
 #include <asbackup_logger.h>
+#include <s3_proxy.h>
 #include <utils.h>
 
 
@@ -314,7 +321,65 @@ S3API::_init_api(S3API& s3_api)
 			s3_api.max_async_uploads);
 	
 	conf.connectTimeoutMs = s3_api.connect_timeout_ms;
-	conf.allowSystemProxy = s3_api.allowSystemProxy;
+	if (s3_api.allowSystemProxy) {
+		// aws-sdk-cpp 1.10.55 has no ClientConfiguration::allowSystemProxy
+		// field — that landed with the CRT-integrated 1.11.x line. In 1.10.55
+		// the CurlHttpClient forces CURLOPT_PROXY="" whenever proxyHost is
+		// empty (see aws-sdk-cpp's CurlHttpClient.cpp ~line 717), which
+		// defeats libcurl's native env-var proxy handling. We reproduce that
+		// handling here: parse the conventional env vars ourselves and
+		// populate proxyHost/etc so m_isUsingProxy flips true and the
+		// override is skipped.
+		s3_proxy_scheme_t dest_scheme =
+				(conf.scheme == Aws::Http::Scheme::HTTPS)
+						? S3_PROXY_SCHEME_HTTPS : S3_PROXY_SCHEME_HTTP;
+		const char* proxy_url = s3_proxy_pick_url_env(dest_scheme);
+		if (proxy_url != nullptr) {
+			s3_proxy_url_t parsed;
+			s3_proxy_parse_status_t st =
+					s3_proxy_parse_url(proxy_url, &parsed);
+			if (st == S3_PROXY_PARSE_OK) {
+				conf.proxyHost = parsed.host;
+				conf.proxyPort = parsed.port;
+				conf.proxyScheme =
+						(parsed.scheme == S3_PROXY_SCHEME_HTTPS)
+								? Aws::Http::Scheme::HTTPS
+								: Aws::Http::Scheme::HTTP;
+				if (parsed.username[0] != '\0') {
+					conf.proxyUserName = parsed.username;
+				}
+				if (parsed.password[0] != '\0') {
+					conf.proxyPassword = parsed.password;
+				}
+			} else if (st == S3_PROXY_PARSE_UNSUPPORTED) {
+				err("--s3-allow-system-proxy: SOCKS proxy schemes are not "
+						"supported by the AWS C++ SDK; ignoring proxy env var");
+			} else {
+				err("--s3-allow-system-proxy: ignoring malformed proxy env var");
+			}
+		}
+
+		const char* no_proxy = s3_proxy_pick_no_proxy_env();
+		if (no_proxy != nullptr) {
+			Aws::Vector<Aws::String> hosts;
+			std::string np(no_proxy);
+			size_t i = 0;
+			while (i < np.size()) {
+				size_t j = np.find_first_of(", \t\r\n", i);
+				if (j == std::string::npos) {
+					j = np.size();
+				}
+				if (j > i) {
+					hosts.emplace_back(np.substr(i, j - i).c_str());
+				}
+				i = j + 1;
+			}
+			if (!hosts.empty()) {
+				conf.nonProxyHosts = Aws::Utils::Array<Aws::String>(
+						hosts.data(), hosts.size());
+			}
+		}
+	}
 
 	s3_api.client = new Aws::S3::S3Client(conf,
 			Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Always,

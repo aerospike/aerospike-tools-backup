@@ -59,17 +59,10 @@ void AsbackupLogger::Log(Aws::Utils::Logging::LogLevel logLevel,
 {
 	std::va_list args;
 	va_start(args, formatStr);
-	vaLog(logLevel, tag, formatStr, args);
-	va_end(args);
-}
-
-void
-AsbackupLogger::vaLog(Aws::Utils::Logging::LogLevel logLevel,
-		const char* tag, const char* formatStr, va_list args)
-{
 	Aws::StringStream ss;
 	ss << "[" << tag << "] ";
 	log_line(GetLogCategory(logLevel), ss.str().c_str(), formatStr, args, false);
+	va_end(args);
 }
 
 void
