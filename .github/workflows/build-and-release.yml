@@ -605,7 +605,8 @@ jobs:
               apt-get install -y --no-install-recommends git ca-certificates curl tar
               ;;
             el*|amzn*)
-              dnf -y install findutils git ca-certificates curl tar gzip
+              # UBI 9 / AL2023 ship curl-minimal; installing "curl" conflicts with it.
+              dnf -y install findutils git ca-certificates tar gzip
               ;;
           esac
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
