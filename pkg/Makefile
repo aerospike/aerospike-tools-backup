@@ -54,7 +54,7 @@ rpm: prep
 		--output-type rpm \
 		--chdir $(BUILD_DIR)/ \
 		--name $(NAME) \
-		--version $(VERSION) \
+		--version $(RPM_VERSION) \
 		--maintainer $(MAINTAINER) \
 		--depends "libuv" \
 		--depends "openssl" \

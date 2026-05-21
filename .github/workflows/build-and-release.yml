@@ -524,7 +524,7 @@ jobs:
     needs:
       - get-version
       - organize-built-artifacts
-    uses: aerospike/shared-workflows/.github/workflows/reusable_sign-mac-artifacts.yaml@v3.4.0
+    uses: aerospike/shared-workflows/.github/workflows/reusable_sign-mac-artifacts.yaml@v3.4.1
     permissions:
       contents: read
       id-token: write
@@ -533,19 +533,25 @@ jobs:
       artifact-glob: "**/*.pkg"
       signing-identity: "Developer ID Application: Aerospike, Inc. (22224RFU67)"
       installer-identity: "Developer ID Installer: Aerospike, Inc. (22224RFU67)"
-      gh-workflows-ref: "v3.4.0"
+      gh-workflows-ref: "v3.4.1"
       gh-retention-days: 1
-    secrets: inherit
+    secrets:
+      apple-application-cert: ${{ secrets.APPLE_APPLICATION_CERT }}
+      apple-id: ${{ secrets.APPLE_ID }}
+      apple-installer-cert: ${{ secrets.APPLE_INSTALLER_CERT }}
+      apple-cert-password: ${{ secrets.APPLE_CERT_PASSWORD }}
+      apple-notarization-password: ${{ secrets.APPLE_NOTARIZATION_PASSWORD }}
+      apple-team-id: ${{ secrets.APPLE_TEAM_ID }}
 
   sign-artifacts:
     needs:
       - get-version
       - notarize-mac-artifacts
-    uses: aerospike/shared-workflows/.github/workflows/reusable_sign-artifacts.yaml@v3.4.0
+    uses: aerospike/shared-workflows/.github/workflows/reusable_sign-artifacts.yaml@v3.4.1
     with:
       gh-artifact-name: signed-artifacts-${{ needs.get-version.outputs.VERSION }}
       gh-unsigned-artifacts: unsigned-artifacts-${{ needs.get-version.outputs.VERSION }}
-      gh-workflows-ref: "v3.4.0"
+      gh-workflows-ref: "v3.4.1"
     secrets:
       gpg-private-key: ${{ secrets.GPG_SECRET_KEY }}
       gpg-public-key: ${{ secrets.GPG_PUBLIC_KEY }}
@@ -599,7 +605,7 @@ jobs:
               apt-get install -y --no-install-recommends git ca-certificates curl tar
               ;;
             el*|amzn*)
-              dnf -y install findutils git ca-certificates tar gzip
+              dnf -y install findutils git ca-certificates curl tar gzip
               ;;
           esac
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -728,7 +734,7 @@ jobs:
     needs:
       - get-version
       - organize-signed-artifacts
-    uses: aerospike/shared-workflows/.github/workflows/reusable_deploy-artifacts.yaml@v3.4.0
+    uses: aerospike/shared-workflows/.github/workflows/reusable_deploy-artifacts.yaml@v3.4.1
     with:
       jf-project: database
       jf-build-name: "aerospike-asbackup"
@@ -740,7 +746,7 @@ jobs:
       dry-run: ${{ inputs.release != true }}
       jf-build-id: ${{ needs.get-version.outputs.VERSION }}
       jf-metadata-build-id: ${{ needs.get-version.outputs.VERSION }}-metadata
-      gh-workflows-ref: "v3.4.0"
+      gh-workflows-ref: "v3.4.1"
 
   docker-build-arch:
     name: Docker build, test & push (${{ matrix.arch }})
@@ -905,7 +911,7 @@ jobs:
       - get-version
       - upload-artifacts-to-jfrog
       - docker-manifest
-    uses: aerospike/shared-workflows/.github/workflows/reusable_create-release-bundle.yaml@v3.4.0
+    uses: aerospike/shared-workflows/.github/workflows/reusable_create-release-bundle.yaml@v3.4.1
     with:
       jf-project: "database"
       jf-build-names: "aerospike-asbackup:${{ needs.get-version.outputs.VERSION }}"
@@ -913,7 +919,7 @@ jobs:
       oidc-provider-name: database-gh-aerospike
       oidc-audience: database-gh-aerospike
       version: ${{ needs.get-version.outputs.BUNDLE_VERSION }}
-      gh-workflows-ref: v3.4.0
+      gh-workflows-ref: v3.4.1
       dry-run: false
 
   # Tag-last: created only after every publish step succeeds. A failure
