@@ -1,4 +1,4 @@
-bin
+/bin
 env
 obj
 src/toml/libtoml.a
@@ -33,3 +33,7 @@ null.d
 # Security Credentials #
 ########################
 *.pem
+
+# docker bake / staged debs (generated locally)
+docker/docker-bake.hcl
+docker/aerospike-asbackup_*.deb

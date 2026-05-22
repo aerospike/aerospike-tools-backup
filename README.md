@@ -180,12 +180,6 @@ make EVENT_LIB=libuv
 
 ### MacOS (dynamic linking)
 
-> **Note:** The Homebrew `aws-sdk-cpp` package is a CRT-integrated build whose headers differ
-> from the cmake-built 1.10.55 used in CI. To ensure your local build matches CI, build the
-> SDK from source at the pinned version and pass `AWS_SDK_INCLUDE_PATH` to `make`
-> (see the macOS static linking example below). If you use the Homebrew package, the build
-> will succeed locally but may fail in CI due to header differences.
-
 ```shell
 # Install C client dependencies...
 
@@ -238,15 +232,14 @@ cd build
 make install
 cd ../..
 
-# download aws sdk at the version pinned in CI
+# download aws sdk
 git clone https://github.com/aws/aws-sdk-cpp.git
 cd aws-sdk-cpp
-git checkout 1.10.55
 git submodule update --init --recursive
 
-# build aws sdk static — install to a local prefix so it doesn't conflict with Homebrew
+# build aws sdk static
 mkdir build_static
-cmake -S . -B build_static -DOPENSSL_ROOT_DIR=/opt/homebrew/opt/openssl/ -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=$HOME/aws-sdk-1.10.55 -DCMAKE_INSTALL_LIBDIR=lib
+cmake -S . -B build_static -DOPENSSL_ROOT_DIR=/opt/homebrew/opt/openssl/ -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib
 make -C build_static
 
 # install aws static sdk
@@ -254,17 +247,8 @@ cd build_static
 make install
 cd ../..
 
-# build asbackup — pass AWS_SDK_INCLUDE_PATH so the 1.10.55 headers take precedence
-# over the Homebrew aws-sdk-cpp headers in /opt/homebrew/include
-make EVENT_LIB=libuv \
-  AWS_SDK_INCLUDE_PATH=$HOME/aws-sdk-1.10.55/include \
-  AWS_SDK_STATIC_PATH=$HOME/aws-sdk-1.10.55/lib \
-  ZSTD_STATIC_PATH=/opt/homebrew/lib \
-  CURL_STATIC_PATH=/usr/local/lib \
-  OPENSSL_STATIC_PATH=/opt/homebrew/opt/openssl/lib \
-  LIBSSH2_STATIC_PATH=/usr/local/lib \
-  LIBUV_STATIC_PATH=/opt/homebrew/lib \
-  JANSSON_STATIC_PATH=/opt/homebrew/lib
+# build asbackup
+make EVENT_LIB=libuv ZSTD_STATIC_PATH=/opt/homebrew/lib AWS_SDK_STATIC_PATH=/usr/local/lib CURL_STATIC_PATH=/usr/local/lib OPENSSL_STATIC_PATH=/opt/homebrew/opt/openssl/lib LIBSSH2_STATIC_PATH=/usr/local/lib LIBUV_STATIC_PATH=/opt/homebrew/lib JANSSON_STATIC_PATH=/opt/homebrew/lib
 ```
 
 ## Tests

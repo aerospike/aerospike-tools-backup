@@ -31,7 +31,8 @@ endif
 OS := $(shell uname -s)
 ARCH := $(shell uname -m)
 PLATFORM := $(OS)-$(ARCH)
-VERSION := $(shell git describe --tags --always --abbrev=9 2>/dev/null; if [ $${?} != 0 ]; then echo 'unknown'; fi)
+# Default from git; CI sets VERSION/PKG_VERSION so TOOL_VERSION matches workflow SemVer before a tag exists.
+VERSION ?= $(shell git describe --tags --always --abbrev=9 2>/dev/null; if [ $${?} != 0 ]; then echo 'unknown'; fi)
 ROOT = $(CURDIR)
 
 M1_HOME_BREW =
@@ -158,14 +159,6 @@ INCLUDES += -I$(DIR_C_CLIENT)/src/include
 INCLUDES += -I$(DIR_C_CLIENT)/modules/common/src/include
 INCLUDES += -I$(OPENSSL_PREFIX)/include
 INCLUDES += -I$(DIR_SECRET_CLIENT)/src/include
-
-# Optional: point at a cmake-built AWS SDK (e.g. the 1.10.55 used in CI) to avoid
-# picking up the system/Homebrew SDK headers. Set this to the cmake install prefix.
-# Example: make AWS_SDK_INCLUDE_PATH=~/aws-sdk-1.10.55/include
-# Must come before /usr/local/include and /opt/homebrew/include so it takes precedence.
-ifdef AWS_SDK_INCLUDE_PATH
-  INCLUDES += -I$(AWS_SDK_INCLUDE_PATH)
-endif
 
 INCLUDES += -I/usr/local/include
 
