@@ -22,9 +22,7 @@
 
 #include <s3_api.h>
 
-#include <cstdlib>
 #include <strings.h>
-#include <string>
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wsign-conversion"
@@ -51,7 +49,7 @@ S3API g_api;
 S3API::S3API() : initialized(false),
 				 logLevel(Aws::Utils::Logging::LogLevel::Off),
 				 client(nullptr),
-				 allowSystemProxy(false),
+				 allow_system_proxy(false),
 				 async_uploads(0) {}
 
 bool
@@ -90,7 +88,7 @@ S3API::Shutdown()
 		this->max_async_downloads = S3_DEFAULT_MAX_ASYNC_DOWNLOADS;
 		this->max_async_uploads = S3_DEFAULT_MAX_ASYNC_UPLOADS;
 		this->connect_timeout_ms = S3_DEFAULT_CONNECT_TIMEOUT_MS;
-		this->allowSystemProxy = false;
+		this->allow_system_proxy = false;
 
 		initialized = false;
 	}
@@ -175,7 +173,7 @@ S3API::SetConnectTimeoutMS(uint32_t connect_timeout_ms)
 S3API&
 S3API::SetAllowSystemProxy(bool allow)
 {
-	this->allowSystemProxy = allow;
+	this->allow_system_proxy = allow;
 	return *this;
 }
 
@@ -311,10 +309,8 @@ S3API::_init_api(S3API& s3_api)
 	}
 	if (!s3_api.endpoint.empty()) {
 		conf.endpointOverride = s3_api.endpoint;
-		// Keep conf.scheme aligned with the override URL. The SDK already uses
-		// the scheme prefix from endpointOverride when present
-		// (BuiltInParameters.cpp:15-27); this just keeps conf.scheme in sync
-		// for any other consumer. Bare host:port defaults to HTTP as before.
+		// Mirror the scheme in the override URL so conf.scheme stays
+		// consistent with endpointOverride. Bare host:port defaults to HTTP.
 		conf.scheme =
 				(strncasecmp(s3_api.endpoint.c_str(), "https://", 8) == 0)
 						? Aws::Http::Scheme::HTTPS
@@ -325,7 +321,7 @@ S3API::_init_api(S3API& s3_api)
 			s3_api.max_async_uploads);
 
 	conf.connectTimeoutMs = s3_api.connect_timeout_ms;
-	conf.allowSystemProxy = s3_api.allowSystemProxy;
+	conf.allowSystemProxy = s3_api.allow_system_proxy;
 
 	s3_api.client = new Aws::S3::S3Client(conf,
 			Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Always,

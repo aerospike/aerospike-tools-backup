@@ -140,7 +140,7 @@ private:
 	uint32_t max_async_uploads;
 	uint32_t max_async_downloads;
 	uint32_t connect_timeout_ms;
-	bool allowSystemProxy;
+	bool allow_system_proxy;
 
 	// the current number of concurrent async uploads
 	std::atomic<uint32_t> async_uploads;
