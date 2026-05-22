@@ -14,7 +14,7 @@ Below are dependencies for asbackup only.
 - openssl 3
 - An event library: libuv, libevent, or libev (also used by the C client submodule)
 - zstd
-- aws-sdk-cpp version 1.10.55
+- aws-sdk-cpp version 1.11.813
 - curl
 - jansson (used by the secret-agent-client submodule)
 

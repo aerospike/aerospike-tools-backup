@@ -221,7 +221,8 @@ else
   LIBRARIES += $(AWS_SDK_STATIC_PATH)/libaws-c-common.a
 
   ifeq ($(OS),Darwin)
-    LIBRARIES += -framework CoreFoundation -framework Security
+    # aws-c-io (SDK 1.11+) uses Apple's Network.framework on macOS.
+    LIBRARIES += -framework CoreFoundation -framework Security -framework Network
   endif
 
   ifeq ($(CURL_STATIC_PATH),)
