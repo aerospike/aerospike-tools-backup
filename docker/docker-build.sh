@@ -84,7 +84,7 @@ TAGS PRODUCED:
 
   Push mode — multi-arch (default, both arches):
     <reg>/aerospike-asbackup:<version>
-    <reg>/aerospike-asbackup:<version>-<timestamp>   (when -T is set)
+    <reg>/aerospike-asbackup:<version>-<timestamp>   (always; default timestamp is current UTC; -T overrides)
 
   Push mode — single arch (-a once): per-arch tag (native CI matrix):
     <reg>/aerospike-asbackup:<version>-<arch>

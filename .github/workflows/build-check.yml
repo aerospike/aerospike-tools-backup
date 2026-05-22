@@ -97,6 +97,12 @@ jobs:
           BUILD_DISTRO: ${{ matrix.distro }}
         run: |
           set -euo pipefail
+          if [[ ! -f VERSION ]]; then
+            echo "::error::VERSION file missing at repo root." >&2
+            exit 1
+          fi
+          PKG_VERSION=$(tr -d '[:space:]' < VERSION)
+          export PKG_VERSION
           source .github/bin/build_package.sh
           build_packages
 

@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 #
 # Aerospike asbackup / asrestore — Docker image.
 #

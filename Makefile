@@ -31,7 +31,8 @@ endif
 OS := $(shell uname -s)
 ARCH := $(shell uname -m)
 PLATFORM := $(OS)-$(ARCH)
-VERSION := $(shell git describe --tags --always --abbrev=9 2>/dev/null; if [ $${?} != 0 ]; then echo 'unknown'; fi)
+# Default from git; CI sets VERSION/PKG_VERSION so TOOL_VERSION matches workflow SemVer before a tag exists.
+VERSION ?= $(shell git describe --tags --always --abbrev=9 2>/dev/null; if [ $${?} != 0 ]; then echo 'unknown'; fi)
 ROOT = $(CURDIR)
 
 M1_HOME_BREW =

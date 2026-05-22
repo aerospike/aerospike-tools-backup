@@ -1,9 +1,9 @@
 alias make='make -j8'
 function build_packages(){
 
-  if [ "$ENV_DISTRO" = "" ]; then
-    echo "ENV_DISTRO is not set"
-    return
+  if [ "${ENV_DISTRO:-}" = "" ]; then
+    echo "ENV_DISTRO is not set" >&2
+    return 1
   fi
   GIT_DIR=$(git rev-parse --show-toplevel)
   PKG_DIR=$GIT_DIR/pkg

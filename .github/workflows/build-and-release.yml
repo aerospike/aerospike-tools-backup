@@ -459,6 +459,8 @@ jobs:
       working-directory: aws-sdk-cpp-${{ env.AWS_SDK_CPP_VERSION }}/build_static
     - name: Build asbackup with static link to zstd and aws-sdk-cpp
       if: steps.cache-asbackup.outputs.cache-hit != 'true'
+      env:
+        VERSION: ${{ needs.get-version.outputs.VERSION }}
       run: |
         make ZSTD_STATIC_PATH=${{ matrix.zstd-path }}/lib  AWS_SDK_STATIC_PATH=${{ matrix.aws-sdk-path }}/lib CURL_STATIC_PATH=${{ matrix.curl-path }}/lib OPENSSL_STATIC_PATH=${{ matrix.openssl-path }}/lib LIBSSH2_STATIC_PATH=${{ matrix.ssh2-path }}/lib LIBUV_STATIC_PATH=${{ matrix.uv-path }}/lib JANSSON_STATIC_PATH=${{ matrix.jansson-path }}/lib
         mkdir -p binaries
@@ -834,8 +836,8 @@ jobs:
           BASE_VERSION=$(printf '%s' "${VERSION}" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')
           docker run --rm "${IMAGE}" asbackup --version | grep -qF "${BASE_VERSION}" \
             || { echo "ERROR: expected ${BASE_VERSION} in --version output" >&2; exit 1; }
-
-            || { echo "ERROR: expected ${BASE_VERSION} in --version output" >&2; exit 1; }
+          docker run --rm "${IMAGE}" asrestore --version | grep -qF "${BASE_VERSION}" \
+            || { echo "ERROR: expected ${BASE_VERSION} in asrestore --version output" >&2; exit 1; }
 
           if [[ -n "${SNYK_TOKEN:-}" ]]; then
             snyk container test "${IMAGE}" \
