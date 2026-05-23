@@ -14,3 +14,8 @@ updates:
     directory: /test/tmp
     schedule:
       interval: daily
+
+  - package-ecosystem: docker
+    directory: /docker
+    schedule:
+      interval: weekly
