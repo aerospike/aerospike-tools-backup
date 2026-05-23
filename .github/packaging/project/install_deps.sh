@@ -370,16 +370,6 @@ function compile_deps_el8() {
   make install
 
   pushd /opt
-  git clone https://github.com/aws/s2n-tls.git
-  pushd s2n-tls
-
-  cmake . -Bbuild \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_INSTALL_PREFIX=./s2n-tls-install
-  cmake --build build
-  make install
-
-  pushd /opt
   git clone --depth 1 --branch $AWS_SDK_VERSION https://github.com/aws/aws-sdk-cpp.git
   pushd aws-sdk-cpp
   git submodule update --init --recursive --depth 1
@@ -448,16 +438,6 @@ function compile_deps_el9() {
   pushd flex-2.6.4
   ./configure
   make_parallel
-  make install
-
-  pushd /opt
-  git clone https://github.com/aws/s2n-tls.git
-  pushd s2n-tls
-
-  cmake . -Bbuild \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_INSTALL_PREFIX=./s2n-tls-install
-  cmake --build build
   make install
 
   pushd /opt
@@ -562,16 +542,6 @@ EOF
   make install
 
   pushd /opt
-  git clone https://github.com/aws/s2n-tls.git
-  pushd s2n-tls
-
-  cmake . -Bbuild \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_INSTALL_PREFIX=./s2n-tls-install
-  cmake --build build
-  make install
-  make_parallel -C build
-  pushd /opt
   git clone --depth 1 --branch $AWS_SDK_VERSION https://github.com/aws/aws-sdk-cpp.git
   pushd aws-sdk-cpp
   git submodule update --init --recursive --depth 1
@@ -641,14 +611,6 @@ function install_deps_amzn2023() {
   ./configure
 
   make_parallel
-  make install
-  pushd /opt
-  git clone https://github.com/aws/s2n-tls.git
-  pushd s2n-tls
-  cmake . -Bbuild \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_INSTALL_PREFIX=./s2n-tls-install
-  cmake --build build
   make install
   pushd /opt
   git clone --depth 1 --branch $AWS_SDK_VERSION https://github.com/aws/aws-sdk-cpp.git
