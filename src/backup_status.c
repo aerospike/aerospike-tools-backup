@@ -297,6 +297,7 @@ backup_status_init(backup_status_t* status, backup_config_t* conf)
 	as_config as_conf;
 	as_config_init(&as_conf);
 	as_conf.conn_timeout_ms = TIMEOUT;
+	as_conf.login_timeout_ms = conf->login_timeout_ms;
 	as_conf.use_services_alternate = conf->use_services_alternate;
 	tls_config_clone(&as_conf.tls, &conf->tls);
 

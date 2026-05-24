@@ -1052,6 +1052,14 @@ config_backup(toml_table_t *config_table, backup_config_t *c, const char *instan
 				status = false;
 			}
 
+		} else if (! strcasecmp("login-timeout-ms", name)) {
+			status = config_int32(config_value, (int32_t*)&i_val, override);
+			if ((int32_t) i_val >= 0) {
+				c->login_timeout_ms = (uint32_t)i_val;
+			} else {
+				status = false;
+			}
+
 		} else if (! strcasecmp("max-retries", name)) {
 			status = config_int32(config_value, (int32_t*)&i_val, override);
 			if ((int32_t) i_val >= 0) {
@@ -1351,6 +1359,46 @@ config_restore(toml_table_t *config_table, restore_config_t *c, const char *inst
 				status = false;
 			}
 
+		} else if (! strcasecmp("login-timeout-ms", name)) {
+			status = config_int32(config_value, (int32_t*)&i_val, override);
+			if ((int32_t) i_val >= 0) {
+				c->login_timeout_ms = (uint32_t)i_val;
+			} else {
+				status = false;
+			}
+
+		} else if (! strcasecmp("async-min-conns-per-node", name)) {
+			status = config_int32(config_value, (int32_t*)&i_val, override);
+			if ((int32_t) i_val >= 0) {
+				c->async_min_conns_per_node = (uint32_t)i_val;
+			} else {
+				status = false;
+			}
+
+		} else if (! strcasecmp("async-max-conns-per-node", name)) {
+			status = config_int32(config_value, (int32_t*)&i_val, override);
+			if ((int32_t) i_val >= 0) {
+				c->async_max_conns_per_node = (uint32_t)i_val;
+			} else {
+				status = false;
+			}
+
+		} else if (! strcasecmp("error-rate-window", name)) {
+			status = config_int32(config_value, (int32_t*)&i_val, override);
+			if ((int32_t) i_val >= 0) {
+				c->error_rate_window = (uint32_t)i_val;
+			} else {
+				status = false;
+			}
+
+		} else if (! strcasecmp("max-error-rate", name)) {
+			status = config_int32(config_value, (int32_t*)&i_val, override);
+			if ((int32_t) i_val >= 0) {
+				c->max_error_rate = (uint32_t)i_val;
+			} else {
+				status = false;
+			}
+
 		} else if (! strcasecmp("max-retries", name)) {
 			status = config_int32(config_value, (int32_t*)&i_val, override);
 			if ((int32_t) i_val >= 0) {
@@ -1383,6 +1431,22 @@ config_restore(toml_table_t *config_table, restore_config_t *c, const char *inst
 			status = config_int32(config_value, (int32_t*)&i_val, override);
 			if ((int32_t) i_val >= 0) {
 				c->event_loops = (uint32_t)i_val;
+			} else {
+				status = false;
+			}
+
+		} else if (! strcasecmp("max-commands-in-process", name)) {
+			status = config_int32(config_value, (int32_t*)&i_val, override);
+			if ((int32_t) i_val >= 0) {
+				c->max_commands_in_process = (uint32_t)i_val;
+			} else {
+				status = false;
+			}
+
+		} else if (! strcasecmp("max-commands-in-queue", name)) {
+			status = config_int32(config_value, (int32_t*)&i_val, override);
+			if ((int32_t) i_val >= 0) {
+				c->max_commands_in_queue = (uint32_t)i_val;
 			} else {
 				status = false;
 			}
