@@ -473,6 +473,8 @@ jobs:
       working-directory: asbackup
     - name: Sanity test static lib backup artifacts
       run: |
+        # GHA bash uses pipefail; asbackup exits non-zero on failed connect while grep matches.
+        set +o pipefail
         ./asbackup -n test -d backupdir 2>&1 | grep "Failed to connect"
         ./asrestore -n test -d backupdir 2>&1 | grep "Failed to connect"
       working-directory:  asbackup/binaries/static_bin
