@@ -320,7 +320,8 @@ jobs:
         brew install openssl@3 readline
         # Avoid `brew info | grep -m 1`: grep exits after the first match and closes
         # the pipe while Homebrew is still writing, which raises "Broken pipe @ rb_sys_fail_on_write".
-        CMAKE_VERSION="$(brew info cmake --json=v2 | jq -r '.[0].versions.stable' | sed -E 's/^([0-9]+\.[0-9]+\.[0-9]+).*/\1/')"
+        # Homebrew may emit a JSON array (Linux) or a single formula object (macOS).
+        CMAKE_VERSION="$(brew info cmake --json=v2 | jq -r '(if type == "array" then .[0] else . end).versions.stable' | sed -E 's/^([0-9]+\.[0-9]+\.[0-9]+).*/\1/')"
         echo "CMAKE_VERSION=$CMAKE_VERSION" >> $GITHUB_ENV
     - name: Cache AWS C++ sdk
       id: cache-aws-sdk-cpp

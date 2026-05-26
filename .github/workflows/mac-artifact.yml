@@ -106,8 +106,8 @@ jobs:
       id: install-aws-requirements
       run: |
         brew install openssl@3 readline
-        # Avoid `brew info | grep -m 1`: early grep exit closes the pipe while Homebrew is still writing.
-        CMAKE_VERSION="$(brew info cmake --json=v2 | jq -r '.[0].versions.stable' | sed -E 's/^([0-9]+\.[0-9]+\.[0-9]+).*/\1/')"
+        # Avoid `brew info | grep -m 1` (broken pipe). Homebrew JSON may be an array or one object.
+        CMAKE_VERSION="$(brew info cmake --json=v2 | jq -r '(if type == "array" then .[0] else . end).versions.stable' | sed -E 's/^([0-9]+\.[0-9]+\.[0-9]+).*/\1/')"
         echo "CMAKE_VERSION=$CMAKE_VERSION" >> $GITHUB_ENV
     - name: Cache AWS C++ sdk
       id: cache-aws-sdk-cpp

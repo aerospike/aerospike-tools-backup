@@ -282,7 +282,7 @@ function install_deps_ubuntu26.04() {
   rm -rf /var/lib/apt/lists/*
   apt-get clean
   apt-get update -o Acquire::Retries=5
-  apt-get -y install $BUILD_DEPS_UBUNTU $FPM_DEPS_UBUNTU
+  apt-get -y install $BUILD_DEPS_UBUNTU $FPM_DEPS_UBUNTU libjitterentropy-dev
   gem install fpm -v 1.17.0
 }
 
@@ -341,7 +341,7 @@ function compile_deps_el8() {
   make install
 
   pushd /opt
-  git clone https://https.git.savannah.gnu.org/git/readline.git
+  git clone https://git.savannah.gnu.org/git/readline.git
   pushd readline
   git checkout readline-8.3
   ./configure
@@ -406,7 +406,7 @@ function compile_deps_el9() {
   make install
 
   pushd /opt
-  git clone https://https.git.savannah.gnu.org/git/readline.git
+  git clone https://git.savannah.gnu.org/git/readline.git
   pushd readline
   git checkout readline-8.3
   ./configure
@@ -500,7 +500,7 @@ EOF
   make install
 
   pushd /opt
-  git clone https://https.git.savannah.gnu.org/git/readline.git
+  git clone https://git.savannah.gnu.org/git/readline.git
   pushd readline
   git checkout readline-8.3
   ./configure
@@ -564,7 +564,7 @@ function install_deps_amzn2023() {
   make install
 
   pushd /opt
-  git clone https://https.git.savannah.gnu.org/git/readline.git
+  git clone https://git.savannah.gnu.org/git/readline.git
   pushd readline
   git checkout readline-8.3
   ./configure
