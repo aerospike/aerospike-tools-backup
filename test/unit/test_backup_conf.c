@@ -150,6 +150,7 @@ assert_bup_config_eq(backup_config_t *c1, backup_config_t *c2)
 	CMP_INT_FIELD(c1->s3_max_async_uploads, c2->s3_max_async_uploads);
 	CMP_INT_FIELD(c1->s3_connect_timeout, c2->s3_connect_timeout);
 	CMP_INT_FIELD(c1->s3_log_level, c2->s3_log_level);
+	CMP_INT_FIELD(c1->s3_allow_system_proxy, c2->s3_allow_system_proxy);
 
 	CMP_STR_FIELD(c1->secret_cfg.addr, c2->secret_cfg.addr);
 	CMP_STR_FIELD(c1->secret_cfg.port, c2->secret_cfg.port);
@@ -894,6 +895,7 @@ DEFINE_INT_TEST_MULT(test_init_s3_min_part_size, "s3-min-part-size", s3_min_part
 DEFINE_INT_TEST(test_init_s3_max_async_downloads, "s3-max-async-downloads", s3_max_async_downloads);
 DEFINE_INT_TEST(test_init_s3_max_async_uploads, "s3-max-async-uploads", s3_max_async_uploads);
 DEFINE_INT_TEST(test_init_s3_connect_timeout, "s3-connect-timeout", s3_connect_timeout);
+DEFINE_BOOL_TEST(test_init_s3_allow_system_proxy, "s3-allow-system-proxy", s3_allow_system_proxy);
 
 Suite* backup_conf_suite()
 {
@@ -969,6 +971,7 @@ Suite* backup_conf_suite()
 	tcase_add_test(tc_init, test_init_s3_max_async_uploads);
 	tcase_add_test(tc_init, test_init_s3_connect_timeout);
 	tcase_add_test(tc_init, test_init_s3_log_level);
+	tcase_add_test(tc_init, test_init_s3_allow_system_proxy);
 	suite_add_tcase(s, tc_init);
 
 	tcase_add_test(tc_init, test_init_sa_address);

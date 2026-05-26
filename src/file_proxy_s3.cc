@@ -218,6 +218,28 @@ s3_set_log_level(s3_log_level_t log_level)
 }
 
 void
+s3_set_allow_system_proxy(bool allow)
+{
+	g_api.SetAllowSystemProxy(allow);
+}
+
+bool
+s3_scheme_for_endpoint_is_https(const char* endpoint)
+{
+	if (endpoint == nullptr) {
+		return false;
+	}
+	return S3API::SchemeForEndpoint(std::string(endpoint))
+			== Aws::Http::Scheme::HTTPS;
+}
+
+bool
+s3_get_allow_system_proxy(void)
+{
+	return g_api.GetAllowSystemProxy();
+}
+
+void
 s3_disable_request_processing()
 {
 	if (g_api.IsInitialized()) {

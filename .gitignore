@@ -16,6 +16,9 @@ test_dir
 .idea/
 null.d
 
+# asbackup runtime state files (produced by test runs / local invocations)
+*.asb.state
+
 # Compiled source #
 ###################
 *.com

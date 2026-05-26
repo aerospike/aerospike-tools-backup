@@ -22,6 +22,8 @@
 
 #include <s3_api.h>
 
+#include <strings.h>
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wsign-conversion"
 
@@ -47,6 +49,7 @@ S3API g_api;
 S3API::S3API() : initialized(false),
 				 logLevel(Aws::Utils::Logging::LogLevel::Off),
 				 client(nullptr),
+				 allow_system_proxy(false),
 				 async_uploads(0) {}
 
 bool
@@ -85,6 +88,7 @@ S3API::Shutdown()
 		this->max_async_downloads = S3_DEFAULT_MAX_ASYNC_DOWNLOADS;
 		this->max_async_uploads = S3_DEFAULT_MAX_ASYNC_UPLOADS;
 		this->connect_timeout_ms = S3_DEFAULT_CONNECT_TIMEOUT_MS;
+		this->allow_system_proxy = false;
 
 		initialized = false;
 	}
@@ -164,6 +168,27 @@ S3API::SetConnectTimeoutMS(uint32_t connect_timeout_ms)
 {
 	this->connect_timeout_ms = connect_timeout_ms;
 	return *this;
+}
+
+S3API&
+S3API::SetAllowSystemProxy(bool allow)
+{
+	this->allow_system_proxy = allow;
+	return *this;
+}
+
+Aws::Http::Scheme
+S3API::SchemeForEndpoint(const std::string& endpoint)
+{
+	return (strncasecmp(endpoint.c_str(), "https://", 8) == 0)
+			? Aws::Http::Scheme::HTTPS
+			: Aws::Http::Scheme::HTTP;
+}
+
+bool
+S3API::GetAllowSystemProxy() const
+{
+	return this->allow_system_proxy;
 }
 
 GroupDownloadManager*
@@ -298,13 +323,16 @@ S3API::_init_api(S3API& s3_api)
 	}
 	if (!s3_api.endpoint.empty()) {
 		conf.endpointOverride = s3_api.endpoint;
-		conf.scheme = Aws::Http::Scheme::HTTP;
+		// Mirror the scheme in the override URL so conf.scheme stays
+		// consistent with endpointOverride. Bare host:port defaults to HTTP.
+		conf.scheme = S3API::SchemeForEndpoint(s3_api.endpoint);
 	}
 
 	conf.maxConnections = std::max(s3_api.max_async_downloads,
 			s3_api.max_async_uploads);
-	
+
 	conf.connectTimeoutMs = s3_api.connect_timeout_ms;
+	conf.allowSystemProxy = s3_api.allow_system_proxy;
 
 	s3_api.client = new Aws::S3::S3Client(conf,
 			Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Always,

@@ -159,6 +159,7 @@ INCLUDES += -I$(DIR_C_CLIENT)/src/include
 INCLUDES += -I$(DIR_C_CLIENT)/modules/common/src/include
 INCLUDES += -I$(OPENSSL_PREFIX)/include
 INCLUDES += -I$(DIR_SECRET_CLIENT)/src/include
+
 INCLUDES += -I/usr/local/include
 
 LIBRARIES := $(C_CLIENT_LIB)
@@ -220,7 +221,8 @@ else
   LIBRARIES += $(AWS_SDK_STATIC_PATH)/libaws-c-common.a
 
   ifeq ($(OS),Darwin)
-    LIBRARIES += -framework CoreFoundation -framework Security
+    # aws-c-io (SDK 1.11+) uses Apple's Network.framework on macOS.
+    LIBRARIES += -framework CoreFoundation -framework Security -framework Network
   endif
 
   ifeq ($(CURL_STATIC_PATH),)
@@ -528,8 +530,8 @@ $(DIR_TEST_OBJ)/src/%_c.o: src/%.c | $(DIR_TEST_OBJ)/src
 $(DIR_TEST_OBJ)/src/%_cc.o: src/%.cc | $(DIR_TEST_OBJ)/src
 	$(CXX) $(TEST_CXXFLAGS) -MMD $(INCLUDES) -fprofile-arcs -ftest-coverage -o $@ -c $<
 
-$(DIR_TEST_BIN)/test: $(TEST_OBJ) $(DIR_C_CLIENT)/target/$(PLATFORM)/lib/libaerospike.a $(TOML) | $(DIR_TEST_BIN)
-	$(CXX) -o $@ $(TEST_OBJ) $(DIR_C_CLIENT)/target/$(PLATFORM)/lib/libaerospike.a $(TEST_LDFLAGS) $(LIBRARIES)
+$(DIR_TEST_BIN)/test: $(TEST_OBJ) $(C_CLIENT_LIB) $(SECRET_CLIENT_LIB) $(TOML) | $(DIR_TEST_BIN)
+	$(CXX) -o $@ $(TEST_OBJ) $(C_CLIENT_LIB) $(TEST_LDFLAGS) $(LIBRARIES)
 
 $(TEST_BACKUP): shared $(TEST_BACKUP_OBJ) $(TOML) $(C_CLIENT_LIB) $(SECRET_CLIENT_LIB) | $(DIR_TEST_BIN)
 	$(CXX) $(TEST_LDFLAGS) -o $(TEST_BACKUP) $(TEST_BACKUP_OBJ) $(LIBRARIES)

@@ -54,7 +54,7 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     env:
-      AWS_SDK_CPP_VERSION: 1.10.55
+      AWS_SDK_CPP_VERSION: 1.11.813
       LIBCURL_VERSION: curl-7_83_1
       LIBSSH2_VERSION: libssh2-1.10.0
       ZSTD_VERSION: 1.4.9

@@ -30,7 +30,7 @@ FPM_DEPS_REDHAT_8="python3 python3-pip rsync"
 FPM_DEPS_REDHAT_9="ruby rpmdevtools make python3 python3-pip rsync zlib zlib-devel"
 FPM_DEPS_REDHAT_10="ruby rpmdevtools make python3 python3-pip rsync zlib zlib-devel"
 
-AWS_SDK_VERSION="1.10.55"
+AWS_SDK_VERSION="1.11.813"
 
 # Build libyaml from source with static library (RHEL/Amazon packages don't include .a files)
 function build_libyaml_static() {
@@ -43,6 +43,27 @@ function build_libyaml_static() {
   make install
   popd
   rm -rf /tmp/yaml-${LIBYAML_VERSION}
+}
+
+# Clone, build, and install aws-sdk-cpp (S3 module only, static).
+# Call from whatever directory you want to clone into (typically /opt).
+function build_aws_sdk_cpp() {
+  git clone --depth 1 --branch "$AWS_SDK_VERSION" https://github.com/aws/aws-sdk-cpp.git
+  pushd aws-sdk-cpp
+  git submodule update --init --recursive --depth 1
+  mkdir build
+  cmake -S . -B build \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_ONLY="s3" \
+    -DBUILD_SHARED_LIBS=OFF \
+    -DENABLE_TESTING=OFF \
+    -DCMAKE_INSTALL_PREFIX=/usr/local \
+    -DCMAKE_INSTALL_LIBDIR=lib \
+    -DENABLE_UNITY_BUILD=ON
+  make_parallel -C build
+  pushd build
+  make install
+  popd; popd
 }
 
 function install_deps_debian11() {
@@ -77,17 +98,7 @@ function compile_deps_debian11() {
   popd
   popd
 
-  git clone https://github.com/aws/aws-sdk-cpp.git
-  pushd aws-sdk-cpp
-  git checkout $AWS_SDK_VERSION
-  git submodule update --init --recursive
-  mkdir build
-  cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_UNITY_BUILD=ON
-  make_parallel -C build
-  pushd build
-  make install
-  popd
-  popd
+  build_aws_sdk_cpp
 }
 
 function install_deps_debian12() {
@@ -120,16 +131,7 @@ function compile_deps_debian12() {
   make install
   popd; popd
 
-  git clone https://github.com/aws/aws-sdk-cpp.git
-  pushd aws-sdk-cpp
-  git checkout $AWS_SDK_VERSION
-  git submodule update --init --recursive
-  mkdir build
-  cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_UNITY_BUILD=ON
-  make_parallel -C build
-  pushd build
-  make install
-  popd; popd
+  build_aws_sdk_cpp
 }
 
 function install_deps_debian13() {
@@ -173,16 +175,7 @@ function compile_deps_debian13() {
   make install
   popd; popd
 
-  git clone https://github.com/aws/aws-sdk-cpp.git
-  pushd aws-sdk-cpp
-  git checkout $AWS_SDK_VERSION
-  git submodule update --init --recursive
-  mkdir build
-  cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_UNITY_BUILD=ON
-  make_parallel -C build
-  pushd build
-  make install
-  popd; popd
+  build_aws_sdk_cpp
 }
 
 function install_deps_ubuntu20.04() {
@@ -215,16 +208,7 @@ function compile_deps_ubuntu20.04() {
   make install
   popd; popd
 
-  git clone https://github.com/aws/aws-sdk-cpp.git
-  pushd aws-sdk-cpp
-  git checkout $AWS_SDK_VERSION
-  git submodule update --init --recursive
-  mkdir build
-  cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_UNITY_BUILD=ON
-  make_parallel -C build
-  pushd build
-  make install
-  popd; popd
+  build_aws_sdk_cpp
 }
 
 function install_deps_ubuntu22.04() {
@@ -258,16 +242,7 @@ function compile_deps_ubuntu22.04() {
   make install
   popd; popd
 
-  git clone https://github.com/aws/aws-sdk-cpp.git
-  pushd aws-sdk-cpp
-  git checkout $AWS_SDK_VERSION
-  git submodule update --init --recursive
-  mkdir build
-  cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_UNITY_BUILD=ON
-  make_parallel -C build
-  pushd build
-  make install
-  popd; popd
+  build_aws_sdk_cpp
 }
 
 function install_deps_ubuntu24.04() {
@@ -300,16 +275,7 @@ function compile_deps_ubuntu24.04() {
   make install
   popd; popd
 
-  git clone https://github.com/aws/aws-sdk-cpp.git
-  pushd aws-sdk-cpp
-  git checkout $AWS_SDK_VERSION
-  git submodule update --init --recursive
-  mkdir build
-  cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_UNITY_BUILD=ON
-  make_parallel -C build
-  pushd build
-  make install
-  popd; popd
+  build_aws_sdk_cpp
 }
 
 function install_deps_el8() {
@@ -376,25 +342,8 @@ function compile_deps_el8() {
   make install
 
   pushd /opt
-  git clone https://github.com/aws/s2n-tls.git
-  pushd s2n-tls
-
-  cmake . -Bbuild \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_INSTALL_PREFIX=./s2n-tls-install
-  cmake --build build
-  make install
-
-  pushd /opt
-  git clone https://github.com/aws/aws-sdk-cpp.git
-  pushd aws-sdk-cpp
-  git checkout $AWS_SDK_VERSION
-  git submodule update --init --recursive
-  mkdir build
-  cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_UNITY_BUILD=ON
-  make_parallel -C build
-  pushd build
-  make install
+  build_aws_sdk_cpp
+  popd
 }
 
 function install_deps_el9() {
@@ -458,26 +407,8 @@ function compile_deps_el9() {
   make install
 
   pushd /opt
-  git clone https://github.com/aws/s2n-tls.git
-  pushd s2n-tls
-
-  cmake . -Bbuild \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_INSTALL_PREFIX=./s2n-tls-install
-  cmake --build build
-  make install
-
-  pushd /opt
-  git clone https://github.com/aws/aws-sdk-cpp.git
-  pushd aws-sdk-cpp
-  git checkout $AWS_SDK_VERSION
-  git submodule update --init --recursive
-  mkdir build
-  cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_UNITY_BUILD=ON
-  make_parallel -C build
-  pushd build
-  make install
-  popd; popd
+  build_aws_sdk_cpp
+  popd
 }
 
 function install_deps_el10() {
@@ -570,26 +501,8 @@ EOF
   make install
 
   pushd /opt
-  git clone https://github.com/aws/s2n-tls.git
-  pushd s2n-tls
-
-  cmake . -Bbuild \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_INSTALL_PREFIX=./s2n-tls-install
-  cmake --build build
-  make install
-  make_parallel -C build
-  pushd /opt
-  git clone https://github.com/aws/aws-sdk-cpp.git
-  pushd aws-sdk-cpp
-  git checkout $AWS_SDK_VERSION
-  git submodule update --init --recursive
-  mkdir build
-  cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_UNITY_BUILD=ON
-  make_parallel -C build
-  pushd build
-  make install
-  popd; popd
+  build_aws_sdk_cpp
+  popd
 }
 
 function install_deps_amzn2023() {
@@ -652,22 +565,6 @@ function install_deps_amzn2023() {
   make_parallel
   make install
   pushd /opt
-  git clone https://github.com/aws/s2n-tls.git
-  pushd s2n-tls
-  cmake . -Bbuild \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_INSTALL_PREFIX=./s2n-tls-install
-  cmake --build build
-  make install
-  pushd /opt
-  git clone https://github.com/aws/aws-sdk-cpp.git
-  pushd aws-sdk-cpp
-  git checkout $AWS_SDK_VERSION
-  git submodule update --init --recursive
-  mkdir build
-  cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_UNITY_BUILD=ON
-  make_parallel -C build
-  pushd build
-  make install
-  popd; popd
+  build_aws_sdk_cpp
+  popd
 }

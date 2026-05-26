@@ -146,6 +146,7 @@ assert_restore_config_eq(restore_config_t *c1, restore_config_t *c2)
 	CMP_INT_FIELD(c1->s3_max_async_downloads, c2->s3_max_async_downloads);
 	CMP_INT_FIELD(c1->s3_connect_timeout, c2->s3_connect_timeout);
 	CMP_INT_FIELD(c1->s3_log_level, c2->s3_log_level);
+	CMP_INT_FIELD(c1->s3_allow_system_proxy, c2->s3_allow_system_proxy);
 
 	CMP_STR_FIELD(c1->secret_cfg.addr, c2->secret_cfg.addr);
 	CMP_STR_FIELD(c1->secret_cfg.port, c2->secret_cfg.port);
@@ -777,6 +778,7 @@ DEFINE_STR_TEST(test_init_s3_endpoint_override, "s3-endpoint-override", s3_endpo
 		"https://<accountid>.r2.test.com");
 DEFINE_INT_TEST(test_init_s3_max_async_downloads, "s3-max-async-downloads", s3_max_async_downloads);
 DEFINE_INT_TEST(test_init_s3_connect_timeout, "s3-connect-timeout", s3_connect_timeout);
+DEFINE_BOOL_TEST(test_init_s3_allow_system_proxy, "s3-allow-system-proxy", s3_allow_system_proxy);
 
 DEFINE_STR_SECRET_TEST(test_init_sa_address, "sa-address", secret_cfg.addr, "127.0.0.1");
 DEFINE_STR_SECRET_TEST(test_init_sa_port, "sa-port", secret_cfg.port, "3005");
@@ -849,6 +851,7 @@ Suite* restore_conf_suite()
 	tcase_add_test(tc_init, test_init_s3_max_async_downloads);
 	tcase_add_test(tc_init, test_init_s3_connect_timeout);
 	tcase_add_test(tc_init, test_init_s3_log_level);
+	tcase_add_test(tc_init, test_init_s3_allow_system_proxy);
 
 	tcase_add_test(tc_init, test_init_sa_address);
 	tcase_add_test(tc_init, test_init_sa_port);

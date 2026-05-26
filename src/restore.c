@@ -1663,4 +1663,5 @@ set_s3_configs(const restore_config_t* conf)
 	s3_set_max_async_downloads(conf->s3_max_async_downloads);
 	s3_set_connect_timeout_ms(conf->s3_connect_timeout);
 	s3_set_log_level(conf->s3_log_level);
+	s3_set_allow_system_proxy(conf->s3_allow_system_proxy);
 }

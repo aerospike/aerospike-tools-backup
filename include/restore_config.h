@@ -127,6 +127,8 @@ typedef struct restore_config {
 	uint32_t s3_connect_timeout;
 	// Logging level of the AWS S3 C+ SDK.
 	s3_log_level_t s3_log_level;
+	// When true, let libcurl honor HTTP_PROXY/HTTPS_PROXY/NO_PROXY env vars.
+	bool s3_allow_system_proxy;
 
 	as_config_tls tls;
 	char* tls_name;
