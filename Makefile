@@ -250,11 +250,10 @@ ifeq ($(OPENSSL_STATIC_PATH),)
 else
   LIBRARIES += $(OPENSSL_STATIC_PATH)/libssl.a
   LIBRARIES += $(OPENSSL_STATIC_PATH)/libcrypto.a
-  # Newer distro static libcrypto (e.g. Ubuntu 26.04) links CPU jitter entropy helpers (jent_*).
-  # Only add -ljitterentropy when an unversioned linker name exists; a bare libjitterentropy3.so
-  # alone does not satisfy -ljitterentropy (breaks Ubuntu 24.04 noble images).
+  # Ubuntu 26.04+ static libcrypto pulls CPU jitter entropy (jent_*). Only link jitter there;
+  # other distros may ship stray libjitterentropy names that do not work with plain -ljitterentropy.
   ifeq ($(OS),Linux)
-    ifneq ($(wildcard $(OPENSSL_STATIC_PATH)/libjitterentropy.so)$(wildcard $(OPENSSL_STATIC_PATH)/libjitterentropy.a)),)
+    ifeq ($(ASBACKUP_LINK_JITTERENTROPY),1)
       LIBRARIES += -ljitterentropy
     endif
   endif
