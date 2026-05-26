@@ -131,9 +131,9 @@ jobs:
       if: steps.cache-aws-sdk-cpp.outputs.cache-hit != 'true'
       run: |
         mkdir build_static
-        # Xcode 26+ Clang treats aws-crt StringView.h user-defined literals as errors
-        # (-Wdeprecated-literal-operator with -Werror). SDK 1.10.55 is older than that fix.
-        cmake -S . -B build_static -DCMAKE_CXX_FLAGS="-Wno-error=deprecated-literal-operator" -DOPENSSL_ROOT_DIR=${{ matrix.openssl-path }} -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+        # Xcode 26+ Clang errors on aws-crt StringView.h (-Wdeprecated-literal-operator + Werror).
+        # Older Clang does not know that group; pair with -Wno-unknown-warning-option so both work.
+        cmake -S . -B build_static -DCMAKE_CXX_FLAGS="-Wno-unknown-warning-option -Wno-error=deprecated-literal-operator" -DOPENSSL_ROOT_DIR=${{ matrix.openssl-path }} -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_POLICY_VERSION_MINIMUM=3.5
         make -C build_static
       working-directory: aws-sdk-cpp-${{ env.AWS_SDK_CPP_VERSION }}
     - name: Cache libssh2
