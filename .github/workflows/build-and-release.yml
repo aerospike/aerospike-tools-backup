@@ -344,7 +344,21 @@ jobs:
       if: steps.cache-aws-sdk-cpp.outputs.cache-hit != 'true'
       run: |
         mkdir build_static
-        cmake -S . -B build_static -DOPENSSL_ROOT_DIR=${{ matrix.openssl-path }} -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+        FLAGS=(
+          -DOPENSSL_ROOT_DIR=${{ matrix.openssl-path }}
+          -DCMAKE_BUILD_TYPE=Release
+          -DBUILD_ONLY="s3"
+          -DBUILD_SHARED_LIBS=OFF
+          -DENABLE_TESTING=OFF
+          -DCMAKE_INSTALL_PREFIX=/usr/local
+          -DCMAKE_INSTALL_LIBDIR=lib
+          -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+        )
+        # Xcode / Clang on macOS 26 enables -Wdeprecated-literal-operator as error for aws-crt-cpp 1.x headers.
+        if [[ "${{ matrix.os }}" == "macos-26" ]]; then
+          FLAGS+=(-DCMAKE_CXX_FLAGS=-Wno-deprecated-literal-operator)
+        fi
+        cmake -S . -B build_static "${FLAGS[@]}"
         make -C build_static
       working-directory: aws-sdk-cpp-${{ env.AWS_SDK_CPP_VERSION }}
     - name: Cache libssh2
