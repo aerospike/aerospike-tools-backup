@@ -4,6 +4,7 @@
 Tests backing up and restoring to S3.
 """
 
+import contextlib
 import os
 import socket
 
@@ -231,33 +232,43 @@ def test_s3_restore_directory_list():
 
 	min_srv.stop_minio_server(MINIO_NAME)
 
+@contextlib.contextmanager
 def _dead_proxy_env(extra=None):
 	"""
-	Returns an env dict with HTTP_PROXY/HTTPS_PROXY/ALL_PROXY pointing at an
-	unreachable port and NO_PROXY cleared, so the S3 client (with
-	--s3-allow-system-proxy) routes every request through the dead proxy and
-	fails. Pass `extra` to override or extend, e.g. to set NO_PROXY=127.0.0.1.
+	Context manager that yields an env dict with HTTP_PROXY/HTTPS_PROXY/ALL_PROXY
+	pointing at a port that is bound but not listening (guaranteed ECONNREFUSED),
+	and with NO_PROXY cleared.  The socket is held open for the lifetime of the
+	``with`` block so the port cannot be reused by another process between setup
+	and the actual connection attempt.
+
+	Pass ``extra`` to override or extend individual keys, e.g.::
+
+		with _dead_proxy_env(extra={"NO_PROXY": "127.0.0.1"}) as env:
+			...
 	"""
-	# Bind to a random port then immediately close it — guaranteed unused.
 	with socket.socket() as s:
 		s.bind(('127.0.0.1', 0))
+		# Deliberately NOT calling s.listen() — connections get ECONNREFUSED
+		# immediately and the socket stays open until the with-block exits.
 		dead_port = s.getsockname()[1]
-	dead_addr = f"http://127.0.0.1:{dead_port}"
-	env = {
-		**S3_ENV,
-		"HTTP_PROXY":  dead_addr,
-		"http_proxy":  dead_addr,
-		"HTTPS_PROXY": dead_addr,
-		"https_proxy": dead_addr,
-		"ALL_PROXY":   dead_addr,
-		"all_proxy":   dead_addr,
-		# Override any system NO_PROXY so 127.0.0.1 is not excluded.
-		"NO_PROXY": "",
-		"no_proxy": "",
-	}
-	if extra:
-		env.update(extra)
-	return env
+		dead_addr = f"http://127.0.0.1:{dead_port}"
+		env = {
+			**S3_ENV,
+			"HTTP_PROXY":  dead_addr,
+			"http_proxy":  dead_addr,
+			"HTTPS_PROXY": dead_addr,
+			"https_proxy": dead_addr,
+			"ALL_PROXY":   dead_addr,
+			"all_proxy":   dead_addr,
+			# Override any system NO_PROXY so 127.0.0.1 is not excluded.
+			"NO_PROXY": "",
+			"no_proxy": "",
+		}
+		if extra:
+			env.update(extra)
+		yield env
+		# Socket closes here — after all assertions — so the port is never
+		# recycled while a connection attempt is in flight.
 
 
 def test_s3_allow_system_proxy():
@@ -281,31 +292,31 @@ def test_s3_allow_system_proxy():
 	else:
 		path = "s3://" + S3_BUCKET + "/proxy_test.asb"
 
-	dead_env = _dead_proxy_env()
+	with _dead_proxy_env() as dead_env:
+		# Part 1: without --s3-allow-system-proxy the proxy env is ignored →
+		# direct connection to MinIO works.
+		bup, path = backup_async(
+			lambda context: record_gen.put_records(100, context, lib.SET, False, 0),
+			env=dead_env,
+			backup_opts=COMMON_S3_OPTS + ['--remove-files'],
+			path=path,
+		)
+		bup_ret = lib.sync_wait(bup.wait())
+		assert bup_ret == 0, \
+			"backup without --s3-allow-system-proxy should succeed even with a dead HTTP_PROXY set"
 
-	# Part 1: without --s3-allow-system-proxy the proxy env is ignored →
-	# direct connection to MinIO works.
-	bup, path = backup_async(
-		lambda context: record_gen.put_records(100, context, lib.SET, False, 0),
-		env=dead_env,
-		backup_opts=COMMON_S3_OPTS + ['--remove-files'],
-		path=path,
-	)
-	bup_ret = lib.sync_wait(bup.wait())
-	assert bup_ret == 0, \
-		"backup without --s3-allow-system-proxy should succeed even with a dead HTTP_PROXY set"
-
-	# Part 2: with --s3-allow-system-proxy libcurl honors HTTP_PROXY → routes
-	# through the dead proxy → backup fails.
-	bup, path = backup_async(
-		lambda context: None,
-		env=dead_env,
-		backup_opts=COMMON_S3_OPTS + ['--remove-files', '--s3-allow-system-proxy'],
-		path=path,
-	)
-	bup_ret = lib.sync_wait(bup.wait())
-	assert bup_ret != 0, \
-		"backup with --s3-allow-system-proxy and a dead HTTP_PROXY should fail"
+		# Part 2: with --s3-allow-system-proxy libcurl honors HTTP_PROXY → routes
+		# through the dead proxy → backup fails.
+		bup, path = backup_async(
+			lambda context: None,
+			env=dead_env,
+			backup_opts=COMMON_S3_OPTS + ['--remove-files', '--s3-allow-system-proxy'],
+			path=path,
+		)
+		bup_ret = lib.sync_wait(bup.wait())
+		assert bup_ret != 0, \
+			"backup with --s3-allow-system-proxy and a dead HTTP_PROXY should fail " \
+			"(expected ECONNREFUSED or connection-timeout to proxy)"
 
 	min_srv.stop_minio_server(MINIO_NAME)
 
@@ -346,22 +357,22 @@ def test_s3_allow_system_proxy_restore():
 	bup_ret = lib.sync_wait(bup.wait())
 	assert bup_ret == 0, "preparatory backup must succeed before restore parts run"
 
-	dead_env = _dead_proxy_env()
+	with _dead_proxy_env() as dead_env:
+		# Part 1: without --s3-allow-system-proxy the proxy env is ignored →
+		# direct connection to MinIO works, restore succeeds.
+		res = restore_async(path, env=dead_env, restore_opts=COMMON_S3_OPTS)
+		res_ret = lib.sync_wait(res.wait())
+		assert res_ret == 0, \
+			"restore without --s3-allow-system-proxy should succeed even with a dead HTTP_PROXY set"
 
-	# Part 1: without --s3-allow-system-proxy the proxy env is ignored →
-	# direct connection to MinIO works, restore succeeds.
-	res = restore_async(path, env=dead_env, restore_opts=COMMON_S3_OPTS)
-	res_ret = lib.sync_wait(res.wait())
-	assert res_ret == 0, \
-		"restore without --s3-allow-system-proxy should succeed even with a dead HTTP_PROXY set"
-
-	# Part 2: with --s3-allow-system-proxy libcurl honors HTTPS_PROXY → routes
-	# through the dead proxy → restore fails.
-	res = restore_async(path, env=dead_env,
-			restore_opts=COMMON_S3_OPTS + ['--s3-allow-system-proxy'])
-	res_ret = lib.sync_wait(res.wait())
-	assert res_ret != 0, \
-		"restore with --s3-allow-system-proxy and a dead HTTP_PROXY should fail"
+		# Part 2: with --s3-allow-system-proxy libcurl honors HTTPS_PROXY → routes
+		# through the dead proxy → restore fails.
+		res = restore_async(path, env=dead_env,
+				restore_opts=COMMON_S3_OPTS + ['--s3-allow-system-proxy'])
+		res_ret = lib.sync_wait(res.wait())
+		assert res_ret != 0, \
+			"restore with --s3-allow-system-proxy and a dead HTTP_PROXY should fail " \
+			"(expected ECONNREFUSED or connection-timeout to proxy)"
 
 	min_srv.stop_minio_server(MINIO_NAME)
 
@@ -390,20 +401,19 @@ def test_s3_allow_system_proxy_no_proxy_exempts_host():
 		path = "s3://" + S3_BUCKET + "/no_proxy_test.asb"
 
 	# Dead proxy + NO_PROXY exempting the destination host.
-	env = _dead_proxy_env(extra={
+	with _dead_proxy_env(extra={
 		"NO_PROXY": "127.0.0.1",
 		"no_proxy": "127.0.0.1",
-	})
-
-	bup, path = backup_async(
-		lambda context: record_gen.put_records(100, context, lib.SET, False, 0),
-		env=env,
-		backup_opts=COMMON_S3_OPTS + ['--remove-files', '--s3-allow-system-proxy'],
-		path=path,
-	)
-	bup_ret = lib.sync_wait(bup.wait())
-	assert bup_ret == 0, \
-		"backup with --s3-allow-system-proxy and NO_PROXY listing the destination host should succeed"
+	}) as env:
+		bup, path = backup_async(
+			lambda context: record_gen.put_records(100, context, lib.SET, False, 0),
+			env=env,
+			backup_opts=COMMON_S3_OPTS + ['--remove-files', '--s3-allow-system-proxy'],
+			path=path,
+		)
+		bup_ret = lib.sync_wait(bup.wait())
+		assert bup_ret == 0, \
+			"backup with --s3-allow-system-proxy and NO_PROXY listing the destination host should succeed"
 
 	min_srv.stop_minio_server(MINIO_NAME)
 

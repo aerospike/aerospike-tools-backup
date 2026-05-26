@@ -76,6 +76,20 @@ public:
 
 	S3API& SetAllowSystemProxy(bool allow);
 
+	/*
+	 * Returns the HTTP scheme implied by an endpoint URL.
+	 * "https://*" (case-insensitive) → HTTPS; everything else → HTTP.
+	 * Exposed as public static so it can be exercised by unit tests without
+	 * initializing the full S3 client.
+	 */
+	static Aws::Http::Scheme SchemeForEndpoint(const std::string& endpoint);
+
+	/*
+	 * Returns the current allow_system_proxy setting.
+	 * Exposed for unit testing the Set/Get round-trip.
+	 */
+	bool GetAllowSystemProxy() const;
+
 	GroupDownloadManager* GetGroupDownloadManager();
 
 	const std::string& GetRegion() const;

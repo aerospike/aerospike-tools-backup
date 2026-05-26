@@ -1335,7 +1335,11 @@ usage(const char *name)
 	fprintf(stdout, "                      http_proxy, all_proxy / ALL_PROXY, no_proxy / NO_PROXY)\n");
 	fprintf(stdout, "                      when contacting S3. Precedence and supported proxy URL\n");
 	fprintf(stdout, "                      syntax follow libcurl. By default these variables are\n");
-	fprintf(stdout, "                      ignored.\n\n");
+	fprintf(stdout, "                      ignored.\n");
+	fprintf(stdout, "                      Note: if HTTPS_PROXY or HTTP_PROXY contains credentials\n");
+	fprintf(stdout, "                      (e.g. https://user:pass@proxy:3128), those credentials\n");
+	fprintf(stdout, "                      may appear in log output when --s3-log-level is set to\n");
+	fprintf(stdout, "                      Debug or Trace.\n\n");
 
 	fprintf(stdout, "\n\n");
 	fprintf(stdout, "Default configuration files are read from the following files in the given order:\n");

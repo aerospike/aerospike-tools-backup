@@ -177,6 +177,20 @@ S3API::SetAllowSystemProxy(bool allow)
 	return *this;
 }
 
+Aws::Http::Scheme
+S3API::SchemeForEndpoint(const std::string& endpoint)
+{
+	return (strncasecmp(endpoint.c_str(), "https://", 8) == 0)
+			? Aws::Http::Scheme::HTTPS
+			: Aws::Http::Scheme::HTTP;
+}
+
+bool
+S3API::GetAllowSystemProxy() const
+{
+	return this->allow_system_proxy;
+}
+
 GroupDownloadManager*
 S3API::GetGroupDownloadManager()
 {
@@ -311,10 +325,7 @@ S3API::_init_api(S3API& s3_api)
 		conf.endpointOverride = s3_api.endpoint;
 		// Mirror the scheme in the override URL so conf.scheme stays
 		// consistent with endpointOverride. Bare host:port defaults to HTTP.
-		conf.scheme =
-				(strncasecmp(s3_api.endpoint.c_str(), "https://", 8) == 0)
-						? Aws::Http::Scheme::HTTPS
-						: Aws::Http::Scheme::HTTP;
+		conf.scheme = S3API::SchemeForEndpoint(s3_api.endpoint);
 	}
 
 	conf.maxConnections = std::max(s3_api.max_async_downloads,
