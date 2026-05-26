@@ -106,9 +106,9 @@ jobs:
       id: install-aws-requirements
       run: |
         brew install openssl@3 readline
-        # Avoid `brew info … | grep -m 1`: grep exits early and closes the pipe while brew
-        # (Ruby) is still writing, causing EPIPE / "Broken pipe @ rb_sys_fail_on_write".
-        CMAKE_VERSION=$(brew info --json=v2 cmake | python3 -c 'import json,sys; print(json.load(sys.stdin)[0]["versions"]["stable"])')
+        # Avoid `brew info … | grep -m 1` (EPIPE from Ruby brew). `brew info --json=v2`
+        # emits `{"formulae":[...],"casks":[...]}` — not a bare array — so parse accordingly.
+        CMAKE_VERSION=$(brew info --json=v2 --formula cmake | python3 -c "import json,sys;d=json.load(sys.stdin);rows=d['formulae'] if isinstance(d,dict) else d;print(rows[0]['versions']['stable'])")
         echo "CMAKE_VERSION=$CMAKE_VERSION" >> $GITHUB_ENV
     - name: Cache AWS C++ sdk
       id: cache-aws-sdk-cpp
