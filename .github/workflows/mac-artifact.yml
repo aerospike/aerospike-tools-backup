@@ -272,8 +272,12 @@ jobs:
       working-directory: ${{ steps.working-dir.outputs.value }}
     - name: Sanity test static lib backup artifacts
       run: |
-        ./asbackup -n test -d backupdir 2>&1 | grep "Failed to connect"
-        ./asrestore -n test -d backupdir 2>&1 | grep "Failed to connect"
+        # asbackup/asrestore exit non-zero when the seed is unreachable; with bash
+        # pipefail that would fail the pipeline even if grep matches the message.
+        out=$(./asbackup -n test -d backupdir 2>&1) || true
+        echo "$out" | grep -q "Failed to connect"
+        out=$(./asrestore -n test -d backupdir 2>&1) || true
+        echo "$out" | grep -q "Failed to connect"
       working-directory:  ${{ steps.working-dir.outputs.value }}/binaries/static_bin
     - name: Upload static asbackup artifact
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
