@@ -282,7 +282,7 @@ function install_deps_ubuntu26.04() {
   rm -rf /var/lib/apt/lists/*
   apt-get clean
   apt-get update -o Acquire::Retries=5
-  apt-get -y install $BUILD_DEPS_UBUNTU $FPM_DEPS_UBUNTU libjitterentropy-dev
+  apt-get -y install $BUILD_DEPS_UBUNTU $FPM_DEPS_UBUNTU libjitterentropy3-dev
   gem install fpm -v 1.17.0
 }
 

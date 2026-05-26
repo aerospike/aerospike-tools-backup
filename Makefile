@@ -252,7 +252,7 @@ else
   LIBRARIES += $(OPENSSL_STATIC_PATH)/libcrypto.a
   # Newer distro static libcrypto (e.g. Ubuntu 26.04) links CPU jitter entropy helpers (jent_*).
   ifeq ($(OS),Linux)
-    ifneq ($(wildcard $(OPENSSL_STATIC_PATH)/libjitterentropy.so)$(wildcard $(OPENSSL_STATIC_PATH)/libjitterentropy.a)),)
+    ifneq ($(wildcard $(OPENSSL_STATIC_PATH)/libjitterentropy*.so)$(wildcard $(OPENSSL_STATIC_PATH)/libjitterentropy*.a)),)
       LIBRARIES += -ljitterentropy
     endif
   endif
