@@ -155,6 +155,7 @@ jobs:
           - ubuntu20.04
           - ubuntu22.04
           - ubuntu24.04
+          - ubuntu26.04
     runs-on: ${{ matrix.host }}
     container: >-
       ${{ matrix.distro == 'el8' && 'redhat/ubi8:8.10' ||
@@ -166,7 +167,8 @@ jobs:
         matrix.distro == 'debian13' && 'debian:trixie-20251020' ||
         matrix.distro == 'ubuntu20.04' && 'ubuntu:focal-20210723' ||
         matrix.distro == 'ubuntu22.04' && 'ubuntu:jammy-20231004' ||
-        matrix.distro == 'ubuntu24.04' && 'ubuntu:noble-20251013' }}
+        matrix.distro == 'ubuntu24.04' && 'ubuntu:noble-20251013' ||
+        matrix.distro == 'ubuntu26.04' && 'ubuntu:resolute-20260413' }}
     permissions:
       contents: read
     steps:
@@ -278,7 +280,7 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     env:
-      AWS_SDK_CPP_VERSION: 1.10.55
+      AWS_SDK_CPP_VERSION: 1.11.813
       LIBCURL_VERSION: curl-7_83_1
       LIBSSH2_VERSION: libssh2-1.10.0
       ZSTD_VERSION: 1.4.9
@@ -316,7 +318,10 @@ jobs:
       id: install-aws-requirements
       run: |
         brew install openssl@3 readline
-        CMAKE_VERSION=$(brew info cmake | grep -m 1 -Eo '[0-9]+\.[0-9]+\.[0-9]+')
+        # Avoid `brew info | grep -m 1`: grep exits after the first match and closes
+        # the pipe while Homebrew is still writing, which raises "Broken pipe @ rb_sys_fail_on_write".
+        # Homebrew may emit a JSON array (Linux) or a single formula object (macOS).
+        CMAKE_VERSION="$(brew info cmake --json=v2 | jq -r '(if type == "array" then .[0] else . end).versions.stable' | sed -E 's/^([0-9]+\.[0-9]+\.[0-9]+).*/\1/')"
         echo "CMAKE_VERSION=$CMAKE_VERSION" >> $GITHUB_ENV
     - name: Cache AWS C++ sdk
       id: cache-aws-sdk-cpp
@@ -339,7 +344,21 @@ jobs:
       if: steps.cache-aws-sdk-cpp.outputs.cache-hit != 'true'
       run: |
         mkdir build_static
-        cmake -S . -B build_static -DOPENSSL_ROOT_DIR=${{ matrix.openssl-path }} -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY="s3" -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+        FLAGS=(
+          -DOPENSSL_ROOT_DIR=${{ matrix.openssl-path }}
+          -DCMAKE_BUILD_TYPE=Release
+          -DBUILD_ONLY="s3"
+          -DBUILD_SHARED_LIBS=OFF
+          -DENABLE_TESTING=OFF
+          -DCMAKE_INSTALL_PREFIX=/usr/local
+          -DCMAKE_INSTALL_LIBDIR=lib
+          -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+        )
+        # Xcode / Clang on macOS 26 enables -Wdeprecated-literal-operator as error for aws-crt-cpp 1.x headers.
+        if [[ "${{ matrix.os }}" == "macos-26" ]]; then
+          FLAGS+=(-DCMAKE_CXX_FLAGS=-Wno-deprecated-literal-operator)
+        fi
+        cmake -S . -B build_static "${FLAGS[@]}"
         make -C build_static
       working-directory: aws-sdk-cpp-${{ env.AWS_SDK_CPP_VERSION }}
     - name: Cache libssh2
@@ -469,8 +488,12 @@ jobs:
       working-directory: asbackup
     - name: Sanity test static lib backup artifacts
       run: |
-        ./asbackup -n test -d backupdir 2>&1 | grep "Failed to connect"
-        ./asrestore -n test -d backupdir 2>&1 | grep "Failed to connect"
+        # asbackup/asrestore exit non-zero when the seed is unreachable; with bash
+        # pipefail that would fail the pipeline even if grep matches the message.
+        out=$(./asbackup -n test -d backupdir 2>&1) || true
+        echo "$out" | grep -q "Failed to connect"
+        out=$(./asrestore -n test -d backupdir 2>&1) || true
+        echo "$out" | grep -q "Failed to connect"
       working-directory:  asbackup/binaries/static_bin
     - name: Stage binaries for macOS pkg
       working-directory: asbackup
@@ -577,6 +600,7 @@ jobs:
           - ubuntu20.04
           - ubuntu22.04
           - ubuntu24.04
+          - ubuntu26.04
     runs-on: ${{ matrix.host }}
     container: >-
       ${{ matrix.distro == 'el8' && 'redhat/ubi8:8.10' ||
@@ -588,7 +612,8 @@ jobs:
         matrix.distro == 'debian13' && 'debian:trixie-20251020' ||
         matrix.distro == 'ubuntu20.04' && 'ubuntu:focal-20210723' ||
         matrix.distro == 'ubuntu22.04' && 'ubuntu:jammy-20231004' ||
-        matrix.distro == 'ubuntu24.04' && 'ubuntu:noble-20251013' }}
+        matrix.distro == 'ubuntu24.04' && 'ubuntu:noble-20251013' ||
+        matrix.distro == 'ubuntu26.04' && 'ubuntu:resolute-20260413' }}
     permissions:
       contents: read
     steps:
@@ -607,7 +632,11 @@ jobs:
               apt-get install -y --no-install-recommends git ca-certificates curl tar
               ;;
             el*|amzn*)
-              # UBI 9 / AL2023 ship curl-minimal; installing "curl" conflicts with it.
+              command -v dnf >/dev/null || yum install -y dnf
+              # install_deps_* runs `dnf -y update` before linking RPMs; without the same
+              # here, OpenSSL in a cold UBI/AL image can be older than libcrypto symbol
+              # versions the binaries were built against (e.g. OPENSSL_3.4.0).
+              dnf -y update
               dnf -y install findutils git ca-certificates tar gzip
               ;;
           esac

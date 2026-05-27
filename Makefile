@@ -42,11 +42,17 @@ ifeq ($(OS),Darwin)
   endif
 endif
 
-# M1 macs brew install openssl under /opt/homebrew/opt/openssl
-# set OPENSSL_PREFIX to the prefix for your openssl if it is installed elsewhere
-OPENSSL_PREFIX ?= /usr/local/opt/openssl
-ifdef M1_HOME_BREW
-  OPENSSL_PREFIX = /opt/homebrew/opt/openssl
+# OpenSSL: Homebrew on macOS; system OpenSSL on Linux. Defaulting Linux to a
+# Homebrew-style OPENSSL_PREFIX breaks EL builds: -L/usr/local/lib is searched
+# first and can pick a newer libssl than the distro, then the binary fails on
+# older /lib64/libcrypto at runtime.
+ifeq ($(OS),Darwin)
+  OPENSSL_PREFIX ?= /usr/local/opt/openssl
+  ifdef M1_HOME_BREW
+    OPENSSL_PREFIX = /opt/homebrew/opt/openssl
+  endif
+else
+  OPENSSL_PREFIX ?= /usr
 endif
 
 ifeq ($(OS),Darwin)
@@ -164,7 +170,9 @@ INCLUDES += -I/usr/local/include
 
 LIBRARIES := $(C_CLIENT_LIB)
 LIBRARIES += $(SECRET_CLIENT_LIB)
-LIBRARIES += -L/usr/local/lib
+ifeq ($(OS),Darwin)
+  LIBRARIES += -L/usr/local/lib
+endif
 
 ifdef M1_HOME_BREW
   LIBRARIES += -L/opt/homebrew/lib
@@ -194,6 +202,9 @@ ifeq ($(AWS_SDK_STATIC_PATH),)
   LIBRARIES += -laws-c-cal
   LIBRARIES += -laws-c-common
 
+  # Dynamic -lcurl (Linux): do not inject -L/usr/local/lib here; it can reorder search paths so later
+  # -lssl/-lcrypto resolve against newer OpenSSL under /usr/local. If curl is only under /usr/local,
+  # set CURL_STATIC_PATH explicitly (CI packaging does this when needed).
   ifeq ($(CURL_STATIC_PATH),)
     LIBRARIES += -lcurl
   else
@@ -225,6 +236,7 @@ else
     LIBRARIES += -framework CoreFoundation -framework Security -framework Network
   endif
 
+  # Same dynamic-curl / OpenSSL link-order rules as the non-static AWS SDK branch above.
   ifeq ($(CURL_STATIC_PATH),)
     LIBRARIES += -lcurl
   else
@@ -244,12 +256,27 @@ else
 endif
 
 ifeq ($(OPENSSL_STATIC_PATH),)
-  LIBRARIES += -L$(OPENSSL_PREFIX)/lib
+  ifeq ($(OS),Darwin)
+    LIBRARIES += -L$(OPENSSL_PREFIX)/lib
+  else ifneq ($(wildcard $(OPENSSL_PREFIX)/lib/$(shell uname -m)-linux-gnu/libssl.so*),)
+    LIBRARIES += -L$(OPENSSL_PREFIX)/lib/$(shell uname -m)-linux-gnu
+  else ifneq ($(wildcard $(OPENSSL_PREFIX)/lib64/libssl.so*),)
+    LIBRARIES += -L$(OPENSSL_PREFIX)/lib64
+  else
+    LIBRARIES += -L$(OPENSSL_PREFIX)/lib
+  endif
   LIBRARIES += -lssl
   LIBRARIES += -lcrypto
 else
   LIBRARIES += $(OPENSSL_STATIC_PATH)/libssl.a
   LIBRARIES += $(OPENSSL_STATIC_PATH)/libcrypto.a
+  # When ASBACKUP_LINK_JITTERENTROPY=1, static libcrypto may require jitter entropy symbols (jent_*).
+  # Enable only via this flag (packaging sets it for ubuntu26.04 today); do not infer from BUILD_DISTRO alone.
+  ifeq ($(OS),Linux)
+    ifeq ($(ASBACKUP_LINK_JITTERENTROPY),1)
+      LIBRARIES += -ljitterentropy
+    endif
+  endif
 endif
 LIBRARIES += -lpthread
 LIBRARIES += -lm
@@ -274,6 +301,8 @@ ifeq ($(EVENT_LIB),libev)
   endif
 endif
 
+# libuv: on Linux, avoid broad -L/usr/local/lib before -luv (OpenSSL link-order risk when -luv is dynamic).
+# When CI installs static libuv.a under /usr/local, set LIBUV_STATIC_PATH (Debian/Ubuntu packaging does this).
 ifeq ($(EVENT_LIB),libuv)
   ifeq ($(LIBUV_STATIC_PATH),)
     LIBRARIES += -luv
