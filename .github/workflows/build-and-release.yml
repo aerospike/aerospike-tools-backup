@@ -560,8 +560,6 @@ jobs:
       installer-identity: "Developer ID Installer: Aerospike, Inc. (22224RFU67)"
       gh-workflows-ref: "v3.6.0"
       gh-retention-days: 1
-      # shared-workflows fails if notarize is true without apple-id / password / team-id (forks, etc.)
-      notarize: ${{ secrets.APPLE_ID != '' && secrets.APPLE_NOTARIZATION_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
     secrets:
       apple-application-cert: ${{ secrets.APPLE_APPLICATION_CERT }}
       apple-id: ${{ secrets.APPLE_ID }}
