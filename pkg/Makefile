@@ -9,6 +9,11 @@ PACKAGE_NAME = asbackup
 VERSION ?= $(shell git describe --tags --always --abbrev=9)
 RPM_VERSION := $(subst -,_,$(VERSION))
 BUILD_DISTRO ?= $(shell $(PKG_DIR)/../.github/bin/os_version.sh)
+# Ubuntu 26.04+ links libjitterentropy for static OpenSSL; declare runtime dep.
+DEB_EXTRA_DEPENDS :=
+ifneq (,$(findstring ubuntu26.04,$(BUILD_DISTRO)))
+  DEB_EXTRA_DEPENDS := --depends "libjitterentropy3"
+endif
 NAME = "aerospike-$(PACKAGE_NAME)"
 MAINTAINER = "Aerospike"
 DESCRIPTION = "ASBackup, a tool for backing up and restoring data for Aerospike database."
@@ -37,6 +42,7 @@ deb: prep
 		--version $(VERSION) \
 		--maintainer $(MAINTAINER) \
 		--depends "libuv1" \
+		$(DEB_EXTRA_DEPENDS) \
 		--description $(DESCRIPTION) \
 		--license $(LICENSE) \
 		--url $(URL) \

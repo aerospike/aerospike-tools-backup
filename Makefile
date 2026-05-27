@@ -42,11 +42,17 @@ ifeq ($(OS),Darwin)
   endif
 endif
 
-# M1 macs brew install openssl under /opt/homebrew/opt/openssl
-# set OPENSSL_PREFIX to the prefix for your openssl if it is installed elsewhere
-OPENSSL_PREFIX ?= /usr/local/opt/openssl
-ifdef M1_HOME_BREW
-  OPENSSL_PREFIX = /opt/homebrew/opt/openssl
+# OpenSSL: Homebrew on macOS; system OpenSSL on Linux. Defaulting Linux to a
+# Homebrew-style OPENSSL_PREFIX breaks EL builds: -L/usr/local/lib is searched
+# first and can pick a newer libssl than the distro, then the binary fails on
+# older /lib64/libcrypto at runtime.
+ifeq ($(OS),Darwin)
+  OPENSSL_PREFIX ?= /usr/local/opt/openssl
+  ifdef M1_HOME_BREW
+    OPENSSL_PREFIX = /opt/homebrew/opt/openssl
+  endif
+else
+  OPENSSL_PREFIX ?= /usr
 endif
 
 ifeq ($(OS),Darwin)
@@ -164,7 +170,9 @@ INCLUDES += -I/usr/local/include
 
 LIBRARIES := $(C_CLIENT_LIB)
 LIBRARIES += $(SECRET_CLIENT_LIB)
-LIBRARIES += -L/usr/local/lib
+ifeq ($(OS),Darwin)
+  LIBRARIES += -L/usr/local/lib
+endif
 
 ifdef M1_HOME_BREW
   LIBRARIES += -L/opt/homebrew/lib
@@ -195,6 +203,9 @@ ifeq ($(AWS_SDK_STATIC_PATH),)
   LIBRARIES += -laws-c-common
 
   ifeq ($(CURL_STATIC_PATH),)
+    ifeq ($(OS),Linux)
+      LIBRARIES += -L/usr/local/lib
+    endif
     LIBRARIES += -lcurl
   else
     LIBRARIES += $(CURL_STATIC_PATH)/libcurl.a
@@ -226,6 +237,9 @@ else
   endif
 
   ifeq ($(CURL_STATIC_PATH),)
+    ifeq ($(OS),Linux)
+      LIBRARIES += -L/usr/local/lib
+    endif
     LIBRARIES += -lcurl
   else
     LIBRARIES += $(CURL_STATIC_PATH)/libcurl.a
@@ -244,7 +258,15 @@ else
 endif
 
 ifeq ($(OPENSSL_STATIC_PATH),)
-  LIBRARIES += -L$(OPENSSL_PREFIX)/lib
+  ifeq ($(OS),Darwin)
+    LIBRARIES += -L$(OPENSSL_PREFIX)/lib
+  else ifneq ($(wildcard $(OPENSSL_PREFIX)/lib/$(shell uname -m)-linux-gnu/libssl.so*),)
+    LIBRARIES += -L$(OPENSSL_PREFIX)/lib/$(shell uname -m)-linux-gnu
+  else ifneq ($(wildcard $(OPENSSL_PREFIX)/lib64/libssl.so*),)
+    LIBRARIES += -L$(OPENSSL_PREFIX)/lib64
+  else
+    LIBRARIES += -L$(OPENSSL_PREFIX)/lib
+  endif
   LIBRARIES += -lssl
   LIBRARIES += -lcrypto
 else
@@ -283,6 +305,9 @@ endif
 
 ifeq ($(EVENT_LIB),libuv)
   ifeq ($(LIBUV_STATIC_PATH),)
+    ifeq ($(OS),Linux)
+      LIBRARIES += -L/usr/local/lib
+    endif
     LIBRARIES += -luv
   else
     LIBRARIES += $(LIBUV_STATIC_PATH)/libuv.a
