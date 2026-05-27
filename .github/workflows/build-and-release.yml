@@ -632,7 +632,11 @@ jobs:
               apt-get install -y --no-install-recommends git ca-certificates curl tar
               ;;
             el*|amzn*)
-              # UBI 9 / AL2023 ship curl-minimal; installing "curl" conflicts with it.
+              command -v dnf >/dev/null || yum install -y dnf
+              # install_deps_* runs `dnf -y update` before linking RPMs; without the same
+              # here, OpenSSL in a cold UBI/AL image can be older than libcrypto symbol
+              # versions the binaries were built against (e.g. OPENSSL_3.4.0).
+              dnf -y update
               dnf -y install findutils git ca-certificates tar gzip
               ;;
           esac
