@@ -202,6 +202,9 @@ ifeq ($(AWS_SDK_STATIC_PATH),)
   LIBRARIES += -laws-c-cal
   LIBRARIES += -laws-c-common
 
+  # Dynamic -lcurl (Linux): do not inject -L/usr/local/lib here; it can reorder search paths so later
+  # -lssl/-lcrypto resolve against newer OpenSSL under /usr/local. If curl is only under /usr/local,
+  # set CURL_STATIC_PATH explicitly (CI packaging does this when needed).
   ifeq ($(CURL_STATIC_PATH),)
     LIBRARIES += -lcurl
   else
@@ -233,6 +236,7 @@ else
     LIBRARIES += -framework CoreFoundation -framework Security -framework Network
   endif
 
+  # Same dynamic-curl / OpenSSL link-order rules as the non-static AWS SDK branch above.
   ifeq ($(CURL_STATIC_PATH),)
     LIBRARIES += -lcurl
   else
@@ -266,8 +270,8 @@ ifeq ($(OPENSSL_STATIC_PATH),)
 else
   LIBRARIES += $(OPENSSL_STATIC_PATH)/libssl.a
   LIBRARIES += $(OPENSSL_STATIC_PATH)/libcrypto.a
-  # When ASBACKUP_LINK_JITTERENTROPY=1 (Ubuntu 26.04 packaging), static libcrypto pulls
-  # CPU jitter entropy (jent_*). Packaging sets this only for ubuntu26.04; do not infer from distro name alone.
+  # When ASBACKUP_LINK_JITTERENTROPY=1, static libcrypto may require jitter entropy symbols (jent_*).
+  # Enable only via this flag (packaging sets it for ubuntu26.04 today); do not infer from BUILD_DISTRO alone.
   ifeq ($(OS),Linux)
     ifeq ($(ASBACKUP_LINK_JITTERENTROPY),1)
       LIBRARIES += -ljitterentropy
@@ -297,6 +301,8 @@ ifeq ($(EVENT_LIB),libev)
   endif
 endif
 
+# libuv: on Linux, avoid broad -L/usr/local/lib before -luv (OpenSSL link-order risk when -luv is dynamic).
+# When CI installs static libuv.a under /usr/local, set LIBUV_STATIC_PATH (Debian/Ubuntu packaging does this).
 ifeq ($(EVENT_LIB),libuv)
   ifeq ($(LIBUV_STATIC_PATH),)
     LIBRARIES += -luv

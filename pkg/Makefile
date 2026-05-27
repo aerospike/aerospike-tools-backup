@@ -9,7 +9,7 @@ PACKAGE_NAME = asbackup
 VERSION ?= $(shell git describe --tags --always --abbrev=9)
 RPM_VERSION := $(subst -,_,$(VERSION))
 BUILD_DISTRO ?= $(shell $(PKG_DIR)/../.github/bin/os_version.sh)
-# Ubuntu 26.04 (BUILD_DISTRO contains ubuntu26.04): binaries link libjitterentropy; declare runtime dep.
+# ubuntu26.04 only (BUILD_DISTRO substring match): binaries link libjitterentropy; declare runtime dep.
 DEB_EXTRA_DEPENDS :=
 ifneq (,$(findstring ubuntu26.04,$(BUILD_DISTRO)))
   DEB_EXTRA_DEPENDS := --depends "libjitterentropy3"
