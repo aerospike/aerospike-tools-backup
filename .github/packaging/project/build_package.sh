@@ -18,14 +18,16 @@ function build_packages(){
     export CMAKE_ROOT=/opt/cmake-3.27.0-linux-x86_64/
   fi
   if [ "$ENV_DISTRO" = "amzn2023" ] || [ "$ENV_DISTRO" = "el8" ] || [ "$ENV_DISTRO" = "el9" ] || [ "$ENV_DISTRO" = "el10" ]; then
-    make EVENT_LIB=libuv AWS_SDK_STATIC_PATH=/usr/local/lib JANSSON_STATIC_PATH=/usr/local/lib/
+    # Static libuv from compile_deps; avoid -L/usr/local before dynamic -lcurl (system libcurl) so
+    # -lssl/-lcrypto resolve to distro OpenSSL (see Makefile link order / PR review).
+    make EVENT_LIB=libuv AWS_SDK_STATIC_PATH=/usr/local/lib JANSSON_STATIC_PATH=/usr/local/lib/ LIBUV_STATIC_PATH=/usr/local/lib
   else
     if [ "$ENV_DISTRO" = "ubuntu26.04" ]; then
       export ASBACKUP_LINK_JITTERENTROPY=1
     else
       unset ASBACKUP_LINK_JITTERENTROPY 2>/dev/null || true
     fi
-    make EVENT_LIB=libuv ZSTD_STATIC_PATH=/usr/lib/$ARCH-linux-gnu AWS_SDK_STATIC_PATH=/usr/local/lib CURL_STATIC_PATH=/usr/local/lib OPENSSL_STATIC_PATH=/usr/lib/$ARCH-linux-gnu AWS_SDK_STATIC_PATH=/usr/local/lib JANSSON_STATIC_PATH=/usr/lib/$ARCH-linux-gnu
+    make EVENT_LIB=libuv ZSTD_STATIC_PATH=/usr/lib/$ARCH-linux-gnu AWS_SDK_STATIC_PATH=/usr/local/lib CURL_STATIC_PATH=/usr/local/lib OPENSSL_STATIC_PATH=/usr/lib/$ARCH-linux-gnu AWS_SDK_STATIC_PATH=/usr/local/lib JANSSON_STATIC_PATH=/usr/lib/$ARCH-linux-gnu LIBUV_STATIC_PATH=/usr/local/lib
   fi
 
   cd $PKG_DIR

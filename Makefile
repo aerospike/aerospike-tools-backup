@@ -203,9 +203,6 @@ ifeq ($(AWS_SDK_STATIC_PATH),)
   LIBRARIES += -laws-c-common
 
   ifeq ($(CURL_STATIC_PATH),)
-    ifeq ($(OS),Linux)
-      LIBRARIES += -L/usr/local/lib
-    endif
     LIBRARIES += -lcurl
   else
     LIBRARIES += $(CURL_STATIC_PATH)/libcurl.a
@@ -237,9 +234,6 @@ else
   endif
 
   ifeq ($(CURL_STATIC_PATH),)
-    ifeq ($(OS),Linux)
-      LIBRARIES += -L/usr/local/lib
-    endif
     LIBRARIES += -lcurl
   else
     LIBRARIES += $(CURL_STATIC_PATH)/libcurl.a
@@ -272,8 +266,8 @@ ifeq ($(OPENSSL_STATIC_PATH),)
 else
   LIBRARIES += $(OPENSSL_STATIC_PATH)/libssl.a
   LIBRARIES += $(OPENSSL_STATIC_PATH)/libcrypto.a
-  # Ubuntu 26.04+ static libcrypto pulls CPU jitter entropy (jent_*). Only link jitter there;
-  # other distros may ship stray libjitterentropy names that do not work with plain -ljitterentropy.
+  # When ASBACKUP_LINK_JITTERENTROPY=1 (Ubuntu 26.04 packaging), static libcrypto pulls
+  # CPU jitter entropy (jent_*). Packaging sets this only for ubuntu26.04; do not infer from distro name alone.
   ifeq ($(OS),Linux)
     ifeq ($(ASBACKUP_LINK_JITTERENTROPY),1)
       LIBRARIES += -ljitterentropy
@@ -305,9 +299,6 @@ endif
 
 ifeq ($(EVENT_LIB),libuv)
   ifeq ($(LIBUV_STATIC_PATH),)
-    ifeq ($(OS),Linux)
-      LIBRARIES += -L/usr/local/lib
-    endif
     LIBRARIES += -luv
   else
     LIBRARIES += $(LIBUV_STATIC_PATH)/libuv.a
