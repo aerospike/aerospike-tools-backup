@@ -784,7 +784,12 @@ backup_status_save_scan_state(backup_status_t* status,
 
 	backup_state_t* state = status->backup_state;
 
-	if (state == BACKUP_STATE_ABORTED) {
+	// NULL is reachable when SIGINT fires before backup_status_start runs and
+	// can_resume is true (backup_status_stop deliberately leaves backup_state
+	// NULL in that case; start_backup retries the init from a safe context).
+	// If a worker somehow reaches this point before the late init has run,
+	// there's nothing to record into — return rather than deref.
+	if (state == NULL || state == BACKUP_STATE_ABORTED) {
 		pthread_mutex_unlock(&status->stop_lock);
 		return;
 	}
