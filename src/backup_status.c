@@ -626,9 +626,17 @@ backup_status_stop(const backup_config_t* conf, backup_status_t* status)
 		// try initializing the backup file, which may have already been done
 		backup_status_init_backup_state_file(conf->state_file_dst, status);
 	}
-	else {
+	else if (!backup_config_can_resume(conf)) {
+		// No state-file destination: nothing to save, mark aborted so cleanup
+		// reports the backup as unrecoverable.
 		status->backup_state = BACKUP_STATE_ABORTED;
 	}
+	// Else: stop arrived before backup_status_start() ran (e.g. SIGINT during
+	// the slow S3 API init under the newer AWS SDK). We deliberately leave
+	// backup_state NULL: opening the state file here could re-enter S3
+	// initialization and deadlock on s3_init_lock if the signal was delivered
+	// to the main thread. start_backup() picks this case up after S3 setup
+	// finishes and initializes the state file from a safe context.
 
 	// sets the stop variable
 	status->stop = true;

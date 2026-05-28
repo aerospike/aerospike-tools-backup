@@ -671,6 +671,22 @@ start_backup(backup_config_t* conf)
 
 	backup_status_start(status);
 
+	// If a stop was requested before backup_status_start ran (typically a
+	// SIGINT during S3 API initialization), backup_status_stop deliberately
+	// left backup_state NULL rather than risk a deadlock by opening the state
+	// file from the signal handler. Initialize it now from a safe context so
+	// the worker threads (which are about to be spawned and will see stop=true)
+	// have somewhere to write partition state and so cleanup can emit a usable
+	// resumption file instead of "Backup was aborted, state is unrecoverable".
+	// Also signal one_shot completion: the backup worker won't run far enough
+	// to do it itself, and the save-state path in cleanup is gated on it.
+	if (backup_status_has_stopped(status) && backup_config_can_resume(conf)
+			&& backup_status_get_backup_state(status) == NULL) {
+		if (backup_status_init_backup_state_file(conf->state_file_dst, status)) {
+			backup_status_signal_one_shot(status);
+		}
+	}
+
 	bool first;
 	// only process indices/udfs if we are not resuming a failed/interrupted backup
 	if (conf->state_file != NULL) {
