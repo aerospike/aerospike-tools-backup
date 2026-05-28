@@ -37,3 +37,6 @@ null.d
 # docker bake / staged debs (generated locally)
 docker/docker-bake.hcl
 docker/aerospike-asbackup_*.deb
+
+# shared packaging submodule (checked out locally, not tracked in this repo)
+.github/packaging/
