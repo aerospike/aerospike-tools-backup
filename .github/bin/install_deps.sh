@@ -341,12 +341,14 @@ function compile_deps_el8() {
   make install
 
   pushd /opt
-  git clone https://git.savannah.gnu.org/git/readline.git
-  pushd readline
-  git checkout readline-8.3
+  curl -LO https://mirrors.ocf.berkeley.edu/gnu/readline/readline-8.3.tar.gz
+  tar -zxvf readline-8.3.tar.gz
+  pushd readline-8.3
   ./configure
   make_parallel
   make install
+  popd
+  rm -rf /opt/readline-8.3 /opt/readline-8.3.tar.gz
 
   pushd /opt
   git clone https://github.com/akheron/jansson.git
@@ -406,12 +408,14 @@ function compile_deps_el9() {
   make install
 
   pushd /opt
-  git clone https://git.savannah.gnu.org/git/readline.git
-  pushd readline
-  git checkout readline-8.3
+  curl -LO https://mirrors.ocf.berkeley.edu/gnu/readline/readline-8.3.tar.gz
+  tar -zxvf readline-8.3.tar.gz
+  pushd readline-8.3
   ./configure
   make_parallel
   make install
+  popd
+  rm -rf /opt/readline-8.3 /opt/readline-8.3.tar.gz
 
   pushd /opt
   git clone https://github.com/akheron/jansson.git
@@ -500,12 +504,14 @@ EOF
   make install
 
   pushd /opt
-  git clone https://git.savannah.gnu.org/git/readline.git
-  pushd readline
-  git checkout readline-8.3
+  curl -LO https://mirrors.ocf.berkeley.edu/gnu/readline/readline-8.3.tar.gz
+  tar -zxvf readline-8.3.tar.gz
+  pushd readline-8.3
   ./configure
   make_parallel
   make install
+  popd
+  rm -rf /opt/readline-8.3 /opt/readline-8.3.tar.gz
 
   pushd /opt
   git clone https://github.com/akheron/jansson.git
@@ -564,12 +570,14 @@ function install_deps_amzn2023() {
   make install
 
   pushd /opt
-  git clone https://git.savannah.gnu.org/git/readline.git
-  pushd readline
-  git checkout readline-8.3
+  curl -LO https://mirrors.ocf.berkeley.edu/gnu/readline/readline-8.3.tar.gz
+  tar -zxvf readline-8.3.tar.gz
+  pushd readline-8.3
   ./configure
   make_parallel
   make install
+  popd
+  rm -rf /opt/readline-8.3 /opt/readline-8.3.tar.gz
 
   pushd /opt
   git clone https://github.com/akheron/jansson.git
