@@ -622,7 +622,8 @@ backup_status_has_stopped(const backup_status_t* status)
 void
 backup_status_stop(const backup_config_t* conf, backup_status_t* status)
 {
-	if (backup_status_has_started(status) && backup_config_can_resume(conf)) {
+	if (backup_status_has_started(status) && backup_config_can_resume(conf)
+			&& backup_status_one_shot_done(status)) {
 		// try initializing the backup file, which may have already been done
 		backup_status_init_backup_state_file(conf->state_file_dst, status);
 	}
@@ -631,12 +632,21 @@ backup_status_stop(const backup_config_t* conf, backup_status_t* status)
 		// reports the backup as unrecoverable.
 		status->backup_state = BACKUP_STATE_ABORTED;
 	}
-	// Else: stop arrived before backup_status_start() ran (e.g. SIGINT during
-	// the slow S3 API init under the newer AWS SDK). We deliberately leave
-	// backup_state NULL: opening the state file here could re-enter S3
-	// initialization and deadlock on s3_init_lock if the signal was delivered
-	// to the main thread. start_backup() picks this case up after S3 setup
-	// finishes and initializes the state file from a safe context.
+	// Else: stop arrived before any useful work happened — either
+	//   (a) before backup_status_start() ran (typically a SIGINT during the
+	//       slow S3 API init under the newer AWS SDK), or
+	//   (b) after start but before the first worker signaled one_shot_done
+	//       (e.g. a worker's own stop() call after seeing has_stopped=true
+	//       and breaking out of its loop without doing any work).
+	// Leave backup_state NULL deliberately. The save path in cleanup is
+	// gated on one_shot_done, so a state struct created here would never
+	// be flushed to S3 anyway, AND if it were, the resumed backup would
+	// silently skip the one-shot work (indexes, UDFs, META_FIRST_FILE) and
+	// produce output missing that metadata. The cleanup path in start_backup
+	// detects the resulting NULL+stopped state and prints a clear
+	// "interrupted before any data was scanned" message so the user knows
+	// to just re-run, rather than seeing the misleading "state is
+	// unrecoverable" error that BACKUP_STATE_ABORTED would have produced.
 
 	// sets the stop variable
 	status->stop = true;
@@ -786,9 +796,9 @@ backup_status_save_scan_state(backup_status_t* status,
 
 	// NULL is reachable when SIGINT fires before backup_status_start runs and
 	// can_resume is true (backup_status_stop deliberately leaves backup_state
-	// NULL in that case; start_backup retries the init from a safe context).
-	// If a worker somehow reaches this point before the late init has run,
-	// there's nothing to record into — return rather than deref.
+	// NULL in that case — see backup_status_stop). Workers normally exit on
+	// has_stopped() before reaching here in that scenario, but treat NULL as
+	// no-op rather than deref it, mirroring the BACKUP_STATE_ABORTED case.
 	if (state == NULL || state == BACKUP_STATE_ABORTED) {
 		pthread_mutex_unlock(&status->stop_lock);
 		return;

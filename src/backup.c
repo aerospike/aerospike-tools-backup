@@ -671,32 +671,6 @@ start_backup(backup_config_t* conf)
 
 	backup_status_start(status);
 
-	// If a stop was requested before backup_status_start ran (typically a
-	// SIGINT during S3 API initialization), backup_status_stop deliberately
-	// left backup_state NULL rather than risk a deadlock by opening the state
-	// file from the signal handler. Initialize it now from a safe context so
-	// the worker threads (which are about to be spawned and will see stop=true)
-	// have somewhere to write partition state, and signal one_shot so the
-	// cleanup save-state path (gated on backup_status_one_shot_done) actually
-	// flushes the state file to disk.
-	//
-	// Init and one_shot signaling are kept independent to handle a SIGINT
-	// landing between backup_status_start above and this block: the signal
-	// handler would already have taken the has_started=true branch of
-	// backup_status_stop and called init itself. In that case our init returns
-	// false (CAS-lost), backup_state is a valid struct, and we still need to
-	// signal one_shot so cleanup persists what the worker writes on its way
-	// out. Only skip one_shot when state is ABORTED — letting cleanup print
-	// the unrecoverable message.
-	if (backup_status_has_stopped(status) && backup_config_can_resume(conf)) {
-		if (backup_status_get_backup_state(status) == NULL) {
-			backup_status_init_backup_state_file(conf->state_file_dst, status);
-		}
-		if (backup_status_get_backup_state(status) != BACKUP_STATE_ABORTED) {
-			backup_status_signal_one_shot(status);
-		}
-	}
-
 	bool first;
 	// only process indices/udfs if we are not resuming a failed/interrupted backup
 	if (conf->state_file != NULL) {
@@ -945,6 +919,14 @@ cleanup4:
 
 	if (backup_state == BACKUP_STATE_ABORTED) {
 		err("Backup was aborted, meaning the state is unrecoverable");
+	}
+	else if (backup_state == NULL && backup_status_has_stopped(status)) {
+		// SIGINT arrived before backup_status_start() did any real work
+		// (typically during the slow S3 API init). No records were scanned,
+		// no one-shot work was done, and no partial state exists to resume
+		// from. Tell the user clearly so they know to just re-run.
+		inf("Backup was interrupted before any data was scanned; "
+				"no state file was saved. Re-run the same command to retry.");
 	}
 
 cleanup3:
@@ -1489,8 +1471,9 @@ save_job_state(const backup_thread_args_t* args)
 		pthread_mutex_lock(&args->status->stop_lock);
 		backup_state_t* state = backup_status_get_backup_state(args->status);
 
-		// See backup_status_save_scan_state: NULL is reachable if the pre-start
-		// SIGINT path's deferred init hasn't yet produced a state struct.
+		// See backup_status_save_scan_state: NULL is reachable when SIGINT
+		// fires before backup_status_start runs, since backup_status_stop
+		// deliberately leaves backup_state NULL in that case.
 		if (state == NULL || state == BACKUP_STATE_ABORTED) {
 			pthread_mutex_unlock(&args->status->stop_lock);
 			return;
