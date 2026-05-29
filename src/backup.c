@@ -920,6 +920,14 @@ cleanup4:
 	if (backup_state == BACKUP_STATE_ABORTED) {
 		err("Backup was aborted, meaning the state is unrecoverable");
 	}
+	else if (backup_state == NULL && backup_status_has_stopped(status)) {
+		// SIGINT arrived before backup_status_start() did any real work
+		// (typically during the slow S3 API init). No records were scanned,
+		// no one-shot work was done, and no partial state exists to resume
+		// from. Tell the user clearly so they know to just re-run.
+		inf("Backup was interrupted before any data was scanned; "
+				"no state file was saved. Re-run the same command to retry.");
+	}
 
 cleanup3:
 	cf_queue_destroy(job_queue);
@@ -1463,7 +1471,10 @@ save_job_state(const backup_thread_args_t* args)
 		pthread_mutex_lock(&args->status->stop_lock);
 		backup_state_t* state = backup_status_get_backup_state(args->status);
 
-		if (state == BACKUP_STATE_ABORTED) {
+		// See backup_status_save_scan_state: NULL is reachable when SIGINT
+		// fires before backup_status_start runs, since backup_status_stop
+		// deliberately leaves backup_state NULL in that case.
+		if (state == NULL || state == BACKUP_STATE_ABORTED) {
 			pthread_mutex_unlock(&args->status->stop_lock);
 			return;
 		}
