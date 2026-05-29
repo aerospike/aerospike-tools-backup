@@ -622,31 +622,21 @@ backup_status_has_stopped(const backup_status_t* status)
 void
 backup_status_stop(const backup_config_t* conf, backup_status_t* status)
 {
-	if (backup_status_has_started(status) && backup_config_can_resume(conf)
-			&& backup_status_one_shot_done(status)) {
+	if (backup_status_has_started(status) && backup_config_can_resume(conf)) {
 		// try initializing the backup file, which may have already been done
 		backup_status_init_backup_state_file(conf->state_file_dst, status);
 	}
 	else if (!backup_config_can_resume(conf)) {
-		// No state-file destination: nothing to save, mark aborted so cleanup
-		// reports the backup as unrecoverable.
+		// No state-file destination (estimate mode): nothing to save, mark
+		// aborted so cleanup reports the backup as unrecoverable.
 		status->backup_state = BACKUP_STATE_ABORTED;
 	}
-	// Else: stop arrived before any useful work happened — either
-	//   (a) before backup_status_start() ran (typically a SIGINT during the
-	//       slow S3 API init under the newer AWS SDK), or
-	//   (b) after start but before the first worker signaled one_shot_done
-	//       (e.g. a worker's own stop() call after seeing has_stopped=true
-	//       and breaking out of its loop without doing any work).
-	// Leave backup_state NULL deliberately. The save path in cleanup is
-	// gated on one_shot_done, so a state struct created here would never
-	// be flushed to S3 anyway, AND if it were, the resumed backup would
-	// silently skip the one-shot work (indexes, UDFs, META_FIRST_FILE) and
-	// produce output missing that metadata. The cleanup path in start_backup
-	// detects the resulting NULL+stopped state and prints a clear
-	// "interrupted before any data was scanned" message so the user knows
-	// to just re-run, rather than seeing the misleading "state is
-	// unrecoverable" error that BACKUP_STATE_ABORTED would have produced.
+	// Else: stop arrived before backup_status_start() ran — typically a SIGINT
+	// during the slow S3 API init under the newer AWS SDK. Leave backup_state
+	// NULL deliberately. The cleanup path in start_backup detects NULL+stopped
+	// and prints a clear "interrupted before any data was scanned" message so
+	// the user knows to just re-run, rather than seeing the misleading "state
+	// is unrecoverable" error that BACKUP_STATE_ABORTED would have produced.
 
 	// sets the stop variable
 	status->stop = true;
