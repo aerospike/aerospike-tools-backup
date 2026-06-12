@@ -109,6 +109,10 @@ jobs:
         # Avoid `brew info | grep -m 1` (broken pipe). Homebrew JSON may be an array or one object.
         CMAKE_VERSION="$(brew info cmake --json=v2 | jq -r '(if type == "array" then .[0] else . end).versions.stable' | sed -E 's/^([0-9]+\.[0-9]+\.[0-9]+).*/\1/')"
         echo "CMAKE_VERSION=$CMAKE_VERSION" >> $GITHUB_ENV
+        # Key caches on the Xcode version too: a runner-image Xcode bump (e.g. 26.4 -> 26.5)
+        # changes the toolchain/SDK, so stale cmake build trees must be rebuilt, not reused.
+        XCODE_VERSION="$(xcodebuild -version 2>/dev/null | head -n1 | awk '{print $2}')"
+        echo "XCODE_VERSION=$XCODE_VERSION" >> $GITHUB_ENV
     - name: Cache AWS C++ sdk
       id: cache-aws-sdk-cpp
       uses: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c # v3.5.0
@@ -117,7 +121,7 @@ jobs:
         cache-index: "3"
       with:
         path: aws-sdk-cpp-${{ env.AWS_SDK_CPP_VERSION }}
-        key: aws-sdk-cpp-${{ env.cache-index }}-mac-artifact-${{ env.AWS_SDK_CPP_VERSION }}-${{ matrix.os }}-${{ runner.arch }}-cmake-${{ env.CMAKE_VERSION }}
+        key: aws-sdk-cpp-${{ env.cache-index }}-mac-artifact-${{ env.AWS_SDK_CPP_VERSION }}-${{ matrix.os }}-${{ runner.arch }}-cmake-${{ env.CMAKE_VERSION }}-xcode-${{ env.XCODE_VERSION }}
     - name: Download AWS C++ sdk
       uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       if: steps.cache-aws-sdk-cpp.outputs.cache-hit != 'true'
@@ -140,9 +144,11 @@ jobs:
           -DCMAKE_INSTALL_LIBDIR=lib
           -DCMAKE_POLICY_VERSION_MINIMUM=3.5
         )
-        # Xcode / Clang on macOS 26 treats aws-crt-cpp literal-operator spacing as deprecated (often under -Werror).
+        # Xcode / Clang on macOS 26 (Xcode 26.5+) rejects two things in the AWS SDK under -Werror:
+        # aws-crt-cpp literal-operator spacing (-Wdeprecated-literal-operator) and abs(int64_t) in
+        # AdaptiveRetryStrategy.cpp (-Wabsolute-value). Suppress both so the SDK builds.
         if [[ "${{ matrix.os }}" == "macos-26" ]]; then
-          FLAGS+=(-DCMAKE_CXX_FLAGS=-Wno-deprecated-literal-operator)
+          FLAGS+=(-DCMAKE_CXX_FLAGS="-Wno-deprecated-literal-operator -Wno-absolute-value")
         fi
         cmake -S . -B build_static "${FLAGS[@]}"
         make -C build_static
