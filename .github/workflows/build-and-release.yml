@@ -109,6 +109,11 @@ jobs:
       VERSION: ${{ steps.compute.outputs.version }}
       BUNDLE_VERSION: ${{ steps.compute.outputs.bundle_version }}
     steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
+
       - name: Compute VERSION (SemVer-aware for branch builds)
         id: compute
         env:
@@ -805,7 +810,7 @@ jobs:
           path: ./deploy-artifacts
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+        uses: step-security/setup-buildx-action@6997872a55d77391e51b87609556578131f44402 # v4.1.0
 
       - name: Install Snyk CLI
         run: npm install -g snyk@1.1304.3
@@ -919,7 +924,7 @@ jobs:
           password: ${{ steps.jf.outputs.oidc-token }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+        uses: step-security/setup-buildx-action@6997872a55d77391e51b87609556578131f44402 # v4.1.0
 
       - name: Stitch per-arch tags into multi-arch manifest
         env:
