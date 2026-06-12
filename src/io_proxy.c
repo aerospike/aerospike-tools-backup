@@ -735,6 +735,10 @@ io_proxy_gets(io_read_proxy_t* io, char* str, int n)
 	int32_t c;
 	int i;
 
+	if (n <= 0) {
+		return NULL;
+	}
+
 	for (i = 0; i < n - 1; i++) {
 		c = io_proxy_getc(io);
 		if (c == EOF) {
