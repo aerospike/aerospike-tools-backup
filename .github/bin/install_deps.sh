@@ -323,7 +323,7 @@ function install_deps_el8() {
 
 function compile_deps_el8() {
   pushd /opt
-  wget https://mirrors.ocf.berkeley.edu/gnu/gettext/gettext-0.21.tar.gz
+  wget https://ftp.gnu.org/gnu/gettext/gettext-0.21.tar.gz
   tar -zxvf gettext-0.21.tar.gz
   pushd gettext-0.21
   autoconf
@@ -341,7 +341,7 @@ function compile_deps_el8() {
   make install
 
   pushd /opt
-  curl -LO https://mirrors.ocf.berkeley.edu/gnu/readline/readline-8.3.tar.gz
+  curl -LO https://ftp.gnu.org/gnu/readline/readline-8.3.tar.gz
   tar -zxvf readline-8.3.tar.gz
   pushd readline-8.3
   ./configure
@@ -390,7 +390,7 @@ function install_deps_el9() {
 
 function compile_deps_el9() {
   pushd /opt
-  wget https://mirrors.ocf.berkeley.edu/gnu/gettext/gettext-0.21.tar.gz
+  wget https://ftp.gnu.org/gnu/gettext/gettext-0.21.tar.gz
   tar -zxvf gettext-0.21.tar.gz
   pushd gettext-0.21
   autoconf
@@ -408,7 +408,7 @@ function compile_deps_el9() {
   make install
 
   pushd /opt
-  curl -LO https://mirrors.ocf.berkeley.edu/gnu/readline/readline-8.3.tar.gz
+  curl -LO https://ftp.gnu.org/gnu/readline/readline-8.3.tar.gz
   tar -zxvf readline-8.3.tar.gz
   pushd readline-8.3
   ./configure
@@ -486,7 +486,7 @@ EOF
   pkg-config --cflags --libs libunistring
 
   pushd /opt
-  wget https://mirrors.ocf.berkeley.edu/gnu/gettext/gettext-0.21.tar.gz
+  wget https://ftp.gnu.org/gnu/gettext/gettext-0.21.tar.gz
   tar -zxvf gettext-0.21.tar.gz
   pushd gettext-0.21
   autoconf
@@ -504,7 +504,7 @@ EOF
   make install
 
   pushd /opt
-  curl -LO https://mirrors.ocf.berkeley.edu/gnu/readline/readline-8.3.tar.gz
+  curl -LO https://ftp.gnu.org/gnu/readline/readline-8.3.tar.gz
   tar -zxvf readline-8.3.tar.gz
   pushd readline-8.3
   ./configure
@@ -552,7 +552,7 @@ function install_deps_amzn2023() {
   gem install fpm -v 1.17.0
 
   pushd /opt
-  wget https://mirrors.ocf.berkeley.edu/gnu/gettext/gettext-0.21.tar.gz
+  wget https://ftp.gnu.org/gnu/gettext/gettext-0.21.tar.gz
   tar -zxvf gettext-0.21.tar.gz
   pushd gettext-0.21
   autoconf
@@ -570,7 +570,7 @@ function install_deps_amzn2023() {
   make install
 
   pushd /opt
-  curl -LO https://mirrors.ocf.berkeley.edu/gnu/readline/readline-8.3.tar.gz
+  curl -LO https://ftp.gnu.org/gnu/readline/readline-8.3.tar.gz
   tar -zxvf readline-8.3.tar.gz
   pushd readline-8.3
   ./configure
