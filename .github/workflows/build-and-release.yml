@@ -315,11 +315,31 @@ jobs:
     - name: install AWS requirements
       id: install-aws-requirements
       run: |
+        # ---- TEMP DEBUG (remove after diagnosis): which command aborts with exit 134? ----
+        echo "::group::DEBUG brew install probe"
+        set +e
         brew install openssl@3 readline
+        echo "DEBUG: 'brew install openssl@3 readline' exit code = $?"
+        set -e
+        echo "::endgroup::"
+        echo "::group::DEBUG brew info probe"
+        brew --version || true
+        set +e
+        brew info cmake --json=v2 >"$RUNNER_TEMP/brewinfo.out" 2>"$RUNNER_TEMP/brewinfo.err"
+        echo "DEBUG: 'brew info cmake --json=v2' exit code = $?"
+        set -e
+        echo "DEBUG: stdout bytes=$(wc -c <"$RUNNER_TEMP/brewinfo.out") stderr bytes=$(wc -c <"$RUNNER_TEMP/brewinfo.err")"
+        echo "DEBUG: brew info stderr (first 40 lines):"
+        head -n 40 "$RUNNER_TEMP/brewinfo.err" || true
+        echo "DEBUG: recent crash reports:"
+        ls -t "$HOME/Library/Logs/DiagnosticReports" 2>/dev/null | head -n 5 || true
+        echo "::endgroup::"
+        # ---- END TEMP DEBUG ----
         # Read the cmake version straight from the binary. `brew info cmake` aborts with
         # "Abort trap: 6" (exit 134) on the macOS runners, and it's only needed for the cache key.
         CMAKE_RAW="$(cmake --version)"
         CMAKE_VERSION="$(sed -n '1s/.*version \([0-9][0-9.]*\).*/\1/p' <<<"$CMAKE_RAW")"
+        echo "DEBUG: derived CMAKE_VERSION=$CMAKE_VERSION"
         echo "CMAKE_VERSION=$CMAKE_VERSION" >> $GITHUB_ENV
         # Key caches on the Xcode version too: a runner-image Xcode bump (e.g. 26.4 -> 26.5)
         # changes the toolchain/SDK, so stale cmake build trees must be rebuilt, not reused.
