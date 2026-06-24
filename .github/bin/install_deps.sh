@@ -382,7 +382,9 @@ function compile_deps_el8() {
 }
 
 function install_deps_el9() {
-  dnf -y update
+  # No `dnf -y update`: the "Pin EL build repos" step froze repos to the Rocky 9.6
+  # vault, so deps install at the GA OpenSSL (3.2.2). Updating would float to 3.5
+  # (OPENSSL_3.4.0 symbols) and break loading on older RHEL 9.x libcrypto.
   dnf -y install $BUILD_DEPS_REDHAT_9 $FPM_DEPS_REDHAT_9
   build_libyaml_static
   gem install fpm -v 1.17.0
@@ -449,7 +451,9 @@ function compile_deps_el9() {
 }
 
 function install_deps_el10() {
-  dnf -y update
+  # No `dnf -y update`: the "Pin EL build repos" step froze repos to the Rocky 10.0
+  # vault, so deps install at the GA OpenSSL (3.2.2). Updating would float to 3.5
+  # (OPENSSL_3.4.0 symbols) and break loading on RHEL 10.0 libcrypto.
   dnf -y install $BUILD_DEPS_REDHAT_10 $FPM_DEPS_REDHAT_10
   build_libyaml_static
   gem install fpm -v 1.17.0

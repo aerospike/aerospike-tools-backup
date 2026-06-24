@@ -197,6 +197,10 @@ jobs:
           fetch-tags: true
           submodules: recursive
 
+      # EL9/EL10: build against the oldest-stable (GA) OpenSSL; no-op elsewhere.
+      - name: Pin EL build repos to frozen vault
+        run: bash .github/bin/pin_build_repos.sh "${{ matrix.distro }}"
+
       - name: Install build dependencies
         env:
           ENV_DISTRO: ${{ matrix.distro }}
@@ -227,6 +231,11 @@ jobs:
           set -euo pipefail
           source .github/bin/build_package.sh
           build_packages
+
+      # Direct backstop for the symbol-floor regression: fail here if the EL9/EL10 build
+      # floated past the pinned GA OpenSSL, rather than at a customer's RHEL. No-op elsewhere.
+      - name: Assert OpenSSL symbol floor
+        run: bash .github/bin/assert_openssl_floor.sh "${{ matrix.distro }}"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
@@ -632,10 +641,10 @@ jobs:
               ;;
             el*|amzn*)
               command -v dnf >/dev/null || yum install -y dnf
-              # install_deps_* runs `dnf -y update` before linking RPMs; without the same
-              # here, OpenSSL in a cold UBI/AL image can be older than libcrypto symbol
-              # versions the binaries were built against (e.g. OPENSSL_3.4.0).
-              dnf -y update
+              # No `dnf -y update` here. This step runs before checkout against the default
+              # UBI repos, so this install may float openssl-libs forward; the later "Pin EL
+              # build repos" step then distro-syncs it back to the GA OpenSSL real customers
+              # have. Adding an update would refloat it and mask a symbol-floor regression.
               dnf -y install findutils git ca-certificates tar gzip
               ;;
           esac
@@ -645,6 +654,10 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 1
+
+      # EL9/EL10: install/run against the same GA OpenSSL the build used; no-op elsewhere.
+      - name: Pin EL build repos to frozen vault
+        run: bash .github/bin/pin_build_repos.sh "${{ matrix.distro }}"
 
       - name: Download signed artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
