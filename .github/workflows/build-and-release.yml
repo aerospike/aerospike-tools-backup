@@ -227,6 +227,11 @@ jobs:
           source .github/bin/build_package.sh
           build_packages
 
+      # Direct backstop for the symbol-floor regression: fail here if the EL9/EL10 build
+      # floated past the pinned GA OpenSSL, rather than at a customer's RHEL. No-op elsewhere.
+      - name: Assert OpenSSL symbol floor
+        run: bash .github/bin/assert_openssl_floor.sh "${{ matrix.distro }}"
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
@@ -631,8 +636,10 @@ jobs:
               ;;
             el*|amzn*)
               command -v dnf >/dev/null || yum install -y dnf
-              # No `dnf -y update`: the "Pin EL build repos" step makes this test run against
-              # the GA OpenSSL real customers have, so a refloated symbol floor would fail here.
+              # No `dnf -y update` here. This step runs before checkout against the default
+              # UBI repos, so this install may float openssl-libs forward; the later "Pin EL
+              # build repos" step then distro-syncs it back to the GA OpenSSL real customers
+              # have. Adding an update would refloat it and mask a symbol-floor regression.
               dnf -y install findutils git ca-certificates tar gzip
               ;;
           esac

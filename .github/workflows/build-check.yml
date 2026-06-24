@@ -111,6 +111,11 @@ jobs:
           source .github/bin/build_package.sh
           build_packages
 
+      # Per-commit backstop for the EL10 symbol-floor regression (the release workflow
+      # covers EL9 too); fails if the build floated past the pinned GA OpenSSL. No-op elsewhere.
+      - name: Assert OpenSSL symbol floor
+        run: bash .github/bin/assert_openssl_floor.sh "${{ matrix.distro }}"
+
       - name: Verify .${{ matrix.pkg }} produced
         run: |
           set -euo pipefail
