@@ -35,13 +35,28 @@ for repo in BaseOS AppStream CRB devel; do
   } >> /etc/yum.repos.d/rocky-vault.repo
 done
 
-# Pull OpenSSL back down to the snapshot in case an earlier "Install prereqs" step
-# floated it forward against the still-default UBI repos. This is the only thing that
-# re-establishes the GA floor in the test job, so let it fail loudly (no `2>/dev/null
-# || true`): a silently swallowed sync would leave a refloated OpenSSL in place and
-# turn the regression backstop green against the wrong libcrypto. The post-sync rpm -q
-# records the resolved version so the floor is visible in the job log.
-dnf -y distro-sync openssl openssl-libs
-rpm -q --qf 'pin_build_repos: synced %{NAME} to %{VERSION}-%{RELEASE}\n' openssl-libs
+# Pull OpenSSL down to the GA floor (3.2.x) only if an earlier step floated it past it.
+# A plain distro-sync would force a same-version reinstall even when nothing floated,
+# which on el10 fails on a file conflict: the vault's openssl-libs bundles fips.so, but
+# the ubi10 base splits it into openssl-fips-provider-so. Acting only on a real float
+# avoids that, and the post-check keeps the pin self-verifying: it fails loudly (no
+# `2>/dev/null || true`) rather than leaving a refloated OpenSSL the backstop can't see.
+floor_minor=2
+ver="$(rpm -q --qf '%{VERSION}' openssl-libs)"
+case "$ver" in
+  3.*) minor="${ver#3.}"; minor="${minor%%.*}" ;;
+  *)   echo "pin_build_repos: unexpected openssl-libs version '${ver}'" >&2; exit 1 ;;
+esac
+if [ "$minor" -gt "$floor_minor" ]; then
+  echo "pin_build_repos: openssl-libs ${ver} floated above 3.${floor_minor}; syncing down to the vault"
+  dnf -y distro-sync openssl openssl-libs
+  ver="$(rpm -q --qf '%{VERSION}' openssl-libs)"
+  minor="${ver#3.}"; minor="${minor%%.*}"
+fi
+if [ "$minor" -gt "$floor_minor" ]; then
+  echo "pin_build_repos: openssl-libs still ${ver}, above the 3.${floor_minor} floor" >&2
+  exit 1
+fi
+echo "pin_build_repos: openssl-libs at ${ver} (within the 3.${floor_minor} floor)"
 
 echo "pin_build_repos: ${distro} pinned to Rocky vault ${rel} (${arch})"
