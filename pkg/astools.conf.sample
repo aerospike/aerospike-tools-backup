@@ -22,7 +22,7 @@
 #------------------------------------------------------------------------------
 #
 [cluster]
-# host = "localhost:3000"                     # host = "<host>[:<tls-name>][:<port>][,...]"
+# host = "localhost:cluster_a:3000"                     # host = "<host>[:<tls-name>][:<port>][,...]"
 # user = ""
 # password = ""
 
@@ -33,8 +33,6 @@
 #
 # tls-enable = false                  # true enables tls, if false all other tls
                                       # config are ignored
-# tls-name = ""                       # the tls substanza defined in your 
-                                      # aerospike.conf
 # tls-protocols = "TLSv1.2"
 # tls-cipher-suite = "ALL:!COMPLEMENTOFDEFAULT:!eNULL"
 # tls-crl-check = true
@@ -58,6 +56,7 @@
 # tls-capath = "/etc/aerospike/x509_certificates/Platinum"
 #
 # tls-certfile = "/etc/aerospike/x509_certificates/multi_chain.pem"
+# tls-cert-blacklist = "/etc/aerospike/x509_certificates/blacklist.txt"
 
 [cluster_secure]
 # host = "localhost:cluster_a:3000"
@@ -67,13 +66,13 @@
 [cluster_tls]
 # host = "localhost:cluster_a:3000"
 # tls-enable = true
-# tls-name = "aerospike-tls"
-# tls-protocols = "TLSv1.2"
+# tls-protocols = "-all +TLSv1.2"
 # tls-cipher-suite = "ALL:!COMPLEMENTOFDEFAULT:!eNULL"
 # tls-crl-check = true
 # tls-crl-check-all = true
 # tls-keyfile = "/etc/aerospike/x509_certificates/MultiServer/key.pem"
 # tls-cafile = "/etc/aerospike/x509_certificates/Platinum/cacert.pem"
+# tls-keyfile-password = "file:/etc/aerospike/x509_certificates/MultiServer/keypwd.txt"
 # tls-capath = "/etc/aerospike/x509_certificates/Platinum"
 # tls-certfile = "/etc/aerospike/x509_certificates/multi_chain.pem"
 # tls-cert-blacklist = "/etc/aerospike/x509_certificates/blacklist.txt"
@@ -81,48 +80,104 @@
 
 # Following are tools specific options
 #
-# Optionally corresponding to a named instance in cluster section asbackup can also
-# have instance a specific config
+# Optionally corresponding to named instance in cluster section aql can also
+# have instance specific config
 #
 #------------------------------------------------------------------------------
-# asbackup specific options
-# this is not be a complete list of available options
-# see asbackup --help for descriptions and all avaliable options
-# some of these options are mutually exclusive
+# asql specific options
 #------------------------------------------------------------------------------
+[aql]
+# threadpoolsize = 3                # Client internal threadpool size, increase
+                                    # if connecting to large size cluster
+# outputmode = "table"              # Can be one of the json/table/raw/mute
+# outputtypes = true                # Prints the bin type (map/list/sorted map)
+# timeout = 1000                    # in ms for all request
+# socket-timeout = 1000             # in ms for all request
+# udfuser = "/opt/aerospike/usr"
+# udfsys  = "/opt/aerospike/sys"
 
+[aql_secure]
+# timeout = 5000
+
+
+#------------------------------------------------------------------------------
+# asadm specific options
+#------------------------------------------------------------------------------
+[asadm]
+# services-alumni = true
+# services-alternate = false
+# timeout = 5
+
+[asadm_secure]
+# services-alternate = true
+# timeout = 1000
+
+
+#------------------------------------------------------------------------------
+# asbackup specific options
+#------------------------------------------------------------------------------
 [asbackup]
-# remove-files = false
-# continue = "example.asb.state"
-# state-file-dst = "example.asb.state"
-# output-file = "example_backup.asb"
-# output-file-prefix = "backup_prefix"
-# compact = false
-# file-limit = 256
-# partition-list = "0-4096"
-# after-digest = "EjRWeJq83vEjRRI0VniavN7xI0U="
-# max-records = 1000
-# records-per-second = 1000
+
+# estimate = true
+
+# directory = "./test_backup"
+# output-file = "test_backup"
+# machine = "run.out"
+
+
+#------------- Data Options ------------------------
+# namespace = "test"
+# set = "demo"
+# bin_list = "bin1,bin2"
+# node-list = ""
+# percent = 100
+
+#-----------Performance and throttling--------------
+# file-limit = 1
+# priority = 2
+# records-per-second = 10000
+# parallel = 4
+# bandwidth = 1
+# compact = true
+
+
+#----------- Meta data options ---------------------
+# no-records = false
+# no-udfs = false
+
+# no-cluster-change = true
 
 #------------------------------------------------------------------------------
 # asrestore specific options
-# this is not be a complete list of available options
-# see asrestore --help for descriptions and all avaliable options
-# some of these options are mutually exclusive
 #------------------------------------------------------------------------------
-
 [asrestore]
-# indexes-last = false
+
+# directory = "./test_backup"
+# input-file = "test_backup"
+# machine = "run.out"
+
+#------------- Data Options ------------------------
+# namespace = "test"
+# bin-list = "bin1,bin2"
+# set-list = "demo"
+
+#----- Mutually exclusive record update options-----
+# unique = true
+# replace = true
+# no-generation = true
+
+
+#----------- Meta data options ---------------------
 # no-udfs = false
+# no-indexes = false
+# no-records = false
+# indexes-last = false
 # wait = false
-# input-file = "example_backup.asb"
-# unique = false
-# replace = false
-# ignore-record-error = false
-# no-generation = false
-# extra-ttl = 10
-# nice = "1024,100"
-# directory-list = "/path/to/backup/dir,/path/to/another/backup/dir"
+
+#-----------Performance and throttling--------------
+# nice-list = "1,10000"
+# threads = 32
+
 
 
 #------------------------------------------------------------------------------

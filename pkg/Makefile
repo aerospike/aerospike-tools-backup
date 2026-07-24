@@ -4,6 +4,8 @@ TOP_DIR = $(PKG_DIR)/../bin
 BUILD_DIR = $(PKG_DIR)/build
 TARGET_DIR = $(PKG_DIR)/target
 CONFIG_DIR = /etc/aerospike
+DOC_DIR = /opt/aerospike/doc/$(PACKAGE_NAME)
+MAC_DOC_DIR = /usr/local/aerospike/doc/$(PACKAGE_NAME)
 # Package variables
 PACKAGE_NAME = asbackup
 VERSION ?= $(shell git describe --tags --always --abbrev=9)
@@ -47,6 +49,8 @@ deb: prep
 		--license $(LICENSE) \
 		--url $(URL) \
 		--vendor $(VENDOR) \
+		--after-install $(PKG_DIR)/postinst.sh \
+		--after-upgrade $(PKG_DIR)/postinst.sh \
 		--package $(TARGET_DIR)/$(NAME)_$(VERSION)_$(BUILD_DISTRO)_$(ARCH).deb
 
 .PHONY: rpm
@@ -68,6 +72,8 @@ rpm: prep
 		--license $(LICENSE) \
 		--url $(URL) \
 		--vendor $(VENDOR) \
+		--after-install $(PKG_DIR)/postinst.sh \
+		--after-upgrade $(PKG_DIR)/postinst.sh \
 		--package $(TARGET_DIR)/$(NAME)-$(RPM_VERSION).$(BUILD_DISTRO).$(ARCH).rpm
 
 .PHONY: tar
@@ -96,6 +102,8 @@ prep:
 	install -d $(BUILD_DIR)/usr/bin
 	ln -sf /opt/aerospike/bin/asbackup $(BUILD_DIR)/usr/bin/asbackup
 	ln -sf /opt/aerospike/bin/asrestore $(BUILD_DIR)/usr/bin/asrestore
+	install -d $(BUILD_DIR)$(DOC_DIR)
+	install -pm 644 $(PKG_DIR)/astools.conf.sample $(BUILD_DIR)$(DOC_DIR)/astools.conf.sample
 
 # Staging for macOS installer: install to /usr/local/aerospike/bin with symlinks at /usr/local/bin.
 .PHONY: prep-mac
@@ -108,6 +116,8 @@ prep-mac:
 	install -pm 755 $(TOP_DIR)/asrestore $(MAC_ROOT)/usr/local/aerospike/bin/asrestore
 	ln -sf ../aerospike/bin/asbackup $(MAC_ROOT)/usr/local/bin/asbackup
 	ln -sf ../aerospike/bin/asrestore $(MAC_ROOT)/usr/local/bin/asrestore
+	install -d $(MAC_ROOT)$(MAC_DOC_DIR)
+	install -pm 644 $(PKG_DIR)/astools.conf.sample $(MAC_ROOT)$(MAC_DOC_DIR)/astools.conf.sample
 
 .PHONY: osx-pkg
 osx-pkg: prep-mac
@@ -116,6 +126,7 @@ osx-pkg: prep-mac
 		--identifier $(PKG_ID) \
 		--version $(MAC_VERSION) \
 		--install-location / \
+		--scripts $(PKG_DIR)/mac-scripts \
 		$(MAC_PKG)
 
 .PHONY: clean
