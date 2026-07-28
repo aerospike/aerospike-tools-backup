@@ -33,6 +33,13 @@ function build_packages(){
     make EVENT_LIB=libuv ZSTD_STATIC_PATH=/usr/lib/$ARCH-linux-gnu AWS_SDK_STATIC_PATH=/usr/local/lib CURL_STATIC_PATH=/usr/local/lib OPENSSL_STATIC_PATH=/usr/lib/$ARCH-linux-gnu AWS_SDK_STATIC_PATH=/usr/local/lib JANSSON_STATIC_PATH=/usr/lib/$ARCH-linux-gnu LIBUV_STATIC_PATH=/usr/local/lib
   fi
 
+  for bin in asbackup asrestore; do
+    if ldd "bin/$bin" | grep libuv; then
+      echo "$bin dynamically links libuv; packages must ship a static-libuv binary" >&2
+      return 1
+    fi
+  done
+
   cd $PKG_DIR
   echo "building package for $BUILD_DISTRO"
 

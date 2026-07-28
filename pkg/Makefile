@@ -43,7 +43,6 @@ deb: prep
 		--name $(NAME) \
 		--version $(VERSION) \
 		--maintainer $(MAINTAINER) \
-		--depends "libuv1" \
 		$(DEB_EXTRA_DEPENDS) \
 		--description $(DESCRIPTION) \
 		--license $(LICENSE) \
@@ -66,7 +65,6 @@ rpm: prep
 		--name $(NAME) \
 		--version $(RPM_VERSION) \
 		--maintainer $(MAINTAINER) \
-		--depends "libuv" \
 		--depends "openssl" \
 		--description $(DESCRIPTION) \
 		--license $(LICENSE) \
