@@ -65,7 +65,7 @@ rpm: prep
 		--name $(NAME) \
 		--version $(RPM_VERSION) \
 		--maintainer $(MAINTAINER) \
-		--depends "openssl" \
+		--depends "openssl-libs" \
 		--description $(DESCRIPTION) \
 		--license $(LICENSE) \
 		--url $(URL) \
