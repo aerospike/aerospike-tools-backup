@@ -5,6 +5,6 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<PackageReference Include="Aerospike.Client" Version="3.4.4"/>
+		<PackageReference Include="Aerospike.Client" Version="5.4.1"/>
 	</ItemGroup>
 </Project>
