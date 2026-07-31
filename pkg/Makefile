@@ -10,8 +10,10 @@ MAC_DOC_DIR = /usr/local/aerospike/doc/$(PACKAGE_NAME)
 PACKAGE_NAME = asbackup
 VERSION ?= $(shell git describe --tags --always --abbrev=9)
 RPM_VERSION := $(subst -,_,$(VERSION))
-# rpm Release / deb revision: the "-1" after the version in package names.
+# rpm Release / deb revision. The deb revision embeds the distro per Debian
+# convention (e.g. 5.0.3-1debian12), like the rpm dist tag.
 ITERATION ?= 1
+DEB_ITERATION = $(ITERATION)$(BUILD_DISTRO)
 BUILD_DISTRO ?= $(shell $(PKG_DIR)/../.github/bin/os_version.sh)
 # ubuntu26.04 only (BUILD_DISTRO substring match): binaries link libjitterentropy; declare runtime dep.
 DEB_EXTRA_DEPENDS :=
@@ -44,7 +46,7 @@ deb: prep
 		--chdir $(BUILD_DIR)/ \
 		--name $(NAME) \
 		--version $(VERSION) \
-		--iteration $(ITERATION) \
+		--iteration $(DEB_ITERATION) \
 		--maintainer $(MAINTAINER) \
 		$(DEB_EXTRA_DEPENDS) \
 		--description $(DESCRIPTION) \
@@ -53,7 +55,7 @@ deb: prep
 		--vendor $(VENDOR) \
 		--after-install $(PKG_DIR)/postinst.sh \
 		--after-upgrade $(PKG_DIR)/postinst.sh \
-		--package $(TARGET_DIR)/$(NAME)_$(VERSION)-$(ITERATION)_$(BUILD_DISTRO)_$(ARCH).deb
+		--package $(TARGET_DIR)/$(NAME)_$(VERSION)-$(DEB_ITERATION)_$(ARCH).deb
 
 .PHONY: rpm
 rpm: prep
