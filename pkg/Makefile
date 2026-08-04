@@ -37,6 +37,10 @@ MAC_PKG = $(TARGET_DIR)/aerospike-asbackup-$(MAC_VERSION)-$(ARCH).pkg
 .PHONY: all
 all: deb rpm tar
 
+# The aerospike-tools bundle ships these same /opt/aerospike/bin paths. deb
+# Replaces (without Conflicts) lets dpkg hand file ownership to this package;
+# rpm has no equivalent, so Conflicts turns an opaque file-conflict error into
+# an actionable one.
 .PHONY: deb
 deb: prep
 	fpm --force \
@@ -55,6 +59,7 @@ deb: prep
 		--vendor $(VENDOR) \
 		--after-install $(PKG_DIR)/postinst.sh \
 		--after-upgrade $(PKG_DIR)/postinst.sh \
+		--replaces "aerospike-tools" \
 		--package $(TARGET_DIR)/$(NAME)_$(VERSION)-$(DEB_ITERATION)_$(ARCH).deb
 
 .PHONY: rpm
@@ -78,6 +83,7 @@ rpm: prep
 		--vendor $(VENDOR) \
 		--after-install $(PKG_DIR)/postinst.sh \
 		--after-upgrade $(PKG_DIR)/postinst.sh \
+		--conflicts "aerospike-tools" \
 		--package $(TARGET_DIR)/$(NAME)-$(RPM_VERSION)-$(ITERATION).$(BUILD_DISTRO).$(ARCH).rpm
 
 .PHONY: tar
