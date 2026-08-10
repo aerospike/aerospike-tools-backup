@@ -47,6 +47,8 @@ static void _batch_complete_cb(batch_status_t*, void* restore_status_ptr);
 static bool set_resource_limit(const restore_config_t*, uint32_t batch_size,
 		bool batch_writes_enabled);
 static void add_default_tls_host(as_config *as_conf, const char* tls_name);
+static uint32_t get_max_conns_per_node(uint32_t max_async_batches, uint32_t batch_size, bool batch_writes_enabled);
+static void _init_event_policy(as_policy_event *policy, uint32_t async_max_conns_per_node, const restore_config_t* conf);
 
 
 //==========================================================
@@ -157,9 +159,12 @@ restore_status_init(restore_status_t* status, const restore_config_t* conf)
 	info_as = (aerospike*) cf_malloc(sizeof(aerospike));
 	aerospike_init(info_as, &info_as_conf);
 
+	as_policy_event policy_event;
+	_init_event_policy(&policy_event, info_as_conf.async_max_conns_per_node, conf);
+
 #if AS_EVENT_LIB_DEFINED
-	if (!as_event_create_loops(conf->event_loops)) {
-		err("Failed to create %d event loop(s)", conf->event_loops);
+	if (as_create_event_loops(&ae, &policy_event, conf->event_loops, NULL) != AEROSPIKE_OK) {
+		err("Failed to create %d event loop(s) err: %s", conf->event_loops, ae.message);
 		goto cleanup3;
 	}
 #else
@@ -220,12 +225,11 @@ restore_status_init(restore_status_t* status, const restore_config_t* conf)
 		goto cleanup5;
 	}
 
-	if (status->batch_writes_enabled) {
-		as_conf.async_max_conns_per_node = conf->max_async_batches;
-	}
-	else {
-		as_conf.async_max_conns_per_node = conf->max_async_batches * status->batch_size;
-	}
+	as_conf.async_max_conns_per_node = get_max_conns_per_node(
+		conf->max_async_batches,
+		conf->batch_size,
+		status->batch_writes_enabled
+	);
 
 	aerospike_close(info_as, &ae);
 	aerospike_destroy(info_as);
@@ -403,8 +407,11 @@ _init_as_config(as_config* as_conf, const restore_config_t* conf,
 		const as_config* prior_as_conf)
 {
 	as_config_init(as_conf);
+	as_conf->async_min_conns_per_node = conf->async_min_conns_per_node;
 	as_conf->conn_timeout_ms = conf->timeout;
 	as_conf->use_services_alternate = conf->use_services_alternate;
+	as_conf->error_rate_window = conf->error_rate_window;
+	as_conf->max_error_rate = conf->max_error_rate;
 	tls_config_clone(&as_conf->tls, &conf->tls);
 
 	if (!as_config_add_hosts(as_conf, conf->host, (uint16_t) conf->port)) {
@@ -542,5 +549,53 @@ add_default_tls_host(as_config *as_conf, const char* tls_name)
 			host->tls_name = strdup(tls_name);
 		}
 	}
+}
+
+/*
+ * Returns the maximum number of connections per node.
+ *
+ * @param conf                  The restore configuration.
+ * @param batch_writes_enabled  Indicates if batch writes are enabled.
+ *
+ * @return The maximum number of connections per node.
+ */
+static uint32_t
+get_max_conns_per_node(uint32_t max_async_batches, uint32_t batch_size, bool batch_writes_enabled)
+{
+	if (batch_writes_enabled) {
+		return max_async_batches;
+	}
+	else {
+		return max_async_batches * batch_size;
+	}
+}
+
+/*
+ * Initializes the event policy.
+ *
+ * @param policy  The event policy to initialize.
+ * @param conf    The restore configuration.
+ */
+static void
+_init_event_policy(as_policy_event *policy, uint32_t async_max_conns_per_node, const restore_config_t* conf)
+{
+	as_policy_event_init(policy);
+
+	uint32_t default_max_commands_in_process = async_max_conns_per_node / conf->event_loops;
+	policy->max_commands_in_process = (int) default_max_commands_in_process;
+
+	if (conf->max_commands_in_process > 0) {
+		if (conf->max_commands_in_process < default_max_commands_in_process) {
+			inf("Warning: max-commands-in-process must be greater than or equal to async-max-conns-per-node / event-loops (%d). "
+			"Setting max-commands-in-process to %d",
+			default_max_commands_in_process, default_max_commands_in_process);
+
+			policy->max_commands_in_process = (int) default_max_commands_in_process;
+		} else {
+			policy->max_commands_in_process = (int) conf->max_commands_in_process;
+		}
+	}
+
+	policy->max_commands_in_queue = conf->max_commands_in_queue ? conf->max_commands_in_queue : DEFAULT_MAX_COMMANDS_IN_QUEUE;
 }
 
