@@ -890,11 +890,18 @@ jobs:
 
           # The shared signer applies hardened runtime (`codesign --options
           # runtime`) with NO --entitlements, and exposes no input for them.
-          # This repo has no legacy mac signing path and ships no binary that
-          # needs an entitlement today, but one that ever did would die at exec
-          # rather than at sign time, so assert execution here, where the message
-          # names signing -- rather than later in the bats suite, where it reads
-          # as a test failure.
+          # asbackup and asrestore need none: every dynamic dependency is an
+          # Apple-signed system library -- libSystem, libz, libc++,
+          # CoreFoundation, Security, Network, SystemConfiguration -- which
+          # library validation always permits, and the rest is linked
+          # statically. Verified directly on both shipped arm64 binaries:
+          # re-signed `--options runtime` with no entitlements, they still run.
+          #
+          # The assertion stays because that is a linkage property, not a
+          # guarantee: adding one bundled third-party dylib would need
+          # disable-library-validation, and it would fail at exec, not at sign
+          # time. Caught here, the message names signing -- rather than later in
+          # the bats suite, where it reads as a test failure.
           for rel in asbackup asrestore; do
             b="/usr/local/aerospike/bin/${rel}"
             [[ -x "${b}" ]] || continue
