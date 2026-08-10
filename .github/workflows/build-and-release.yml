@@ -889,12 +889,12 @@ jobs:
           echo "==> installed files are root-owned and not group/world-writable"
 
           # The shared signer applies hardened runtime (`codesign --options
-          # runtime`) with NO --entitlements, and exposes no input for them. This
-          # repo's legacy mac path signed with disable-library-validation (and
-          # allow-unsigned-executable-memory for asadm's PyInstaller tree). A
-          # binary that needs those dies at exec under library validation, so
-          # assert execution here, where the message names signing -- rather than
-          # later in the bats suite, where it reads as a test failure.
+          # runtime`) with NO --entitlements, and exposes no input for them.
+          # This repo has no legacy mac signing path and ships no binary that
+          # needs an entitlement today, but one that ever did would die at exec
+          # rather than at sign time, so assert execution here, where the message
+          # names signing -- rather than later in the bats suite, where it reads
+          # as a test failure.
           for rel in asbackup asrestore; do
             b="/usr/local/aerospike/bin/${rel}"
             [[ -x "${b}" ]] || continue
@@ -906,11 +906,10 @@ jobs:
           echo "==> all entrypoints execute under hardened runtime"
 
           # Every embedded Mach-O must carry a signature. The outer pkg being
-          # signed says nothing about its contents, and the mac staging step
-          # strips foreign signatures (Apple-signed binaries bundled by
-          # PyInstaller) so the shared signer will re-sign them -- if signing
-          # ever silently skipped them again, an unsigned binary would ship and
-          # be killed outright on arm64.
+          # signed says nothing about its contents -- if the shared signer ever
+          # silently skips an embedded binary, the way the broken artifact-glob
+          # made it skip every pkg, an unsigned binary would ship and be killed
+          # outright on arm64.
           # `-perm +111` is any-exec-bit, and on macOS it is the ONLY spelling:
           # /usr/bin/find here is BSD find, whose `-perm` grammar is
           # `[-|+]mode`. GNU find's `/mode` is a hard error ("illegal mode
