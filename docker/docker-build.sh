@@ -377,8 +377,8 @@ function generate_bake() {
 #   LOCAL_PKGS_COPIED           (paths to clean up on EXIT)
 # ---------------------------------------------------------------------------
 function resolve_packages() {
-  local pkg_amd64="aerospike-asbackup_${VERSION}-1ubuntu24.04_x86_64.deb"
-  local pkg_arm64="aerospike-asbackup_${VERSION}-1ubuntu24.04_aarch64.deb"
+  local pkg_amd64="aerospike-asbackup_${PKG_VERSION}-${ITERATION}ubuntu24.04_x86_64.deb"
+  local pkg_arm64="aerospike-asbackup_${PKG_VERSION}-${ITERATION}ubuntu24.04_aarch64.deb"
   local pool="${DEB_BASE_URL}/pool/${UBUNTU_CODENAME}/aerospike-asbackup"
 
   ASBACKUP_AMD64_URL="${pool}/${pkg_amd64}"
@@ -386,6 +386,7 @@ function resolve_packages() {
 
   log_info "=== Resolving packages ==="
   log_info "  Version:      ${VERSION}"
+  log_info "  Package:      ${PKG_VERSION} iteration ${ITERATION}"
   log_info "  DEB base URL: ${DEB_BASE_URL}"
   [[ -n "${PACKAGES_DIR}" ]] && log_info "  Packages dir: ${PACKAGES_DIR}"
 
@@ -457,6 +458,8 @@ function _cleanup_local_pkgs() {
 
 # Script-level state
 VERSION=""
+PKG_VERSION=""
+ITERATION=""
 TIMESTAMP="$(date -u +%Y%m%d%H%M%S)"
 REGISTRY_PREFIXES=()
 ACTIVE_ARCHES=()
@@ -513,6 +516,18 @@ function main() {
     usage
     exit 1
   fi
+
+  # The .deb name carries the PACKAGE version and iteration, not VERSION: rcN is
+  # folded into the iteration by pkg/Makefile (<version>-rc2 -> <version>-2ubuntu24.04),
+  # so deriving the name from VERSION here would look for a file that is never
+  # built. Same source of truth as the Makefile.
+  local pkg_release_sh="${SCRIPT_DIR}/../.github/bin/pkg_release.sh"
+  if [[ ! -x "${pkg_release_sh}" ]]; then
+    log_warn "missing ${pkg_release_sh}"
+    exit 1
+  fi
+  PKG_VERSION=$("${pkg_release_sh}" "${VERSION}" version)
+  ITERATION=$("${pkg_release_sh}" "${VERSION}" iteration)
 
   # Default registry
   if [[ ${#REGISTRY_PREFIXES[@]} -eq 0 ]]; then REGISTRY_PREFIXES=("aerospike"); fi
