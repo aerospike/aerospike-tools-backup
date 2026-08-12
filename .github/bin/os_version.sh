@@ -36,10 +36,25 @@ main() {
 	local distro_long=''
 	local distro_short=''
 
-	# Make sure this script is running on Linux
-	# The script is not designed to work on non-Linux
-	# operating systems.
 	kernel=$(uname -s | tr '[:upper:]' '[:lower:]')
+
+	# macOS: emit "macos<major>" from the product version (26.0 -> macos26).
+	# This is the single source of truth for the platform field of the .pkg file
+	# name (see MAC_PKG in pkg/Makefile). CI must call this script rather than
+	# re-deriving the token from a runner label, so the name a release publishes
+	# is the name a local `make -C pkg osx-pkg` produces. The pkg is built
+	# against the host SDK, so the host's major version is the oldest macOS the
+	# artifact is supported on -- what a consumer (Homebrew cask, download page)
+	# needs to select on.
+	if [ "$kernel" = 'darwin' ]
+	then
+		local mac_version=''
+		mac_version=$(sw_vers -productVersion)
+		echo "macos${mac_version%%.*}"
+		exit 0
+	fi
+
+	# Everything below is Linux-only.
 	if [ "$kernel" != 'linux' ]
 	then
 		error "$kernel is not supported."
