@@ -129,11 +129,16 @@ jobs:
             BRANCH_SLUG=$(printf '%s' "${GITHUB_REF_NAME}" | sed 's/[^A-Za-z0-9-]/-/g')
             # 9-char SHA matches `git describe --abbrev=9` elsewhere in the repo.
             SHORT_SHA="${GITHUB_SHA::9}"
-            if [[ "${BASE}" == *-* ]]; then
-              VERSION="${BASE}.${BRANCH_SLUG}.${SHORT_SHA}"
-            else
-              VERSION="${BASE}-${BRANCH_SLUG}.${SHORT_SHA}"
-            fi
+            # Always hyphen-join the branch qualifier, regardless of whether BASE
+            # already carries a pre-release suffix. Dot-joining onto an "-rcN"
+            # base put a bare '.' next to the version once rcN was folded into
+            # the package iteration (4.5.8-rc2.<branch>.<sha> packaged as
+            # 4.5.8.<branch>.<sha>-2, which reads like a fourth version
+            # component). Both forms are valid SemVer 2.0 pre-release
+            # identifiers; hyphen keeps one rule and matches aerospike-admin:
+            #   4.5.8      + main   -> 4.5.8-main.<sha>
+            #   4.5.8-rc2  + main   -> 4.5.8-rc2-main.<sha>   (was ...rc2.main...)
+            VERSION="${BASE}-${BRANCH_SLUG}.${SHORT_SHA}"
           fi
           echo "VERSION: ${VERSION}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
