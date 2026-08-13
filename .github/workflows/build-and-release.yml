@@ -566,7 +566,11 @@ jobs:
         # macos<major>-<arch> terms as the pkg it carries. Unique per matrix leg
         # (macos14-arm64, macos15-arm64, macos26-arm64, macos15-x86_64), which
         # is all the container name has to guarantee.
-        echo "PKG_PLATFORM=$(.github/bin/os_version.sh)-$(uname -m)" >> "$GITHUB_ENV"
+        # Assigned on its own line: a failing command substitution inside an
+        # argument does not trip `set -e`, which would name the artifact
+        # container "...--$(uname -m)" and let the leg pass.
+        plat=$(.github/bin/os_version.sh)
+        echo "PKG_PLATFORM=${plat}-$(uname -m)" >> "$GITHUB_ENV"
 
     - name: Upload build artifacts
       uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
@@ -798,7 +802,11 @@ jobs:
           # renamed GitHub runner label cannot silently match zero files -- and
           # this asserts the artifact really is built for the macOS/arch it
           # claims, which a runner-label match never did.
-          pat="*-$(.github/bin/os_version.sh)-$(uname -m).pkg"
+          # Assigned on its own line so `set -e` surfaces an os_version.sh
+          # failure here, rather than as a mystifying "0 files matched
+          # *--<arch>.pkg" below.
+          plat=$(.github/bin/os_version.sh)
+          pat="*-${plat}-$(uname -m).pkg"
           # One find, reused for the count, the error message and the result --
           # three separate walks could disagree with each other. (mapfile would
           # be the idiomatic reader, but the macOS runners ship bash 3.2, which
