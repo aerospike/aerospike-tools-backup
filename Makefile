@@ -34,6 +34,17 @@ PLATFORM := $(OS)-$(ARCH)
 # Default from git; CI sets VERSION/PKG_VERSION so TOOL_VERSION matches workflow SemVer before a tag exists.
 VERSION ?= $(shell git describe --tags --always --abbrev=9 2>/dev/null; if [ $${?} != 0 ]; then echo 'unknown'; fi)
 ROOT = $(CURDIR)
+# What the binary prints. "rcN" is a build detail: it lives in the package
+# iteration, not in the product version. A passing rc is promoted to GA with no
+# rebuild, so the binary that ships as 4.5.8 must not call itself 4.5.8-rc3 --
+# it is the same file either way. VERSION is untouched: it stays the git tag,
+# the release bundle version, and the input pkg/Makefile derives names from.
+TOOL_VERSION := $(shell $(CURDIR)/.github/bin/pkg_release.sh '$(VERSION)' version)
+# An unresolvable script path would leave this empty and embed a blank
+# version, which no test asserts on -- fail the build instead.
+ifeq ($(strip $(TOOL_VERSION)),)
+$(error could not derive TOOL_VERSION from VERSION='$(VERSION)' -- .github/bin/pkg_release.sh not found or failed)
+endif
 
 M1_HOME_BREW =
 ifeq ($(OS),Darwin)
@@ -90,12 +101,12 @@ CFLAGS += -std=gnu11 $(DWARF) -O2 -fno-common -fno-strict-aliasing \
 		-Wall -Wextra -Wconversion -Wsign-conversion -Wmissing-declarations \
 		-Wno-implicit-fallthrough -Wno-unused-result -Wno-typedef-redefinition \
 		-D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_FORTIFY_SOURCE=2 -DMARCH_$(ARCH) \
-		-DTOOL_VERSION=\"$(VERSION)\"
+		-DTOOL_VERSION=\"$(TOOL_VERSION)\"
 CXXFLAGS := -std=c++14 $(DWARF) -O2 -fno-common -fno-strict-aliasing \
 		-Wall -Wextra -Wconversion -Wsign-conversion -Wmissing-declarations \
 		-Wno-implicit-fallthrough -Wno-unused-result \
 		-D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_FORTIFY_SOURCE=2 -DMARCH_$(ARCH) \
-		-DTOOL_VERSION=\"$(VERSION)\"
+		-DTOOL_VERSION=\"$(TOOL_VERSION)\"
 
 
 LD := $(CC)
@@ -109,12 +120,12 @@ TEST_CFLAGS := -std=gnu11 $(DWARF) -g -O2 -fno-common -fno-strict-aliasing \
 		-Wall -Wextra -Wconversion -Wsign-conversion -Wmissing-declarations \
 		-Wno-implicit-fallthrough -Wno-unused-result -Wno-typedef-redefinition \
 		-D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_FORTIFY_SOURCE=2 -DMARCH_$(ARCH) \
-		-DTOOL_VERSION=\"$(VERSION)\"
+		-DTOOL_VERSION=\"$(TOOL_VERSION)\"
 TEST_CXXFLAGS := -std=c++14 $(DWARF) -g -O2 -fno-common -fno-strict-aliasing \
 		-Wall -Wextra -Wconversion -Wsign-conversion -Wmissing-declarations \
 		-Wno-implicit-fallthrough -Wno-unused-result \
 		-D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_FORTIFY_SOURCE=2 -DMARCH_$(ARCH) \
-		-DTOOL_VERSION=\"$(VERSION)\"
+		-DTOOL_VERSION=\"$(TOOL_VERSION)\"
 TEST_LDFLAGS := $(LDFLAGS) -fprofile-arcs -lcheck
 
 
