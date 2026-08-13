@@ -107,6 +107,9 @@ jobs:
       contents: read
     outputs:
       VERSION: ${{ steps.compute.outputs.version }}
+      PKG_VERSION: ${{ steps.release.outputs.PKG_VERSION }}
+      ITERATION: ${{ steps.release.outputs.ITERATION }}
+      RELEASE: ${{ steps.release.outputs.RELEASE }}
     steps:
       - name: Harden the runner (Audit all outbound calls)
         uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
@@ -142,6 +145,20 @@ jobs:
           fi
           echo "VERSION: ${VERSION}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      # Package file names and image tags never carry the "rcN" pre-release
+      # tag; rcN becomes the package iteration instead (rpm Release / deb
+      # revision), e.g. <version>-rc2 -> version <version>, iteration 2, and
+      # the release string <version>-2 for names with no iteration field of
+      # their own. A version with no rcN gets iteration 1.
+      # VERSION stays as-is: it is the git tag and what the binary reports.
+      - name: Derive package version and iteration
+        id: release
+        env:
+          VERSION: ${{ steps.compute.outputs.version }}
+        run: |
+          set -euo pipefail
+          .github/bin/pkg_release.sh "${VERSION}" all | tee -a "$GITHUB_OUTPUT"
 
   build-artifacts:
     needs: get-version
@@ -1105,9 +1122,12 @@ jobs:
       - name: Build (native) and smoke test
         env:
           VERSION: ${{ needs.get-version.outputs.VERSION }}
+          RELEASE: ${{ needs.get-version.outputs.RELEASE }}
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         run: |
           set -euo pipefail
+          # docker-build.sh folds any "rcN" in VERSION into the iteration, so
+          # the image tags carry RELEASE (e.g. <version>-2), never "rc2".
           docker/docker-build.sh -t \
             -v "${VERSION}" \
             -a ${{ matrix.arch }} \
@@ -1116,7 +1136,7 @@ jobs:
           # Reuse the linux-install bats smoke test against the loaded image
           # by shimming `asbackup` to `docker run` calls.
           sudo apt-get update -qq && sudo apt-get install -y bats
-          IMAGE="aerospike/aerospike-asbackup:${VERSION}-${{ matrix.arch }}"
+          IMAGE="aerospike/aerospike-asbackup:${RELEASE}-${{ matrix.arch }}"
           SHIM_DIR=$(mktemp -d)
           cat > "${SHIM_DIR}/asbackup" <<EOF
           #!/bin/sh
@@ -1212,11 +1232,14 @@ jobs:
       - name: Publish docker build-info
         env:
           VERSION: ${{ needs.get-version.outputs.VERSION }}
+          RELEASE: ${{ needs.get-version.outputs.RELEASE }}
           IMAGE: artifact.aerospike.io/database-docker-dev-local/aerospike-asbackup
           BUILD_NAME: aerospike-asbackup-docker
         run: |
           set -euo pipefail
-          for tag in "${VERSION}" "${VERSION}-amd64" "${VERSION}-arm64"; do
+          # Image tags use RELEASE; the build-info build number stays VERSION so
+          # it keeps matching the release bundle's jf-build-names.
+          for tag in "${RELEASE}" "${RELEASE}-amd64" "${RELEASE}-arm64"; do
             digest=$(docker buildx imagetools inspect "${IMAGE}:${tag}" --format '{{json .Manifest}}' | jq -r '.digest')
             [[ -n "${digest}" && "${digest}" != "null" ]] \
               || { echo "::error::no digest for ${IMAGE}:${tag}" >&2; exit 1; }
