@@ -32,6 +32,7 @@ UBUNTU_CODENAME="noble"
 log_info()    { printf '\e[36m[INFO]\e[0m  %s\n' "$*" >&2; }
 log_success() { printf '\e[32m[OK]\e[0m    %s\n' "$*" >&2; }
 log_warn()    { printf '\e[33m[WARN]\e[0m  %s\n' "$*" >&2; }
+log_error()   { printf '\e[31m[ERROR]\e[0m %s\n' "$*" >&2; }
 
 # ---------------------------------------------------------------------------
 # Usage
@@ -471,6 +472,7 @@ function _cleanup_local_pkgs() {
 VERSION=""
 PKG_VERSION=""
 ITERATION=""
+ITERATION_SET=false
 IMAGE_TAG=""
 TIMESTAMP="$(date -u +%Y%m%d%H%M%S)"
 REGISTRY_PREFIXES=()
@@ -503,7 +505,12 @@ function main() {
     -p) mode="push" ; shift ;;
     -M | --manifest) mode="manifest" ; shift ;;
     -v | --version)       VERSION="$2"             ; shift 2 ;;
-    -i | --iteration)     ITERATION="$2"           ; shift 2 ;;
+    -i | --iteration)
+      if [[ ! "$2" =~ ^[0-9]+$ ]]; then
+        log_error "--iteration must be a non-negative integer, got '$2'"
+        exit 1
+      fi
+      ITERATION="$2"; ITERATION_SET=true; shift 2 ;;
     -r | --registry)      REGISTRY_PREFIXES+=("$2") ; shift 2 ;;
     -a | --arch)          arch_filters+=("$2")     ; shift 2 ;;
     -u | --packages-url)  pkg_url="$2"             ; shift 2 ;;
@@ -538,12 +545,21 @@ function main() {
   # the Makefile, and the same tag scheme as aerospike-admin.
   local pkg_release_sh="${SCRIPT_DIR}/../.github/bin/pkg_release.sh"
   if [[ ! -x "${pkg_release_sh}" ]]; then
-    log_warn "missing ${pkg_release_sh}"
+    log_error "missing ${pkg_release_sh}"
     exit 1
   fi
   PKG_VERSION=$("${pkg_release_sh}" "${VERSION}" version)
-  # Only derive when -i did not already set it.
-  if [[ -z "${ITERATION}" ]]; then
+  # PKG_VERSION and ITERATION are interpolated unescaped into docker-bake.hcl,
+  # into image tags and into a file path, so constrain them to the Debian
+  # upstream-version character class before they reach any of those sinks.
+  if [[ ! "${PKG_VERSION}" =~ ^[A-Za-z0-9][A-Za-z0-9.+~-]*$ ]]; then
+    log_error "invalid version '${VERSION}' (package version '${PKG_VERSION}')"
+    exit 1
+  fi
+  # Only derive when -i did not already set it. Keyed on an explicit sentinel:
+  # "" is both the initial value and a value -i could supply, so emptiness
+  # cannot distinguish "not supplied" from "supplied empty".
+  if [[ "${ITERATION_SET}" != true ]]; then
     ITERATION=$("${pkg_release_sh}" "${VERSION}" iteration)
   fi
   IMAGE_TAG="${PKG_VERSION}-${ITERATION}"
