@@ -37,7 +37,7 @@ ARCH = $(shell uname -m)
 # (4.5.8-1 -> 4.5.8.1), and defensively normalize any underscore-form
 # inputs (env overrides) too. This is the version *inside* the pkg only;
 # the file name below keeps the canonical hyphenated RELEASE.
-MAC_VERSION = $(subst _,.,$(subst -,.,$(RELEASE)))
+MAC_VERSION := $(subst _,.,$(subst -,.,$(RELEASE)))
 MAC_ROOT = $(BUILD_DIR)/mac-root
 PKG_ID = com.aerospike.asbackup
 # macOS artifact file name:
@@ -122,8 +122,17 @@ tar: prep
 		--vendor $(VENDOR) \
 		--package $(TARGET_DIR)/$(NAME)-$(RELEASE)-$(BUILD_DISTRO)-$(ARCH).tar
 
+# $(shell ...) discards the exit status, so a pkg_release.sh that cannot run
+# (missing, non-executable, empty VERSION) yields empty strings and the build
+# would silently emit aerospike-asbackup_-1ubuntu24.04_x86_64.deb rather than
+# fail. Guard the version tokens the way prep-mac already guards the platform.
+.PHONY: check-version
+check-version:
+	@test -n "$(PKG_VERSION)" || { echo "ERROR: empty PKG_VERSION -- $(PKG_RELEASE_SH) failed for VERSION='$(VERSION)'; refusing to build an unversioned package" >&2; exit 1; }
+	@test -n "$(ITERATION)" || { echo "ERROR: empty ITERATION -- $(PKG_RELEASE_SH) failed for VERSION='$(VERSION)'; refusing to build an unversioned package" >&2; exit 1; }
+
 .PHONY: prep
-prep:
+prep: check-version
 	install -d $(TARGET_DIR)
 	install -d $(BUILD_DIR)/$(CONFIG_DIR)
 	install -d $(BUILD_DIR)/opt/aerospike/bin
@@ -137,7 +146,7 @@ prep:
 
 # Staging for macOS installer: install to /usr/local/aerospike/bin with symlinks at /usr/local/bin.
 .PHONY: prep-mac
-prep-mac:
+prep-mac: check-version
 	@test -n "$(MAC_PLATFORM)" || { echo "ERROR: empty macOS platform token -- .github/bin/os_version.sh failed; refusing to build an unnamed pkg" >&2; exit 1; }
 	install -d $(TARGET_DIR)
 	rm -rf $(MAC_ROOT)
