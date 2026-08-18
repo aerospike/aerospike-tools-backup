@@ -50,6 +50,10 @@ main() {
 	then
 		local mac_version=''
 		mac_version=$(sw_vers -productVersion)
+		# Command substitution strips trailing newlines but not spaces, so a
+		# whitespace-only reply would survive the -z test below and emit the
+		# bare token "macos". Normalize first, as the Linux branch does.
+		mac_version=$(printf '%s' "$mac_version" | tr -d '[:space:]')
 		# This script has no `set -e`, so an sw_vers that fails or prints
 		# nothing would otherwise emit the bare token "macos" -- non-empty,
 		# so pkg/Makefile's prep-mac guard would wave it through and the
@@ -59,6 +63,15 @@ main() {
 			error "sw_vers -productVersion returned nothing."
 			exit 1
 		fi
+		# The token is load-bearing for the shipping .pkg name, so assert its
+		# shape rather than merely that it is non-empty.
+		case "$mac_version" in
+		[0-9]*) ;;
+		*)
+			error "sw_vers -productVersion returned '$mac_version'."
+			exit 1
+			;;
+		esac
 		echo "macos${mac_version%%.*}"
 		exit 0
 	fi
