@@ -28,10 +28,15 @@ if [[ -z "$version" ]]; then
 	exit 1
 fi
 
-pkg_version=$(printf '%s' "$version" | sed -E 's/^([0-9]+\.[0-9]+\.[0-9]+)-rc[0-9]+/\1/')
-iteration=$(printf '%s' "$version" | sed -nE 's/^[0-9]+\.[0-9]+\.[0-9]+-rc([0-9]+).*$/\1/p')
-# Base 10 so rc01 and rc1 cannot yield two differently named packages that
-# dpkg/rpm would then compare as equal.
+# The rcN identifier is folded only when it is complete -- terminated by end of
+# string or by the next '-'. Without the right anchor, "4.5.9-rc2extra" matched
+# the prefix and yielded the version "4.5.9extra", welding the remainder onto
+# the patch number.
+pkg_version=$(printf '%s' "$version" | sed -E 's/^([0-9]+\.[0-9]+\.[0-9]+)-rc[0-9]+(-|$)/\1\2/')
+iteration=$(printf '%s' "$version" | sed -nE 's/^[0-9]+\.[0-9]+\.[0-9]+-rc([0-9]+)(-.*)?$/\1/p')
+# Force base 10: bash reads a leading-zero literal as octal, so an "rc08" or
+# "rc09" tag would abort this script ("value too great for base") and "rc010"
+# would silently become iteration 8.
 iteration=$((10#${iteration:-1}))
 
 case "${2:-all}" in
