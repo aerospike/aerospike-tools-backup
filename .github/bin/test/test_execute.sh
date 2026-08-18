@@ -10,7 +10,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 expected="$(expected_version "$REPO_ROOT/VERSION")"
 
 for bin in asbackup asrestore; do
-	"$bin" --help
+	"$bin" --help >/dev/null
 	out="$("$bin" --version 2>&1)"
 	assert_version_output "$out" "$expected"
 	echo "$bin reports $(expected_version_lines "$expected" | tr '\n' ' ')(from $expected)"
