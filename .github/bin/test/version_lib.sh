@@ -16,10 +16,26 @@ expected_version() {
 		echo "no VERSION file at $version_file and no EXPECTED_VERSION set" >&2
 		return 1
 	fi
-	if [ -n "${EXPECTED_VERSION:-}" ] && [ -n "$file_version" ] &&
-		[ "${EXPECTED_VERSION%%-*}" != "${file_version%%-*}" ]; then
-		echo "EXPECTED_VERSION '$EXPECTED_VERSION' and VERSION file '$file_version' disagree" >&2
-		return 1
+	if [ -n "${EXPECTED_VERSION:-}" ] && [ -n "$file_version" ]; then
+		# Compare the whole identifier, not just MAJOR.MINOR.PATCH: the rcN is
+		# what becomes the package iteration, so a core-only check cannot tell
+		# rc9 from rc1. The one legitimate divergence is a dev build, where
+		# BUILD_VERSION swaps the file's rcN for the commit sha.
+		case "$EXPECTED_VERSION" in
+		"$file_version") ;;
+		"${file_version%%-*}"-rc*)
+			# Same core but a different rcN -- exactly the mismatch this
+			# check exists to catch, so it must not fall into the dev-build
+			# exemption below.
+			echo "EXPECTED_VERSION '$EXPECTED_VERSION' and VERSION file '$file_version' disagree" >&2
+			return 1
+			;;
+		"${file_version%%-*}"-*) ;;
+		*)
+			echo "EXPECTED_VERSION '$EXPECTED_VERSION' and VERSION file '$file_version' disagree" >&2
+			return 1
+			;;
+		esac
 	fi
 	printf '%s\n' "$expected"
 }
