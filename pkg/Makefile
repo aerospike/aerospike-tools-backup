@@ -10,8 +10,7 @@ MAC_DOC_DIR = /usr/local/aerospike/doc/$(PACKAGE_NAME)
 PACKAGE_NAME = asbackup
 VERSION ?= $(shell git describe --tags --always --abbrev=9)
 # Package names never carry the "rcN" pre-release tag: rcN becomes the package
-# iteration, so 4.5.8-rc2 packages as version 4.5.8 iteration 2. VERSION itself
-# is untouched -- it is the git tag and what asbackup --version reports.
+# iteration, so 4.5.9-rc2 packages as version 4.5.9 iteration 2.
 PKG_RELEASE_SH = $(PKG_DIR)/../.github/bin/pkg_release.sh
 PKG_VERSION := $(shell $(PKG_RELEASE_SH) '$(VERSION)' version)
 ITERATION ?= $(shell $(PKG_RELEASE_SH) '$(VERSION)' iteration)

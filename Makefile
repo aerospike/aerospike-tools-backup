@@ -34,17 +34,9 @@ PLATFORM := $(OS)-$(ARCH)
 # Default from git; CI sets VERSION/PKG_VERSION so TOOL_VERSION matches workflow SemVer before a tag exists.
 VERSION ?= $(shell git describe --tags --always --abbrev=9 2>/dev/null; if [ $${?} != 0 ]; then echo 'unknown'; fi)
 ROOT = $(CURDIR)
-# What the binary prints. "rcN" is a build detail: it lives in the package
-# iteration, not in the product version. A passing rc is promoted to GA with no
-# rebuild, so the binary that ships as 4.5.8 must not call itself 4.5.8-rc3 --
-# it is the same file either way. VERSION is untouched: it stays the git tag,
-# the release bundle version, and the input pkg/Makefile derives names from.
-TOOL_VERSION := $(shell $(CURDIR)/.github/bin/pkg_release.sh '$(VERSION)' version)
-# An unresolvable script path would leave this empty and embed a blank
-# version, which no test asserts on -- fail the build instead.
-ifeq ($(strip $(TOOL_VERSION)),)
-$(error could not derive TOOL_VERSION from VERSION='$(VERSION)' -- .github/bin/pkg_release.sh not found or failed)
-endif
+# Embedded whole: print_version() splits it, so 4.5.9-rc1 reports
+# "Version 4.5.9 / Build rc1".
+TOOL_VERSION := $(VERSION)
 
 M1_HOME_BREW =
 ifeq ($(OS),Darwin)
