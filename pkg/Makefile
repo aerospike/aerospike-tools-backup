@@ -47,11 +47,11 @@ PKG_ID = com.aerospike.asbackup
 #
 # Lower case and '-' separated so a Homebrew cask can interpolate it directly
 # (`arch arm: "arm64", intel: "x86_64"` + url ".../...-macos15-#{arch}.pkg").
-# <arch> is `uname -m` -- the tokens Homebrew's Hardware::CPU.arch emits, not
+# <arch> is `uname -m` -- the tokens a cask's `arch` stanza emits, not
 # runner.arch (ARM64 / X64: upper case, and "X64" is not a macOS arch).
-# macos<major> is the build host's macOS major version -- the oldest macOS the
-# artifact supports, and what keeps names unique when one version ships a pkg
-# per (macOS major, arch) pair. The version field is RELEASE (version +
+# macos<major> is the macOS generation the artifact was built on, not a minimum
+# it supports (nothing pins MACOSX_DEPLOYMENT_TARGET); it keeps names unique
+# when one version ships a pkg per (macOS major, arch) pair. The version field is RELEASE (version +
 # iteration), so an rc respin of the same version is a distinct file
 # (4.5.8-2 vs 4.5.8-3) and the name matches the deb/rpm/tar naming.
 # Captured once (`:=`), so prep-mac's guard below checks the very token that

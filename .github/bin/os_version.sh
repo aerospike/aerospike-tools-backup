@@ -42,10 +42,10 @@ main() {
 	# This is the single source of truth for the platform field of the .pkg file
 	# name (see MAC_PKG in pkg/Makefile). CI must call this script rather than
 	# re-deriving the token from a runner label, so the name a release publishes
-	# is the name a local `make -C pkg osx-pkg` produces. The pkg is built
-	# against the host SDK, so the host's major version is the oldest macOS the
-	# artifact is supported on -- what a consumer (Homebrew cask, download page)
-	# needs to select on.
+	# is the name a local `make -C pkg osx-pkg` produces. The token records the
+	# macOS generation the artifact was built on, not a minimum it supports:
+	# nothing pins MACOSX_DEPLOYMENT_TARGET. It is what keeps one release's
+	# per-runner artifacts distinct.
 	if [ "$kernel" = 'darwin' ]
 	then
 		local mac_version=''
