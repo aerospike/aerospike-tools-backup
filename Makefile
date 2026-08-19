@@ -31,12 +31,11 @@ endif
 OS := $(shell uname -s)
 ARCH := $(shell uname -m)
 PLATFORM := $(OS)-$(ARCH)
-# Default from git; CI sets VERSION/PKG_VERSION so TOOL_VERSION matches workflow SemVer before a tag exists.
-VERSION ?= $(shell git describe --tags --always --abbrev=9 2>/dev/null; if [ $${?} != 0 ]; then echo 'unknown'; fi)
-ROOT = $(CURDIR)
+# CI passes VERSION so the embedded version matches the packaged artifact.
 # Embedded whole: print_version() splits it, so 4.5.9-rc1 reports
 # "Version 4.5.9 / Build rc1".
-TOOL_VERSION := $(VERSION)
+VERSION ?= $(shell git describe --tags --always --abbrev=9 2>/dev/null; if [ $${?} != 0 ]; then echo 'unknown'; fi)
+ROOT = $(CURDIR)
 
 M1_HOME_BREW =
 ifeq ($(OS),Darwin)
@@ -93,12 +92,12 @@ CFLAGS += -std=gnu11 $(DWARF) -O2 -fno-common -fno-strict-aliasing \
 		-Wall -Wextra -Wconversion -Wsign-conversion -Wmissing-declarations \
 		-Wno-implicit-fallthrough -Wno-unused-result -Wno-typedef-redefinition \
 		-D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_FORTIFY_SOURCE=2 -DMARCH_$(ARCH) \
-		-DTOOL_VERSION=\"$(TOOL_VERSION)\"
+		-DTOOL_VERSION=\"$(VERSION)\"
 CXXFLAGS := -std=c++14 $(DWARF) -O2 -fno-common -fno-strict-aliasing \
 		-Wall -Wextra -Wconversion -Wsign-conversion -Wmissing-declarations \
 		-Wno-implicit-fallthrough -Wno-unused-result \
 		-D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_FORTIFY_SOURCE=2 -DMARCH_$(ARCH) \
-		-DTOOL_VERSION=\"$(TOOL_VERSION)\"
+		-DTOOL_VERSION=\"$(VERSION)\"
 
 
 LD := $(CC)
@@ -112,12 +111,12 @@ TEST_CFLAGS := -std=gnu11 $(DWARF) -g -O2 -fno-common -fno-strict-aliasing \
 		-Wall -Wextra -Wconversion -Wsign-conversion -Wmissing-declarations \
 		-Wno-implicit-fallthrough -Wno-unused-result -Wno-typedef-redefinition \
 		-D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_FORTIFY_SOURCE=2 -DMARCH_$(ARCH) \
-		-DTOOL_VERSION=\"$(TOOL_VERSION)\"
+		-DTOOL_VERSION=\"$(VERSION)\"
 TEST_CXXFLAGS := -std=c++14 $(DWARF) -g -O2 -fno-common -fno-strict-aliasing \
 		-Wall -Wextra -Wconversion -Wsign-conversion -Wmissing-declarations \
 		-Wno-implicit-fallthrough -Wno-unused-result \
 		-D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_FORTIFY_SOURCE=2 -DMARCH_$(ARCH) \
-		-DTOOL_VERSION=\"$(TOOL_VERSION)\"
+		-DTOOL_VERSION=\"$(VERSION)\"
 TEST_LDFLAGS := $(LDFLAGS) -fprofile-arcs -lcheck
 
 
