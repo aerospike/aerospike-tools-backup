@@ -43,13 +43,14 @@ PKG_ID = com.aerospike.asbackup
 # macOS artifact file name, lower case and '-' separated so a Homebrew cask can
 # interpolate it (<arch> is `uname -m`, the token a cask's `arch` stanza emits):
 #
-#     aerospike-asbackup-<version>-<iteration>-macos<major>-<arch>.pkg
+#     aerospike-asbackup-<version>-<iteration>-macos-<arch>.pkg
 #
-# macos<major> is the generation the artifact was BUILT on, not a minimum it
-# supports; it keeps one release's per-runner artifacts distinct. MAC_PLATFORM
-# is `:=` so check-version's guard tests the token that lands in the name.
-MAC_PLATFORM := $(shell $(PKG_DIR)/../.github/bin/os_version.sh)
-MAC_PKG = $(TARGET_DIR)/aerospike-asbackup-$(RELEASE)-$(MAC_PLATFORM)-$(ARCH).pkg
+# One pkg per architecture, not per macOS generation: macOS is forward
+# compatible, so the oldest-runner build serves every supported release.
+MAC_PKG = $(TARGET_DIR)/aerospike-asbackup-$(RELEASE)-macos-$(ARCH).pkg
+# Support floor, asserted by check_min_os.sh and passed to the compiles as
+# MACOSX_DEPLOYMENT_TARGET. Unpinned, clang would stamp the runner's own SDK.
+MACOS_MIN_VERSION = 14.0
 
 
 .PHONY: all
@@ -141,7 +142,8 @@ prep: check-version
 # Staging for macOS installer: install to /usr/local/aerospike/bin with symlinks at /usr/local/bin.
 .PHONY: prep-mac
 prep-mac: check-version
-	@test -n "$(MAC_PLATFORM)" || { echo "ERROR: empty macOS platform token -- .github/bin/os_version.sh failed; refusing to build an unnamed pkg" >&2; exit 1; }
+	@echo '$(ARCH)' | grep -qE '^(arm64|x86_64)$$' \
+		|| { echo "ERROR: architecture token is '$(ARCH)', not arm64 or x86_64 -- uname -m failed; refusing to build a misnamed pkg" >&2; exit 1; }
 	install -d $(TARGET_DIR)
 	rm -rf $(MAC_ROOT)
 	install -d $(MAC_ROOT)/usr/local/aerospike/bin
@@ -155,6 +157,7 @@ prep-mac: check-version
 
 .PHONY: osx-pkg
 osx-pkg: prep-mac
+	$(PKG_DIR)/../.github/bin/check_min_os.sh $(MACOS_MIN_VERSION) $(MAC_ROOT)
 	pkgbuild \
 		--root $(MAC_ROOT) \
 		--identifier $(PKG_ID) \

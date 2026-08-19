@@ -39,13 +39,9 @@ main() {
 	kernel=$(uname -s | tr '[:upper:]' '[:lower:]')
 
 	# macOS: emit "macos<major>" from the product version (26.0 -> macos26).
-	# This is the single source of truth for the platform field of the .pkg file
-	# name (see MAC_PKG in pkg/Makefile). CI must call this script rather than
-	# re-deriving the token from a runner label, so the name a release publishes
-	# is the name a local `make -C pkg osx-pkg` produces. The token records the
-	# macOS generation the artifact was built on, not a minimum it supports:
-	# nothing pins MACOSX_DEPLOYMENT_TARGET. It is what keeps one release's
-	# per-runner artifacts distinct.
+	# No longer part of any artifact name -- .pkg files are named per arch, not
+	# per macOS generation (see MAC_PKG in pkg/Makefile). Kept for callers that
+	# want the build host's generation.
 	if [ "$kernel" = 'darwin' ]
 	then
 		local mac_version=''
