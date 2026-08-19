@@ -1070,16 +1070,12 @@ print_version()
 	char* token = strtok(version_cpy, "-");
 	char* version = token;
 
-	token = strtok(NULL, "-");
-
-	while (token != NULL) {
-		token = strtok(NULL, "-");
-
-		if (token != NULL) {
-			build = token;
-		}
+	// Everything after the first "-" is build metadata; the last field
+	// identifies the build (rc1, the commit sha).
+	while ((token = strtok(NULL, "-")) != NULL) {
+		build = token;
 	}
-	
+
 	fprintf(stdout, "Aerospike Restore\n");
 	fprintf(stdout, "Version %s\n", version);
 

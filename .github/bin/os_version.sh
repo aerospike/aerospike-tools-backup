@@ -36,10 +36,43 @@ main() {
 	local distro_long=''
 	local distro_short=''
 
-	# Make sure this script is running on Linux
-	# The script is not designed to work on non-Linux
-	# operating systems.
 	kernel=$(uname -s | tr '[:upper:]' '[:lower:]')
+
+	# macOS: emit "macos<major>" from the product version (26.0 -> macos26).
+	# No longer part of any artifact name -- .pkg files are named per arch, not
+	# per macOS generation (see MAC_PKG in pkg/Makefile). Kept for callers that
+	# want the build host's generation.
+	if [ "$kernel" = 'darwin' ]
+	then
+		local mac_version=''
+		mac_version=$(sw_vers -productVersion)
+		# Command substitution strips trailing newlines but not spaces, so a
+		# whitespace-only reply would survive the -z test below and emit the
+		# bare token "macos". Normalize first, as the Linux branch does.
+		mac_version=$(printf '%s' "$mac_version" | tr -d '[:space:]')
+		# This script has no `set -e`, so an sw_vers that fails or prints
+		# nothing would otherwise emit the bare token "macos" -- non-empty,
+		# so pkg/Makefile's prep-mac guard would wave it through and the
+		# release would ship aerospike-<tool>-<version>-macos-<arch>.pkg.
+		if [ -z "$mac_version" ]
+		then
+			error "sw_vers -productVersion returned nothing."
+			exit 1
+		fi
+		# The token is load-bearing for the shipping .pkg name, so assert its
+		# shape rather than merely that it is non-empty.
+		case "$mac_version" in
+		[0-9]*) ;;
+		*)
+			error "sw_vers -productVersion returned '$mac_version'."
+			exit 1
+			;;
+		esac
+		echo "macos${mac_version%%.*}"
+		exit 0
+	fi
+
+	# Everything below is Linux-only.
 	if [ "$kernel" != 'linux' ]
 	then
 		error "$kernel is not supported."

@@ -31,7 +31,9 @@ endif
 OS := $(shell uname -s)
 ARCH := $(shell uname -m)
 PLATFORM := $(OS)-$(ARCH)
-# Default from git; CI sets VERSION/PKG_VERSION so TOOL_VERSION matches workflow SemVer before a tag exists.
+# CI passes VERSION so the embedded version matches the packaged artifact.
+# Embedded whole: print_version() splits it, so 4.5.9-rc1 reports
+# "Version 4.5.9 / Build rc1".
 VERSION ?= $(shell git describe --tags --always --abbrev=9 2>/dev/null; if [ $${?} != 0 ]; then echo 'unknown'; fi)
 ROOT = $(CURDIR)
 
