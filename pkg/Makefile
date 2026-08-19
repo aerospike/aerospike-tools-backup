@@ -37,14 +37,19 @@ MAC_PKG = $(TARGET_DIR)/aerospike-asbackup-$(MAC_VERSION)-$(ARCH).pkg
 .PHONY: all
 all: deb rpm tar
 
-# aerospike-tools older than TOOLS_SPLIT_VERSION is the monolithic bundle that
-# ships these same /opt/aerospike/bin paths. From TOOLS_SPLIT_VERSION on it is
-# a transitional metapackage that ships no binaries and Depends on this package
-# instead. Versioned Breaks + Replaces (deb) and Conflicts (rpm) are the
-# standard package-split handoff (Debian Policy 7.6.1); the metapackage itself
-# is never matched by them, so this never needs revisiting. Keep the value in
-# step with the cutover in citrusleaf/aerospike-tools and the other tool repos.
-TOOLS_SPLIT_VERSION = 13.0.3
+# The aerospike-tools bundle ships these same /opt/aerospike/bin paths, so
+# the two packages cannot coexist while it does. Two conflicts express that
+# without predicting the bundle's future: the versioned one covers every
+# bundle released before the bundle started declaring the virtual token (a
+# frozen fact about the past, never needs raising), and the token one covers
+# every future file-shipping bundle at any version (the bundle Provides it as
+# long as it ships binaries, and drops it if it ever stops, at which point
+# coexistence starts working with no change here). Installing either side
+# over the other refuses with a named, actionable conflict instead of a raw
+# file collision. Keep both values in step with citrusleaf/aerospike-tools
+# and the other standalone tool repos.
+TOOLS_PRE_TOKEN_BOUND = 13.0.3
+TOOLS_BUNDLE_TOKEN = aerospike-tools-binaries
 
 .PHONY: deb
 deb: prep
@@ -64,8 +69,8 @@ deb: prep
 		--vendor $(VENDOR) \
 		--after-install $(PKG_DIR)/postinst.sh \
 		--after-upgrade $(PKG_DIR)/postinst.sh \
-		--replaces "aerospike-tools (<< $(TOOLS_SPLIT_VERSION))" \
-		--deb-field "Breaks: aerospike-tools (<< $(TOOLS_SPLIT_VERSION))" \
+		--conflicts "aerospike-tools (<< $(TOOLS_PRE_TOKEN_BOUND))" \
+		--conflicts "$(TOOLS_BUNDLE_TOKEN)" \
 		--package $(TARGET_DIR)/$(NAME)_$(VERSION)-$(DEB_ITERATION)_$(ARCH).deb
 
 .PHONY: rpm
@@ -89,7 +94,8 @@ rpm: prep
 		--vendor $(VENDOR) \
 		--after-install $(PKG_DIR)/postinst.sh \
 		--after-upgrade $(PKG_DIR)/postinst.sh \
-		--conflicts "aerospike-tools < $(TOOLS_SPLIT_VERSION)" \
+		--conflicts "aerospike-tools < $(TOOLS_PRE_TOKEN_BOUND)" \
+		--conflicts "$(TOOLS_BUNDLE_TOKEN)" \
 		--package $(TARGET_DIR)/$(NAME)-$(RPM_VERSION)-$(ITERATION).$(BUILD_DISTRO).$(ARCH).rpm
 
 .PHONY: tar
