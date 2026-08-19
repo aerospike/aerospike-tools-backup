@@ -472,7 +472,6 @@ function _cleanup_local_pkgs() {
 VERSION=""
 PKG_VERSION=""
 ITERATION=""
-ITERATION_SET=false
 IMAGE_TAG=""
 TIMESTAMP="$(date -u +%Y%m%d%H%M%S)"
 REGISTRY_PREFIXES=()
@@ -506,11 +505,11 @@ function main() {
     -M | --manifest) mode="manifest" ; shift ;;
     -v | --version)       VERSION="$2"             ; shift 2 ;;
     -i | --iteration)
-      if [[ ! "$2" =~ ^[0-9]+$ ]]; then
-        log_error "--iteration must be a non-negative integer, got '$2'"
+      if [[ ! "${2:-}" =~ ^[1-9][0-9]*$ ]]; then
+        log_error "--iteration must be a positive integer with no leading zero, got '${2:-}'"
         exit 1
       fi
-      ITERATION="$2"; ITERATION_SET=true; shift 2 ;;
+      ITERATION="$2"; shift 2 ;;
     -r | --registry)      REGISTRY_PREFIXES+=("$2") ; shift 2 ;;
     -a | --arch)          arch_filters+=("$2")     ; shift 2 ;;
     -u | --packages-url)  pkg_url="$2"             ; shift 2 ;;
@@ -556,10 +555,7 @@ function main() {
     log_error "invalid version '${VERSION}' (package version '${PKG_VERSION}')"
     exit 1
   fi
-  # Only derive when -i did not already set it. Keyed on an explicit sentinel:
-  # "" is both the initial value and a value -i could supply, so emptiness
-  # cannot distinguish "not supplied" from "supplied empty".
-  if [[ "${ITERATION_SET}" != true ]]; then
+  if [[ -z "${ITERATION}" ]]; then
     ITERATION=$("${pkg_release_sh}" "${VERSION}" iteration)
   fi
   IMAGE_TAG="${PKG_VERSION}-${ITERATION}"
