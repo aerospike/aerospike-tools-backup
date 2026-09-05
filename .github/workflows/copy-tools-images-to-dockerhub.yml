@@ -25,6 +25,14 @@ on:
         type: boolean
         required: false
         default: true
+      alias-from:
+        description: Optional source tag to copy onto extra destination tags
+        required: false
+        default: ""
+      alias-tags:
+        description: Optional extra destination tags (comma-separated) based on alias-from
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -77,6 +85,8 @@ jobs:
           DEST_IMAGE: ${{ inputs.dest-image }}
           TAGS: ${{ inputs.tags }}
           DRY_RUN: ${{ inputs.dry-run }}
+          ALIAS_FROM: ${{ inputs.alias-from }}
+          ALIAS_TAGS: ${{ inputs.alias-tags }}
         run: |
           set -euo pipefail
 
@@ -155,6 +165,59 @@ jobs:
 
             echo "| \`${tag}\` | \`${src_digest}\` | \`${dest_digest}\` |" >> "$GITHUB_STEP_SUMMARY"
           done
+
+          alias_tags_array=()
+          IFS=',' read -ra raw_aliases <<< "${ALIAS_TAGS:-}"
+          for tag in "${raw_aliases[@]}"; do
+            tag="${tag#"${tag%%[![:space:]]*}"}"
+            tag="${tag%"${tag##*[![:space:]]}"}"
+            [ -z "$tag" ] && continue
+            alias_tags_array+=("$tag")
+          done
+
+          if [ "${#alias_tags_array[@]}" -gt 0 ]; then
+            alias_from="${ALIAS_FROM:-}"
+            alias_from="${alias_from#"${alias_from%%[![:space:]]*}"}"
+            alias_from="${alias_from%"${alias_from##*[![:space:]]}"}"
+            if [ -z "$alias_from" ]; then
+              echo "::error::alias-tags was set but alias-from is empty"
+              exit 1
+            fi
+
+            src="${SOURCE_IMAGE}:${alias_from}"
+            echo "::group::Inspect alias source ${src}"
+            docker buildx imagetools inspect "$src"
+            src_digest="$(inspect_digest "$src")"
+            if [ -z "$src_digest" ] || [ "$src_digest" = "null" ]; then
+              echo "::error::could not read digest for $src"
+              exit 1
+            fi
+            echo "source digest: $src_digest"
+            echo "::endgroup::"
+
+            for tag in "${alias_tags_array[@]}"; do
+              dest="${DEST_IMAGE}:${tag}"
+              dest_digest=""
+              if [ "$DRY_RUN" = "true" ]; then
+                echo "dry-run: skipping alias $src -> $dest"
+                dest_digest="(skipped)"
+              else
+                echo "::group::Copy alias ${src} -> ${dest}"
+                copy_tag "$src" "$dest"
+                dest_digest="$(inspect_digest "$dest")"
+                echo "destination digest: $dest_digest"
+                echo "::endgroup::"
+
+                if [ "$src_digest" != "$dest_digest" ]; then
+                  echo "::error::digest mismatch for alias ${tag}: source=${src_digest} dest=${dest_digest}"
+                  exit 1
+                fi
+                copied+=("${dest}@${dest_digest}")
+              fi
+
+              echo "| \`${tag}\` (from \`${alias_from}\`) | \`${src_digest}\` | \`${dest_digest}\` |" >> "$GITHUB_STEP_SUMMARY"
+            done
+          fi
 
           IFS=','
           echo "copied-tags=${copied[*]}" >> "$GITHUB_OUTPUT"
