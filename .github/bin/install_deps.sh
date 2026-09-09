@@ -66,41 +66,6 @@ function build_aws_sdk_cpp() {
   popd; popd
 }
 
-function install_deps_debian11() {
-  rm -rf /var/lib/apt/lists/*
-  apt-get clean
-  apt-get update -o Acquire::Retries=5
-  apt-get -y install $BUILD_DEPS_DEBIAN $FPM_DEPS_DEBIAN
-  gem install fpm -v 1.17.0
-}
-
-function compile_deps_debian11() {
-  pushd /opt
-
-  git clone https://github.com/libuv/libuv
-  pushd libuv
-  git checkout v1.43.0
-  sh autogen.sh
-  ./configure
-  make_parallel
-  make install
-  popd
-
-  git clone https://github.com/curl/curl.git
-  pushd curl
-  git checkout curl-7_81_0
-  git submodule update --init --recursive
-  mkdir build
-  cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=OFF -DBUILD_CURL_EXE=OFF
-  make_parallel -C build
-  pushd build
-  make install
-  popd
-  popd
-
-  build_aws_sdk_cpp
-}
-
 function install_deps_debian12() {
   rm -rf /var/lib/apt/lists/*
   apt-get clean
