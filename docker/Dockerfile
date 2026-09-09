@@ -73,16 +73,16 @@ RUN --mount=type=bind,source=.,target=/build-ctx \
     if [ ! -s /usr/local/share/aerospike/tools ]; then \
         echo "no tool binaries found in ${PKG_NAME}" >&2; exit 1; \
     fi && \
-    printf '%s image (%s %s)\n' "${PKG_NAME}" "${PKG_NAME}" "${PKG_VERSION}" \
+    printf 'Aerospike tools image (%s %s)\n' "${PKG_NAME}" "${PKG_VERSION}" \
       > /usr/local/share/aerospike/image-info && \
     groupadd --system --gid 10001 aerospike && \
-    useradd --system --uid 10001 --gid 10001 --create-home \
+    useradd --uid 10001 --gid 10001 --create-home \
       --home-dir /home/aerospike --shell /bin/bash aerospike && \
     rm -f /tmp/asbackup.deb && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+COPY --chmod=0755 docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 # tini is PID 1 so the tool runs as a child, where the kernel's default signal
 # dispositions apply: `docker stop` on a tool that installs no SIGTERM handler
