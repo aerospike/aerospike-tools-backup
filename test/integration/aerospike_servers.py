@@ -292,6 +292,22 @@ def stop_aerospike_servers(keep_work_dir=False):
 	# delete log files from valgrind tests
 	remove_valgrind_logs()
 		
+def retry_on_client_error(description, operation):
+	"""
+	Runs the given operation, retrying it when the server is momentarily
+	unable to serve it. Info-style commands such as truncate report these as
+	a generic client error rather than a dedicated exception type.
+	"""
+	for attempt in range(lib.CLIENT_ATTEMPTS):
+		try:
+			return operation()
+		except (aerospike.exception.ClientError,
+				aerospike.exception.TimeoutError) as error:
+			if attempt == lib.CLIENT_ATTEMPTS - 1:
+				raise
+			print("%s failed (%s), retrying" % (description, error))
+			lib.safe_sleep(0.5)
+
 def reset_aerospike_servers(keep_metadata=False):
 	"""
 	Reset: disconnects the client, stops asd, restarts asd, reconnects the client.
@@ -303,23 +319,27 @@ def reset_aerospike_servers(keep_metadata=False):
 		if set_name is not None:
 			set_name = set_name.strip()
 		print("truncating", set_name)
-		get_client().truncate(lib.NAMESPACE, None if not set_name else set_name, 0, {"timeout": 10000})
+		retry_on_client_error("truncate of set %s" % set_name,
+				lambda: get_client().truncate(lib.NAMESPACE,
+					None if not set_name else set_name, 0, {"timeout": 10000}))
 	if not keep_metadata:
 		lib.GLOBALS["sets"] = []
 
 	# delete all udfs
 	udfs = []
-	for udf in get_client().udf_list():
+	for udf in retry_on_client_error("udf list", lambda: get_client().udf_list()):
 		udfs.append(udf)
 	for udf in udfs:
 		print("removing udf", udf["name"])
-		get_client().udf_remove(udf["name"])
+		retry_on_client_error("removal of udf %s" % udf["name"],
+				lambda: get_client().udf_remove(udf["name"]))
 
 	# delete all indexes
 	for index in lib.GLOBALS["indexes"]:
 		try:
 			print("removing index", index)
-			get_client().index_remove(lib.NAMESPACE, index)
+			retry_on_client_error("removal of index %s" % index,
+					lambda: get_client().index_remove(lib.NAMESPACE, index))
 		except aerospike.exception.IndexNotFound:
 			# the index may not actually be there if we are only backing up certain
 			# sets, but this is ok, so fail silently

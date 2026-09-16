@@ -8,12 +8,39 @@ import atexit
 import docker
 import os
 import sys
+import time
+import urllib.request
 
 import lib
 
 DOCKER_CLIENT = docker.from_env()
 
 MINIO_SERVERS = {}
+
+MINIO_READY_TIMEOUT = 120
+MINIO_READY_POLL_INTERVAL = 0.5
+
+def wait_for_minio_ready(port, timeout=MINIO_READY_TIMEOUT):
+	"""
+	Blocks until the MinIO server listening on the given port reports itself
+	ready, or the timeout expires.
+	"""
+	url = "http://127.0.0.1:%s/minio/health/ready" % port
+	deadline = time.time() + timeout
+	last_error = None
+
+	while time.time() < deadline:
+		try:
+			with urllib.request.urlopen(url, timeout=5) as response:
+				if response.status == 200:
+					return
+				last_error = "HTTP %s" % response.status
+		except Exception as error:
+			last_error = error
+		lib.safe_sleep(MINIO_READY_POLL_INTERVAL)
+
+	raise Exception("MinIO server on port %s not ready after %s seconds "
+			"(last error: %s)" % (port, timeout, last_error))
 
 def start_minio_server(name, volume, base_port=9000, root_user_key="key",
 		root_user_password="secretkey"):
@@ -36,8 +63,7 @@ def start_minio_server(name, volume, base_port=9000, root_user_key="key",
 		container.reload()
 		ip = container.attrs["NetworkSettings"]["Networks"]["bridge"]["IPAddress"]
 
-		# let the server initialize
-		lib.safe_sleep(1)
+		wait_for_minio_ready(base_port)
 
 		MINIO_SERVERS[name] = {
 			"container": container,
