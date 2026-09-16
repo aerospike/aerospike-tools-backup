@@ -342,6 +342,22 @@ def geo_to_string(value):
 
 	return value
 
+def retry_on_client_error(description, operation):
+	"""
+	Runs the given operation, retrying it while the cluster is momentarily
+	unable to serve it. Only transport-level failures are retried; a server
+	rejecting the operation outright is reported straight away.
+	"""
+	for attempt in range(CLIENT_ATTEMPTS):
+		try:
+			return operation()
+		except (aerospike.exception.ClientError,
+				aerospike.exception.TimeoutError) as error:
+			if attempt == CLIENT_ATTEMPTS - 1:
+				raise
+			print("%s failed (%s), retrying" % (description, error))
+			safe_sleep(0.5)
+
 def put_udf_file(content):
 	"""
 	Stores a UDF file with the given name and content on the cluster.
@@ -349,7 +365,8 @@ def put_udf_file(content):
 	path = temporary_path("lua")
 	write_file(path, content)
 	validate_client()
-	assert get_client().udf_put(path, aerospike.UDF_TYPE_LUA) == 0, \
+	assert retry_on_client_error("storing UDF file",
+			lambda: get_client().udf_put(path, aerospike.UDF_TYPE_LUA)) == 0, \
 			"Unexpected error while storing UDF file"
 	return path
 
@@ -359,7 +376,8 @@ def get_udf_file(file_name):
 	"""
 	validate_client()
 	print("getting UDF", file_name)
-	return get_client().udf_get(file_name, aerospike.UDF_TYPE_LUA)
+	return retry_on_client_error("retrieval of UDF %s" % file_name,
+			lambda: get_client().udf_get(file_name, aerospike.UDF_TYPE_LUA))
 
 def validate_index_check(set_name, bin_name, value):
 	"""
@@ -376,7 +394,7 @@ def check_simple_index(set_name, bin_name, value):
 	validate_index_check(set_name, bin_name, value)
 	query = get_client().query(NAMESPACE, set_name)
 	query.where(aerospike.predicates.equals(bin_name, value))
-	query.results()
+	retry_on_client_error("query of index %s" % bin_name, query.results)
 
 def check_geo_index(set_name, bin_name, value):
 	"""
@@ -386,7 +404,7 @@ def check_geo_index(set_name, bin_name, value):
 	query = get_client().query(NAMESPACE, set_name)
 	# XXX - geo index requires string bin names
 	query.where(aerospike.predicates.geo_within_radius(str(bin_name), value[0], value[1], 10.0))
-	query.results()
+	retry_on_client_error("geo query of index %s" % bin_name, query.results)
 
 def check_complex_index(set_name, bin_name, index_type, value):
 	"""
@@ -395,7 +413,7 @@ def check_complex_index(set_name, bin_name, index_type, value):
 	validate_index_check(set_name, bin_name, value)
 	query = get_client().query(NAMESPACE, set_name)
 	query.where(aerospike.predicates.contains(bin_name, index_type, value))
-	query.results()
+	retry_on_client_error("contains query of index %s" % bin_name, query.results)
 
 def check_list_index(set_name, bin_name, value):
 	"""
