@@ -13,12 +13,16 @@ import signal
 import string
 import subprocess
 import sys
+import time
 
 from aerospike_client import get_client, set_client
 import lib
 
 # the number of server nodes to use
 N_NODES = 2
+
+CLIENT_TIMEOUT_MS = 10000
+CLUSTER_STABLE_TIMEOUT = 120
 
 WORK_DIRECTORY = lib.WORK_DIRECTORY
 
@@ -225,10 +229,15 @@ def start_aerospike_servers(keep_work_dir=False):
 			"hosts": [("localhost", lib.PORT)],
 			"policies": {
 				"read": {
-					"max_retries": 5
+					"max_retries": 5,
+					"total_timeout": CLIENT_TIMEOUT_MS
 				},
 				"write": {
-					"max_retries": 5
+					"max_retries": 5,
+					"total_timeout": CLIENT_TIMEOUT_MS
+				},
+				"info": {
+					"timeout": CLIENT_TIMEOUT_MS
 				}
 			},
 			"lua": {
@@ -252,11 +261,53 @@ def start_aerospike_servers(keep_work_dir=False):
 		lib.GLOBALS["sets"] = []
 
 		print("Client connected")
-		lib.safe_sleep(1)
+		wait_for_cluster_stable()
+
+def cluster_stable_key(error, response):
+	"""
+	Extracts the cluster key from one node's answer to the cluster-stable info
+	command, or returns None when that node does not consider the cluster
+	stable yet.
+	"""
+	if error is not None or not response:
+		return None
+	value = response.split("\t", 1)[-1].strip()
+	if not value or value.upper().startswith("ERROR"):
+		return None
+	return value
+
+def wait_for_cluster_stable(timeout=CLUSTER_STABLE_TIMEOUT):
+	"""
+	Blocks until every node the client can reach reports the same stable
+	cluster key for the expected cluster size, with migrations finished, or
+	the timeout expires.
+	"""
+	command = "cluster-stable:size=%d" % N_NODES
+	deadline = time.time() + timeout
+	last_state = None
+
+	while time.time() < deadline:
+		try:
+			responses = get_client().info_all(command)
+		except aerospike.exception.AerospikeError as error:
+			responses = None
+			last_state = error
+
+		if responses:
+			keys = set(cluster_stable_key(*answer) for answer in responses.values())
+			if len(keys) == 1 and None not in keys:
+				print("cluster stable, key", keys.pop())
+				return
+			last_state = responses
+
+		lib.safe_sleep(0.5)
+
+	raise Exception("cluster not stable after %s seconds (last state: %s)" %
+			(timeout, last_state))
 
 def get_aerospike_version():
-	client = get_client()
-	resp = client.info_random_node("build")
+	resp = lib.retry_on_client_error("build info",
+			lambda: get_client().info_random_node("build"))
 	return resp.split("\t")[1].strip()
 
 def stop_aerospike_servers(keep_work_dir=False):

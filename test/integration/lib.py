@@ -227,7 +227,8 @@ def test_record(set_name, key):
 	"""
 	validate_client()
 	force_unicode(set_name, "Please use Unicode set names")
-	_, meta = get_client().exists((NAMESPACE, set_name, key))
+	_, meta = retry_on_client_error("existence check of key %s" % (key,),
+			lambda: get_client().exists((NAMESPACE, set_name, key)))
 	return meta is not None
 
 def read_record(set_name, key):
@@ -236,7 +237,8 @@ def read_record(set_name, key):
 	"""
 	validate_client()
 	force_unicode(set_name, "Please use Unicode set names")
-	meta_key, meta, record = get_client().get((NAMESPACE, set_name, key))
+	meta_key, meta, record = retry_on_client_error("read of key %s" % (key,),
+			lambda: get_client().get((NAMESPACE, set_name, key)))
 	assert meta, "Key %s does not have a record" % key
 	meta_ttl = meta["ttl"]
 
@@ -254,7 +256,7 @@ def read_all_records(set_name):
 	scan = get_client().scan(NAMESPACE, set_name)
 	records = {}
 
-	for (meta_key, meta, record) in scan.results():
+	for (meta_key, meta, record) in retry_on_client_error("scan of set %s" % set_name, scan.results):
 		meta_ttl = meta["ttl"]
 
 		if meta_ttl in NO_TTL:
@@ -282,7 +284,8 @@ def write_record(set_name, key, bin_names, values, send_key=False, ttl=None):
 		force_unicode(value, "Please use Unicode bin values")
 		record[bin_name] = value
 
-	get_client().put((NAMESPACE, set_name, key), record, meta, policy)
+	retry_on_client_error("write of key %s" % (key,),
+			lambda: get_client().put((NAMESPACE, set_name, key), record, meta, policy))
 	if set_name not in GLOBALS["sets"]:
 		GLOBALS["sets"].append(set_name)
 
@@ -342,17 +345,22 @@ def geo_to_string(value):
 
 	return value
 
+TRANSIENT_CLIENT_ERRORS = (aerospike.exception.ClientError,
+		aerospike.exception.TimeoutError, aerospike.exception.ClusterError)
+
 def retry_on_client_error(description, operation):
 	"""
 	Runs the given operation, retrying it while the cluster is momentarily
 	unable to serve it. Only transport-level failures are retried; a server
-	rejecting the operation outright is reported straight away.
+	rejecting the operation outright, or a bad parameter, is reported straight
+	away.
 	"""
 	for attempt in range(CLIENT_ATTEMPTS):
 		try:
 			return operation()
-		except (aerospike.exception.ClientError,
-				aerospike.exception.TimeoutError) as error:
+		except aerospike.exception.ParamError:
+			raise
+		except TRANSIENT_CLIENT_ERRORS as error:
 			if attempt == CLIENT_ATTEMPTS - 1:
 				raise
 			print("%s failed (%s), retrying" % (description, error))
@@ -482,72 +490,71 @@ def validate_index_creation(set_name, bin_name, index_name):
 	force_unicode(bin_name, "Please use Unicode index bin_names")
 	force_unicode(index_name, "Please use Unicode index names")
 
+def create_index(index_name, description, operation):
+	"""
+	Runs the given index creation operation and records the index for cleanup.
+	An index still present from an earlier test is waited on until its removal
+	completes. A creation cut short by a transient failure may already have
+	taken effect, in which case the retry finds the index; that counts as
+	success.
+	"""
+	ret = -1
+	interrupted = False
+	for attempt in range(CLIENT_ATTEMPTS):
+		try:
+			ret = operation()
+			break
+		except aerospike.exception.IndexFoundError:
+			if interrupted:
+				ret = 0
+				break
+			print("%s still present, waiting for its removal" % description)
+		except aerospike.exception.ParamError:
+			raise
+		except TRANSIENT_CLIENT_ERRORS as error:
+			if attempt == CLIENT_ATTEMPTS - 1:
+				raise
+			interrupted = True
+			print("%s failed (%s), retrying" % (description, error))
+		safe_sleep(0.5)
+	assert ret == 0, "Unexpected error while creating %s" % description
+	GLOBALS["indexes"].append(index_name)
+
 def create_integer_index(set_name, bin_name, index_name):
 	"""
 	Creates an integer index.
 	"""
 	print("create integer index", index_name)
 	validate_index_creation(set_name, bin_name, index_name)
-	ret = -1
-	for _ in range(CLIENT_ATTEMPTS):
-		try:
-			ret = get_client().index_integer_create(NAMESPACE, set_name, bin_name, index_name)
-			break
-		except aerospike.exception.IndexFoundError:
-			# found the index in the database, meaning it wasn't fully deleted, pause and try again
-			safe_sleep(0.5)
-	assert ret == 0, "Unexpected error while creating index"
-	GLOBALS["indexes"].append(index_name)
+	create_index(index_name, "integer index %s" % index_name,
+			lambda: get_client().index_integer_create(NAMESPACE, set_name, bin_name, index_name))
 
 def create_integer_list_index(set_name, bin_name, index_name):
 	"""
 	Creates an integer list index.
 	"""
 	validate_index_creation(set_name, bin_name, index_name)
-	ret = -1
-	for _ in range(CLIENT_ATTEMPTS):
-		try:
-			ret = get_client().index_list_create(NAMESPACE, set_name, bin_name, aerospike.INDEX_NUMERIC, index_name)
-			break
-		except aerospike.exception.IndexFoundError:
-			# found the index in the database, meaning it wasn't fully deleted, pause and try again
-			safe_sleep(0.5)
-	assert ret == 0, "Unexpected error while creating index"
-	GLOBALS["indexes"].append(index_name)
+	create_index(index_name, "integer list index %s" % index_name,
+			lambda: get_client().index_list_create(NAMESPACE, set_name, bin_name,
+				aerospike.INDEX_NUMERIC, index_name))
 
 def create_integer_map_key_index(set_name, bin_name, index_name):
 	"""
 	Creates an integer map key index.
 	"""
 	validate_index_creation(set_name, bin_name, index_name)
-	ret = -1
-	for _ in range(CLIENT_ATTEMPTS):
-		try:
-			ret = get_client().index_map_keys_create(NAMESPACE, set_name, bin_name, \
-					aerospike.INDEX_NUMERIC, index_name)
-			break
-		except aerospike.exception.IndexFoundError:
-			# found the index in the database, meaning it wasn't fully deleted, pause and try again
-			safe_sleep(0.5)
-	assert ret == 0, "Unexpected error while creating index"
-	GLOBALS["indexes"].append(index_name)
+	create_index(index_name, "integer map key index %s" % index_name,
+			lambda: get_client().index_map_keys_create(NAMESPACE, set_name, bin_name,
+				aerospike.INDEX_NUMERIC, index_name))
 
 def create_integer_map_value_index(set_name, bin_name, index_name):
 	"""
 	Creates an integer map value index.
 	"""
 	validate_index_creation(set_name, bin_name, index_name)
-	ret = -1
-	for _ in range(CLIENT_ATTEMPTS):
-		try:
-			ret = get_client().index_map_values_create(NAMESPACE, set_name, bin_name, \
-					aerospike.INDEX_NUMERIC, index_name)
-			break
-		except aerospike.exception.IndexFoundError:
-			# found the index in the database, meaning it wasn't fully deleted, pause and try again
-			safe_sleep(0.5)
-	assert ret == 0, "Unexpected error while creating index"
-	GLOBALS["indexes"].append(index_name)
+	create_index(index_name, "integer map value index %s" % index_name,
+			lambda: get_client().index_map_values_create(NAMESPACE, set_name, bin_name,
+				aerospike.INDEX_NUMERIC, index_name))
 
 def create_string_index(set_name, bin_name, index_name):
 	"""
@@ -555,33 +562,17 @@ def create_string_index(set_name, bin_name, index_name):
 	"""
 	print("create string index", index_name)
 	validate_index_creation(set_name, bin_name, index_name)
-	ret = -1
-	for _ in range(CLIENT_ATTEMPTS):
-		try:
-			ret = get_client().index_string_create(NAMESPACE, set_name, bin_name, index_name)
-			break
-		except aerospike.exception.IndexFoundError:
-			# found the index in the database, meaning it wasn't fully deleted, pause and try again
-			safe_sleep(0.5)
-	assert ret == 0, "Unexpected error while creating index"
-	GLOBALS["indexes"].append(index_name)
+	create_index(index_name, "string index %s" % index_name,
+			lambda: get_client().index_string_create(NAMESPACE, set_name, bin_name, index_name))
 
 def create_geo_index(set_name, bin_name, index_name):
 	"""
 	Creates a geo index.
 	"""
 	validate_index_creation(set_name, bin_name, index_name)
-	ret = -1
 	# XXX - geo index requires string bin names
-	for _ in range(CLIENT_ATTEMPTS):
-		try:
-			ret = get_client().index_geo2dsphere_create(NAMESPACE, set_name, str(bin_name), index_name)
-			break
-		except aerospike.exception.IndexFoundError:
-			# found the index in the database, meaning it wasn't fully deleted, pause and try again
-			safe_sleep(0.5)
-	assert ret == 0, "Unexpected error while creating index"
-	GLOBALS["indexes"].append(index_name)
+	create_index(index_name, "geo index %s" % index_name,
+			lambda: get_client().index_geo2dsphere_create(NAMESPACE, set_name, str(bin_name), index_name))
 
 def create_blob_index(set_name, bin_name, index_name):
 	"""
@@ -589,87 +580,44 @@ def create_blob_index(set_name, bin_name, index_name):
 	"""
 	print("create blob index", index_name)
 	validate_index_creation(set_name, bin_name, index_name)
-	ret = -1
-	for _ in range(CLIENT_ATTEMPTS):
-		try:
-			ret = get_client().index_blob_create(NAMESPACE, set_name, bin_name, index_name)
-			break
-		except aerospike.exception.IndexFoundError:
-			# found the index in the database, meaning it wasn't fully deleted, pause and try again
-			safe_sleep(0.5)
-	assert ret == 0, "Unexpected error while creating index"
-	GLOBALS["indexes"].append(index_name)
+	create_index(index_name, "blob index %s" % index_name,
+			lambda: get_client().index_blob_create(NAMESPACE, set_name, bin_name, index_name))
 
 def create_string_list_index(set_name, bin_name, index_name):
 	"""
 	Creates a string list index.
 	"""
 	validate_index_creation(set_name, bin_name, index_name)
-	ret = -1
-	for _ in range(CLIENT_ATTEMPTS):
-		try:
-			ret = get_client().index_list_create(NAMESPACE, set_name, bin_name, aerospike.INDEX_STRING, \
-					index_name)
-			break
-		except aerospike.exception.IndexFoundError:
-			# found the index in the database, meaning it wasn't fully deleted, pause and try again
-			safe_sleep(0.5)
-	assert ret == 0, "Unexpected error while creating index"
-	GLOBALS["indexes"].append(index_name)
+	create_index(index_name, "string list index %s" % index_name,
+			lambda: get_client().index_list_create(NAMESPACE, set_name, bin_name,
+				aerospike.INDEX_STRING, index_name))
 
 def create_string_map_key_index(set_name, bin_name, index_name):
 	"""
 	Creates a string map key index.
 	"""
 	validate_index_creation(set_name, bin_name, index_name)
-	ret = -1
-	for _ in range(CLIENT_ATTEMPTS):
-		try:
-			ret = get_client().index_map_keys_create(NAMESPACE, set_name, bin_name, \
-					aerospike.INDEX_STRING, index_name)
-			break
-		except aerospike.exception.IndexFoundError:
-			# found the index in the database, meaning it wasn't fully deleted, pause and try again
-			safe_sleep(0.5)
-	assert ret == 0, "Unexpected error while creating index"
-	GLOBALS["indexes"].append(index_name)
+	create_index(index_name, "string map key index %s" % index_name,
+			lambda: get_client().index_map_keys_create(NAMESPACE, set_name, bin_name,
+				aerospike.INDEX_STRING, index_name))
 
 def create_string_map_value_index(set_name, bin_name, index_name):
 	"""
 	Creates a string map value index.
 	"""
 	validate_index_creation(set_name, bin_name, index_name)
-	ret = -1
-	for _ in range(CLIENT_ATTEMPTS):
-		try:
-			ret = get_client().index_map_values_create(NAMESPACE, set_name, bin_name, \
-					aerospike.INDEX_STRING, index_name)
-			break
-		except aerospike.exception.IndexFoundError:
-			# found the index in the database, meaning it wasn't fully deleted, pause and try again
-			safe_sleep(0.5)
-	assert ret == 0, "Unexpected error while creating index"
-	GLOBALS["indexes"].append(index_name)
+	create_index(index_name, "string map value index %s" % index_name,
+			lambda: get_client().index_map_values_create(NAMESPACE, set_name, bin_name,
+				aerospike.INDEX_STRING, index_name))
 
 def create_cdt_index(set_name, bin_name, index_name, bin_type, index_type, ctx):
 	"""
 	Creates a cdt index with ctx.
 	"""
 	validate_index_creation(set_name, bin_name, index_name)
-	ret = -1
-	for _ in range(CLIENT_ATTEMPTS):
-		try:
-			ret = get_client().index_cdt_create(NAMESPACE, set_name, bin_name, \
-					index_type, bin_type, index_name, {'ctx': ctx})
-			break
-		except aerospike.exception.IndexFoundError:
-			# found the index in the database, meaning it wasn't fully deleted, pause and try again
-			safe_sleep(0.5)
-		except aerospike.exception.AerospikeError as e:
-			print("Error while creating a cdt index: {0} [{1}]".format(e.msg, e.code))			
-		
-	assert ret == 0, "Unexpected error while creating index"
-	GLOBALS["indexes"].append(index_name)
+	create_index(index_name, "cdt index %s" % index_name,
+			lambda: get_client().index_cdt_create(NAMESPACE, set_name, bin_name,
+				index_type, bin_type, index_name, {'ctx': ctx}))
 
 def random_alphameric():
 	"""
