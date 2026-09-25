@@ -2,9 +2,8 @@ name: Copy aerospike-asbackup images to Docker Hub
 
 # Copies already-published aerospike-asbackup tags from JFrog to Docker Hub.
 # Does not build images and does not write anything back to Artifactory.
-# Tags: 4.5.8-3 (multi-arch index), 4.5.8-3-amd64 (linux/amd64),
-# 4.5.8-3-arm64 (linux/arm64). Extra dest tags 4.5.8 and latest
-# are aliases of 4.5.8-3.
+# Tags: 4.5.9-1_20260917T002102Z (multi-arch index). Extra dest
+# tags 4.5.9 and latest are aliases of 4.5.9-1_20260917T002102Z.
 
 on:
   workflow_dispatch:
@@ -18,9 +17,9 @@ on:
         required: true
         default: aerospike/aerospike-asbackup
       tags:
-        description: Comma-separated tags to copy unchanged (index, linux/amd64, linux/arm64)
+        description: Comma-separated tags to copy unchanged (multi-arch index)
         required: true
-        default: 4.5.8-3,4.5.8-3-amd64,4.5.8-3-arm64
+        default: 4.5.9-1_20260917T002102Z
       dry-run:
         description: Inspect JFrog tags only; do not push to Docker Hub
         type: boolean
@@ -29,11 +28,11 @@ on:
       alias-from:
         description: Source tag to copy onto extra destination tags
         required: false
-        default: 4.5.8-3
+        default: 4.5.9-1_20260917T002102Z
       alias-tags:
         description: Extra destination tags (comma-separated) based on alias-from
         required: false
-        default: 4.5.8,latest
+        default: 4.5.9,latest
 
 permissions:
   contents: read
