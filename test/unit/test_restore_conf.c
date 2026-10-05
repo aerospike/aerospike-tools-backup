@@ -89,6 +89,7 @@ assert_restore_config_eq(restore_config_t *c1, restore_config_t *c2)
 	CMP_INT_FIELD(c1->use_services_alternate, c2->use_services_alternate);
 	CMP_STR_FIELD(c1->user, c2->user);
 	CMP_STR_FIELD(c1->password, c2->password);
+	CMP_INT_FIELD(c1->password_is_secret, c2->password_is_secret);
 	CMP_STR_FIELD(c1->auth_mode, c2->auth_mode);
 
 	CMP_INT_FIELD(c1->tls.enable, c2->tls.enable);
@@ -98,6 +99,7 @@ assert_restore_config_eq(restore_config_t *c1, restore_config_t *c2)
 	CMP_STR_FIELD(c1->tls.cipher_suite, c2->tls.cipher_suite);
 	CMP_STR_FIELD(c1->tls.keyfile, c2->tls.keyfile);
 	CMP_STR_FIELD(c1->tls.keyfile_pw, c2->tls.keyfile_pw);
+	CMP_INT_FIELD(c1->tls_keyfile_pw_is_secret, c2->tls_keyfile_pw_is_secret);
 	CMP_STR_FIELD(c1->tls.certfile, c2->tls.certfile);
 	CMP_INT_FIELD(c1->tls.crl_check, c2->tls.crl_check);
 	CMP_INT_FIELD(c1->tls.crl_check_all, c2->tls.crl_check_all);

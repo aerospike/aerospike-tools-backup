@@ -83,6 +83,8 @@ typedef struct restore_config {
 	bool use_services_alternate;
 	char *user;
 	char *password;
+	// Secret agent values are used as-is, never parsed for env:/file:/b64:.
+	bool password_is_secret;
 	uint32_t parallel;
 	char *nice_list;
 	bool no_records;
@@ -131,6 +133,7 @@ typedef struct restore_config {
 	bool s3_allow_system_proxy;
 
 	as_config_tls tls;
+	bool tls_keyfile_pw_is_secret;
 	char* tls_name;
 
 	// The (optional) source and (also optional) target namespace to be restored.

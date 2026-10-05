@@ -441,20 +441,11 @@ _init_as_config(as_config* as_conf, const restore_config_t* conf,
 	if (prior_as_conf != NULL) {
 		as_conf->tls.keyfile_pw = safe_strdup(prior_as_conf->tls.keyfile_pw);
 	}
-	else if (conf->tls.keyfile && conf->tls.keyfile_pw) {
-		char* keyfile_pw;
-		if (strcmp(conf->tls.keyfile_pw, DEFAULT_PASSWORD) == 0) {
-			keyfile_pw = getpass("Enter TLS-Keyfile Password: ");
-		}
-		else {
-			keyfile_pw = conf->tls.keyfile_pw;
-		}
-
+	else if (conf->tls.keyfile && conf->tls.keyfile_pw &&
+			strcmp(conf->tls.keyfile_pw, DEFAULT_PASSWORD) == 0) {
 		// we'll be overwriting the old keyfile_pw string
 		cf_free(as_conf->tls.keyfile_pw);
-		if (!tls_read_password(keyfile_pw, &as_conf->tls.keyfile_pw)) {
-			goto cleanup1;
-		}
+		as_conf->tls.keyfile_pw = safe_strdup(getpass("Enter TLS-Keyfile Password: "));
 	}
 
 	return true;

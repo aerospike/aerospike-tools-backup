@@ -332,20 +332,11 @@ backup_status_init(backup_status_t* status, backup_config_t* conf)
 		}
 	}
 
-	if (conf->tls.keyfile && conf->tls.keyfile_pw) {
-		char* tls_keyfile_pw;
-		if (strcmp(conf->tls.keyfile_pw, DEFAULT_PASSWORD) == 0) {
-			tls_keyfile_pw = getpass("Enter TLS-Keyfile Password: ");
-		}
-		else {
-			tls_keyfile_pw = conf->tls.keyfile_pw;
-		}
-
+	if (conf->tls.keyfile && conf->tls.keyfile_pw &&
+			strcmp(conf->tls.keyfile_pw, DEFAULT_PASSWORD) == 0) {
 		// we'll be overwriting the old keyfile_pw string
 		cf_free(as_conf.tls.keyfile_pw);
-		if (!tls_read_password(tls_keyfile_pw, &as_conf.tls.keyfile_pw)) {
-			goto cleanup2;
-		}
+		as_conf.tls.keyfile_pw = safe_strdup(getpass("Enter TLS-Keyfile Password: "));
 	}
 
 	if (conf->prefer_racks) {

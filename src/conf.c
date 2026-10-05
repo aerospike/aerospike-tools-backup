@@ -25,6 +25,7 @@
 #include <stdlib.h>
 #include <getopt.h>
 #include <string.h>
+#include <errno.h>
 #include <dirent.h>
 #include <sys/stat.h>
 
@@ -44,6 +45,7 @@
 
 #define BACKUP_CONFIG_FILE ".aerospike/astools.conf"
 #define ERR_BUF_SIZE 1024
+#define PASSWORD_FILE_MAX_SIZE (64 * 1024)
 
 
 //=========================================================
@@ -89,8 +91,14 @@ static bool config_secret_agent(toml_table_t *config_table, sa_cfg *c, const cha
 static bool config_include(toml_table_t *config_table, void *c, const char *instance, int level, bool is_backup);
 static bool config_from_dir(void *c, const char *instance, char *dirname, int level, bool is_backup);
 
-static bool password_env(const char *var, char **ptr);
-static bool password_file(const char *path, char **ptr);
+static const char *password_env_value(const char *opt_name, const char *var);
+static bool password_env(const char *opt_name, const char *var, char **ptr);
+static bool password_env_b64(const char *opt_name, const char *var, char **ptr);
+static bool password_b64(const char *opt_name, const char *b64,
+		const char *src_kind, const char *src_name, char **ptr);
+static bool password_file(const char *opt_name, const char *path, char **ptr);
+static bool password_finish(const char *opt_name, const char *src_kind,
+		const char *src_name, char *buf, size_t len, char **ptr);
 
 // returns 0 on success or if rtoml cannot be a secret path
 // returns a value not equal to 0 on failure
@@ -200,17 +208,38 @@ config_from_files(void *c, const char *instance,
 }
 
 bool
-tls_read_password(char *value, char **ptr)
+resolve_password(const char *opt_name, char **value)
 {
-	if (strncmp(value, "env:", 4) == 0) {
-		return password_env(value + 4, ptr);
+	const char *val = *value;
+	char *res = NULL;
+	bool ok;
+
+	if (val == NULL) {
+		return true;
 	}
 
-	if (strncmp(value, "file:", 5) == 0) {
-		return password_file(value + 5, ptr);
+	if (strncmp(val, "env:", 4) == 0) {
+		ok = password_env(opt_name, val + 4, &res);
+	}
+	else if (strncmp(val, "env-b64:", 8) == 0) {
+		ok = password_env_b64(opt_name, val + 8, &res);
+	}
+	else if (strncmp(val, "b64:", 4) == 0) {
+		ok = password_b64(opt_name, val + 4, "b64: value", "", &res);
+	}
+	else if (strncmp(val, "file:", 5) == 0) {
+		ok = password_file(opt_name, val + 5, &res);
+	}
+	else {
+		return true;
 	}
 
-	*ptr = safe_strdup(value);
+	if (! ok) {
+		return false;
+	}
+
+	cf_free(*value);
+	*value = res;
 	return true;
 }
 
@@ -472,7 +501,8 @@ config_restore_cluster(toml_table_t *config_table, restore_config_t *c, const ch
 
 		} else if (! strcasecmp("password", name)) {
 			status = config_str(config_value, (void*)&c->password, override);
-		
+			c->password_is_secret = arg_is_secret;
+
 		} else if (! strcasecmp("auth", name)) {
 			status = config_str(config_value, &c->auth_mode, override);
 
@@ -504,6 +534,7 @@ config_restore_cluster(toml_table_t *config_table, restore_config_t *c, const ch
 
 		} else if (! strcasecmp("tls-keyfile-password", name)) {
 			status = config_str(config_value, (void*)&c->tls.keyfile_pw, override);
+			c->tls_keyfile_pw_is_secret = arg_is_secret;
 
 		} else if (! strcasecmp("tls-cafile", name)) {
 			if (arg_is_secret) {
@@ -600,7 +631,8 @@ config_backup_cluster(toml_table_t *config_table, backup_config_t *c, const char
 
 		} else if (! strcasecmp("password", name)) {
 			status = config_str(config_value, (void*)&c->password, override);
-		
+			c->password_is_secret = arg_is_secret;
+
 		} else if (! strcasecmp("auth", name)) {
 			status = config_str(config_value, &c->auth_mode, override);
 
@@ -632,6 +664,7 @@ config_backup_cluster(toml_table_t *config_table, backup_config_t *c, const char
 
 		} else if (! strcasecmp("tls-keyfile-password", name)) {
 			status = config_str(config_value, (void*)&c->tls.keyfile_pw, override);
+			c->tls_keyfile_pw_is_secret = arg_is_secret;
 
 		} else if (! strcasecmp("tls-cafile", name)) {
 			if (arg_is_secret) {
@@ -1466,66 +1499,144 @@ config_restore(toml_table_t *config_table, restore_config_t *c, const char *inst
 	return true;
 }
 
-static bool
-password_env(const char *var, char **ptr)
+static const char *
+password_env_value(const char *opt_name, const char *var)
 {
-	char *pw = getenv(var);
+	const char *val = getenv(var);
 
-	if (pw == NULL) {
-		err("missing TLS key password environment variable %s\n", var);
+	if (val == NULL || val[0] == '\0') {
+		err("%s: environment variable %s is not set or empty", opt_name, var);
+		return NULL;
+	}
+
+	return val;
+}
+
+static bool
+password_env(const char *opt_name, const char *var, char **ptr)
+{
+	const char *val = password_env_value(opt_name, var);
+
+	if (val == NULL) {
 		return false;
 	}
 
-	if (pw[0] == 0) {
-		err("empty TLS key password environment variable %s\n", var);
-		return false;
-	}
-
-	*ptr = strdup(pw);
+	*ptr = safe_strdup(val);
 	return true;
 }
 
 static bool
-password_file(const char *path, char **ptr)
+password_env_b64(const char *opt_name, const char *var, char **ptr)
+{
+	const char *val = password_env_value(opt_name, var);
+
+	if (val == NULL) {
+		return false;
+	}
+
+	return password_b64(opt_name, val, "environment variable ", var, ptr);
+}
+
+static bool
+password_b64(const char *opt_name, const char *b64, const char *src_kind,
+		const char *src_name, char **ptr)
+{
+	size_t b64_len = strlen(b64);
+	char *enc = cf_malloc(b64_len + 1);
+	size_t enc_len = 0;
+
+	// Go's base64.StdEncoding skips line breaks, so do the same.
+	for (size_t i = 0; i < b64_len; i++) {
+		if (b64[i] != '\r' && b64[i] != '\n') {
+			enc[enc_len++] = b64[i];
+		}
+	}
+
+	if (enc_len == 0) {
+		cf_free(enc);
+		return password_finish(opt_name, src_kind, src_name, NULL, 0, ptr);
+	}
+
+	uint32_t dec_len = 0;
+	char *dec = cf_malloc(cf_b64_decoded_buf_size((uint32_t) enc_len) + 1);
+
+	if (! cf_b64_validate_and_decode(enc, (uint32_t) enc_len, (uint8_t*) dec,
+				&dec_len)) {
+		err("%s: invalid base64 in %s%s", opt_name, src_kind, src_name);
+		cf_free(enc);
+		cf_free(dec);
+		return false;
+	}
+
+	cf_free(enc);
+
+	if (dec_len > 0 && dec[dec_len - 1] == '\n') {
+		dec_len--;
+	}
+
+	return password_finish(opt_name, src_kind, src_name, dec, dec_len, ptr);
+}
+
+static bool
+password_file(const char *opt_name, const char *path, char **ptr)
 {
 	FILE *fh = fopen(path, "r");
 
 	if (fh == NULL) {
-		err("missing TLS key password file %s\n", path);
+		err("%s: cannot read file %s: %s", opt_name, path, strerror(errno));
 		return false;
 	}
 
-	char pw[5000];
-	char *res = fgets(pw, sizeof(pw), fh);
+	char *buf = cf_malloc(PASSWORD_FILE_MAX_SIZE + 1);
+	size_t len = fread(buf, 1, PASSWORD_FILE_MAX_SIZE + 1, fh);
+	bool read_failed = ferror(fh) != 0;
+	int read_errno = errno;
 
 	fclose(fh);
 
-	if (res == NULL) {
-		err("error while reading TLS key password file %s\n", path);
+	if (read_failed) {
+		err("%s: cannot read file %s: %s", opt_name, path, strerror(read_errno));
+		cf_free(buf);
 		return false;
 	}
 
-	int32_t pw_len;
+	if (len > PASSWORD_FILE_MAX_SIZE) {
+		err("%s: file %s is larger than %d bytes", opt_name, path,
+				PASSWORD_FILE_MAX_SIZE);
+		cf_free(buf);
+		return false;
+	}
 
-	for (pw_len = 0; pw[pw_len] != 0; pw_len++) {
-		if (pw[pw_len] == '\n' || pw[pw_len] == '\r') {
-			break;
+	if (len > 0 && buf[len - 1] == '\n') {
+		len--;
+
+		if (len > 0 && buf[len - 1] == '\r') {
+			len--;
 		}
 	}
 
-	if (pw_len == sizeof(pw) - 1) {
-		err("TLS key password in file %s too long\n", path);
+	return password_finish(opt_name, "file ", path, buf, len, ptr);
+}
+
+static bool
+password_finish(const char *opt_name, const char *src_kind,
+		const char *src_name, char *buf, size_t len, char **ptr)
+{
+	if (len == 0) {
+		err("%s: empty password from %s%s", opt_name, src_kind, src_name);
+		cf_free(buf);
 		return false;
 	}
 
-	pw[pw_len] = 0;
-
-	if (pw_len == 0) {
-		err("empty TLS key password file %s\n", path);
+	if (memchr(buf, '\0', len) != NULL) {
+		err("%s: password from %s%s contains a NUL byte", opt_name, src_kind,
+				src_name);
+		cf_free(buf);
 		return false;
 	}
 
-	*ptr = strdup(pw);
+	buf[len] = '\0';
+	*ptr = buf;
 	return true;
 }
 

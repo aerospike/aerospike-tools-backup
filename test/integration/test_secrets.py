@@ -125,6 +125,7 @@ class RestoreConfigT(ComparableCtStructure):
 		("use_services_alternate", ctypes.c_bool),
 		("user", ctypes.c_char_p),
 		("password", ctypes.c_char_p),
+		("password_is_secret", ctypes.c_bool),
 		("parallel", ctypes.c_uint32),
 		("nice_list", ctypes.c_char_p),
 		("no_records", ctypes.c_bool),
@@ -150,6 +151,7 @@ class RestoreConfigT(ComparableCtStructure):
 		("s3_connect_timeout", ctypes.c_uint32),
 		("s3_log_level", ctypes.c_int),
 		("tls", AsConfigTls),
+		("tls_keyfile_pw_is_secret", ctypes.c_bool),
 		("tls_name", ctypes.c_char_p),
 		("ns_list", ctypes.c_char_p),
 		("directory", ctypes.c_char_p),
@@ -275,6 +277,7 @@ class BackupConfigT(ComparableCtStructure):
         ("use_services_alternate", ctypes.c_bool),
         ("user", ctypes.c_char_p),
         ("password", ctypes.c_char_p),
+        ("password_is_secret", ctypes.c_bool),
         ("s3_region", ctypes.c_char_p),
         ("s3_profile", ctypes.c_char_p),
         ("s3_endpoint_override", ctypes.c_char_p),
@@ -299,6 +302,7 @@ class BackupConfigT(ComparableCtStructure):
         ("retry_delay", ctypes.c_uint32),
         ("tls_name", ctypes.c_char_p),
         ("tls", AsConfigTls),
+        ("tls_keyfile_pw_is_secret", ctypes.c_bool),
         ("remove_files", ctypes.c_bool),
         ("remove_artifacts", ctypes.c_bool),
         ("n_estimate_samples", ctypes.c_uint32),
@@ -509,6 +513,8 @@ def test_restore_config_set():
 	expected_conf.tls.keyfile = None
 	expected_conf.tls.certstring = expected_conf.tls.certfile
 	expected_conf.tls.certfile = None
+	expected_conf.password_is_secret = True
+	expected_conf.tls_keyfile_pw_is_secret = True
 
 	gen_secret_agent_files(
 		restore_args={x["name"]: x["value"] for x in RESTORE_SECRET_OPTIONS}
@@ -560,6 +566,8 @@ def test_backup_config_set():
 	expected_conf.tls.keyfile = None
 	expected_conf.tls.certstring = expected_conf.tls.certfile
 	expected_conf.tls.certfile = None
+	expected_conf.password_is_secret = True
+	expected_conf.tls_keyfile_pw_is_secret = True
 
 	gen_secret_agent_files(
 		backup_args={x["name"]: x["value"] for x in BACKUP_SECRET_OPTIONS}
@@ -611,6 +619,8 @@ def test_backup_conf_file():
 	expected_conf.tls.keyfile = None
 	expected_conf.tls.certstring = expected_conf.tls.certfile
 	expected_conf.tls.certfile = None
+	expected_conf.password_is_secret = True
+	expected_conf.tls_keyfile_pw_is_secret = True
 
 	gen_secret_agent_files(
 		backup_args={x["name"]: x["value"] for x in BACKUP_SECRET_OPTIONS}
@@ -660,6 +670,8 @@ def test_asrestore_conf_file():
 	expected_conf.tls.keyfile = None
 	expected_conf.tls.certstring = expected_conf.tls.certfile
 	expected_conf.tls.certfile = None
+	expected_conf.password_is_secret = True
+	expected_conf.tls_keyfile_pw_is_secret = True
 
 	gen_secret_agent_files(
 		restore_args={x["name"]: x["value"] for x in RESTORE_SECRET_OPTIONS}
@@ -690,3 +702,60 @@ def test_asrestore_conf_file():
 		agent.cleanup()
 
 	assert expected_conf == conf
+
+# Secret agent values must be used as-is, never parsed for env:/file:/b64:.
+SA_LITERAL_ENV = "ASB_SA_LITERAL_PW"
+SA_LITERAL_ARGS = {
+	"password": "env:" + SA_LITERAL_ENV,
+	"tls-keyfile-password": "file:/nonexistent/asb-sa-literal",
+}
+
+def check_secret_passwords_are_literal(config_set, conf_type, prgm_name, resource):
+	os.environ[SA_LITERAL_ENV] = "resolved-from-env"
+
+	cli_args = [prgm_name, "--no-config-file", "--sa-address", "127.0.0.1",
+		"--sa-port", sa.SA_PORT]
+	for name in SA_LITERAL_ARGS:
+		cli_args += ["--" + name, "secrets:%s:%s" % (resource, name)]
+
+	conf_path = gen_secret_toml(
+		[{"name": name, "config_section": "cluster"} for name in SA_LITERAL_ARGS],
+		resource,
+		'sa-address = "127.0.0.1"\nsa-port = "%s"\n' % sa.SA_PORT
+	)
+	file_args = [prgm_name, "--only-config-file", conf_path]
+
+	confs = []
+	agent = sa.get_secret_agent(config=SA_CONF_PATH)
+	try:
+		agent.start()
+		for args in (cli_args, file_args):
+			conf = conf_type()
+			c_argv = (ctypes.c_char_p * len(args))(*[bytes(x, "utf-8") for x in args])
+			p_argv = ctypes.POINTER(ctypes.c_char_p)(c_argv)
+			res = config_set(len(args), p_argv, ctypes.POINTER(conf_type)(conf))
+			confs.append((res, conf))
+	finally:
+		agent.stop()
+		print("*** Secret Agent Output ***")
+		print(agent.output())
+		print("*** End Secret Agent Output ***")
+		agent.cleanup()
+		del os.environ[SA_LITERAL_ENV]
+
+	for res, conf in confs:
+		assert res == 0
+		assert conf.password == bytes(SA_LITERAL_ARGS["password"], "utf-8")
+		assert conf.password_is_secret
+		assert conf.tls.keyfile_pw == bytes(SA_LITERAL_ARGS["tls-keyfile-password"], "utf-8")
+		assert conf.tls_keyfile_pw_is_secret
+
+def test_backup_secret_passwords_are_literal():
+	gen_secret_agent_files(backup_args=SA_LITERAL_ARGS)
+	check_secret_passwords_are_literal(backup_so.backup_config_set, BackupConfigT,
+		"asbackup", SA_BACKUP_RESOURCE)
+
+def test_restore_secret_passwords_are_literal():
+	gen_secret_agent_files(restore_args=SA_LITERAL_ARGS)
+	check_secret_passwords_are_literal(restore_so.restore_config_set, RestoreConfigT,
+		"asrestore", SA_RESTORE_RESOURCE)
