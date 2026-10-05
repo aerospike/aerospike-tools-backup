@@ -359,6 +359,7 @@ backup_config_set(int argc, char* argv[], backup_config_t* conf)
 
 		case 'P':
 			cf_free(conf->password);
+			conf->password = NULL;
 			if (optarg) {
 				conf->password = safe_strdup(optarg);
 			} else {
@@ -383,6 +384,7 @@ backup_config_set(int argc, char* argv[], backup_config_t* conf)
 					conf->password = safe_strdup(DEFAULT_PASSWORD);
 				}
 			}
+			conf->password_is_secret = arg_is_secret;
 			break;
 
 		case 'A':
@@ -648,6 +650,8 @@ backup_config_set(int argc, char* argv[], backup_config_t* conf)
 			break;
 
 		case TLS_OPT_KEY_FILE_PASSWORD:
+			cf_free(conf->tls.keyfile_pw);
+			conf->tls.keyfile_pw = NULL;
 			if (optarg) {
 				conf->tls.keyfile_pw = safe_strdup(optarg);
 			} else {
@@ -671,6 +675,7 @@ backup_config_set(int argc, char* argv[], backup_config_t* conf)
 					conf->tls.keyfile_pw = safe_strdup(DEFAULT_PASSWORD);
 				}
 			}
+			conf->tls_keyfile_pw_is_secret = arg_is_secret;
 			break;
 
 		case TLS_OPT_CERT_FILE:
@@ -821,6 +826,16 @@ backup_config_set(int argc, char* argv[], backup_config_t* conf)
 		return BACKUP_CONFIG_INIT_FAILURE;
 	}
 
+	if (!conf->password_is_secret &&
+			!resolve_password("--password", &conf->password)) {
+		return BACKUP_CONFIG_INIT_FAILURE;
+	}
+
+	if (!conf->tls_keyfile_pw_is_secret &&
+			!resolve_password("--tls-keyfile-password", &conf->tls.keyfile_pw)) {
+		return BACKUP_CONFIG_INIT_FAILURE;
+	}
+
 	return 0;
 }
 
@@ -963,6 +978,7 @@ backup_config_init(backup_config_t* conf)
 	conf->use_services_alternate = false;
 	conf->user = NULL;
 	conf->password = NULL;
+	conf->password_is_secret = false;
 	conf->auth_mode = NULL;
 
 	conf->s3_region = NULL;
@@ -1014,6 +1030,7 @@ backup_config_init(backup_config_t* conf)
 	conf->file_limit = DEFAULT_FILE_LIMIT * 1024 * 1024;
 
 	memset(&conf->tls, 0, sizeof(as_config_tls));
+	conf->tls_keyfile_pw_is_secret = false;
 	conf->tls_name = NULL;
 
 	conf->socket_timeout = 10 * 1000;
@@ -1137,6 +1154,7 @@ backup_config_clone(backup_config_t* conf)
 	clone->use_services_alternate = conf->use_services_alternate;
 	clone->user = safe_strdup(conf->user);
 	clone->password = safe_strdup(conf->password);
+	clone->password_is_secret = conf->password_is_secret;
 	clone->s3_region = safe_strdup(conf->s3_region);
 	clone->s3_profile = safe_strdup(conf->s3_profile);
 	clone->s3_endpoint_override = safe_strdup(conf->s3_endpoint_override);
@@ -1162,6 +1180,7 @@ backup_config_clone(backup_config_t* conf)
 
 	clone->tls_name = safe_strdup(conf->tls_name);
 	tls_config_clone(&clone->tls, &conf->tls);
+	clone->tls_keyfile_pw_is_secret = conf->tls_keyfile_pw_is_secret;
 
 	clone->remove_files = conf->remove_files;
 	clone->remove_artifacts = conf->remove_artifacts;
@@ -1318,9 +1337,16 @@ usage(const char *name)
 	fprintf(stdout, " -p PORT, --port=PORT Server default port. Default: 3000\n");
 	fprintf(stdout, " -U USER, --user=USER User name used to authenticate with cluster. Default: none\n");
 	fprintf(stdout, " -P, --password\n");
-	fprintf(stdout, "                      Password used to authenticate with cluster. Default: none\n");
+	fprintf(stdout, "                      Password used to authenticate with cluster. Default: none\n"
+					"                      It can be one of the following:\n"
+					"                      1) Environment variable: 'env:<VAR>'\n"
+					"                      2) Base64 encoded environment variable: 'env-b64:<VAR>'\n"
+					"                      3) Base64 encoded value: 'b64:<VALUE>'\n"
+					"                      4) File: 'file:<PATH>'\n"
+					"                      5) String: 'PASSWORD'\n"
+					"                      A value fetched with 'secrets:' is used as-is.\n");
 	fprintf(stdout, "                      User will be prompted on command line if -P specified and no\n");
-	fprintf(stdout, "      	               password is given.\n");
+	fprintf(stdout, "                      password is given.\n");
 	fprintf(stdout, " -A, --auth\n");
 	fprintf(stdout, "                      Set authentication mode when user/password is defined. Modes are\n");
 	fprintf(stdout, "                      (INTERNAL, EXTERNAL, EXTERNAL_INSECURE, PKI) and the default is INTERNAL.\n");
@@ -1350,9 +1376,12 @@ usage(const char *name)
 	fprintf(stdout, " --tls-keyfile-password=TLS_KEYFILE_PASSWORD\n");
 	fprintf(stdout, "                      Password to load protected tls-keyfile.\n"
 					"                      It can be one of the following:\n"
-					"                      1) Environment varaible: 'env:<VAR>'\n"
-					"                      2) File: 'file:<PATH>'\n"
-					"                      3) String: 'PASSWORD'\n"
+					"                      1) Environment variable: 'env:<VAR>'\n"
+					"                      2) Base64 encoded environment variable: 'env-b64:<VAR>'\n"
+					"                      3) Base64 encoded value: 'b64:<VALUE>'\n"
+					"                      4) File: 'file:<PATH>'\n"
+					"                      5) String: 'PASSWORD'\n"
+					"                      A value fetched with 'secrets:' is used as-is.\n"
 					"                      Default: none\n"
 					"                      User will be prompted on command line if --tls-keyfile-password\n"
 					"                      specified and no password is given.\n");
