@@ -63,7 +63,11 @@ def start_minio_server(name, volume, base_port=9000, root_user_key="key",
 		container.reload()
 		ip = container.attrs["NetworkSettings"]["Networks"]["bridge"]["IPAddress"]
 
-		wait_for_minio_ready(base_port)
+		try:
+			wait_for_minio_ready(base_port)
+		except Exception:
+			container.remove(force=True)
+			raise
 
 		MINIO_SERVERS[name] = {
 			"container": container,
