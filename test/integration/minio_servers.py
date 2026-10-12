@@ -49,7 +49,7 @@ def start_minio_server(name, volume, base_port=9000, root_user_key="key",
 	backing the /data directory within the container.
 	"""
 	if not MINIO_SERVERS.get(name, False):
-		container = DOCKER_CLIENT.containers.run("quay.io/minio/minio",
+		container = DOCKER_CLIENT.containers.run("chainguard/minio",
 				command="server /data --console-address=\":9001\"",
 				ports={
 					'9000/tcp': str(base_port),
