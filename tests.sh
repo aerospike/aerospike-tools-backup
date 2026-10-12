@@ -26,6 +26,14 @@ fi
 
 set -e
 
-py.test --dir-mode ${2}
-py.test --file-mode ${2}
+# without this Python block-buffers stdout when CI pipes it, so a long test
+# file looks hung until it finishes
+export PYTHONUNBUFFERED=1
+
+PYTEST_FLAGS="-v --durations=25"
+
+echo "=== ${2}: dir-mode ==="
+py.test ${PYTEST_FLAGS} --dir-mode ${2}
+echo "=== ${2}: file-mode ==="
+py.test ${PYTEST_FLAGS} --file-mode ${2}
 
