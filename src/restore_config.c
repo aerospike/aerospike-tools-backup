@@ -355,6 +355,7 @@ restore_config_set(int argc, char* argv[], restore_config_t* conf)
 
 		case 'P':
 			cf_free(conf->password);
+			conf->password = NULL;
 			if (optarg) {
 				conf->password = safe_strdup(optarg);
 			} else {
@@ -379,6 +380,7 @@ restore_config_set(int argc, char* argv[], restore_config_t* conf)
 					conf->password = safe_strdup(DEFAULT_PASSWORD);
 				}
 			}
+			conf->password_from_secret_agent = arg_is_secret;
 			break;
 
 		case 'A':
@@ -592,6 +594,8 @@ restore_config_set(int argc, char* argv[], restore_config_t* conf)
 			break;
 
 		case TLS_OPT_KEY_FILE_PASSWORD:
+			cf_free(conf->tls.keyfile_pw);
+			conf->tls.keyfile_pw = NULL;
 			if (optarg) {
 				conf->tls.keyfile_pw = safe_strdup(optarg);
 			} else {
@@ -769,6 +773,13 @@ restore_config_set(int argc, char* argv[], restore_config_t* conf)
 		return RESTORE_CONFIG_INIT_FAILURE;
 	}
 
+	if (conf->user != NULL && !conf->validate &&
+			!conf->password_from_secret_agent &&
+			!resolve_password("--password", &conf->password,
+				AS_PASSWORD_SIZE - 1, false)) {
+		return RESTORE_CONFIG_INIT_FAILURE;
+	}
+
 	return 0;
 }
 
@@ -880,6 +891,7 @@ restore_config_init(restore_config_t *conf)
 	conf->port = DEFAULT_PORT;
 	conf->user = NULL;
 	conf->password = NULL;
+	conf->password_from_secret_agent = false;
 	conf->auth_mode = NULL;
 
 	conf->s3_region = NULL;
@@ -1124,9 +1136,18 @@ usage(const char *name)
 	fprintf(stdout, " -p PORT, --port=PORT Server default port. Default: 3000\n");
 	fprintf(stdout, " -U USER, --user=USER User name used to authenticate with cluster. Default: none\n");
 	fprintf(stdout, " -P, --password\n");
-	fprintf(stdout, "                      Password used to authenticate with cluster. Default: none\n");
+	fprintf(stdout, "                      Password used to authenticate with cluster. Default: none\n"
+					"                      It can be one of the following:\n"
+					"                      1) Environment variable: 'env:<VAR>'\n"
+					"                      2) Base64 encoded environment variable: 'env-b64:<VAR>'\n"
+					"                      3) Base64 encoded value: 'b64:<BASE64>'\n"
+					"                      4) File: 'file:<PATH>', the whole file less one trailing\n"
+					"                         line ending\n"
+					"                      5) String: 'PASSWORD'\n"
+					"                      A password read from 1) to 4) must be at most 63 bytes.\n"
+					"                      A value fetched with 'secrets:' is used as-is.\n");
 	fprintf(stdout, "                      User will be prompted on command line if -P specified and no\n");
-	fprintf(stdout, "      	               password is given.\n");
+	fprintf(stdout, "                      password is given. The typed password is used as is.\n");
 	fprintf(stdout, " -A, --auth\n");
 	fprintf(stdout, "                      Set authentication mode when user/password is defined. Modes are\n");
 	fprintf(stdout, "                      (INTERNAL, EXTERNAL, EXTERNAL_INSECURE, PKI) and the default is INTERNAL.\n");
@@ -1155,12 +1176,16 @@ usage(const char *name)
 	fprintf(stdout, " --tls-keyfile-password=TLS_KEYFILE_PASSWORD\n");
 	fprintf(stdout, "                      Password to load protected tls-keyfile.\n"
 					"                      It can be one of the following:\n"
-					"                      1) Environment varaible: 'env:<VAR>'\n"
-					"                      2) File: 'file:<PATH>'\n"
-					"                      3) String: 'PASSWORD'\n"
+					"                      1) Environment variable: 'env:<VAR>'\n"
+					"                      2) Base64 encoded environment variable: 'env-b64:<VAR>'\n"
+					"                      3) Base64 encoded value: 'b64:<BASE64>'\n"
+					"                      4) File: 'file:<PATH>', the first line of the file, at\n"
+					"                         most 4999 bytes\n"
+					"                      5) String: 'PASSWORD'\n"
 					"                      Default: none\n"
 					"                      User will be prompted on command line if --tls-keyfile-password\n"
-					"                      specified and no password is given.\n");
+					"                      specified and no password is given. The typed password\n"
+					"                      accepts the forms above.\n");
 	fprintf(stdout, " --tls-certfile=TLS_CERTFILE <path>\n");
 	fprintf(stdout, "                      Path to the chain file for mutual authentication (if\n"
 					"                      Aerospike Cluster is supporting it).\n");

@@ -50,6 +50,8 @@ bool config_from_files(void *c, const char* instance, const char* cmd_config_fna
 bool config_from_file(void *c, const char* instance, const char* fname, int level, bool is_backup);
 
 bool tls_read_password(char* value, char** ptr);
+bool resolve_password(const char* opt_name, char** value, size_t max_len,
+		bool first_line);
 
 #ifdef __cplusplus
 }

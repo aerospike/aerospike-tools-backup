@@ -83,6 +83,7 @@ typedef struct restore_config {
 	bool use_services_alternate;
 	char *user;
 	char *password;
+	bool password_from_secret_agent;
 	uint32_t parallel;
 	char *nice_list;
 	bool no_records;

@@ -34,6 +34,7 @@ main(void)
 	srunner_add_suite(sr, utils_suite());
 	srunner_add_suite(sr, backup_file_suite());
 	srunner_add_suite(sr, s3_config_suite());
+	srunner_add_suite(sr, password_suite());
 
 	srunner_set_fork_status(sr, CK_NOFORK);
 

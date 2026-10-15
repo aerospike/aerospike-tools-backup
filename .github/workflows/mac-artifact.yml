@@ -112,6 +112,12 @@ jobs:
         # `xcodebuild -version` aborts with "Abort trap: 6" (exit 134) on the macOS runners; read the version from the plist.
         XCODE_VERSION="$(defaults read "$(xcode-select -p)/../version" CFBundleShortVersionString 2>/dev/null || true)"
         echo "XCODE_VERSION=$XCODE_VERSION" >> $GITHUB_ENV
+    - name: Pin Homebrew OpenSSL to openssl@3
+      run: |
+        # Homebrew libssh2 pulls in openssl@4, whose linked headers in $(brew --prefix)/include and opt/openssl alias shadow openssl@3.
+        brew unlink openssl@4 2>/dev/null || true
+        ln -sfn "$(brew --prefix openssl@3)" "$(brew --prefix)/opt/openssl"
+        "$(brew --prefix)/opt/openssl/bin/openssl" version
     - name: Cache AWS C++ sdk
       id: cache-aws-sdk-cpp
       uses: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c # v3.5.0

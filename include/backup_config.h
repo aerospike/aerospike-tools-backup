@@ -85,6 +85,7 @@ typedef struct backup_config {
 	bool use_services_alternate;
 	char *user;
 	char *password;
+	bool password_from_secret_agent;
 
 	// The region to use for S3.
 	char* s3_region;
