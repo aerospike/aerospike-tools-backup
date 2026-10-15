@@ -151,7 +151,6 @@ class RestoreConfigT(ComparableCtStructure):
 		("s3_connect_timeout", ctypes.c_uint32),
 		("s3_log_level", ctypes.c_int),
 		("tls", AsConfigTls),
-		("tls_keyfile_pw_is_secret", ctypes.c_bool),
 		("tls_name", ctypes.c_char_p),
 		("ns_list", ctypes.c_char_p),
 		("directory", ctypes.c_char_p),
@@ -302,7 +301,6 @@ class BackupConfigT(ComparableCtStructure):
         ("retry_delay", ctypes.c_uint32),
         ("tls_name", ctypes.c_char_p),
         ("tls", AsConfigTls),
-        ("tls_keyfile_pw_is_secret", ctypes.c_bool),
         ("remove_files", ctypes.c_bool),
         ("remove_artifacts", ctypes.c_bool),
         ("n_estimate_samples", ctypes.c_uint32),
@@ -514,7 +512,6 @@ def test_restore_config_set():
 	expected_conf.tls.certstring = expected_conf.tls.certfile
 	expected_conf.tls.certfile = None
 	expected_conf.password_is_secret = True
-	expected_conf.tls_keyfile_pw_is_secret = True
 
 	gen_secret_agent_files(
 		restore_args={x["name"]: x["value"] for x in RESTORE_SECRET_OPTIONS}
@@ -567,7 +564,6 @@ def test_backup_config_set():
 	expected_conf.tls.certstring = expected_conf.tls.certfile
 	expected_conf.tls.certfile = None
 	expected_conf.password_is_secret = True
-	expected_conf.tls_keyfile_pw_is_secret = True
 
 	gen_secret_agent_files(
 		backup_args={x["name"]: x["value"] for x in BACKUP_SECRET_OPTIONS}
@@ -620,7 +616,6 @@ def test_backup_conf_file():
 	expected_conf.tls.certstring = expected_conf.tls.certfile
 	expected_conf.tls.certfile = None
 	expected_conf.password_is_secret = True
-	expected_conf.tls_keyfile_pw_is_secret = True
 
 	gen_secret_agent_files(
 		backup_args={x["name"]: x["value"] for x in BACKUP_SECRET_OPTIONS}
@@ -671,7 +666,6 @@ def test_asrestore_conf_file():
 	expected_conf.tls.certstring = expected_conf.tls.certfile
 	expected_conf.tls.certfile = None
 	expected_conf.password_is_secret = True
-	expected_conf.tls_keyfile_pw_is_secret = True
 
 	gen_secret_agent_files(
 		restore_args={x["name"]: x["value"] for x in RESTORE_SECRET_OPTIONS}
@@ -703,9 +697,12 @@ def test_asrestore_conf_file():
 
 	assert expected_conf == conf
 
-# Secret agent values must be used as-is, never parsed for env:/file:/b64:.
+# Secret agent --password values must be used as-is, never parsed for
+# env:/file:/b64:. A --tls-keyfile-password is resolved at connect time, as
+# before password sources were added.
 SA_LITERAL_ENV = "ASB_SA_LITERAL_PW"
 SA_LITERAL_ARGS = {
+	"user": "sa-user",
 	"password": "env:" + SA_LITERAL_ENV,
 	"tls-keyfile-password": "file:/nonexistent/asb-sa-literal",
 }
@@ -745,10 +742,10 @@ def check_secret_passwords_are_literal(config_set, conf_type, prgm_name, resourc
 
 	for res, conf in confs:
 		assert res == 0
+		assert conf.user == bytes(SA_LITERAL_ARGS["user"], "utf-8")
 		assert conf.password == bytes(SA_LITERAL_ARGS["password"], "utf-8")
 		assert conf.password_is_secret
 		assert conf.tls.keyfile_pw == bytes(SA_LITERAL_ARGS["tls-keyfile-password"], "utf-8")
-		assert conf.tls_keyfile_pw_is_secret
 
 def test_backup_secret_passwords_are_literal():
 	gen_secret_agent_files(backup_args=SA_LITERAL_ARGS)

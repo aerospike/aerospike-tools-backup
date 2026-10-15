@@ -107,7 +107,6 @@ assert_bup_config_eq(backup_config_t *c1, backup_config_t *c2)
 	CMP_STR_FIELD(c1->tls.cipher_suite, c2->tls.cipher_suite);
 	CMP_STR_FIELD(c1->tls.keyfile, c2->tls.keyfile);
 	CMP_STR_FIELD(c1->tls.keyfile_pw, c2->tls.keyfile_pw);
-	CMP_INT_FIELD(c1->tls_keyfile_pw_is_secret, c2->tls_keyfile_pw_is_secret);
 	CMP_STR_FIELD(c1->tls.certfile, c2->tls.certfile);
 	CMP_INT_FIELD(c1->tls.crl_check, c2->tls.crl_check);
 	CMP_INT_FIELD(c1->tls.crl_check_all, c2->tls.crl_check_all);
