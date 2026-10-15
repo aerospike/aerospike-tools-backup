@@ -151,14 +151,16 @@ jobs:
     #     sudo chmod 777 /cores
     #     # Core filenames will be of the form executable.pid.timestamp:
     #     sudo bash -c 'echo "/cores/%e.%p.%t" > /proc/sys/kernel/core_pattern'
-    - name: Test secret agent
+    - name: Test secrets
       run: |
         make run_test_secrets
       working-directory: main
-    - name: Test secrets
+      timeout-minutes: 20
+    - name: Test secret agent
       run: |
         make run_test_secret_agent
       working-directory: main
+      timeout-minutes: 20
     # - name: Enable core directories
     #   if: fails()
     #   run: sudo chmod -R +rwx /cores/* # Enable access to core dumps (doesn't need to be in same run block)
@@ -173,42 +175,55 @@ jobs:
     - name: Test Validate
       run: make run_test_validate
       working-directory: main
+      timeout-minutes: 20
     - name: Test Bin Name
       run: make run_test_bin_name
       working-directory: main
+      timeout-minutes: 20
     - name: Test asbackup/asrestore with Valgrind
       run: make run_test_w_valgrind
       working-directory: main
+      timeout-minutes: 30
     - name: Test Set Name
       run: make run_test_set_name
       working-directory: main
+      timeout-minutes: 20
     - name: Test Key
       run: make run_test_key
       working-directory: main
+      timeout-minutes: 20
     - name: Test Value
       run: make run_test_value
       working-directory: main
+      timeout-minutes: 20
     - name: Test Index
       run: make run_test_index
       working-directory: main
+      timeout-minutes: 240
     - name: Test UDF
       run: make run_test_udf
       working-directory: main
+      timeout-minutes: 20
     - name: Test TTL
       run: make run_test_ttl
       working-directory: main
+      timeout-minutes: 20
     - name: Test Policy
       run: make run_test_policy
       working-directory: main
+      timeout-minutes: 20
     - name: Test Filter
       run: make run_test_filter
       working-directory: main
+      timeout-minutes: 40
     - name: Test Resume
       run: make run_test_resume
       working-directory: main
+      timeout-minutes: 80
     - name: Test S3
       run: make run_test_s3
       working-directory: main
+      timeout-minutes: 100
     - name: Accumulate coverage
       run: make coverage
       working-directory: main
