@@ -380,7 +380,7 @@ restore_config_set(int argc, char* argv[], restore_config_t* conf)
 					conf->password = safe_strdup(DEFAULT_PASSWORD);
 				}
 			}
-			conf->password_is_secret = arg_is_secret;
+			conf->password_from_secret_agent = arg_is_secret;
 			break;
 
 		case 'A':
@@ -773,7 +773,8 @@ restore_config_set(int argc, char* argv[], restore_config_t* conf)
 		return RESTORE_CONFIG_INIT_FAILURE;
 	}
 
-	if (conf->user != NULL && !conf->validate && !conf->password_is_secret &&
+	if (conf->user != NULL && !conf->validate &&
+			!conf->password_from_secret_agent &&
 			!resolve_password("--password", &conf->password,
 				AS_PASSWORD_SIZE - 1, false)) {
 		return RESTORE_CONFIG_INIT_FAILURE;
@@ -890,7 +891,7 @@ restore_config_init(restore_config_t *conf)
 	conf->port = DEFAULT_PORT;
 	conf->user = NULL;
 	conf->password = NULL;
-	conf->password_is_secret = false;
+	conf->password_from_secret_agent = false;
 	conf->auth_mode = NULL;
 
 	conf->s3_region = NULL;

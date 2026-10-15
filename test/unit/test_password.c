@@ -559,7 +559,7 @@ START_TEST(test_backup_cli_env)
 		ARGV("asbackup", "--no-config-file", "-U", "user", "-P", "env:" PW_ENV);
 		ck_assert_int_eq(backup_config_set(argc, argv, &conf), 0);
 		ck_assert_str_eq(conf.password, "s3cret");
-		ck_assert(!conf.password_is_secret);
+		ck_assert(!conf.password_from_secret_agent);
 		backup_config_destroy(&conf);
 	}
 
@@ -690,7 +690,7 @@ START_TEST(test_backup_config_file)
 	backup_config_init(&conf);
 	ck_assert(config_from_file(&conf, NULL, CONF_FILE, 0, true));
 	ck_assert_str_eq(conf.password, "file:" PW_FILE);
-	ck_assert(!conf.password_is_secret);
+	ck_assert(!conf.password_from_secret_agent);
 	ck_assert_str_eq(conf.tls.keyfile_pw, "env-b64:" PW_ENV);
 	backup_config_destroy(&conf);
 
@@ -752,7 +752,7 @@ START_TEST(test_restore_cli_env)
 		ARGV("asrestore", "--no-config-file", "-U", "user", "-P", "env:" PW_ENV);
 		ck_assert_int_eq(restore_config_set(argc, argv, &conf), 0);
 		ck_assert_str_eq(conf.password, "s3cret");
-		ck_assert(!conf.password_is_secret);
+		ck_assert(!conf.password_from_secret_agent);
 		restore_config_destroy(&conf);
 	}
 

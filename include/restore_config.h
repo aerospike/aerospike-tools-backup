@@ -83,8 +83,7 @@ typedef struct restore_config {
 	bool use_services_alternate;
 	char *user;
 	char *password;
-	// Secret agent values are used as-is, never parsed for env:/file:/b64:.
-	bool password_is_secret;
+	bool password_from_secret_agent;
 	uint32_t parallel;
 	char *nice_list;
 	bool no_records;

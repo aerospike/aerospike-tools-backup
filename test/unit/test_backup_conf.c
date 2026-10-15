@@ -89,7 +89,7 @@ assert_bup_config_eq(backup_config_t *c1, backup_config_t *c2)
 	CMP_INT_FIELD(c1->use_services_alternate, c2->use_services_alternate);
 	CMP_STR_FIELD(c1->user, c2->user);
 	CMP_STR_FIELD(c1->password, c2->password);
-	CMP_INT_FIELD(c1->password_is_secret, c2->password_is_secret);
+	CMP_INT_FIELD(c1->password_from_secret_agent, c2->password_from_secret_agent);
 	CMP_STR_FIELD(c1->auth_mode, c2->auth_mode);
 	CMP_INT_FIELD(c1->remove_files, c2->remove_files);
 	CMP_STR_FIELD(c1->ns, c2->ns);

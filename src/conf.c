@@ -534,7 +534,7 @@ config_restore_cluster(toml_table_t *config_table, restore_config_t *c, const ch
 
 		} else if (! strcasecmp("password", name)) {
 			status = config_str(config_value, (void*)&c->password, override);
-			c->password_is_secret = arg_is_secret;
+			c->password_from_secret_agent = arg_is_secret;
 
 		} else if (! strcasecmp("auth", name)) {
 			status = config_str(config_value, &c->auth_mode, override);
@@ -663,7 +663,7 @@ config_backup_cluster(toml_table_t *config_table, backup_config_t *c, const char
 
 		} else if (! strcasecmp("password", name)) {
 			status = config_str(config_value, (void*)&c->password, override);
-			c->password_is_secret = arg_is_secret;
+			c->password_from_secret_agent = arg_is_secret;
 
 		} else if (! strcasecmp("auth", name)) {
 			status = config_str(config_value, &c->auth_mode, override);

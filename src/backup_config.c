@@ -384,7 +384,7 @@ backup_config_set(int argc, char* argv[], backup_config_t* conf)
 					conf->password = safe_strdup(DEFAULT_PASSWORD);
 				}
 			}
-			conf->password_is_secret = arg_is_secret;
+			conf->password_from_secret_agent = arg_is_secret;
 			break;
 
 		case 'A':
@@ -826,7 +826,7 @@ backup_config_set(int argc, char* argv[], backup_config_t* conf)
 	}
 
 	if (conf->user != NULL && !conf->remove_artifacts &&
-			!conf->password_is_secret &&
+			!conf->password_from_secret_agent &&
 			!resolve_password("--password", &conf->password,
 				AS_PASSWORD_SIZE - 1, false)) {
 		return BACKUP_CONFIG_INIT_FAILURE;
@@ -974,7 +974,7 @@ backup_config_init(backup_config_t* conf)
 	conf->use_services_alternate = false;
 	conf->user = NULL;
 	conf->password = NULL;
-	conf->password_is_secret = false;
+	conf->password_from_secret_agent = false;
 	conf->auth_mode = NULL;
 
 	conf->s3_region = NULL;
@@ -1149,7 +1149,7 @@ backup_config_clone(backup_config_t* conf)
 	clone->use_services_alternate = conf->use_services_alternate;
 	clone->user = safe_strdup(conf->user);
 	clone->password = safe_strdup(conf->password);
-	clone->password_is_secret = conf->password_is_secret;
+	clone->password_from_secret_agent = conf->password_from_secret_agent;
 	clone->s3_region = safe_strdup(conf->s3_region);
 	clone->s3_profile = safe_strdup(conf->s3_profile);
 	clone->s3_endpoint_override = safe_strdup(conf->s3_endpoint_override);
