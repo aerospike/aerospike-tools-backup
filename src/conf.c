@@ -46,6 +46,7 @@
 #define BACKUP_CONFIG_FILE ".aerospike/astools.conf"
 #define ERR_BUF_SIZE 1024
 #define PASSWORD_FILE_MAX_SIZE (64 * 1024)
+#define PASSWORD_FIRST_LINE_MAX_SIZE 4999
 
 
 //=========================================================
@@ -96,7 +97,8 @@ static bool password_env(const char *opt_name, const char *var, char **ptr);
 static bool password_env_b64(const char *opt_name, const char *var, char **ptr);
 static bool password_b64(const char *opt_name, const char *b64,
 		const char *src_kind, const char *src_name, char **ptr);
-static bool password_file(const char *opt_name, const char *path, char **ptr);
+static bool password_file(const char *opt_name, const char *path,
+		bool first_line, char **ptr);
 static bool password_finish(const char *opt_name, const char *src_kind,
 		const char *src_name, char *buf, size_t len, char **ptr);
 
@@ -208,9 +210,25 @@ config_from_files(void *c, const char *instance,
 }
 
 bool
-resolve_password(const char *opt_name, char **value)
+tls_read_password(char *value, char **ptr)
+{
+	*ptr = cf_strdup(value);
+
+	if (*ptr == NULL) {
+		err("--tls-keyfile-password: out of memory");
+		return false;
+	}
+
+	return resolve_password("--tls-keyfile-password", ptr, 0, true);
+}
+
+bool
+resolve_password(const char *opt_name, char **value, size_t max_len,
+		bool first_line)
 {
 	const char *val = *value;
+	const char *src_kind;
+	const char *src_name;
 	char *res = NULL;
 	bool ok;
 
@@ -219,22 +237,37 @@ resolve_password(const char *opt_name, char **value)
 	}
 
 	if (strncmp(val, "env:", 4) == 0) {
-		ok = password_env(opt_name, val + 4, &res);
+		src_kind = "environment variable ";
+		src_name = val + 4;
+		ok = password_env(opt_name, src_name, &res);
 	}
 	else if (strncmp(val, "env-b64:", 8) == 0) {
-		ok = password_env_b64(opt_name, val + 8, &res);
+		src_kind = "environment variable ";
+		src_name = val + 8;
+		ok = password_env_b64(opt_name, src_name, &res);
 	}
 	else if (strncmp(val, "b64:", 4) == 0) {
-		ok = password_b64(opt_name, val + 4, "b64: value", "", &res);
+		src_kind = "b64: value";
+		src_name = "";
+		ok = password_b64(opt_name, val + 4, src_kind, src_name, &res);
 	}
 	else if (strncmp(val, "file:", 5) == 0) {
-		ok = password_file(opt_name, val + 5, &res);
+		src_kind = "file ";
+		src_name = val + 5;
+		ok = password_file(opt_name, src_name, first_line, &res);
 	}
 	else {
 		return true;
 	}
 
 	if (! ok) {
+		return false;
+	}
+
+	if (max_len != 0 && strlen(res) > max_len) {
+		err("%s: password from %s%s is longer than %zu bytes", opt_name, src_kind,
+				src_name, max_len);
+		cf_free(res);
 		return false;
 	}
 
@@ -534,7 +567,6 @@ config_restore_cluster(toml_table_t *config_table, restore_config_t *c, const ch
 
 		} else if (! strcasecmp("tls-keyfile-password", name)) {
 			status = config_str(config_value, (void*)&c->tls.keyfile_pw, override);
-			c->tls_keyfile_pw_is_secret = arg_is_secret;
 
 		} else if (! strcasecmp("tls-cafile", name)) {
 			if (arg_is_secret) {
@@ -664,7 +696,6 @@ config_backup_cluster(toml_table_t *config_table, backup_config_t *c, const char
 
 		} else if (! strcasecmp("tls-keyfile-password", name)) {
 			status = config_str(config_value, (void*)&c->tls.keyfile_pw, override);
-			c->tls_keyfile_pw_is_secret = arg_is_secret;
 
 		} else if (! strcasecmp("tls-cafile", name)) {
 			if (arg_is_secret) {
@@ -1521,7 +1552,13 @@ password_env(const char *opt_name, const char *var, char **ptr)
 		return false;
 	}
 
-	*ptr = safe_strdup(val);
+	*ptr = cf_strdup(val);
+
+	if (*ptr == NULL) {
+		err("%s: out of memory reading environment variable %s", opt_name, var);
+		return false;
+	}
+
 	return true;
 }
 
@@ -1542,43 +1579,45 @@ password_b64(const char *opt_name, const char *b64, const char *src_kind,
 		const char *src_name, char **ptr)
 {
 	size_t b64_len = strlen(b64);
-	char *enc = cf_malloc(b64_len + 1);
+	char *buf = cf_malloc(b64_len + 1);
 	size_t enc_len = 0;
+
+	if (buf == NULL) {
+		err("%s: out of memory decoding %s%s", opt_name, src_kind, src_name);
+		return false;
+	}
 
 	// Go's base64.StdEncoding skips line breaks, so do the same.
 	for (size_t i = 0; i < b64_len; i++) {
 		if (b64[i] != '\r' && b64[i] != '\n') {
-			enc[enc_len++] = b64[i];
+			buf[enc_len++] = b64[i];
 		}
 	}
 
 	if (enc_len == 0) {
-		cf_free(enc);
+		cf_free(buf);
 		return password_finish(opt_name, src_kind, src_name, NULL, 0, ptr);
 	}
 
 	uint32_t dec_len = 0;
-	char *dec = cf_malloc(cf_b64_decoded_buf_size((uint32_t) enc_len) + 1);
 
-	if (! cf_b64_validate_and_decode(enc, (uint32_t) enc_len, (uint8_t*) dec,
-				&dec_len)) {
+	if (! cf_b64_validate_and_decode_in_place((uint8_t*) buf,
+				(uint32_t) enc_len, &dec_len)) {
 		err("%s: invalid base64 in %s%s", opt_name, src_kind, src_name);
-		cf_free(enc);
-		cf_free(dec);
+		cf_free(buf);
 		return false;
 	}
 
-	cf_free(enc);
-
-	if (dec_len > 0 && dec[dec_len - 1] == '\n') {
+	if (dec_len > 0 && buf[dec_len - 1] == '\n') {
 		dec_len--;
 	}
 
-	return password_finish(opt_name, src_kind, src_name, dec, dec_len, ptr);
+	return password_finish(opt_name, src_kind, src_name, buf, dec_len, ptr);
 }
 
 static bool
-password_file(const char *opt_name, const char *path, char **ptr)
+password_file(const char *opt_name, const char *path, bool first_line,
+		char **ptr)
 {
 	FILE *fh = fopen(path, "r");
 
@@ -1587,8 +1626,27 @@ password_file(const char *opt_name, const char *path, char **ptr)
 		return false;
 	}
 
-	char *buf = cf_malloc(PASSWORD_FILE_MAX_SIZE + 1);
-	size_t len = fread(buf, 1, PASSWORD_FILE_MAX_SIZE + 1, fh);
+	size_t max_len = first_line ?
+			PASSWORD_FIRST_LINE_MAX_SIZE : PASSWORD_FILE_MAX_SIZE;
+	char *buf = cf_malloc(max_len + 2);
+
+	if (buf == NULL) {
+		err("%s: out of memory reading file %s", opt_name, path);
+		fclose(fh);
+		return false;
+	}
+
+	size_t len = 0;
+	int c = EOF;
+
+	while (len <= max_len && (c = getc(fh)) != EOF) {
+		if (first_line && (c == '\n' || c == '\r')) {
+			break;
+		}
+
+		buf[len++] = (char) c;
+	}
+
 	bool read_failed = ferror(fh) != 0;
 	int read_errno = errno;
 
@@ -1600,9 +1658,12 @@ password_file(const char *opt_name, const char *path, char **ptr)
 		return false;
 	}
 
-	if (len > PASSWORD_FILE_MAX_SIZE) {
-		err("%s: file %s is larger than %d bytes", opt_name, path,
-				PASSWORD_FILE_MAX_SIZE);
+	const char *src_kind = first_line && c != EOF ?
+			"first line of file " : "file ";
+
+	if (len > max_len) {
+		err("%s: %s%s is larger than %zu bytes", opt_name, src_kind, path,
+				max_len);
 		cf_free(buf);
 		return false;
 	}
@@ -1615,7 +1676,7 @@ password_file(const char *opt_name, const char *path, char **ptr)
 		}
 	}
 
-	return password_finish(opt_name, "file ", path, buf, len, ptr);
+	return password_finish(opt_name, src_kind, path, buf, len, ptr);
 }
 
 static bool

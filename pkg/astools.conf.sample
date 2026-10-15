@@ -24,9 +24,21 @@
 [cluster]
 # host = "localhost:cluster_a:3000"                     # host = "<host>[:<tls-name>][:<port>][,...]"
 # user = ""
+
+# password can be one of the following formats
+# Environment variable: "env:<VAR>"
+# password = "env:ASPWD"
+# Base64 encoded environment variable: "env-b64:<VAR>"
+# password = "env-b64:ASPWD_B64"
+# Base64 encoded string: "b64:<BASE64>"
+# password = "b64:c2VjcmV0"
+# File: "file:<PATH>", asbackup and asrestore use the whole file less one
+# trailing line ending
+# password = "file:/etc/aerospike/aspwd.txt"
+# String: "<PASSWORD>"
 # password = ""
-# password accepts the same formats as tls-keyfile-password below:
-# "env:<VAR>", "env-b64:<VAR>", "b64:<VALUE>", "file:<PATH>" or "<PASSWORD>"
+# asbackup and asrestore accept at most 63 bytes from env:, env-b64:, b64:
+# or file:
 
 #------------------------------------------------------------------------------
 # Transport Level Encryption
@@ -48,9 +60,10 @@
 # tls-keyfile-password = "env:PEMPWD"
 # Base64 encoded environment variable: "env-b64:<VAR>"
 # tls-keyfile-password = "env-b64:PEMPWD_B64"
-# Base64 encoded value: "b64:<VALUE>"
+# Base64 encoded string: "b64:<BASE64>"
 # tls-keyfile-password = "b64:cGFzc3dvcmQ="
-# File: "file:<PATH>" (one trailing newline is removed)
+# File: "file:<PATH>", asbackup and asrestore use the first line, at most
+# 4999 bytes
 # tls-keyfile-password = "file:/etc/aerospike/x509_certificates/MultiServer/keypwd.txt"
 # String: "<PASSWORD>"
 # tls-keyfile-password = ""

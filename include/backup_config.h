@@ -131,7 +131,6 @@ typedef struct backup_config {
 
 	char* tls_name;
 	as_config_tls tls;
-	bool tls_keyfile_pw_is_secret;
 
 	// When true, delete any files in the directory being backed up if in
 	// directory mode, or delete the file being backed up to if it already
