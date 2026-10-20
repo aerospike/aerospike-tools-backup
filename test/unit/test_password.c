@@ -22,6 +22,7 @@
 #define KEY_FILE "test/test_key.pem"
 
 static int saved_stderr = -1;
+static int saved_fd = -1;
 static const char* getpass_reply = "";
 static int getpass_calls = 0;
 
@@ -94,6 +95,35 @@ release_stderr(void)
 }
 
 static void
+capture_stdout(void)
+{
+	fflush(stdout);
+	saved_fd = dup(STDOUT_FILENO);
+	int fd = open(STDERR_FILE, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+	ck_assert_int_ge(fd, 0);
+	dup2(fd, STDOUT_FILENO);
+	close(fd);
+}
+
+static char*
+release_stdout(void)
+{
+	static char buf[64 * 1024];
+
+	fflush(stdout);
+	dup2(saved_fd, STDOUT_FILENO);
+	close(saved_fd);
+	saved_fd = -1;
+
+	FILE* f = fopen(STDERR_FILE, "rb");
+	ck_assert(f != NULL);
+	size_t len = fread(buf, 1, sizeof(buf) - 1, f);
+	fclose(f);
+	buf[len] = '\0';
+	return buf;
+}
+
+static void
 assert_resolves(const char* input, const char* expected)
 {
 	char* value = strdup(input);
@@ -130,7 +160,7 @@ static void
 assert_keyfile_resolves(const char* input, const char* expected)
 {
 	char* value = NULL;
-	ck_assert(tls_read_password((char*) input, &value));
+	ck_assert(tls_read_password(TLS_KEYFILE_PASSWORD_OPT, input, &value));
 	ck_assert_str_eq(value, expected);
 	cf_free(value);
 }
@@ -140,7 +170,7 @@ assert_keyfile_fails(const char* input)
 {
 	char* value = NULL;
 	capture_stderr();
-	bool ok = tls_read_password((char*) input, &value);
+	bool ok = tls_read_password(TLS_KEYFILE_PASSWORD_OPT, input, &value);
 	char* output = release_stderr();
 	ck_assert(!ok);
 	cf_free(value);
@@ -237,8 +267,8 @@ START_TEST(test_env_b64_empty)
 {
 	setenv(PW_ENV, "Cg==", 1);
 	char* out = assert_fails("--password", "env-b64:" PW_ENV);
-	ck_assert_ptr_ne(strstr(out, "--password: environment variable " PW_ENV
-				" decodes to an empty value"), NULL);
+	ck_assert_ptr_ne(strstr(out, "--password: password from environment variable "
+				PW_ENV " is empty"), NULL);
 }
 END_TEST
 
@@ -270,7 +300,7 @@ END_TEST
 START_TEST(test_b64_empty)
 {
 	char* out = assert_fails("--password", "b64:");
-	ck_assert_ptr_ne(strstr(out, "--password: b64: value decodes to an empty value"),
+	ck_assert_ptr_ne(strstr(out, "--password: password from b64: value is empty"),
 			NULL);
 
 	assert_fails("--password", "b64:Cg==");
@@ -326,7 +356,8 @@ START_TEST(test_file_empty)
 {
 	write_file(PW_FILE, "", 0);
 	char* out = assert_fails("--password", "file:" PW_FILE);
-	ck_assert_ptr_ne(strstr(out, "--password: file " PW_FILE " is empty"), NULL);
+	ck_assert_ptr_ne(strstr(out, "--password: password from file " PW_FILE
+				" is empty"), NULL);
 
 	write_file(PW_FILE, "\n", 1);
 	assert_fails("--password", "file:" PW_FILE);
@@ -502,10 +533,60 @@ START_TEST(test_max_len)
 	ck_assert_ptr_ne(strstr(out, "--password: decoded value from environment "
 				"variable " PW_ENV " is longer than 63 bytes"), NULL);
 
-	value = strdup(too_long);
+	out = assert_too_long(too_long);
+	ck_assert_ptr_ne(strstr(out, "--password: password is longer than 63 bytes"),
+			NULL);
+	ck_assert_ptr_eq(strstr(out, too_long), NULL);
+
+	value = strdup(longest);
 	ck_assert(resolve_password("--password", &value, 63, false));
-	ck_assert_str_eq(value, too_long);
+	ck_assert_str_eq(value, longest);
 	cf_free(value);
+}
+END_TEST
+
+START_TEST(test_empty_name)
+{
+	char* out = assert_fails("--password", "env:");
+	ck_assert_ptr_ne(strstr(out, "--password: env: requires a variable name"),
+			NULL);
+
+	out = assert_fails("--password", "env-b64:");
+	ck_assert_ptr_ne(strstr(out, "--password: env-b64: requires a variable name"),
+			NULL);
+
+	out = assert_fails("--password", "file:");
+	ck_assert_ptr_ne(strstr(out, "--password: file: requires a path"), NULL);
+
+	out = assert_keyfile_fails("env:");
+	ck_assert_ptr_ne(strstr(out, "--tls-keyfile-password: env: requires a "
+				"variable name"), NULL);
+}
+END_TEST
+
+START_TEST(test_keyfile_max_len)
+{
+	char longest[TLS_KEYFILE_PASSWORD_MAX_LEN + 1];
+	char too_long[TLS_KEYFILE_PASSWORD_MAX_LEN + 2];
+
+	memset(longest, 'k', TLS_KEYFILE_PASSWORD_MAX_LEN);
+	longest[TLS_KEYFILE_PASSWORD_MAX_LEN] = '\0';
+	memset(too_long, 'k', TLS_KEYFILE_PASSWORD_MAX_LEN + 1);
+	too_long[TLS_KEYFILE_PASSWORD_MAX_LEN + 1] = '\0';
+
+	assert_keyfile_resolves(longest, longest);
+
+	char* out = assert_keyfile_fails(too_long);
+	ck_assert_ptr_ne(strstr(out, "--tls-keyfile-password: password is longer "
+				"than 1024 bytes"), NULL);
+
+	setenv(PW_ENV, longest, 1);
+	assert_keyfile_resolves("env:" PW_ENV, longest);
+
+	setenv(PW_ENV, too_long, 1);
+	out = assert_keyfile_fails("env:" PW_ENV);
+	ck_assert_ptr_ne(strstr(out, "--tls-keyfile-password: value from environment "
+				"variable " PW_ENV " is longer than 1024 bytes"), NULL);
 }
 END_TEST
 
@@ -513,14 +594,14 @@ START_TEST(test_keyfile_file_empty_first_line)
 {
 	write_file(PW_FILE, "\ns3cret", 7);
 	char* out = assert_keyfile_fails("file:" PW_FILE);
-	ck_assert_ptr_ne(strstr(out, "--tls-keyfile-password: first line of file "
-				PW_FILE " is empty"), NULL);
+	ck_assert_ptr_ne(strstr(out, "--tls-keyfile-password: password from first "
+				"line of file " PW_FILE " is empty"), NULL);
 	ck_assert_ptr_eq(strstr(out, "s3cret"), NULL);
 
 	write_file(PW_FILE, "", 0);
 	out = assert_keyfile_fails("file:" PW_FILE);
-	ck_assert_ptr_ne(strstr(out, "--tls-keyfile-password: file " PW_FILE
-				" is empty"), NULL);
+	ck_assert_ptr_ne(strstr(out, "--tls-keyfile-password: password from file "
+				PW_FILE " is empty"), NULL);
 
 	write_file(PW_FILE, "\r\nx", 3);
 	assert_keyfile_fails("file:" PW_FILE);
@@ -542,19 +623,19 @@ START_TEST(test_keyfile_file_large)
 	assert_keyfile_resolves("file:" PW_FILE, "s3cret");
 
 	memset(data, 'a', len);
-	data[4999] = '\n';
+	data[1024] = '\n';
 	write_file(PW_FILE, data, len);
-	data[4999] = '\0';
+	data[1024] = '\0';
 	assert_keyfile_resolves("file:" PW_FILE, data);
 
 	memset(data, 'a', len);
-	data[5000] = '\n';
+	data[1025] = '\n';
 	write_file(PW_FILE, data, len);
 	cf_free(data);
 
 	char* out = assert_keyfile_fails("file:" PW_FILE);
 	ck_assert_ptr_ne(strstr(out, "--tls-keyfile-password: value from file "
-				PW_FILE " is longer than 4999 bytes"), NULL);
+				PW_FILE " is longer than 1024 bytes"), NULL);
 }
 END_TEST
 
@@ -671,9 +752,36 @@ START_TEST(test_backup_unused_passwords)
 	{
 		ARGV("asbackup", "--no-config-file", "-P", "env:" PW_ENV_UNSET,
 				"--tls-keyfile-password", "env:" PW_ENV_UNSET);
-		ck_assert_int_eq(backup_config_set(argc, argv, &conf), 0);
+		capture_stderr();
+		int res = backup_config_set(argc, argv, &conf);
+		char* out = release_stderr();
+		ck_assert_int_eq(res, 0);
+		ck_assert_ptr_ne(strstr(out, "--password: ignored because no user is set"),
+				NULL);
 		ck_assert_str_eq(conf.password, "env:" PW_ENV_UNSET);
 		ck_assert_str_eq(conf.tls.keyfile_pw, "env:" PW_ENV_UNSET);
+		backup_config_destroy(&conf);
+	}
+
+	{
+		ARGV("asbackup", "--no-config-file", "-P", "literal");
+		capture_stderr();
+		int res = backup_config_set(argc, argv, &conf);
+		char* out = release_stderr();
+		ck_assert_int_eq(res, 0);
+		ck_assert_ptr_eq(strstr(out, "ignored because no user is set"), NULL);
+		backup_config_destroy(&conf);
+	}
+
+	{
+		ARGV("asbackup", "--no-config-file", "-U", "user", "-A", "PKI", "-P",
+				"env:" PW_ENV_UNSET);
+		capture_stderr();
+		int res = backup_config_set(argc, argv, &conf);
+		char* out = release_stderr();
+		ck_assert_int_eq(res, 0);
+		ck_assert_ptr_eq(strstr(out, "--password"), NULL);
+		ck_assert_str_eq(conf.password, "env:" PW_ENV_UNSET);
 		backup_config_destroy(&conf);
 	}
 
@@ -749,10 +857,79 @@ START_TEST(test_backup_cli_overrides_config_file)
 		int res = backup_config_set(argc, argv, &conf);
 		char* out = release_stderr();
 		ck_assert_int_eq(res, BACKUP_CONFIG_INIT_FAILURE);
-		ck_assert_ptr_ne(strstr(out, "--password: environment variable "
-					PW_ENV_UNSET), NULL);
+		ck_assert_ptr_ne(strstr(out, "password in config file: environment "
+					"variable " PW_ENV_UNSET " is not set or empty"), NULL);
+		ck_assert_ptr_eq(strstr(out, "--password"), NULL);
 		backup_config_destroy(&conf);
 	}
+
+	{
+		ARGV("asbackup", "--only-config-file", CONF_FILE, "-U", "user", "-P",
+				"env:" PW_ENV_UNSET);
+		capture_stderr();
+		int res = backup_config_set(argc, argv, &conf);
+		char* out = release_stderr();
+		ck_assert_int_eq(res, BACKUP_CONFIG_INIT_FAILURE);
+		ck_assert_ptr_ne(strstr(out, "--password: environment variable "
+					PW_ENV_UNSET " is not set or empty"), NULL);
+		backup_config_destroy(&conf);
+	}
+}
+END_TEST
+
+START_TEST(test_cli_literal_too_long)
+{
+	char too_long[65];
+	memset(too_long, 'x', 64);
+	too_long[64] = '\0';
+
+	{
+		backup_config_t conf;
+		ARGV("asbackup", "--no-config-file", "-U", "user", "-P", too_long);
+		capture_stderr();
+		int res = backup_config_set(argc, argv, &conf);
+		char* out = release_stderr();
+		ck_assert_int_eq(res, BACKUP_CONFIG_INIT_FAILURE);
+		ck_assert_ptr_ne(strstr(out, "--password: password is longer than 63 "
+					"bytes"), NULL);
+		ck_assert_ptr_eq(strstr(out, too_long), NULL);
+		backup_config_destroy(&conf);
+	}
+
+	{
+		restore_config_t conf;
+		ARGV("asrestore", "--no-config-file", "-U", "user", "-P", too_long);
+		capture_stderr();
+		int res = restore_config_set(argc, argv, &conf);
+		char* out = release_stderr();
+		ck_assert_int_eq(res, RESTORE_CONFIG_INIT_FAILURE);
+		ck_assert_ptr_ne(strstr(out, "--password: password is longer than 63 "
+					"bytes"), NULL);
+		restore_config_destroy(&conf);
+	}
+}
+END_TEST
+
+START_TEST(test_backup_instance_config_file)
+{
+	setenv(PW_ENV, "instance pass", 1);
+
+	const char contents[] =
+		"[cluster]\n"
+		"user = \"default-user\"\n"
+		"password = \"env:" PW_ENV_UNSET "\"\n"
+		"[cluster_x]\n"
+		"user = \"x-user\"\n"
+		"password = \"env:" PW_ENV "\"\n";
+	write_file(CONF_FILE, contents, sizeof(contents) - 1);
+
+	backup_config_t conf;
+	ARGV("asbackup", "--only-config-file", CONF_FILE, "--instance", "x");
+	ck_assert_int_eq(backup_config_set(argc, argv, &conf), 0);
+	ck_assert_str_eq(conf.user, "x-user");
+	ck_assert_str_eq(conf.password, "instance pass");
+	ck_assert(conf.password_from_config_file);
+	backup_config_destroy(&conf);
 }
 END_TEST
 
@@ -899,8 +1076,8 @@ START_TEST(test_backup_keyfile_pw_at_connect)
 	ck_assert_str_eq(conf.tls.keyfile_pw, "file:" PW_FILE);
 
 	char* out = backup_status_init_fails(&conf);
-	ck_assert_ptr_ne(strstr(out, "--tls-keyfile-password: first line of file "
-				PW_FILE " is empty"), NULL);
+	ck_assert_ptr_ne(strstr(out, "--tls-keyfile-password: password from first "
+				"line of file " PW_FILE " is empty"), NULL);
 	ck_assert_int_eq(getpass_calls, 0);
 	backup_config_destroy(&conf);
 }
@@ -997,6 +1174,172 @@ START_TEST(test_restore_keyfile_pw_from_secret_agent)
 }
 END_TEST
 
+START_TEST(test_backup_typed_password_is_literal)
+{
+	backup_config_t conf;
+
+	ARGV("asbackup", "--no-config-file", "-h", "127.0.0.1", "-p", "1",
+			"-U", "user", "-P");
+	ck_assert_int_eq(backup_config_set(argc, argv, &conf), 0);
+	ck_assert_str_eq(conf.password, DEFAULT_PASSWORD);
+
+	getpass_reply = "env:" PW_ENV_UNSET;
+	char* out = backup_status_init_fails(&conf);
+	ck_assert_int_eq(getpass_calls, 1);
+	ck_assert_ptr_eq(strstr(out, "--password:"), NULL);
+	ck_assert_ptr_ne(strstr(out, "Error while connecting"), NULL);
+	backup_config_destroy(&conf);
+}
+END_TEST
+
+START_TEST(test_restore_typed_password_too_long)
+{
+	char too_long[65];
+	memset(too_long, 'x', 64);
+	too_long[64] = '\0';
+
+	restore_config_t conf;
+
+	ARGV("asrestore", "--no-config-file", "-h", "127.0.0.1", "-p", "1",
+			"-U", "user", "-P");
+	ck_assert_int_eq(restore_config_set(argc, argv, &conf), 0);
+
+	getpass_reply = too_long;
+	char* out = restore_status_init_fails(&conf);
+	ck_assert_int_eq(getpass_calls, 1);
+	ck_assert_ptr_ne(strstr(out, "--password: password is longer than 63 bytes"),
+			NULL);
+	ck_assert_ptr_eq(strstr(out, too_long), NULL);
+	restore_config_destroy(&conf);
+}
+END_TEST
+
+START_TEST(test_backup_keystring_keyfile_pw)
+{
+	backup_config_t conf;
+
+	{
+		ARGV("asbackup", "--no-config-file", "--tls-keyfile-password",
+				"env:" PW_ENV_UNSET);
+		ck_assert_int_eq(backup_config_set(argc, argv, &conf), 0);
+		conf.tls.keystring = cf_strdup("key fetched with secrets:");
+
+		char* out = backup_status_init_fails(&conf);
+		ck_assert_ptr_ne(strstr(out, "--tls-keyfile-password: environment "
+					"variable " PW_ENV_UNSET " is not set or empty"), NULL);
+		backup_config_destroy(&conf);
+	}
+
+	{
+		ARGV("asbackup", "--no-config-file", "--tls-keyfile-password");
+		ck_assert_int_eq(backup_config_set(argc, argv, &conf), 0);
+		conf.tls.keystring = cf_strdup("key fetched with secrets:");
+
+		getpass_reply = "env:" PW_ENV_UNSET;
+		char* out = backup_status_init_fails(&conf);
+		ck_assert_int_eq(getpass_calls, 1);
+		ck_assert_ptr_ne(strstr(out, "--tls-keyfile-password: environment "
+					"variable " PW_ENV_UNSET), NULL);
+		backup_config_destroy(&conf);
+	}
+}
+END_TEST
+
+START_TEST(test_restore_keyfile_pw_config_file_label)
+{
+	const char contents[] =
+		"[cluster]\n"
+		"tls-keyfile = \"" KEY_FILE "\"\n"
+		"tls-keyfile-password = \"env:" PW_ENV_UNSET "\"\n";
+	write_file(CONF_FILE, contents, sizeof(contents) - 1);
+
+	restore_config_t conf;
+
+	{
+		ARGV("asrestore", "--only-config-file", CONF_FILE);
+		ck_assert_int_eq(restore_config_set(argc, argv, &conf), 0);
+		ck_assert(conf.tls_keyfile_pw_from_config_file);
+
+		char* out = restore_status_init_fails(&conf);
+		ck_assert_ptr_ne(strstr(out, "tls-keyfile-password in config file: "
+					"environment variable " PW_ENV_UNSET), NULL);
+		ck_assert_ptr_eq(strstr(out, "--tls-keyfile-password"), NULL);
+		restore_config_destroy(&conf);
+	}
+
+	{
+		ARGV("asrestore", "--only-config-file", CONF_FILE,
+				"--tls-keyfile-password", "file:");
+		ck_assert_int_eq(restore_config_set(argc, argv, &conf), 0);
+		ck_assert(!conf.tls_keyfile_pw_from_config_file);
+
+		char* out = restore_status_init_fails(&conf);
+		ck_assert_ptr_ne(strstr(out, "--tls-keyfile-password: file: requires a "
+					"path"), NULL);
+		restore_config_destroy(&conf);
+	}
+}
+END_TEST
+
+START_TEST(test_backup_secret_agent_keyfile_pw_too_long)
+{
+	char too_long[TLS_KEYFILE_PASSWORD_MAX_LEN + 2];
+	memset(too_long, 'k', TLS_KEYFILE_PASSWORD_MAX_LEN + 1);
+	too_long[TLS_KEYFILE_PASSWORD_MAX_LEN + 1] = '\0';
+
+	backup_config_t conf;
+
+	ARGV("asbackup", "--no-config-file", "--tls-keyfile", KEY_FILE,
+			"--tls-keyfile-password", too_long);
+	ck_assert_int_eq(backup_config_set(argc, argv, &conf), 0);
+	conf.tls_keyfile_pw_from_secret_agent = true;
+
+	char* out = backup_status_init_fails(&conf);
+	ck_assert_ptr_ne(strstr(out, "--tls-keyfile-password: password is longer "
+				"than 1024 bytes"), NULL);
+	backup_config_destroy(&conf);
+}
+END_TEST
+
+static void
+assert_help(const char* out)
+{
+	ck_assert_ptr_ne(strstr(out,
+				"1) Environment variable: 'env:<VAR>', used exactly as set\n"), NULL);
+	ck_assert_ptr_ne(strstr(out,
+				"4) File: 'file:<PATH>', the whole file less one trailing '\\n' or\n"),
+			NULL);
+	ck_assert_ptr_ne(strstr(out,
+				"'file:' must be given as 'b64:' or typed at the prompt.\n"), NULL);
+	ck_assert_ptr_ne(strstr(out, "not PKI. It must be at most 63 bytes.\n"), NULL);
+	ck_assert_ptr_ne(strstr(out,
+				"4) File: 'file:<PATH>', the first line of the file\n"), NULL);
+	ck_assert_ptr_ne(strstr(out, "most 1024 bytes.\n"), NULL);
+	ck_assert_ptr_eq(strstr(out, "4999"), NULL);
+}
+
+START_TEST(test_help_text)
+{
+	{
+		backup_config_t conf;
+		ARGV("asbackup", "--help");
+		capture_stdout();
+		int res = backup_config_set(argc, argv, &conf);
+		assert_help(release_stdout());
+		ck_assert_int_eq(res, BACKUP_CONFIG_INIT_EXIT);
+	}
+
+	{
+		restore_config_t conf;
+		ARGV("asrestore", "--help");
+		capture_stdout();
+		int res = restore_config_set(argc, argv, &conf);
+		assert_help(release_stdout());
+		ck_assert_int_eq(res, RESTORE_CONFIG_INIT_EXIT);
+	}
+}
+END_TEST
+
 #undef ARGV
 
 
@@ -1038,6 +1381,8 @@ Suite* password_suite()
 	tcase_add_test(tc_resolve, test_keyfile_file_nul);
 	tcase_add_test(tc_resolve, test_file_dev_zero);
 	tcase_add_test(tc_resolve, test_max_len);
+	tcase_add_test(tc_resolve, test_empty_name);
+	tcase_add_test(tc_resolve, test_keyfile_max_len);
 	suite_add_tcase(s, tc_resolve);
 
 	tc_config = tcase_create("Config");
@@ -1053,6 +1398,9 @@ Suite* password_suite()
 	tcase_add_test(tc_config, test_restore_cli_errors);
 	tcase_add_test(tc_config, test_restore_unused_passwords);
 	tcase_add_test(tc_config, test_restore_config_file);
+	tcase_add_test(tc_config, test_cli_literal_too_long);
+	tcase_add_test(tc_config, test_backup_instance_config_file);
+	tcase_add_test(tc_config, test_help_text);
 	suite_add_tcase(s, tc_config);
 
 	tc_connect = tcase_create("Connect");
@@ -1063,6 +1411,11 @@ Suite* password_suite()
 	tcase_add_test(tc_connect, test_restore_prompted_keyfile_pw);
 	tcase_add_test(tc_connect, test_backup_keyfile_pw_from_secret_agent);
 	tcase_add_test(tc_connect, test_restore_keyfile_pw_from_secret_agent);
+	tcase_add_test(tc_connect, test_backup_typed_password_is_literal);
+	tcase_add_test(tc_connect, test_restore_typed_password_too_long);
+	tcase_add_test(tc_connect, test_backup_keystring_keyfile_pw);
+	tcase_add_test(tc_connect, test_restore_keyfile_pw_config_file_label);
+	tcase_add_test(tc_connect, test_backup_secret_agent_keyfile_pw_too_long);
 	suite_add_tcase(s, tc_connect);
 
 	return s;

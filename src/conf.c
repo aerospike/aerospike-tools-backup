@@ -207,16 +207,42 @@ config_from_files(void *c, const char *instance,
 }
 
 bool
-tls_read_password(char *value, char **ptr)
+tls_read_password(const char *opt_name, const char *value, char **ptr)
 {
 	*ptr = cf_strdup(value);
 
 	if (*ptr == NULL) {
-		err("--tls-keyfile-password: out of memory");
+		err("%s: out of memory", opt_name);
 		return false;
 	}
 
-	return resolve_password("--tls-keyfile-password", ptr, 0, true);
+	return resolve_password(opt_name, ptr, TLS_KEYFILE_PASSWORD_MAX_LEN, true);
+}
+
+bool
+password_has_source(const char *value)
+{
+	return value != NULL && (strncmp(value, "env:", 4) == 0 ||
+			strncmp(value, "env-b64:", 8) == 0 ||
+			strncmp(value, "b64:", 4) == 0 ||
+			strncmp(value, "file:", 5) == 0);
+}
+
+bool
+password_fits(const char *opt_name, const char *value, size_t max_len)
+{
+	if (strlen(value) > max_len) {
+		err("%s: password is longer than %zu bytes", opt_name, max_len);
+		return false;
+	}
+
+	return true;
+}
+
+bool
+auth_mode_is_pki(const char *auth_mode)
+{
+	return auth_mode != NULL && strcasecmp(auth_mode, "PKI") == 0;
 }
 
 bool
@@ -236,11 +262,23 @@ resolve_password(const char *opt_name, char **value, size_t max_len,
 	if (strncmp(val, "env:", 4) == 0) {
 		what = "value from environment variable ";
 		name = val + 4;
+
+		if (name[0] == '\0') {
+			err("%s: env: requires a variable name", opt_name);
+			return false;
+		}
+
 		ok = password_env(opt_name, name, &res);
 	}
 	else if (strncmp(val, "env-b64:", 8) == 0) {
 		what = "decoded value from environment variable ";
 		name = val + 8;
+
+		if (name[0] == '\0') {
+			err("%s: env-b64: requires a variable name", opt_name);
+			return false;
+		}
+
 		ok = password_env_b64(opt_name, name, &res);
 	}
 	else if (strncmp(val, "b64:", 4) == 0) {
@@ -252,6 +290,11 @@ resolve_password(const char *opt_name, char **value, size_t max_len,
 		what = "value from file ";
 		name = val + 5;
 
+		if (name[0] == '\0') {
+			err("%s: file: requires a path", opt_name);
+			return false;
+		}
+
 		if (max_len == 0) {
 			max_len = PASSWORD_FILE_MAX_LEN;
 		}
@@ -259,7 +302,7 @@ resolve_password(const char *opt_name, char **value, size_t max_len,
 		ok = password_file(opt_name, name, max_len, first_line, &res);
 	}
 	else {
-		return true;
+		return max_len == 0 || password_fits(opt_name, val, max_len);
 	}
 
 	if (! ok) {
@@ -536,6 +579,7 @@ config_restore_cluster(toml_table_t *config_table, restore_config_t *c, const ch
 		} else if (! strcasecmp("password", name)) {
 			status = config_str(config_value, (void*)&c->password, override);
 			c->password_from_secret_agent = arg_is_secret;
+			c->password_from_config_file = true;
 
 		} else if (! strcasecmp("auth", name)) {
 			status = config_str(config_value, &c->auth_mode, override);
@@ -569,6 +613,7 @@ config_restore_cluster(toml_table_t *config_table, restore_config_t *c, const ch
 		} else if (! strcasecmp("tls-keyfile-password", name)) {
 			status = config_str(config_value, (void*)&c->tls.keyfile_pw, override);
 			c->tls_keyfile_pw_from_secret_agent = arg_is_secret;
+			c->tls_keyfile_pw_from_config_file = true;
 
 		} else if (! strcasecmp("tls-cafile", name)) {
 			if (arg_is_secret) {
@@ -666,6 +711,7 @@ config_backup_cluster(toml_table_t *config_table, backup_config_t *c, const char
 		} else if (! strcasecmp("password", name)) {
 			status = config_str(config_value, (void*)&c->password, override);
 			c->password_from_secret_agent = arg_is_secret;
+			c->password_from_config_file = true;
 
 		} else if (! strcasecmp("auth", name)) {
 			status = config_str(config_value, &c->auth_mode, override);
@@ -699,6 +745,7 @@ config_backup_cluster(toml_table_t *config_table, backup_config_t *c, const char
 		} else if (! strcasecmp("tls-keyfile-password", name)) {
 			status = config_str(config_value, (void*)&c->tls.keyfile_pw, override);
 			c->tls_keyfile_pw_from_secret_agent = arg_is_secret;
+			c->tls_keyfile_pw_from_config_file = true;
 
 		} else if (! strcasecmp("tls-cafile", name)) {
 			if (arg_is_secret) {
@@ -1620,7 +1667,7 @@ password_b64(const char *opt_name, const char *b64, const char *src_kind,
 	buf[dec_len] = '\0';
 
 	if (dec_len == 0) {
-		err("%s: %s%s decodes to an empty value", opt_name, src_kind, src_name);
+		err("%s: password from %s%s is empty", opt_name, src_kind, src_name);
 		cf_free(buf);
 		return false;
 	}
@@ -1662,8 +1709,8 @@ password_file(const char *opt_name, const char *path, size_t max_len,
 		buf[len++] = (char) c;
 	}
 
-	bool read_failed = ferror(fh) != 0;
 	int read_errno = errno;
+	bool read_failed = ferror(fh) != 0;
 
 	fclose(fh);
 
@@ -1690,7 +1737,7 @@ password_file(const char *opt_name, const char *path, size_t max_len,
 	buf[len] = '\0';
 
 	if (len == 0) {
-		err("%s: %sfile %s is empty", opt_name,
+		err("%s: password from %sfile %s is empty", opt_name,
 				first_line && c != EOF ? "first line of " : "", path);
 		cf_free(buf);
 		return false;

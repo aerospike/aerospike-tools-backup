@@ -126,6 +126,7 @@ class RestoreConfigT(ComparableCtStructure):
 		("user", ctypes.c_char_p),
 		("password", ctypes.c_char_p),
 		("password_from_secret_agent", ctypes.c_bool),
+		("password_from_config_file", ctypes.c_bool),
 		("parallel", ctypes.c_uint32),
 		("nice_list", ctypes.c_char_p),
 		("no_records", ctypes.c_bool),
@@ -152,6 +153,7 @@ class RestoreConfigT(ComparableCtStructure):
 		("s3_log_level", ctypes.c_int),
 		("tls", AsConfigTls),
 		("tls_keyfile_pw_from_secret_agent", ctypes.c_bool),
+		("tls_keyfile_pw_from_config_file", ctypes.c_bool),
 		("tls_name", ctypes.c_char_p),
 		("ns_list", ctypes.c_char_p),
 		("directory", ctypes.c_char_p),
@@ -278,6 +280,7 @@ class BackupConfigT(ComparableCtStructure):
         ("user", ctypes.c_char_p),
         ("password", ctypes.c_char_p),
         ("password_from_secret_agent", ctypes.c_bool),
+        ("password_from_config_file", ctypes.c_bool),
         ("s3_region", ctypes.c_char_p),
         ("s3_profile", ctypes.c_char_p),
         ("s3_endpoint_override", ctypes.c_char_p),
@@ -303,6 +306,7 @@ class BackupConfigT(ComparableCtStructure):
         ("tls_name", ctypes.c_char_p),
         ("tls", AsConfigTls),
         ("tls_keyfile_pw_from_secret_agent", ctypes.c_bool),
+        ("tls_keyfile_pw_from_config_file", ctypes.c_bool),
         ("remove_files", ctypes.c_bool),
         ("remove_artifacts", ctypes.c_bool),
         ("n_estimate_samples", ctypes.c_uint32),
@@ -633,6 +637,9 @@ def test_backup_conf_file():
 		sa_args
 	)
 
+	expected_conf.password_from_config_file = True
+	expected_conf.tls_keyfile_pw_from_config_file = True
+
 	conf = BackupConfigT()
 	p_conf = ctypes.POINTER(BackupConfigT)(conf)
 	backup_so.backup_config_init(p_conf)
@@ -683,6 +690,9 @@ def test_asrestore_conf_file():
 		SA_RESTORE_RESOURCE,
 		sa_args
 	)
+
+	expected_conf.password_from_config_file = True
+	expected_conf.tls_keyfile_pw_from_config_file = True
 
 	conf = RestoreConfigT()
 	p_conf = ctypes.POINTER(RestoreConfigT)(conf)
@@ -760,4 +770,76 @@ def test_backup_secret_passwords_are_literal():
 def test_restore_secret_passwords_are_literal():
 	gen_secret_agent_files(restore_args=SA_LITERAL_ARGS)
 	check_secret_passwords_are_literal(restore_so.restore_config_set, RestoreConfigT,
+		"asrestore", SA_RESTORE_RESOURCE)
+
+SA_OVERRIDE_ENV = "ASB_SA_OVERRIDE_PW"
+
+def check_secret_override_order(config_set, conf_type, prgm_name, resource):
+	os.environ[SA_OVERRIDE_ENV] = "from-env"
+	sa_toml = 'sa-address = "127.0.0.1"\nsa-port = "%s"\n' % sa.SA_PORT
+
+	secret_conf = gen_secret_toml(
+		[{"name": name, "config_section": "cluster"} for name in SA_LITERAL_ARGS],
+		resource,
+		sa_toml
+	)
+	env_conf = lib.temporary_path("toml")
+	with open(env_conf, "x") as f:
+		f.write('[cluster]\nuser = "env-user"\npassword = "env:%s"\n'
+			'tls-keyfile-password = "env:%s"\n[secret-agent]\n%s'
+			% (SA_OVERRIDE_ENV, SA_OVERRIDE_ENV, sa_toml))
+
+	cli_env_over_secret = [prgm_name, "--only-config-file", secret_conf,
+		"--password", "env:" + SA_OVERRIDE_ENV,
+		"--tls-keyfile-password", "env:" + SA_OVERRIDE_ENV]
+	cli_secret_over_env = [prgm_name, "--only-config-file", env_conf,
+		"--password", "secrets:%s:password" % resource,
+		"--tls-keyfile-password", "secrets:%s:tls-keyfile-password" % resource]
+
+	confs = []
+	agent = sa.get_secret_agent(config=SA_CONF_PATH)
+	try:
+		agent.start()
+		for args in (cli_env_over_secret, cli_secret_over_env):
+			conf = conf_type()
+			c_argv = (ctypes.c_char_p * len(args))(*[bytes(x, "utf-8") for x in args])
+			p_argv = ctypes.POINTER(ctypes.c_char_p)(c_argv)
+			res = config_set(len(args), p_argv, ctypes.POINTER(conf_type)(conf))
+			confs.append((res, conf))
+	finally:
+		agent.stop()
+		print("*** Secret Agent Output ***")
+		print(agent.output())
+		print("*** End Secret Agent Output ***")
+		agent.cleanup()
+		del os.environ[SA_OVERRIDE_ENV]
+
+	res, conf = confs[0]
+	assert res == 0
+	assert conf.user == bytes(SA_LITERAL_ARGS["user"], "utf-8")
+	assert conf.password == b"from-env"
+	assert not conf.password_from_secret_agent
+	assert not conf.password_from_config_file
+	assert conf.tls.keyfile_pw == bytes("env:" + SA_OVERRIDE_ENV, "utf-8")
+	assert not conf.tls_keyfile_pw_from_secret_agent
+	assert not conf.tls_keyfile_pw_from_config_file
+
+	res, conf = confs[1]
+	assert res == 0
+	assert conf.user == b"env-user"
+	assert conf.password == bytes(SA_LITERAL_ARGS["password"], "utf-8")
+	assert conf.password_from_secret_agent
+	assert not conf.password_from_config_file
+	assert conf.tls.keyfile_pw == bytes(SA_LITERAL_ARGS["tls-keyfile-password"], "utf-8")
+	assert conf.tls_keyfile_pw_from_secret_agent
+	assert not conf.tls_keyfile_pw_from_config_file
+
+def test_backup_secret_override_order():
+	gen_secret_agent_files(backup_args=SA_LITERAL_ARGS)
+	check_secret_override_order(backup_so.backup_config_set, BackupConfigT,
+		"asbackup", SA_BACKUP_RESOURCE)
+
+def test_restore_secret_override_order():
+	gen_secret_agent_files(restore_args=SA_LITERAL_ARGS)
+	check_secret_override_order(restore_so.restore_config_set, RestoreConfigT,
 		"asrestore", SA_RESTORE_RESOURCE)

@@ -90,6 +90,7 @@ assert_restore_config_eq(restore_config_t *c1, restore_config_t *c2)
 	CMP_STR_FIELD(c1->user, c2->user);
 	CMP_STR_FIELD(c1->password, c2->password);
 	CMP_INT_FIELD(c1->password_from_secret_agent, c2->password_from_secret_agent);
+	CMP_INT_FIELD(c1->password_from_config_file, c2->password_from_config_file);
 	CMP_STR_FIELD(c1->auth_mode, c2->auth_mode);
 
 	CMP_INT_FIELD(c1->tls.enable, c2->tls.enable);
@@ -100,6 +101,7 @@ assert_restore_config_eq(restore_config_t *c1, restore_config_t *c2)
 	CMP_STR_FIELD(c1->tls.keyfile, c2->tls.keyfile);
 	CMP_STR_FIELD(c1->tls.keyfile_pw, c2->tls.keyfile_pw);
 	CMP_INT_FIELD(c1->tls_keyfile_pw_from_secret_agent, c2->tls_keyfile_pw_from_secret_agent);
+	CMP_INT_FIELD(c1->tls_keyfile_pw_from_config_file, c2->tls_keyfile_pw_from_config_file);
 	CMP_STR_FIELD(c1->tls.certfile, c2->tls.certfile);
 	CMP_INT_FIELD(c1->tls.crl_check, c2->tls.crl_check);
 	CMP_INT_FIELD(c1->tls.crl_check_all, c2->tls.crl_check_all);
@@ -241,12 +243,35 @@ START_TEST(test_name) \
 } \
 END_TEST
 
+#define DEFINE_STR_FROM_FILE_TEST(test_name, str_name, field_name, str_val, \
+		from_file_field) \
+START_TEST(test_name) \
+{ \
+	tmp_file_init(str_name "=\"" str_val "\"\n", "", "", ""); \
+	restore_config_t c1; \
+	restore_config_t c2; \
+	restore_config_init(&c1); \
+	restore_config_init(&c2); \
+	restore_config_set_heap_defaults(&c2); \
+	\
+	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, false), 0); \
+	cf_free(c2.field_name); \
+	c2.field_name = strdup(str_val); \
+	c2.from_file_field = true; \
+	assert_restore_config_eq(&c1, &c2); \
+	\
+	restore_config_destroy(&c2); \
+	restore_config_destroy(&c1); \
+} \
+END_TEST
+
 
 DEFINE_STR_TEST(test_init_host, "host", host, "localhost:3000");
 DEFINE_INT_TEST(test_init_port, "port", port);
 DEFINE_BOOL_TEST(test_init_services_alternate, "use-services-alternate", use_services_alternate);
 DEFINE_STR_TEST(test_init_user, "user", user, "claytdog");
-DEFINE_STR_TEST(test_init_passwd, "password", password, "this is a bad password");
+DEFINE_STR_FROM_FILE_TEST(test_init_passwd, "password", password,
+		"this is a bad password", password_from_config_file);
 DEFINE_STR_TEST(test_init_auth_mode, "auth", auth_mode, "none");
 
 DEFINE_BOOL_TEST(test_init_tls_enable, "tls-enable", tls.enable);
@@ -255,7 +280,8 @@ DEFINE_STR_TEST(test_init_tls_cipher_suite, "tls-cipher-suite", tls.cipher_suite
 DEFINE_BOOL_TEST(test_init_tls_crl_check, "tls-crl-check", tls.crl_check);
 DEFINE_BOOL_TEST(test_init_tls_crl_check_all, "tls-crl-check-all", tls.crl_check_all);
 DEFINE_STR_TEST(test_init_tls_keyfile, "tls-keyfile", tls.keyfile, "test_key.pem");
-DEFINE_STR_TEST(test_init_tls_keyfile_pw, "tls-keyfile-password", tls.keyfile_pw, "test_key_pw.pem");
+DEFINE_STR_FROM_FILE_TEST(test_init_tls_keyfile_pw, "tls-keyfile-password",
+		tls.keyfile_pw, "test_key_pw.pem", tls_keyfile_pw_from_config_file);
 DEFINE_STR_TEST(test_init_tls_cafile, "tls-cafile", tls.cafile, "cafile.ca");
 DEFINE_STR_TEST(test_init_tls_capath, "tls-capath", tls.capath, "/opt/aerospike");
 DEFINE_STR_TEST(test_init_tls_certfile, "tls-certfile", tls.certfile, "certfile.pem");

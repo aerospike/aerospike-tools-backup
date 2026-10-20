@@ -86,6 +86,7 @@ typedef struct backup_config {
 	char *user;
 	char *password;
 	bool password_from_secret_agent;
+	bool password_from_config_file;
 
 	// The region to use for S3.
 	char* s3_region;
@@ -131,6 +132,7 @@ typedef struct backup_config {
 	char* tls_name;
 	as_config_tls tls;
 	bool tls_keyfile_pw_from_secret_agent;
+	bool tls_keyfile_pw_from_config_file;
 
 	// When true, delete any files in the directory being backed up if in
 	// directory mode, or delete the file being backed up to if it already

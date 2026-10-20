@@ -427,6 +427,11 @@ _init_as_config(as_config* as_conf, const restore_config_t* conf,
 	if (conf->user) {
 		if (strcmp(conf->password, DEFAULT_PASSWORD) == 0) {
 			password = getpass("Enter Password: ");
+
+			if (!auth_mode_is_pki(conf->auth_mode) &&
+					!password_fits(PASSWORD_OPT, password, AS_PASSWORD_SIZE - 1)) {
+				goto cleanup1;
+			}
 		}
 		else {
 			password = conf->password;
@@ -441,20 +446,29 @@ _init_as_config(as_config* as_conf, const restore_config_t* conf,
 	if (prior_as_conf != NULL) {
 		as_conf->tls.keyfile_pw = safe_strdup(prior_as_conf->tls.keyfile_pw);
 	}
-	else if (conf->tls.keyfile && conf->tls.keyfile_pw &&
-			!conf->tls_keyfile_pw_from_secret_agent) {
-		char* keyfile_pw;
-		if (strcmp(conf->tls.keyfile_pw, DEFAULT_PASSWORD) == 0) {
-			keyfile_pw = getpass("Enter TLS-Keyfile Password: ");
+	else if ((conf->tls.keyfile || conf->tls.keystring) && conf->tls.keyfile_pw) {
+		const char* pw_opt = conf->tls_keyfile_pw_from_config_file ?
+				TLS_KEYFILE_PASSWORD_CONFIG_OPT : TLS_KEYFILE_PASSWORD_OPT;
+
+		if (conf->tls_keyfile_pw_from_secret_agent) {
+			if (!password_fits(pw_opt, conf->tls.keyfile_pw,
+						TLS_KEYFILE_PASSWORD_MAX_LEN)) {
+				goto cleanup1;
+			}
 		}
 		else {
-			keyfile_pw = conf->tls.keyfile_pw;
-		}
+			const char* keyfile_pw = conf->tls.keyfile_pw;
 
-		// we'll be overwriting the old keyfile_pw string
-		cf_free(as_conf->tls.keyfile_pw);
-		if (!tls_read_password(keyfile_pw, &as_conf->tls.keyfile_pw)) {
-			goto cleanup1;
+			if (strcmp(keyfile_pw, DEFAULT_PASSWORD) == 0) {
+				keyfile_pw = getpass("Enter TLS-Keyfile Password: ");
+			}
+
+			// we'll be overwriting the old keyfile_pw string
+			cf_free(as_conf->tls.keyfile_pw);
+			if (!tls_read_password(pw_opt, keyfile_pw,
+						&as_conf->tls.keyfile_pw)) {
+				goto cleanup1;
+			}
 		}
 	}
 
