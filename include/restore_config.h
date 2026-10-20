@@ -132,6 +132,7 @@ typedef struct restore_config {
 	bool s3_allow_system_proxy;
 
 	as_config_tls tls;
+	bool tls_keyfile_pw_from_secret_agent;
 	char* tls_name;
 
 	// The (optional) source and (also optional) target namespace to be restored.

@@ -332,7 +332,8 @@ backup_status_init(backup_status_t* status, backup_config_t* conf)
 		}
 	}
 
-	if (conf->tls.keyfile && conf->tls.keyfile_pw) {
+	if (conf->tls.keyfile && conf->tls.keyfile_pw &&
+			!conf->tls_keyfile_pw_from_secret_agent) {
 		char* tls_keyfile_pw;
 		if (strcmp(conf->tls.keyfile_pw, DEFAULT_PASSWORD) == 0) {
 			tls_keyfile_pw = getpass("Enter TLS-Keyfile Password: ");

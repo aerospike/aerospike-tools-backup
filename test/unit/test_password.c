@@ -946,6 +946,44 @@ START_TEST(test_restore_prompted_keyfile_pw)
 }
 END_TEST
 
+START_TEST(test_backup_keyfile_pw_from_secret_agent)
+{
+	backup_config_t conf;
+
+	ARGV("asbackup", "--no-config-file", "-h", "127.0.0.1", "-p", "1",
+			"--tls-keyfile", KEY_FILE, "--tls-keyfile-password",
+			"env:" PW_ENV_UNSET);
+	ck_assert_int_eq(backup_config_set(argc, argv, &conf), 0);
+	ck_assert(!conf.tls_keyfile_pw_from_secret_agent);
+	conf.tls_keyfile_pw_from_secret_agent = true;
+
+	char* out = backup_status_init_fails(&conf);
+	ck_assert_ptr_eq(strstr(out, "--tls-keyfile-password:"), NULL);
+	ck_assert_ptr_ne(strstr(out, "Error while connecting"), NULL);
+	ck_assert_int_eq(getpass_calls, 0);
+	backup_config_destroy(&conf);
+}
+END_TEST
+
+START_TEST(test_restore_keyfile_pw_from_secret_agent)
+{
+	restore_config_t conf;
+
+	ARGV("asrestore", "--no-config-file", "-h", "127.0.0.1", "-p", "1",
+			"--tls-keyfile", KEY_FILE, "--tls-keyfile-password",
+			"file:" WORKING_DIR "/does_not_exist");
+	ck_assert_int_eq(restore_config_set(argc, argv, &conf), 0);
+	ck_assert(!conf.tls_keyfile_pw_from_secret_agent);
+	conf.tls_keyfile_pw_from_secret_agent = true;
+
+	char* out = restore_status_init_fails(&conf);
+	ck_assert_ptr_eq(strstr(out, "--tls-keyfile-password:"), NULL);
+	ck_assert_ptr_ne(strstr(out, "Error while connecting"), NULL);
+	ck_assert_int_eq(getpass_calls, 0);
+	restore_config_destroy(&conf);
+}
+END_TEST
+
 #undef ARGV
 
 

@@ -675,6 +675,7 @@ backup_config_set(int argc, char* argv[], backup_config_t* conf)
 					conf->tls.keyfile_pw = safe_strdup(DEFAULT_PASSWORD);
 				}
 			}
+			conf->tls_keyfile_pw_from_secret_agent = arg_is_secret;
 			break;
 
 		case TLS_OPT_CERT_FILE:
@@ -1026,6 +1027,7 @@ backup_config_init(backup_config_t* conf)
 	conf->file_limit = DEFAULT_FILE_LIMIT * 1024 * 1024;
 
 	memset(&conf->tls, 0, sizeof(as_config_tls));
+	conf->tls_keyfile_pw_from_secret_agent = false;
 	conf->tls_name = NULL;
 
 	conf->socket_timeout = 10 * 1000;
@@ -1175,6 +1177,7 @@ backup_config_clone(backup_config_t* conf)
 
 	clone->tls_name = safe_strdup(conf->tls_name);
 	tls_config_clone(&clone->tls, &conf->tls);
+	clone->tls_keyfile_pw_from_secret_agent = conf->tls_keyfile_pw_from_secret_agent;
 
 	clone->remove_files = conf->remove_files;
 	clone->remove_artifacts = conf->remove_artifacts;
@@ -1335,7 +1338,7 @@ usage(const char *name)
 					"                      It can be one of the following:\n"
 					"                      1) Environment variable: 'env:<VAR>'\n"
 					"                      2) Base64 encoded environment variable: 'env-b64:<VAR>'\n"
-					"                      3) Base64 encoded value: 'b64:<BASE64>'\n"
+					"                      3) Base64 encoded string: 'b64:<BASE64>'\n"
 					"                      4) File: 'file:<PATH>', the whole file less one trailing\n"
 					"                         line ending\n"
 					"                      5) String: 'PASSWORD'\n"
@@ -1374,10 +1377,11 @@ usage(const char *name)
 					"                      It can be one of the following:\n"
 					"                      1) Environment variable: 'env:<VAR>'\n"
 					"                      2) Base64 encoded environment variable: 'env-b64:<VAR>'\n"
-					"                      3) Base64 encoded value: 'b64:<BASE64>'\n"
+					"                      3) Base64 encoded string: 'b64:<BASE64>'\n"
 					"                      4) File: 'file:<PATH>', the first line of the file, at\n"
 					"                         most 4999 bytes\n"
 					"                      5) String: 'PASSWORD'\n"
+					"                      A value fetched with 'secrets:' is used as-is.\n"
 					"                      Default: none\n"
 					"                      User will be prompted on command line if --tls-keyfile-password\n"
 					"                      specified and no password is given. The typed password\n"

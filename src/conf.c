@@ -567,6 +567,7 @@ config_restore_cluster(toml_table_t *config_table, restore_config_t *c, const ch
 
 		} else if (! strcasecmp("tls-keyfile-password", name)) {
 			status = config_str(config_value, (void*)&c->tls.keyfile_pw, override);
+			c->tls_keyfile_pw_from_secret_agent = arg_is_secret;
 
 		} else if (! strcasecmp("tls-cafile", name)) {
 			if (arg_is_secret) {
@@ -696,6 +697,7 @@ config_backup_cluster(toml_table_t *config_table, backup_config_t *c, const char
 
 		} else if (! strcasecmp("tls-keyfile-password", name)) {
 			status = config_str(config_value, (void*)&c->tls.keyfile_pw, override);
+			c->tls_keyfile_pw_from_secret_agent = arg_is_secret;
 
 		} else if (! strcasecmp("tls-cafile", name)) {
 			if (arg_is_secret) {
