@@ -112,6 +112,22 @@ jobs:
         # `xcodebuild -version` aborts with "Abort trap: 6" (exit 134) on the macOS runners; read the version from the plist.
         XCODE_VERSION="$(defaults read "$(xcode-select -p)/../version" CFBundleShortVersionString 2>/dev/null || true)"
         echo "XCODE_VERSION=$XCODE_VERSION" >> $GITHUB_ENV
+    - name: Use Homebrew openssl@3
+      run: |
+        # Homebrew libssh2 depends on openssl@4, whose headers and libs in the Homebrew prefix shadow openssl@3.
+        prefix="$(brew --prefix)"
+        if brew list --formula openssl@4 >/dev/null 2>&1; then
+          brew unlink openssl@4
+        fi
+        ln -sfn "${{ matrix.openssl-path }}" "$prefix/opt/openssl"
+        for f in "$prefix/opt/openssl" "$prefix/include/openssl/opensslv.h" "$prefix/lib/libssl.dylib"; do
+          if [[ -e "$f" && "$(realpath "$f")" != */openssl@3/* ]]; then
+            echo "::error::$f resolves to $(realpath "$f"), not openssl@3"
+            exit 1
+          fi
+        done
+        echo "CPATH=${{ matrix.openssl-path }}/include" >> "$GITHUB_ENV"
+        echo "LIBRARY_PATH=${{ matrix.openssl-path }}/lib" >> "$GITHUB_ENV"
     - name: Cache AWS C++ sdk
       id: cache-aws-sdk-cpp
       uses: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c # v3.5.0
@@ -270,7 +286,7 @@ jobs:
     - name: Build asbackup with static link to zstd and aws-sdk-cpp
       if: steps.cache-asbackup.outputs.cache-hit != 'true'
       run: |
-        make ZSTD_STATIC_PATH=${{ matrix.zstd-path }}/lib  AWS_SDK_STATIC_PATH=${{ matrix.aws-sdk-path }}/lib CURL_STATIC_PATH=${{ matrix.curl-path }}/lib OPENSSL_STATIC_PATH=${{ matrix.openssl-path }}/lib LIBSSH2_STATIC_PATH=${{ matrix.ssh2-path }}/lib LIBUV_STATIC_PATH=${{ matrix.uv-path }}/lib JANSSON_STATIC_PATH=${{ matrix.jansson-path }}/lib
+        make ZSTD_STATIC_PATH=${{ matrix.zstd-path }}/lib  AWS_SDK_STATIC_PATH=${{ matrix.aws-sdk-path }}/lib CURL_STATIC_PATH=${{ matrix.curl-path }}/lib OPENSSL_PREFIX=${{ matrix.openssl-path }} OPENSSL_STATIC_PATH=${{ matrix.openssl-path }}/lib LIBSSH2_STATIC_PATH=${{ matrix.ssh2-path }}/lib LIBUV_STATIC_PATH=${{ matrix.uv-path }}/lib JANSSON_STATIC_PATH=${{ matrix.jansson-path }}/lib
         mkdir -p binaries
         cp -r bin binaries/static_bin
         make clean
