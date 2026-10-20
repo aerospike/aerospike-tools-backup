@@ -835,7 +835,7 @@ backup_config_set(int argc, char* argv[], backup_config_t* conf)
 		if (conf->user == NULL) {
 			if (!conf->password_from_secret_agent &&
 					password_has_source(conf->password)) {
-				inf("%s: ignored because no user is set", pw_opt);
+				inf("Warning: %s: ignored because no user is set", pw_opt);
 			}
 		}
 		else if (conf->password_from_secret_agent ?
@@ -1409,8 +1409,8 @@ usage(const char *name)
 					"                      'file:' must be given as 'b64:'.\n"
 					"                      The password is read only when a key file is set. It must be at\n"
 					"                      most 1024 bytes.\n"
-					"                      A value fetched with 'secrets:' is used as-is.\n"
 					"                      Default: none\n"
+					"                      A value fetched with 'secrets:' is used as-is.\n"
 					"                      User will be prompted on command line if --tls-keyfile-password\n"
 					"                      specified and no password is given. The typed password\n"
 					"                      accepts the forms above.\n");

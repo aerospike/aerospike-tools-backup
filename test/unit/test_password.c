@@ -756,7 +756,8 @@ START_TEST(test_backup_unused_passwords)
 		int res = backup_config_set(argc, argv, &conf);
 		char* out = release_stderr();
 		ck_assert_int_eq(res, 0);
-		ck_assert_ptr_ne(strstr(out, "--password: ignored because no user is set"),
+		ck_assert_ptr_ne(strstr(out, "Warning: --password: ignored because no user "
+					"is set"),
 				NULL);
 		ck_assert_str_eq(conf.password, "env:" PW_ENV_UNSET);
 		ck_assert_str_eq(conf.tls.keyfile_pw, "env:" PW_ENV_UNSET);
@@ -1314,7 +1315,10 @@ assert_help(const char* out)
 	ck_assert_ptr_ne(strstr(out, "not PKI. It must be at most 63 bytes.\n"), NULL);
 	ck_assert_ptr_ne(strstr(out,
 				"4) File: 'file:<PATH>', the first line of the file\n"), NULL);
-	ck_assert_ptr_ne(strstr(out, "most 1024 bytes.\n"), NULL);
+	ck_assert_ptr_ne(strstr(out, "most 1024 bytes.\n"
+				"                      Default: none\n"
+				"                      A value fetched with 'secrets:' is used as-is.\n"
+				"                      User will be prompted"), NULL);
 	ck_assert_ptr_eq(strstr(out, "4999"), NULL);
 }
 
