@@ -115,8 +115,17 @@ jobs:
     - name: Use Homebrew openssl@3
       run: |
         # Homebrew libssh2 depends on openssl@4, whose headers and libs in the Homebrew prefix shadow openssl@3.
-        brew unlink openssl@4 2>/dev/null || true
-        ln -sfn "${{ matrix.openssl-path }}" "$(brew --prefix)/opt/openssl"
+        prefix="$(brew --prefix)"
+        if brew list --formula openssl@4 >/dev/null 2>&1; then
+          brew unlink openssl@4
+        fi
+        ln -sfn "${{ matrix.openssl-path }}" "$prefix/opt/openssl"
+        for f in "$prefix/opt/openssl" "$prefix/include/openssl/opensslv.h" "$prefix/lib/libssl.dylib"; do
+          if [[ -e "$f" && "$(realpath "$f")" != */openssl@3/* ]]; then
+            echo "::error::$f resolves to $(realpath "$f"), not openssl@3"
+            exit 1
+          fi
+        done
         echo "CPATH=${{ matrix.openssl-path }}/include" >> "$GITHUB_ENV"
         echo "LIBRARY_PATH=${{ matrix.openssl-path }}/lib" >> "$GITHUB_ENV"
     - name: Cache AWS C++ sdk
