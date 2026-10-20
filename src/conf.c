@@ -45,8 +45,7 @@
 
 #define BACKUP_CONFIG_FILE ".aerospike/astools.conf"
 #define ERR_BUF_SIZE 1024
-#define PASSWORD_FILE_MAX_SIZE (64 * 1024)
-#define PASSWORD_FIRST_LINE_MAX_SIZE 4999
+#define PASSWORD_FILE_MAX_LEN 4999
 
 
 //=========================================================
@@ -98,9 +97,7 @@ static bool password_env_b64(const char *opt_name, const char *var, char **ptr);
 static bool password_b64(const char *opt_name, const char *b64,
 		const char *src_kind, const char *src_name, char **ptr);
 static bool password_file(const char *opt_name, const char *path,
-		bool first_line, char **ptr);
-static bool password_finish(const char *opt_name, const char *src_kind,
-		const char *src_name, char *buf, size_t len, char **ptr);
+		size_t max_len, bool first_line, char **ptr);
 
 // returns 0 on success or if rtoml cannot be a secret path
 // returns a value not equal to 0 on failure
@@ -227,8 +224,8 @@ resolve_password(const char *opt_name, char **value, size_t max_len,
 		bool first_line)
 {
 	const char *val = *value;
-	const char *src_kind;
-	const char *src_name;
+	const char *what;
+	const char *name;
 	char *res = NULL;
 	bool ok;
 
@@ -237,24 +234,29 @@ resolve_password(const char *opt_name, char **value, size_t max_len,
 	}
 
 	if (strncmp(val, "env:", 4) == 0) {
-		src_kind = "environment variable ";
-		src_name = val + 4;
-		ok = password_env(opt_name, src_name, &res);
+		what = "value from environment variable ";
+		name = val + 4;
+		ok = password_env(opt_name, name, &res);
 	}
 	else if (strncmp(val, "env-b64:", 8) == 0) {
-		src_kind = "environment variable ";
-		src_name = val + 8;
-		ok = password_env_b64(opt_name, src_name, &res);
+		what = "decoded value from environment variable ";
+		name = val + 8;
+		ok = password_env_b64(opt_name, name, &res);
 	}
 	else if (strncmp(val, "b64:", 4) == 0) {
-		src_kind = "b64: value";
-		src_name = "";
-		ok = password_b64(opt_name, val + 4, src_kind, src_name, &res);
+		what = "decoded b64: value";
+		name = "";
+		ok = password_b64(opt_name, val + 4, "b64: value", "", &res);
 	}
 	else if (strncmp(val, "file:", 5) == 0) {
-		src_kind = "file ";
-		src_name = val + 5;
-		ok = password_file(opt_name, src_name, first_line, &res);
+		what = "value from file ";
+		name = val + 5;
+
+		if (max_len == 0) {
+			max_len = PASSWORD_FILE_MAX_LEN;
+		}
+
+		ok = password_file(opt_name, name, max_len, first_line, &res);
 	}
 	else {
 		return true;
@@ -265,8 +267,7 @@ resolve_password(const char *opt_name, char **value, size_t max_len,
 	}
 
 	if (max_len != 0 && strlen(res) > max_len) {
-		err("%s: password from %s%s is longer than %zu bytes", opt_name, src_kind,
-				src_name, max_len);
+		err("%s: %s%s is longer than %zu bytes", opt_name, what, name, max_len);
 		cf_free(res);
 		return false;
 	}
@@ -1596,16 +1597,18 @@ password_b64(const char *opt_name, const char *b64, const char *src_kind,
 		}
 	}
 
-	if (enc_len == 0) {
-		cf_free(buf);
-		return password_finish(opt_name, src_kind, src_name, NULL, 0, ptr);
-	}
-
 	uint32_t dec_len = 0;
 
-	if (! cf_b64_validate_and_decode_in_place((uint8_t*) buf,
+	if (enc_len != 0 && ! cf_b64_validate_and_decode_in_place((uint8_t*) buf,
 				(uint32_t) enc_len, &dec_len)) {
 		err("%s: invalid base64 in %s%s", opt_name, src_kind, src_name);
+		cf_free(buf);
+		return false;
+	}
+
+	if (memchr(buf, '\0', dec_len) != NULL) {
+		err("%s: %s%s decodes to a value containing a NUL byte", opt_name,
+				src_kind, src_name);
 		cf_free(buf);
 		return false;
 	}
@@ -1614,12 +1617,21 @@ password_b64(const char *opt_name, const char *b64, const char *src_kind,
 		dec_len--;
 	}
 
-	return password_finish(opt_name, src_kind, src_name, buf, dec_len, ptr);
+	buf[dec_len] = '\0';
+
+	if (dec_len == 0) {
+		err("%s: %s%s decodes to an empty value", opt_name, src_kind, src_name);
+		cf_free(buf);
+		return false;
+	}
+
+	*ptr = buf;
+	return true;
 }
 
 static bool
-password_file(const char *opt_name, const char *path, bool first_line,
-		char **ptr)
+password_file(const char *opt_name, const char *path, size_t max_len,
+		bool first_line, char **ptr)
 {
 	FILE *fh = fopen(path, "r");
 
@@ -1628,9 +1640,10 @@ password_file(const char *opt_name, const char *path, bool first_line,
 		return false;
 	}
 
-	size_t max_len = first_line ?
-			PASSWORD_FIRST_LINE_MAX_SIZE : PASSWORD_FILE_MAX_SIZE;
-	char *buf = cf_malloc(max_len + 2);
+	// Room for a trailing \r\n and one byte more, so an over-long value is
+	// caught without reading the rest of the file.
+	size_t cap = max_len + 3;
+	char *buf = cf_malloc(cap + 1);
 
 	if (buf == NULL) {
 		err("%s: out of memory reading file %s", opt_name, path);
@@ -1641,7 +1654,7 @@ password_file(const char *opt_name, const char *path, bool first_line,
 	size_t len = 0;
 	int c = EOF;
 
-	while (len <= max_len && (c = getc(fh)) != EOF) {
+	while (len < cap && (c = getc(fh)) != EOF && c != '\0') {
 		if (first_line && (c == '\n' || c == '\r')) {
 			break;
 		}
@@ -1660,12 +1673,8 @@ password_file(const char *opt_name, const char *path, bool first_line,
 		return false;
 	}
 
-	const char *src_kind = first_line && c != EOF ?
-			"first line of file " : "file ";
-
-	if (len > max_len) {
-		err("%s: %s%s is larger than %zu bytes", opt_name, src_kind, path,
-				max_len);
+	if (c == '\0') {
+		err("%s: file %s contains a NUL byte", opt_name, path);
 		cf_free(buf);
 		return false;
 	}
@@ -1678,27 +1687,15 @@ password_file(const char *opt_name, const char *path, bool first_line,
 		}
 	}
 
-	return password_finish(opt_name, src_kind, path, buf, len, ptr);
-}
-
-static bool
-password_finish(const char *opt_name, const char *src_kind,
-		const char *src_name, char *buf, size_t len, char **ptr)
-{
-	if (len == 0) {
-		err("%s: empty password from %s%s", opt_name, src_kind, src_name);
-		cf_free(buf);
-		return false;
-	}
-
-	if (memchr(buf, '\0', len) != NULL) {
-		err("%s: password from %s%s contains a NUL byte", opt_name, src_kind,
-				src_name);
-		cf_free(buf);
-		return false;
-	}
-
 	buf[len] = '\0';
+
+	if (len == 0) {
+		err("%s: %sfile %s is empty", opt_name,
+				first_line && c != EOF ? "first line of " : "", path);
+		cf_free(buf);
+		return false;
+	}
+
 	*ptr = buf;
 	return true;
 }

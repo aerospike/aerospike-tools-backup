@@ -237,8 +237,8 @@ START_TEST(test_env_b64_empty)
 {
 	setenv(PW_ENV, "Cg==", 1);
 	char* out = assert_fails("--password", "env-b64:" PW_ENV);
-	ck_assert_ptr_ne(strstr(out, "--password: empty password from "
-				"environment variable " PW_ENV), NULL);
+	ck_assert_ptr_ne(strstr(out, "--password: environment variable " PW_ENV
+				" decodes to an empty value"), NULL);
 }
 END_TEST
 
@@ -270,7 +270,8 @@ END_TEST
 START_TEST(test_b64_empty)
 {
 	char* out = assert_fails("--password", "b64:");
-	ck_assert_ptr_ne(strstr(out, "--password: empty password from b64: value"), NULL);
+	ck_assert_ptr_ne(strstr(out, "--password: b64: value decodes to an empty value"),
+			NULL);
 
 	assert_fails("--password", "b64:Cg==");
 }
@@ -279,8 +280,8 @@ END_TEST
 START_TEST(test_b64_nul)
 {
 	char* out = assert_fails("--password", "b64:czNjAHJldA==");
-	ck_assert_ptr_ne(strstr(out, "--password: password from b64: value contains "
-				"a NUL byte"), NULL);
+	ck_assert_ptr_ne(strstr(out, "--password: b64: value decodes to a value "
+				"containing a NUL byte"), NULL);
 }
 END_TEST
 
@@ -325,8 +326,7 @@ START_TEST(test_file_empty)
 {
 	write_file(PW_FILE, "", 0);
 	char* out = assert_fails("--password", "file:" PW_FILE);
-	ck_assert_ptr_ne(strstr(out, "--password: empty password from file " PW_FILE),
-			NULL);
+	ck_assert_ptr_ne(strstr(out, "--password: file " PW_FILE " is empty"), NULL);
 
 	write_file(PW_FILE, "\n", 1);
 	assert_fails("--password", "file:" PW_FILE);
@@ -354,8 +354,8 @@ START_TEST(test_file_too_large)
 	cf_free(data);
 
 	char* out = assert_fails("--password", "file:" PW_FILE);
-	ck_assert_ptr_ne(strstr(out, "--password: file " PW_FILE " is larger than"),
-			NULL);
+	ck_assert_ptr_ne(strstr(out, "--password: value from file " PW_FILE
+				" is longer than 4999 bytes"), NULL);
 }
 END_TEST
 
@@ -424,8 +424,8 @@ START_TEST(test_keyfile_file_nul)
 {
 	write_file(PW_FILE, "s3c\0ret\nmore\n", 13);
 	char* out = assert_keyfile_fails("file:" PW_FILE);
-	ck_assert_ptr_ne(strstr(out, "--tls-keyfile-password: password from first "
-				"line of file " PW_FILE " contains a NUL byte"), NULL);
+	ck_assert_ptr_ne(strstr(out, "--tls-keyfile-password: file " PW_FILE
+				" contains a NUL byte"), NULL);
 	ck_assert_ptr_eq(strstr(out, "s3c"), NULL);
 }
 END_TEST
@@ -433,12 +433,12 @@ END_TEST
 START_TEST(test_file_dev_zero)
 {
 	char* out = assert_fails("--password", "file:/dev/zero");
-	ck_assert_ptr_ne(strstr(out, "--password: file /dev/zero is larger than "
-				"65536 bytes"), NULL);
+	ck_assert_ptr_ne(strstr(out, "--password: file /dev/zero contains a NUL byte"),
+			NULL);
 
 	out = assert_keyfile_fails("file:/dev/zero");
-	ck_assert_ptr_ne(strstr(out, "--tls-keyfile-password: first line of file "
-				"/dev/zero is larger than 4999 bytes"), NULL);
+	ck_assert_ptr_ne(strstr(out, "--tls-keyfile-password: file /dev/zero contains "
+				"a NUL byte"), NULL);
 }
 END_TEST
 
@@ -474,20 +474,33 @@ START_TEST(test_max_len)
 
 	setenv(PW_ENV, too_long, 1);
 	char* out = assert_too_long("env:" PW_ENV);
-	ck_assert_ptr_ne(strstr(out, "--password: password from environment variable "
+	ck_assert_ptr_ne(strstr(out, "--password: value from environment variable "
 				PW_ENV " is longer than 63 bytes"), NULL);
 	ck_assert_ptr_eq(strstr(out, too_long), NULL);
 
 	write_file(PW_FILE, too_long, 64);
 	out = assert_too_long("file:" PW_FILE);
-	ck_assert_ptr_ne(strstr(out, "--password: password from file " PW_FILE
+	ck_assert_ptr_ne(strstr(out, "--password: value from file " PW_FILE
+				" is longer than 63 bytes"), NULL);
+
+	char big[200];
+	memset(big, 'x', sizeof(big));
+	write_file(PW_FILE, big, sizeof(big));
+	out = assert_too_long("file:" PW_FILE);
+	ck_assert_ptr_ne(strstr(out, "--password: value from file " PW_FILE
 				" is longer than 63 bytes"), NULL);
 
 	// 64 bytes of 'x'
 	out = assert_too_long("b64:eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4"
 			"eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eA==");
-	ck_assert_ptr_ne(strstr(out, "--password: password from b64: value is "
-				"longer than 63 bytes"), NULL);
+	ck_assert_ptr_ne(strstr(out, "--password: decoded b64: value is longer than "
+				"63 bytes"), NULL);
+
+	setenv(PW_ENV, "eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4"
+			"eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eA==", 1);
+	out = assert_too_long("env-b64:" PW_ENV);
+	ck_assert_ptr_ne(strstr(out, "--password: decoded value from environment "
+				"variable " PW_ENV " is longer than 63 bytes"), NULL);
 
 	value = strdup(too_long);
 	ck_assert(resolve_password("--password", &value, 63, false));
@@ -500,14 +513,14 @@ START_TEST(test_keyfile_file_empty_first_line)
 {
 	write_file(PW_FILE, "\ns3cret", 7);
 	char* out = assert_keyfile_fails("file:" PW_FILE);
-	ck_assert_ptr_ne(strstr(out, "--tls-keyfile-password: empty password from "
-				"first line of file " PW_FILE), NULL);
+	ck_assert_ptr_ne(strstr(out, "--tls-keyfile-password: first line of file "
+				PW_FILE " is empty"), NULL);
 	ck_assert_ptr_eq(strstr(out, "s3cret"), NULL);
 
 	write_file(PW_FILE, "", 0);
 	out = assert_keyfile_fails("file:" PW_FILE);
-	ck_assert_ptr_ne(strstr(out, "--tls-keyfile-password: empty password from "
-				"file " PW_FILE), NULL);
+	ck_assert_ptr_ne(strstr(out, "--tls-keyfile-password: file " PW_FILE
+				" is empty"), NULL);
 
 	write_file(PW_FILE, "\r\nx", 3);
 	assert_keyfile_fails("file:" PW_FILE);
@@ -540,8 +553,8 @@ START_TEST(test_keyfile_file_large)
 	cf_free(data);
 
 	char* out = assert_keyfile_fails("file:" PW_FILE);
-	ck_assert_ptr_ne(strstr(out, "--tls-keyfile-password: first line of file "
-				PW_FILE " is larger than 4999 bytes"), NULL);
+	ck_assert_ptr_ne(strstr(out, "--tls-keyfile-password: value from file "
+				PW_FILE " is longer than 4999 bytes"), NULL);
 }
 END_TEST
 
@@ -632,7 +645,7 @@ START_TEST(test_cli_password_too_long)
 		int res = backup_config_set(argc, argv, &conf);
 		char* out = release_stderr();
 		ck_assert_int_eq(res, BACKUP_CONFIG_INIT_FAILURE);
-		ck_assert_ptr_ne(strstr(out, "--password: password from environment "
+		ck_assert_ptr_ne(strstr(out, "--password: value from environment "
 					"variable " PW_ENV " is longer than 63 bytes"), NULL);
 		backup_config_destroy(&conf);
 	}
@@ -644,7 +657,7 @@ START_TEST(test_cli_password_too_long)
 		int res = restore_config_set(argc, argv, &conf);
 		char* out = release_stderr();
 		ck_assert_int_eq(res, RESTORE_CONFIG_INIT_FAILURE);
-		ck_assert_ptr_ne(strstr(out, "--password: password from environment "
+		ck_assert_ptr_ne(strstr(out, "--password: value from environment "
 					"variable " PW_ENV " is longer than 63 bytes"), NULL);
 		restore_config_destroy(&conf);
 	}
@@ -886,8 +899,8 @@ START_TEST(test_backup_keyfile_pw_at_connect)
 	ck_assert_str_eq(conf.tls.keyfile_pw, "file:" PW_FILE);
 
 	char* out = backup_status_init_fails(&conf);
-	ck_assert_ptr_ne(strstr(out, "--tls-keyfile-password: empty password from "
-				"first line of file " PW_FILE), NULL);
+	ck_assert_ptr_ne(strstr(out, "--tls-keyfile-password: first line of file "
+				PW_FILE " is empty"), NULL);
 	ck_assert_int_eq(getpass_calls, 0);
 	backup_config_destroy(&conf);
 }
@@ -1048,6 +1061,8 @@ Suite* password_suite()
 	tcase_add_test(tc_connect, test_backup_prompted_keyfile_pw);
 	tcase_add_test(tc_connect, test_restore_keyfile_pw_at_connect);
 	tcase_add_test(tc_connect, test_restore_prompted_keyfile_pw);
+	tcase_add_test(tc_connect, test_backup_keyfile_pw_from_secret_agent);
+	tcase_add_test(tc_connect, test_restore_keyfile_pw_from_secret_agent);
 	suite_add_tcase(s, tc_connect);
 
 	return s;
