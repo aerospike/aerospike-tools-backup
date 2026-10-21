@@ -33,6 +33,21 @@ extern "C" {
 //
 
 #include <stdbool.h>
+#include <stddef.h>
+
+
+//==========================================================
+// Typedefs & constants.
+//
+
+#define PASSWORD_OPT "--password"
+#define PASSWORD_CONFIG_OPT "password in config file"
+#define TLS_KEYFILE_PASSWORD_OPT "--tls-keyfile-password"
+#define TLS_KEYFILE_PASSWORD_CONFIG_OPT "tls-keyfile-password in config file"
+
+// OpenSSL's PEM_BUFSIZE: the C client cannot decrypt a key with a longer
+// password.
+#define TLS_KEYFILE_PASSWORD_MAX_LEN 1024
 
 
 //==========================================================
@@ -49,7 +64,12 @@ extern char *DEFAULT_PASSWORD;
 bool config_from_files(void *c, const char* instance, const char* cmd_config_fname, bool is_backup);
 bool config_from_file(void *c, const char* instance, const char* fname, int level, bool is_backup);
 
-bool tls_read_password(char* value, char** ptr);
+bool tls_read_password(const char* opt_name, const char* value, char** ptr);
+bool resolve_password(const char* opt_name, char** value, size_t max_len,
+		bool first_line);
+bool password_has_source(const char* value);
+bool password_fits(const char* opt_name, const char* value, size_t max_len);
+bool auth_mode_is_pki(const char* auth_mode);
 
 #ifdef __cplusplus
 }

@@ -355,6 +355,7 @@ restore_config_set(int argc, char* argv[], restore_config_t* conf)
 
 		case 'P':
 			cf_free(conf->password);
+			conf->password = NULL;
 			if (optarg) {
 				conf->password = safe_strdup(optarg);
 			} else {
@@ -379,6 +380,8 @@ restore_config_set(int argc, char* argv[], restore_config_t* conf)
 					conf->password = safe_strdup(DEFAULT_PASSWORD);
 				}
 			}
+			conf->password_from_secret_agent = arg_is_secret;
+			conf->password_from_config_file = false;
 			break;
 
 		case 'A':
@@ -592,6 +595,8 @@ restore_config_set(int argc, char* argv[], restore_config_t* conf)
 			break;
 
 		case TLS_OPT_KEY_FILE_PASSWORD:
+			cf_free(conf->tls.keyfile_pw);
+			conf->tls.keyfile_pw = NULL;
 			if (optarg) {
 				conf->tls.keyfile_pw = safe_strdup(optarg);
 			} else {
@@ -617,6 +622,8 @@ restore_config_set(int argc, char* argv[], restore_config_t* conf)
 					conf->tls.keyfile_pw = safe_strdup(DEFAULT_PASSWORD);
 				}
 			}
+			conf->tls_keyfile_pw_from_secret_agent = arg_is_secret;
+			conf->tls_keyfile_pw_from_config_file = false;
 			break;
 
 		case TLS_OPT_CERT_FILE:
@@ -769,6 +776,24 @@ restore_config_set(int argc, char* argv[], restore_config_t* conf)
 		return RESTORE_CONFIG_INIT_FAILURE;
 	}
 
+	if (!conf->validate && !auth_mode_is_pki(conf->auth_mode)) {
+		const char* pw_opt = conf->password_from_config_file ?
+				PASSWORD_CONFIG_OPT : PASSWORD_OPT;
+
+		if (conf->user == NULL) {
+			if (!conf->password_from_secret_agent &&
+					password_has_source(conf->password)) {
+				inf("Warning: %s: ignored because no user is set", pw_opt);
+			}
+		}
+		else if (conf->password_from_secret_agent ?
+				!password_fits(pw_opt, conf->password, AS_PASSWORD_SIZE - 1) :
+				!resolve_password(pw_opt, &conf->password, AS_PASSWORD_SIZE - 1,
+					false)) {
+			return RESTORE_CONFIG_INIT_FAILURE;
+		}
+	}
+
 	return 0;
 }
 
@@ -880,6 +905,8 @@ restore_config_init(restore_config_t *conf)
 	conf->port = DEFAULT_PORT;
 	conf->user = NULL;
 	conf->password = NULL;
+	conf->password_from_secret_agent = false;
+	conf->password_from_config_file = false;
 	conf->auth_mode = NULL;
 
 	conf->s3_region = NULL;
@@ -929,6 +956,8 @@ restore_config_init(restore_config_t *conf)
 	conf->event_loops = DEFAULT_EVENT_LOOPS;
 
 	memset(&conf->tls, 0, sizeof(as_config_tls));
+	conf->tls_keyfile_pw_from_secret_agent = false;
+	conf->tls_keyfile_pw_from_config_file = false;
 	conf->tls_name = NULL;
 
 	sa_cfg_init(&conf->secret_cfg);
@@ -1124,9 +1153,24 @@ usage(const char *name)
 	fprintf(stdout, " -p PORT, --port=PORT Server default port. Default: 3000\n");
 	fprintf(stdout, " -U USER, --user=USER User name used to authenticate with cluster. Default: none\n");
 	fprintf(stdout, " -P, --password\n");
-	fprintf(stdout, "                      Password used to authenticate with cluster. Default: none\n");
+	fprintf(stdout, "                      Password used to authenticate with cluster. Default: none\n"
+					"                      It can be one of the following:\n"
+					"                      1) Environment variable: 'env:<VAR>', used exactly as set\n"
+					"                      2) Base64 encoded environment variable: 'env-b64:<VAR>'\n"
+					"                      3) Base64 encoded string: 'b64:<BASE64>'\n"
+					"                      4) File: 'file:<PATH>', the whole file less one trailing '\\n' or\n"
+					"                         '\\r\\n'. PATH should name a regular file.\n"
+					"                      5) String: 'PASSWORD'\n"
+					"                      Prefixes are case-sensitive. A base64 value may be line wrapped,\n"
+					"                      and one trailing newline is dropped after decoding. A 'b64:' value\n"
+					"                      on the command line is as visible as a literal password.\n"
+					"                      A password that itself begins with 'env:', 'env-b64:', 'b64:' or\n"
+					"                      'file:' must be given as 'b64:' or typed at the prompt.\n"
+					"                      The password is read only when a user is set and the auth mode is\n"
+					"                      not PKI. It must be at most 63 bytes.\n"
+					"                      A value fetched with 'secrets:' is used as-is.\n");
 	fprintf(stdout, "                      User will be prompted on command line if -P specified and no\n");
-	fprintf(stdout, "      	               password is given.\n");
+	fprintf(stdout, "                      password is given. The typed password is used as is.\n");
 	fprintf(stdout, " -A, --auth\n");
 	fprintf(stdout, "                      Set authentication mode when user/password is defined. Modes are\n");
 	fprintf(stdout, "                      (INTERNAL, EXTERNAL, EXTERNAL_INSECURE, PKI) and the default is INTERNAL.\n");
@@ -1155,12 +1199,22 @@ usage(const char *name)
 	fprintf(stdout, " --tls-keyfile-password=TLS_KEYFILE_PASSWORD\n");
 	fprintf(stdout, "                      Password to load protected tls-keyfile.\n"
 					"                      It can be one of the following:\n"
-					"                      1) Environment varaible: 'env:<VAR>'\n"
-					"                      2) File: 'file:<PATH>'\n"
-					"                      3) String: 'PASSWORD'\n"
+					"                      1) Environment variable: 'env:<VAR>', used exactly as set\n"
+					"                      2) Base64 encoded environment variable: 'env-b64:<VAR>'\n"
+					"                      3) Base64 encoded string: 'b64:<BASE64>'\n"
+					"                      4) File: 'file:<PATH>', the first line of the file\n"
+					"                      5) String: 'PASSWORD'\n"
+					"                      Prefixes are case-sensitive. A base64 value may be line wrapped,\n"
+					"                      and one trailing newline is dropped after decoding.\n"
+					"                      A password that itself begins with 'env:', 'env-b64:', 'b64:' or\n"
+					"                      'file:' must be given as 'b64:'.\n"
+					"                      The password is read only when a key file is set. It must be at\n"
+					"                      most 1024 bytes.\n"
 					"                      Default: none\n"
+					"                      A value fetched with 'secrets:' is used as-is.\n"
 					"                      User will be prompted on command line if --tls-keyfile-password\n"
-					"                      specified and no password is given.\n");
+					"                      specified and no password is given. The typed password\n"
+					"                      accepts the forms above.\n");
 	fprintf(stdout, " --tls-certfile=TLS_CERTFILE <path>\n");
 	fprintf(stdout, "                      Path to the chain file for mutual authentication (if\n"
 					"                      Aerospike Cluster is supporting it).\n");

@@ -83,6 +83,8 @@ typedef struct restore_config {
 	bool use_services_alternate;
 	char *user;
 	char *password;
+	bool password_from_secret_agent;
+	bool password_from_config_file;
 	uint32_t parallel;
 	char *nice_list;
 	bool no_records;
@@ -131,6 +133,8 @@ typedef struct restore_config {
 	bool s3_allow_system_proxy;
 
 	as_config_tls tls;
+	bool tls_keyfile_pw_from_secret_agent;
+	bool tls_keyfile_pw_from_config_file;
 	char* tls_name;
 
 	// The (optional) source and (also optional) target namespace to be restored.

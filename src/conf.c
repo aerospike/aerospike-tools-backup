@@ -25,6 +25,7 @@
 #include <stdlib.h>
 #include <getopt.h>
 #include <string.h>
+#include <errno.h>
 #include <dirent.h>
 #include <sys/stat.h>
 
@@ -44,6 +45,7 @@
 
 #define BACKUP_CONFIG_FILE ".aerospike/astools.conf"
 #define ERR_BUF_SIZE 1024
+#define PASSWORD_FILE_MAX_LEN 4999
 
 
 //=========================================================
@@ -89,8 +91,13 @@ static bool config_secret_agent(toml_table_t *config_table, sa_cfg *c, const cha
 static bool config_include(toml_table_t *config_table, void *c, const char *instance, int level, bool is_backup);
 static bool config_from_dir(void *c, const char *instance, char *dirname, int level, bool is_backup);
 
-static bool password_env(const char *var, char **ptr);
-static bool password_file(const char *path, char **ptr);
+static const char *password_env_value(const char *opt_name, const char *var);
+static bool password_env(const char *opt_name, const char *var, char **ptr);
+static bool password_env_b64(const char *opt_name, const char *var, char **ptr);
+static bool password_b64(const char *opt_name, const char *b64,
+		const char *src_kind, const char *src_name, char **ptr);
+static bool password_file(const char *opt_name, const char *path,
+		size_t max_len, bool first_line, char **ptr);
 
 // returns 0 on success or if rtoml cannot be a secret path
 // returns a value not equal to 0 on failure
@@ -200,17 +207,116 @@ config_from_files(void *c, const char *instance,
 }
 
 bool
-tls_read_password(char *value, char **ptr)
+tls_read_password(const char *opt_name, const char *value, char **ptr)
 {
-	if (strncmp(value, "env:", 4) == 0) {
-		return password_env(value + 4, ptr);
+	*ptr = cf_strdup(value);
+
+	if (*ptr == NULL) {
+		err("%s: out of memory", opt_name);
+		return false;
 	}
 
-	if (strncmp(value, "file:", 5) == 0) {
-		return password_file(value + 5, ptr);
+	return resolve_password(opt_name, ptr, TLS_KEYFILE_PASSWORD_MAX_LEN, true);
+}
+
+bool
+password_has_source(const char *value)
+{
+	return value != NULL && (strncmp(value, "env:", 4) == 0 ||
+			strncmp(value, "env-b64:", 8) == 0 ||
+			strncmp(value, "b64:", 4) == 0 ||
+			strncmp(value, "file:", 5) == 0);
+}
+
+bool
+password_fits(const char *opt_name, const char *value, size_t max_len)
+{
+	if (strlen(value) > max_len) {
+		err("%s: password is longer than %zu bytes", opt_name, max_len);
+		return false;
 	}
 
-	*ptr = safe_strdup(value);
+	return true;
+}
+
+bool
+auth_mode_is_pki(const char *auth_mode)
+{
+	return auth_mode != NULL && strcasecmp(auth_mode, "PKI") == 0;
+}
+
+bool
+resolve_password(const char *opt_name, char **value, size_t max_len,
+		bool first_line)
+{
+	const char *val = *value;
+	const char *what;
+	const char *name;
+	char *res = NULL;
+	bool ok;
+
+	if (val == NULL) {
+		return true;
+	}
+
+	if (strncmp(val, "env:", 4) == 0) {
+		what = "value from environment variable ";
+		name = val + 4;
+
+		if (name[0] == '\0') {
+			err("%s: env: requires a variable name", opt_name);
+			return false;
+		}
+
+		ok = password_env(opt_name, name, &res);
+	}
+	else if (strncmp(val, "env-b64:", 8) == 0) {
+		what = "decoded value from environment variable ";
+		name = val + 8;
+
+		if (name[0] == '\0') {
+			err("%s: env-b64: requires a variable name", opt_name);
+			return false;
+		}
+
+		ok = password_env_b64(opt_name, name, &res);
+	}
+	else if (strncmp(val, "b64:", 4) == 0) {
+		what = "decoded b64: value";
+		name = "";
+		ok = password_b64(opt_name, val + 4, "b64: value", "", &res);
+	}
+	else if (strncmp(val, "file:", 5) == 0) {
+		what = "value from file ";
+		name = val + 5;
+
+		if (name[0] == '\0') {
+			err("%s: file: requires a path", opt_name);
+			return false;
+		}
+
+		if (max_len == 0) {
+			max_len = PASSWORD_FILE_MAX_LEN;
+		}
+
+		ok = password_file(opt_name, name, max_len, first_line, &res);
+	}
+	else {
+		return max_len == 0 || password_fits(opt_name, val, max_len);
+	}
+
+	if (! ok) {
+		return false;
+	}
+
+	if (max_len != 0 && strlen(res) > max_len) {
+		err("%s: %s%s is longer than %zu bytes", opt_name, what, name, max_len);
+		cf_free(res);
+		return false;
+	}
+
+	cf_free(*value);
+	*value = res;
 	return true;
 }
 
@@ -472,7 +578,9 @@ config_restore_cluster(toml_table_t *config_table, restore_config_t *c, const ch
 
 		} else if (! strcasecmp("password", name)) {
 			status = config_str(config_value, (void*)&c->password, override);
-		
+			c->password_from_secret_agent = arg_is_secret;
+			c->password_from_config_file = true;
+
 		} else if (! strcasecmp("auth", name)) {
 			status = config_str(config_value, &c->auth_mode, override);
 
@@ -504,6 +612,8 @@ config_restore_cluster(toml_table_t *config_table, restore_config_t *c, const ch
 
 		} else if (! strcasecmp("tls-keyfile-password", name)) {
 			status = config_str(config_value, (void*)&c->tls.keyfile_pw, override);
+			c->tls_keyfile_pw_from_secret_agent = arg_is_secret;
+			c->tls_keyfile_pw_from_config_file = true;
 
 		} else if (! strcasecmp("tls-cafile", name)) {
 			if (arg_is_secret) {
@@ -600,7 +710,9 @@ config_backup_cluster(toml_table_t *config_table, backup_config_t *c, const char
 
 		} else if (! strcasecmp("password", name)) {
 			status = config_str(config_value, (void*)&c->password, override);
-		
+			c->password_from_secret_agent = arg_is_secret;
+			c->password_from_config_file = true;
+
 		} else if (! strcasecmp("auth", name)) {
 			status = config_str(config_value, &c->auth_mode, override);
 
@@ -632,6 +744,8 @@ config_backup_cluster(toml_table_t *config_table, backup_config_t *c, const char
 
 		} else if (! strcasecmp("tls-keyfile-password", name)) {
 			status = config_str(config_value, (void*)&c->tls.keyfile_pw, override);
+			c->tls_keyfile_pw_from_secret_agent = arg_is_secret;
+			c->tls_keyfile_pw_from_config_file = true;
 
 		} else if (! strcasecmp("tls-cafile", name)) {
 			if (arg_is_secret) {
@@ -1466,66 +1580,170 @@ config_restore(toml_table_t *config_table, restore_config_t *c, const char *inst
 	return true;
 }
 
-static bool
-password_env(const char *var, char **ptr)
+static const char *
+password_env_value(const char *opt_name, const char *var)
 {
-	char *pw = getenv(var);
+	const char *val = getenv(var);
 
-	if (pw == NULL) {
-		err("missing TLS key password environment variable %s\n", var);
+	if (val == NULL || val[0] == '\0') {
+		err("%s: environment variable %s is not set or empty", opt_name, var);
+		return NULL;
+	}
+
+	return val;
+}
+
+static bool
+password_env(const char *opt_name, const char *var, char **ptr)
+{
+	const char *val = password_env_value(opt_name, var);
+
+	if (val == NULL) {
 		return false;
 	}
 
-	if (pw[0] == 0) {
-		err("empty TLS key password environment variable %s\n", var);
+	*ptr = cf_strdup(val);
+
+	if (*ptr == NULL) {
+		err("%s: out of memory reading environment variable %s", opt_name, var);
 		return false;
 	}
 
-	*ptr = strdup(pw);
 	return true;
 }
 
 static bool
-password_file(const char *path, char **ptr)
+password_env_b64(const char *opt_name, const char *var, char **ptr)
+{
+	const char *val = password_env_value(opt_name, var);
+
+	if (val == NULL) {
+		return false;
+	}
+
+	return password_b64(opt_name, val, "environment variable ", var, ptr);
+}
+
+static bool
+password_b64(const char *opt_name, const char *b64, const char *src_kind,
+		const char *src_name, char **ptr)
+{
+	size_t b64_len = strlen(b64);
+	char *buf = cf_malloc(b64_len + 1);
+	size_t enc_len = 0;
+
+	if (buf == NULL) {
+		err("%s: out of memory decoding %s%s", opt_name, src_kind, src_name);
+		return false;
+	}
+
+	// Go's base64.StdEncoding skips line breaks, so do the same.
+	for (size_t i = 0; i < b64_len; i++) {
+		if (b64[i] != '\r' && b64[i] != '\n') {
+			buf[enc_len++] = b64[i];
+		}
+	}
+
+	uint32_t dec_len = 0;
+
+	if (enc_len != 0 && ! cf_b64_validate_and_decode_in_place((uint8_t*) buf,
+				(uint32_t) enc_len, &dec_len)) {
+		err("%s: invalid base64 in %s%s", opt_name, src_kind, src_name);
+		cf_free(buf);
+		return false;
+	}
+
+	if (memchr(buf, '\0', dec_len) != NULL) {
+		err("%s: %s%s decodes to a value containing a NUL byte", opt_name,
+				src_kind, src_name);
+		cf_free(buf);
+		return false;
+	}
+
+	if (dec_len > 0 && buf[dec_len - 1] == '\n') {
+		dec_len--;
+	}
+
+	buf[dec_len] = '\0';
+
+	if (dec_len == 0) {
+		err("%s: password from %s%s is empty", opt_name, src_kind, src_name);
+		cf_free(buf);
+		return false;
+	}
+
+	*ptr = buf;
+	return true;
+}
+
+static bool
+password_file(const char *opt_name, const char *path, size_t max_len,
+		bool first_line, char **ptr)
 {
 	FILE *fh = fopen(path, "r");
 
 	if (fh == NULL) {
-		err("missing TLS key password file %s\n", path);
+		err("%s: cannot read file %s: %s", opt_name, path, strerror(errno));
 		return false;
 	}
 
-	char pw[5000];
-	char *res = fgets(pw, sizeof(pw), fh);
+	// Room for a trailing \r\n and one byte more, so an over-long value is
+	// caught without reading the rest of the file.
+	size_t cap = max_len + 3;
+	char *buf = cf_malloc(cap + 1);
+
+	if (buf == NULL) {
+		err("%s: out of memory reading file %s", opt_name, path);
+		fclose(fh);
+		return false;
+	}
+
+	size_t len = 0;
+	int c = EOF;
+
+	while (len < cap && (c = getc(fh)) != EOF && c != '\0') {
+		if (first_line && (c == '\n' || c == '\r')) {
+			break;
+		}
+
+		buf[len++] = (char) c;
+	}
+
+	int read_errno = errno;
+	bool read_failed = ferror(fh) != 0;
 
 	fclose(fh);
 
-	if (res == NULL) {
-		err("error while reading TLS key password file %s\n", path);
+	if (read_failed) {
+		err("%s: cannot read file %s: %s", opt_name, path, strerror(read_errno));
+		cf_free(buf);
 		return false;
 	}
 
-	int32_t pw_len;
+	if (c == '\0') {
+		err("%s: file %s contains a NUL byte", opt_name, path);
+		cf_free(buf);
+		return false;
+	}
 
-	for (pw_len = 0; pw[pw_len] != 0; pw_len++) {
-		if (pw[pw_len] == '\n' || pw[pw_len] == '\r') {
-			break;
+	if (len > 0 && buf[len - 1] == '\n') {
+		len--;
+
+		if (len > 0 && buf[len - 1] == '\r') {
+			len--;
 		}
 	}
 
-	if (pw_len == sizeof(pw) - 1) {
-		err("TLS key password in file %s too long\n", path);
+	buf[len] = '\0';
+
+	if (len == 0) {
+		err("%s: password from %sfile %s is empty", opt_name,
+				first_line && c != EOF ? "first line of " : "", path);
+		cf_free(buf);
 		return false;
 	}
 
-	pw[pw_len] = 0;
-
-	if (pw_len == 0) {
-		err("empty TLS key password file %s\n", path);
-		return false;
-	}
-
-	*ptr = strdup(pw);
+	*ptr = buf;
 	return true;
 }
 
