@@ -122,7 +122,8 @@ def setup_module(module):
 def teardown_module(module):
 	sa.teardown_secret_agent()
 
-def test_secrets_ca_file():
+@pytest.mark.parametrize("ca_file_opt", ["--sa-ca-file", "--sa-cafile"])
+def test_secrets_ca_file(ca_file_opt):
     """
     Test sa cert secret option.
     """
@@ -130,7 +131,7 @@ def test_secrets_ca_file():
         backup_args={"host": "127.0.0.1", "port": 3000},
         restore_args={"host": "127.0.0.1", "port": 3000},
         sa_args=["--sa-address", sa.SA_TLS_ADDR, "--sa-port", sa.SA_PORT,
-                 "--sa-cafile", SA_CA_FILE],
+                 ca_file_opt, SA_CA_FILE],
         sa_tls=True
     )
 
