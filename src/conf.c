@@ -27,6 +27,8 @@
 #include <string.h>
 #include <errno.h>
 #include <dirent.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include <sys/stat.h>
 
 #include <sa_client.h>
@@ -46,6 +48,7 @@
 #define BACKUP_CONFIG_FILE ".aerospike/astools.conf"
 #define ERR_BUF_SIZE 1024
 #define PASSWORD_FILE_MAX_LEN 4999
+#define PASSWORD_WHITESPACE " \t\n\v\f\r"
 
 
 //=========================================================
@@ -98,6 +101,10 @@ static bool password_b64(const char *opt_name, const char *b64,
 		const char *src_kind, const char *src_name, char **ptr);
 static bool password_file(const char *opt_name, const char *path,
 		size_t max_len, bool first_line, char **ptr);
+static void password_trim(char *value);
+static bool password_has_terminal(void);
+static char *password_read_prompt(const char *prompt, size_t max_len,
+		bool *cut_off);
 
 // returns 0 on success or if rtoml cannot be a secret path
 // returns a value not equal to 0 on failure
@@ -216,7 +223,54 @@ tls_read_password(const char *opt_name, const char *value, char **ptr)
 		return false;
 	}
 
+	password_trim(*ptr);
 	return resolve_password(opt_name, ptr, TLS_KEYFILE_PASSWORD_MAX_LEN, true);
+}
+
+bool
+tls_read_secret(sa_client *sc, char **value, bool *is_secret)
+{
+	char *secret = NULL;
+
+	*is_secret = false;
+	password_trim(*value);
+
+	if (get_secret_arg(sc, *value, &secret, is_secret) != 0) {
+		return false;
+	}
+
+	if (*is_secret) {
+		cf_free(*value);
+		*value = secret;
+	}
+
+	return true;
+}
+
+bool
+tls_prompt_password(const char *opt_name, char **ptr)
+{
+	bool cut_off;
+	char *value = password_read_prompt("Enter TLS-Keyfile Password: ",
+			TLS_KEYFILE_PASSWORD_MAX_LEN, &cut_off);
+
+	*ptr = NULL;
+
+	if (cut_off) {
+		err("%s: password is longer than %d bytes", opt_name,
+				TLS_KEYFILE_PASSWORD_MAX_LEN);
+		return false;
+	}
+
+	return tls_read_password(opt_name, value, ptr);
+}
+
+char *
+password_prompt(const char *prompt, size_t max_len)
+{
+	bool cut_off;
+
+	return password_read_prompt(prompt, max_len, &cut_off);
 }
 
 bool
@@ -557,7 +611,8 @@ config_restore_cluster(toml_table_t *config_table, restore_config_t *c, const ch
 
 		bool arg_is_secret = false;
 		char *override = NULL;
-		if (!get_secret_rtoml(sc, config_value, &override, &arg_is_secret)) {
+		if (strcasecmp("tls-keyfile-password", name) != 0 &&
+				!get_secret_rtoml(sc, config_value, &override, &arg_is_secret)) {
 			return false;
 		}
 
@@ -611,8 +666,12 @@ config_restore_cluster(toml_table_t *config_table, restore_config_t *c, const ch
 			}
 
 		} else if (! strcasecmp("tls-keyfile-password", name)) {
-			status = config_str(config_value, (void*)&c->tls.keyfile_pw, override);
-			c->tls_keyfile_pw_from_secret_agent = arg_is_secret;
+			status = config_str(config_value, (void*)&c->tls.keyfile_pw, NULL);
+			if (status && !tls_read_secret(sc, &c->tls.keyfile_pw,
+						&c->tls_keyfile_pw_from_secret_agent)) {
+				err("failed requesting secret: %s", c->tls.keyfile_pw);
+				return false;
+			}
 			c->tls_keyfile_pw_from_config_file = true;
 
 		} else if (! strcasecmp("tls-cafile", name)) {
@@ -689,7 +748,8 @@ config_backup_cluster(toml_table_t *config_table, backup_config_t *c, const char
 
 		bool arg_is_secret = false;
 		char *override = NULL;
-		if (!get_secret_rtoml(sc, config_value, &override, &arg_is_secret)) {
+		if (strcasecmp("tls-keyfile-password", name) != 0 &&
+				!get_secret_rtoml(sc, config_value, &override, &arg_is_secret)) {
 			return false;
 		}
 
@@ -743,8 +803,12 @@ config_backup_cluster(toml_table_t *config_table, backup_config_t *c, const char
 			}
 
 		} else if (! strcasecmp("tls-keyfile-password", name)) {
-			status = config_str(config_value, (void*)&c->tls.keyfile_pw, override);
-			c->tls_keyfile_pw_from_secret_agent = arg_is_secret;
+			status = config_str(config_value, (void*)&c->tls.keyfile_pw, NULL);
+			if (status && !tls_read_secret(sc, &c->tls.keyfile_pw,
+						&c->tls_keyfile_pw_from_secret_agent)) {
+				err("failed requesting secret: %s", c->tls.keyfile_pw);
+				return false;
+			}
 			c->tls_keyfile_pw_from_config_file = true;
 
 		} else if (! strcasecmp("tls-cafile", name)) {
@@ -1745,6 +1809,77 @@ password_file(const char *opt_name, const char *path, size_t max_len,
 
 	*ptr = buf;
 	return true;
+}
+
+static void
+password_trim(char *value)
+{
+	size_t start = strspn(value, PASSWORD_WHITESPACE);
+	size_t end = strlen(value);
+
+	while (end > start && strchr(PASSWORD_WHITESPACE, value[end - 1]) != NULL) {
+		end--;
+	}
+
+	memmove(value, value + start, end - start);
+	value[end - start] = '\0';
+}
+
+static bool
+password_has_terminal(void)
+{
+	int fd = open(ctermid(NULL), O_RDONLY);
+
+	if (fd < 0) {
+		return false;
+	}
+
+	close(fd);
+	return true;
+}
+
+static char *
+password_read_prompt(const char *prompt, size_t max_len, bool *cut_off)
+{
+	static char buf[TLS_KEYFILE_PASSWORD_MAX_LEN + 4];
+
+	*cut_off = false;
+
+	if (password_has_terminal()) {
+		return getpass(prompt);
+	}
+
+	size_t cap = max_len + 3;
+
+	if (cap >= sizeof(buf)) {
+		cap = sizeof(buf) - 1;
+	}
+
+	size_t len = 0;
+
+	// One byte at a time, so input after the line is left on stdin.
+	while (len < cap) {
+		ssize_t n = read(STDIN_FILENO, buf + len, 1);
+
+		if (n < 0 && errno == EINTR) {
+			continue;
+		}
+
+		if (n != 1 || buf[len++] == '\n') {
+			break;
+		}
+	}
+
+	buf[len] = '\0';
+
+	// A cut-off line stays as read so the length check rejects it.
+	if (len == cap && buf[len - 1] != '\n') {
+		*cut_off = true;
+		return buf;
+	}
+
+	password_trim(buf);
+	return buf;
 }
 
 static bool
