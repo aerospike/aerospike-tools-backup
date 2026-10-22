@@ -120,7 +120,7 @@ def test_secrets_ca_file():
     backup_restore_with_secrets(
         backup_args={"host": "127.0.0.1", "port": 3000},
         restore_args={"host": "127.0.0.1", "port": 3000},
-        sa_args=["--sa-address", sa.SA_ADDR, "--sa-port", sa.SA_PORT, "--sa-cafile", SA_CA_FILE],
+        sa_args=["--sa-address", sa.SA_TLS_ADDR, "--sa-port", sa.SA_PORT, "--sa-cafile", SA_CA_FILE],
         sa_tls=True
     )
 
