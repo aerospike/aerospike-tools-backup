@@ -320,7 +320,7 @@ backup_status_init(backup_status_t* status, backup_config_t* conf)
 	char* password;
 	if (conf->user) {
 		if (strcmp(conf->password, DEFAULT_PASSWORD) == 0) {
-			password = getpass("Enter Password: ");
+			password = password_prompt("Enter Password: ", AS_PASSWORD_SIZE - 1);
 
 			if (!auth_mode_is_pki(conf->auth_mode) &&
 					!password_fits(PASSWORD_OPT, password, AS_PASSWORD_SIZE - 1)) {
@@ -348,15 +348,15 @@ backup_status_init(backup_status_t* status, backup_config_t* conf)
 			}
 		}
 		else {
-			const char* tls_keyfile_pw = conf->tls.keyfile_pw;
-
-			if (strcmp(tls_keyfile_pw, DEFAULT_PASSWORD) == 0) {
-				tls_keyfile_pw = getpass("Enter TLS-Keyfile Password: ");
-			}
-
 			// we'll be overwriting the old keyfile_pw string
 			cf_free(as_conf.tls.keyfile_pw);
-			if (!tls_read_password(pw_opt, tls_keyfile_pw,
+
+			if (strcmp(conf->tls.keyfile_pw, DEFAULT_PASSWORD) == 0) {
+				if (!tls_prompt_password(pw_opt, &as_conf.tls.keyfile_pw)) {
+					goto cleanup2;
+				}
+			}
+			else if (!tls_read_password(pw_opt, conf->tls.keyfile_pw,
 						&as_conf.tls.keyfile_pw)) {
 				goto cleanup2;
 			}

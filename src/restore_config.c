@@ -326,7 +326,8 @@ restore_config_set(int argc, char* argv[], restore_config_t* conf)
 		bool arg_is_secret = false;
 		old_optarg = optarg;
 
-		if (get_secret_arg(&sac, optarg, &optarg, &arg_is_secret) != 0) {
+		if (optcase != TLS_OPT_KEY_FILE_PASSWORD &&
+				get_secret_arg(&sac, optarg, &optarg, &arg_is_secret) != 0) {
 			return RESTORE_CONFIG_INIT_FAILURE;
 		}
 		
@@ -602,19 +603,7 @@ restore_config_set(int argc, char* argv[], restore_config_t* conf)
 			} else {
 				if (optind < argc && NULL != argv[optind] && '-' != argv[optind][0] ) {
 					// space separated argument value
-
-					char* pwd_val = argv[optind++];
-
-					if (get_secret_arg(&sac, pwd_val, &pwd_val, &arg_is_secret) != 0) {
-						return RESTORE_CONFIG_INIT_FAILURE;
-					}
-					
-					if (pwd_val != NULL && arg_is_secret) {
-						old_optarg = optarg;
-						optarg = pwd_val;
-					}
-
-					conf->tls.keyfile_pw = safe_strdup(pwd_val);
+					conf->tls.keyfile_pw = safe_strdup(argv[optind++]);
 				} else {
 					// No password specified should
 					// force it to default password
@@ -622,7 +611,12 @@ restore_config_set(int argc, char* argv[], restore_config_t* conf)
 					conf->tls.keyfile_pw = safe_strdup(DEFAULT_PASSWORD);
 				}
 			}
-			conf->tls_keyfile_pw_from_secret_agent = arg_is_secret;
+
+			if (!tls_read_secret(&sac, &conf->tls.keyfile_pw,
+						&conf->tls_keyfile_pw_from_secret_agent)) {
+				return RESTORE_CONFIG_INIT_FAILURE;
+			}
+
 			conf->tls_keyfile_pw_from_config_file = false;
 			break;
 
@@ -1170,7 +1164,8 @@ usage(const char *name)
 					"                      not PKI. It must be at most 63 bytes.\n"
 					"                      A value fetched with 'secrets:' is used as-is.\n");
 	fprintf(stdout, "                      User will be prompted on command line if -P specified and no\n");
-	fprintf(stdout, "                      password is given. The typed password is used as is.\n");
+	fprintf(stdout, "                      password is given. The typed password is used as is. A password\n");
+	fprintf(stdout, "                      piped on stdin has surrounding whitespace trimmed.\n");
 	fprintf(stdout, " -A, --auth\n");
 	fprintf(stdout, "                      Set authentication mode when user/password is defined. Modes are\n");
 	fprintf(stdout, "                      (INTERNAL, EXTERNAL, EXTERNAL_INSECURE, PKI) and the default is INTERNAL.\n");
@@ -1208,6 +1203,7 @@ usage(const char *name)
 					"                      and one trailing newline is dropped after decoding.\n"
 					"                      A password that itself begins with 'env:', 'env-b64:', 'b64:' or\n"
 					"                      'file:' must be given as 'b64:'.\n"
+					"                      Surrounding whitespace is trimmed before the form is read.\n"
 					"                      The password is read only when a key file is set. It must be at\n"
 					"                      most 1024 bytes.\n"
 					"                      Default: none\n"

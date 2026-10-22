@@ -843,3 +843,47 @@ def test_restore_secret_override_order():
 	gen_secret_agent_files(restore_args=SA_LITERAL_ARGS)
 	check_secret_override_order(restore_so.restore_config_set, RestoreConfigT,
 		"asrestore", SA_RESTORE_RESOURCE)
+
+def check_padded_keyfile_secret(config_set, conf_type, prgm_name, resource):
+	cli_args = [prgm_name, "--no-config-file", "--sa-address", "127.0.0.1",
+		"--sa-port", sa.SA_PORT, "--tls-keyfile-password",
+		" secrets:%s:tls-keyfile-password \t" % resource]
+
+	conf_path = lib.temporary_path("toml")
+	with open(conf_path, "x") as f:
+		f.write('[cluster]\ntls-keyfile-password = "\\tsecrets:%s:tls-keyfile-password "\n'
+			'[secret-agent]\nsa-address = "127.0.0.1"\nsa-port = "%s"\n'
+			% (resource, sa.SA_PORT))
+	file_args = [prgm_name, "--only-config-file", conf_path]
+
+	confs = []
+	agent = sa.get_secret_agent(config=SA_CONF_PATH)
+	try:
+		agent.start()
+		for args in (cli_args, file_args):
+			conf = conf_type()
+			c_argv = (ctypes.c_char_p * len(args))(*[bytes(x, "utf-8") for x in args])
+			p_argv = ctypes.POINTER(ctypes.c_char_p)(c_argv)
+			res = config_set(len(args), p_argv, ctypes.POINTER(conf_type)(conf))
+			confs.append((res, conf))
+	finally:
+		agent.stop()
+		print("*** Secret Agent Output ***")
+		print(agent.output())
+		print("*** End Secret Agent Output ***")
+		agent.cleanup()
+
+	for res, conf in confs:
+		assert res == 0
+		assert conf.tls.keyfile_pw == bytes(SA_LITERAL_ARGS["tls-keyfile-password"], "utf-8")
+		assert conf.tls_keyfile_pw_from_secret_agent
+
+def test_backup_padded_keyfile_secret():
+	gen_secret_agent_files(backup_args=SA_LITERAL_ARGS)
+	check_padded_keyfile_secret(backup_so.backup_config_set, BackupConfigT,
+		"asbackup", SA_BACKUP_RESOURCE)
+
+def test_restore_padded_keyfile_secret():
+	gen_secret_agent_files(restore_args=SA_LITERAL_ARGS)
+	check_padded_keyfile_secret(restore_so.restore_config_set, RestoreConfigT,
+		"asrestore", SA_RESTORE_RESOURCE)
