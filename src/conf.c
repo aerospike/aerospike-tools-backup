@@ -457,6 +457,7 @@ config_secret_agent(toml_table_t *config_table, sa_cfg *c, const char *instance,
 	}
 
 	const char *name;
+	const char *ca_file_key = NULL;
 	bool used_sa_port_arg = false;
 
 	for (uint8_t k = 0; 0 != (name = toml_key_in(current_table, k)); k++) {
@@ -480,20 +481,15 @@ config_secret_agent(toml_table_t *config_table, sa_cfg *c, const char *instance,
 		else if (! strcasecmp("sa-timeout", name)) {
 			status = config_int64(config_value, (void*)&c->timeout, NULL);
 		}
+		else if (! strcasecmp("sa-ca-file", name)) {
+			ca_file_key = name;
+			status = true;
+		}
 		else if (! strcasecmp("sa-cafile", name)) {
-			char* tmp = NULL;
-			status = config_str(config_value, (void*)&tmp, NULL);
-			if (status) {
-				c->tls.ca_string = read_file_as_string(tmp);
-				cf_free(tmp);
-
-				c->tls.enabled = true;
-
-				if (c->tls.ca_string == NULL) {
-					status = false;
-					c->tls.enabled = false;
-				}
+			if (ca_file_key == NULL) {
+				ca_file_key = name;
 			}
+			status = true;
 		}
 		else {
 			fprintf(stderr, "Unknown parameter `%s` in `%s` section\n", name,
@@ -504,6 +500,19 @@ config_secret_agent(toml_table_t *config_table, sa_cfg *c, const char *instance,
 		if (! status) {
 			snprintf(errbuf, ERR_BUF_SIZE, "Invalid parameter value for `%s` in `%s` section\n",
 					name, secret_agent);
+			return false;
+		}
+	}
+
+	if (ca_file_key != NULL) {
+		char *ca_file = NULL;
+		bool status = config_str(toml_raw_in(current_table, ca_file_key),
+				(void*)&ca_file, NULL) && sa_tls_set_ca_file(&c->tls, ca_file);
+		cf_free(ca_file);
+
+		if (! status) {
+			snprintf(errbuf, ERR_BUF_SIZE, "Invalid parameter value for `%s` in `%s` section\n",
+					ca_file_key, secret_agent);
 			return false;
 		}
 	}

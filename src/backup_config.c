@@ -160,6 +160,7 @@ backup_config_set(int argc, char* argv[], backup_config_t* conf)
 		{ "sa-address", required_argument, NULL, COMMAND_SA_ADDRESS },
 		{ "sa-port", required_argument, NULL, COMMAND_SA_PORT },
 		{ "sa-timeout", required_argument, NULL, COMMAND_SA_TIMEOUT },
+		{ "sa-ca-file", required_argument, NULL, COMMAND_SA_CA_FILE },
 		{ "sa-cafile", required_argument, NULL, COMMAND_SA_CAFILE },
 		{ NULL, 0, NULL, 0 }
 	};
@@ -251,6 +252,8 @@ backup_config_set(int argc, char* argv[], backup_config_t* conf)
 	opterr = 1;
 
 	bool used_sa_port_arg = false;
+	const char* sa_ca_file = NULL;
+	const char* sa_cafile = NULL;
 	// parse secret agent arguments
 	while ((opt = getopt_long(argc, argv, "-" OPTIONS_SHORT, options, 0)) != -1) {
 
@@ -283,23 +286,24 @@ backup_config_set(int argc, char* argv[], backup_config_t* conf)
 			conf->secret_cfg.timeout = (int) tmp;
 			break;
 		
+		case COMMAND_SA_CA_FILE:
+			sa_ca_file = optarg;
+			break;
+
 		case COMMAND_SA_CAFILE:
-			// if this was already set during config file parsing,
-			// free the config version
-			if (conf->secret_cfg.tls.ca_string != NULL) {
-				cf_free(conf->secret_cfg.tls.ca_string);
-				conf->secret_cfg.tls.ca_string = NULL;
-			}
-
-			conf->secret_cfg.tls.ca_string = read_file_as_string(optarg);
-			if (conf->secret_cfg.tls.ca_string == NULL) {
-				err("Invalid secret agent cafile %s", optarg);
-				return BACKUP_CONFIG_INIT_FAILURE;
-			}
-
-			conf->secret_cfg.tls.enabled = true;
+			sa_cafile = optarg;
 			break;
 		}
+	}
+
+	if (sa_ca_file == NULL) {
+		sa_ca_file = sa_cafile;
+	}
+
+	if (sa_ca_file != NULL &&
+			!sa_tls_set_ca_file(&conf->secret_cfg.tls, sa_ca_file)) {
+		err("Invalid secret agent CA file %s", sa_ca_file);
+		return BACKUP_CONFIG_INIT_FAILURE;
 	}
 
 	// if the user supplied the secret_agent address
@@ -810,6 +814,7 @@ backup_config_set(int argc, char* argv[], backup_config_t* conf)
 		case COMMAND_SA_PORT:
 		case COMMAND_SA_TIMEOUT:
 		case COMMAND_SA_CAFILE:
+		case COMMAND_SA_CA_FILE:
 			break;
 
 		default:
@@ -1661,9 +1666,11 @@ usage(const char *name)
 	fprintf(stdout, "                      Timeout in milliseconds applied when connecting\n");
 	fprintf(stdout, "                      to the Aerospike Secret agent and when requesting secrets.\n");
 	fprintf(stdout, "                      The default timeout is 1000ms. A value of 0 fails immediately.\n");
-	fprintf(stdout, " --sa-cafile=<tls_cafile>\n");
+	fprintf(stdout, " --sa-ca-file=<tls_cafile>\n");
 	fprintf(stdout, "                      Path to a trusted CA certificate file.\n");
 	fprintf(stdout, "                      Used when authenticating with the Aerospike secret agent.\n");
 	fprintf(stdout, "                      The agent certificate must match --sa-address.\n");
+	fprintf(stdout, "                      --sa-cafile is accepted as an alias. If both are given,\n");
+	fprintf(stdout, "                      --sa-ca-file is used.\n");
 }
 
