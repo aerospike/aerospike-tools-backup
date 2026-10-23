@@ -7,6 +7,9 @@ Tests backup and restore with the secret agent.
 import lib
 from run_backup import backup_and_restore
 import os
+import subprocess
+import tempfile
+import pytest
 import secret_agent_servers as sa
 
 def put_bins(set_name, key, bin_names, value):
@@ -120,9 +123,51 @@ def test_secrets_ca_file():
     backup_restore_with_secrets(
         backup_args={"host": "127.0.0.1", "port": 3000},
         restore_args={"host": "127.0.0.1", "port": 3000},
-        sa_args=["--sa-address", sa.SA_TLS_ADDR, "--sa-port", sa.SA_PORT, "--sa-cafile", SA_CA_FILE],
+        sa_args=["--sa-address", sa.SA_TLS_ADDR, "--sa-port", sa.SA_PORT,
+                 "--sa-cafile", SA_CA_FILE],
         sa_tls=True
     )
+
+def expect_sa_cert_verify_failure(tool:str, args:[str]):
+    with tempfile.TemporaryFile() as stderr:
+        with pytest.raises(subprocess.CalledProcessError):
+            lib.run(tool, *args, pipe_stderr=stderr)
+        stderr.seek(0)
+        output = stderr.read().decode("utf-8", errors="replace")
+        assert "certificate verify failed" in output, output
+
+def test_secrets_ca_file_address_mismatch():
+    """
+    Test that the agent certificate is rejected when --sa-address is not
+    one of its subject alternative names.
+    """
+    os.system("rm -rf " + SA_RSRC_PATH)
+    os.system("mkdir " + SA_RSRC_PATH)
+
+    backup_args = {"host": "127.0.0.1", "port": 3000}
+    restore_args = {"host": "127.0.0.1", "port": 3000}
+    gen_secret_agent_files(
+        backup_args=backup_args,
+        restore_args=restore_args,
+        sa_tls=True
+    )
+
+    sa_args = ["--sa-address", sa.SA_ADDR, "--sa-port", sa.SA_PORT,
+               "--sa-cafile", SA_CA_FILE]
+    agent = sa.get_secret_agent(config=SA_CONF_PATH)
+
+    try:
+        agent.start()
+        expect_sa_cert_verify_failure("asbackup",
+            sa.gen_secret_args(backup_args, SA_BACKUP_RESOURCE) + sa_args)
+        expect_sa_cert_verify_failure("asrestore",
+            sa.gen_secret_args(restore_args, SA_RESTORE_RESOURCE) + sa_args)
+    finally:
+        agent.stop()
+        print("*** Secret Agent Output ***")
+        print(agent.output())
+        print("*** End Secret Agent Output ***")
+        agent.cleanup()
 
 def test_secrets():
     """
