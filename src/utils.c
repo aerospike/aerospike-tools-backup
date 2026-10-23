@@ -2148,6 +2148,23 @@ sa_tls_destroy(sa_tls_cfg* cfg)
 	memset(cfg, 0, sizeof(sa_tls_cfg));
 }
 
+bool
+sa_tls_set_ca_file(sa_tls_cfg* cfg, const char* path)
+{
+	char* ca_string = read_file_as_string(path);
+	if (ca_string == NULL) {
+		return false;
+	}
+
+	if (cfg->ca_string != NULL) {
+		cf_free(cfg->ca_string);
+	}
+
+	cfg->ca_string = ca_string;
+	cfg->enabled = true;
+	return true;
+}
+
 char* read_file_as_string(const char* path)
 {
 	FILE* fptr;

@@ -621,7 +621,8 @@ START_TEST(test_init_encryption_key_env)
 }
 END_TEST
 
-START_TEST(test_init_sa_ca_file)
+static void
+assert_sa_ca_file_conf(const char* secret_agent_args)
 {
 	// decoding of test/test_key.pem
 	static char data[] = "-----BEGIN RSA PRIVATE KEY-----\n"
@@ -652,7 +653,7 @@ START_TEST(test_init_sa_ca_file)
 			"7QAQsGMrAby/zeT+pQRbQRBim6PAfpRoPicDa9PZNh7orkPxaL0=\n"
 			"-----END RSA PRIVATE KEY-----\n";
 
-	tmp_file_init("", "", "", "sa-cafile=\"test/test_key.pem\"\n");
+	tmp_file_init("", "", "", secret_agent_args);
 	restore_config_t c1;
 	restore_config_t c2;
 	restore_config_init(&c1);
@@ -669,6 +670,82 @@ START_TEST(test_init_sa_ca_file)
 
 	restore_config_destroy(&c2);
 	restore_config_destroy(&c1);
+}
+
+START_TEST(test_init_sa_ca_file)
+{
+	assert_sa_ca_file_conf("sa-ca-file=\"test/test_key.pem\"\n");
+}
+END_TEST
+
+START_TEST(test_init_sa_cafile)
+{
+	assert_sa_ca_file_conf("sa-cafile=\"test/test_key.pem\"\n");
+}
+END_TEST
+
+START_TEST(test_init_sa_ca_file_beats_sa_cafile)
+{
+	assert_sa_ca_file_conf("sa-cafile=\"test/no_such_ca.pem\"\n"
+			"sa-ca-file=\"test/test_key.pem\"\n");
+	assert_sa_ca_file_conf("sa-ca-file=\"test/test_key.pem\"\n"
+			"sa-cafile=\"test/no_such_ca.pem\"\n");
+}
+END_TEST
+
+static void
+assert_cli_sa_ca_file(int argc, char* argv[], const char* expected_path)
+{
+	restore_config_t conf;
+	ck_assert_int_eq(restore_config_set(argc, argv, &conf), 0);
+
+	char* expected = read_file_as_string(expected_path);
+	ck_assert_ptr_ne(expected, NULL);
+	ck_assert_str_eq(conf.secret_cfg.tls.ca_string, expected);
+	ck_assert(conf.secret_cfg.tls.enabled);
+
+	cf_free(expected);
+	restore_config_destroy(&conf);
+}
+
+START_TEST(test_cli_sa_ca_file)
+{
+	char* ca_file[] = { "asrestore", "--no-config-file",
+		"--sa-ca-file", "test/test_key.pem" };
+	assert_cli_sa_ca_file(4, ca_file, "test/test_key.pem");
+
+	char* cafile[] = { "asrestore", "--no-config-file",
+		"--sa-cafile", "test/test_key.pem" };
+	assert_cli_sa_ca_file(4, cafile, "test/test_key.pem");
+
+	char* ca_file_first[] = { "asrestore", "--no-config-file",
+		"--sa-ca-file", "test/test_key.pem", "--sa-cafile", "test/no_such_ca.pem" };
+	assert_cli_sa_ca_file(6, ca_file_first, "test/test_key.pem");
+
+	char* cafile_first[] = { "asrestore", "--no-config-file",
+		"--sa-cafile", "test/no_such_ca.pem", "--sa-ca-file", "test/test_key.pem" };
+	assert_cli_sa_ca_file(6, cafile_first, "test/test_key.pem");
+}
+END_TEST
+
+START_TEST(test_cli_sa_ca_file_overrides_config)
+{
+	tmp_file_init("", "", "", "sa-ca-file=\"test/test_key2.pem\"\n");
+
+	char* argv[] = { "asrestore", "--only-config-file", file_name,
+		"--sa-cafile", "test/test_key.pem" };
+	assert_cli_sa_ca_file(5, argv, "test/test_key.pem");
+}
+END_TEST
+
+START_TEST(test_cli_sa_ca_file_missing)
+{
+	char* argv[] = { "asrestore", "--no-config-file",
+		"--sa-ca-file", "test/no_such_ca.pem" };
+	restore_config_t conf;
+	ck_assert_int_eq(restore_config_set(4, argv, &conf),
+			RESTORE_CONFIG_INIT_FAILURE);
+	restore_config_destroy(&conf);
 }
 END_TEST
 
@@ -885,6 +962,11 @@ Suite* restore_conf_suite()
 	tcase_add_test(tc_init, test_init_sa_port);
 	tcase_add_test(tc_init, test_init_sa_timeout);
 	tcase_add_test(tc_init, test_init_sa_ca_file);
+	tcase_add_test(tc_init, test_init_sa_cafile);
+	tcase_add_test(tc_init, test_init_sa_ca_file_beats_sa_cafile);
+	tcase_add_test(tc_init, test_cli_sa_ca_file);
+	tcase_add_test(tc_init, test_cli_sa_ca_file_overrides_config);
+	tcase_add_test(tc_init, test_cli_sa_ca_file_missing);
 
 	suite_add_tcase(s, tc_init);
 
