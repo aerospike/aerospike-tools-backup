@@ -1412,26 +1412,27 @@ usage(const char *name)
 	fprintf(stdout, " from the Aerospike secret agent. \n");
 	fprintf(stdout, " To use a secret as an option, use this format \"secrets:<resource_name>:<secret_name>\" \n");
 	fprintf(stdout, "    Examples:\n");
-	fprintf(stdout, "    asrestore -n secrets:resource1:namespace -d testout -h secrets:pass:pass --sa-address 0.0.0.0:3005\n");
+	fprintf(stdout, "    asrestore -n secrets:resource1:namespace -d testout -h secrets:pass:pass --sa-address 127.0.0.1:3005\n");
 	fprintf(stdout, "    asbackup -n test -d testout --ca-file secrets:resource2:cacert\n");
 	fprintf(stdout, " --sa-address=<host_name>\n");
 	fprintf(stdout, "                      <host_name> is \"<host>[:<port>]\" \n");
 	fprintf(stdout, "                      Aerospike Secret agent hostname or IP address.\n");
-	fprintf(stdout, "                      Default: localhost:3005\n");
+	fprintf(stdout, "                      Default: 127.0.0.1:3005\n");
 	fprintf(stdout, "                      Examples:\n");
 	fprintf(stdout, "                        host1\n");
 	fprintf(stdout, "                        host1:3005\n");
 	fprintf(stdout, "                        192.168.1.10:3005\n");
-	fprintf(stdout, "                        [::]:3005\n");
+	fprintf(stdout, "                        [::1]:3005\n");
 	fprintf(stdout, " --sa-port=<port>\n");
 	fprintf(stdout, "                      The port number used to connect to the Aerospike secret agent \n");
 	fprintf(stdout, "                      Default: 3005 \n");
 	fprintf(stdout, " --sa-timeout=<ms>\n");
 	fprintf(stdout, "                      Timeout in milliseconds applied when connecting\n");
 	fprintf(stdout, "                      to the Aerospike Secret agent and when requesting secrets.\n");
-	fprintf(stdout, "                      The default timeout is 1000ms.\n");
+	fprintf(stdout, "                      The default timeout is 1000ms. A value of 0 fails immediately.\n");
 	fprintf(stdout, " --sa-cafile=<tls_cafile>\n");
 	fprintf(stdout, "                      Path to a trusted CA certificate file.\n");
 	fprintf(stdout, "                      Used when authenticating with the Aerospike secret agent.\n");
+	fprintf(stdout, "                      The agent certificate must match --sa-address.\n");
 }
 
