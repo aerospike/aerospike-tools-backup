@@ -7,6 +7,10 @@ Tests backup and restore with the secret agent.
 import lib
 from run_backup import backup_and_restore
 import os
+import re
+import subprocess
+import tempfile
+import pytest
 import secret_agent_servers as sa
 
 def put_bins(set_name, key, bin_names, value):
@@ -37,6 +41,11 @@ SA_CONF_PATH = os.path.join(SA_RSRC_PATH, "conf.yaml")
 
 SA_CA_FILE = os.path.join(SA_RSRC_PATH, "cert.pem")
 SA_KEY_FILE = os.path.join(SA_RSRC_PATH, "key.pem")
+
+SA_UNTRUSTED_CA_FILE = os.path.join(sa.WORK_DIRECTORY, "untrusted_cert.pem")
+SA_UNTRUSTED_KEY_FILE = os.path.join(sa.WORK_DIRECTORY, "untrusted_key.pem")
+
+SA_TOOLS_CONF_PATH = os.path.join(sa.WORK_DIRECTORY, "astools.conf")
 
 def gen_secret_agent_files(backup_args:{str:any}=None, restore_args:{str:any}=None, sa_tls:bool=False):
     resources = {}
@@ -120,9 +129,78 @@ def test_secrets_ca_file():
     backup_restore_with_secrets(
         backup_args={"host": "127.0.0.1", "port": 3000},
         restore_args={"host": "127.0.0.1", "port": 3000},
-        sa_args=["--sa-address", sa.SA_ADDR, "--sa-port", sa.SA_PORT, "--sa-cafile", SA_CA_FILE],
+        sa_args=["--sa-address", sa.SA_TLS_ADDR, "--sa-port", sa.SA_PORT,
+                 "--sa-cafile", SA_CA_FILE],
         sa_tls=True
     )
+
+def sa_cli_args(addr:str, ca_file:str) -> [str]:
+    return ["--sa-address", addr, "--sa-port", sa.SA_PORT, "--sa-cafile", ca_file]
+
+def sa_conf_args(addr:str, ca_file:str) -> [str]:
+    with open(SA_TOOLS_CONF_PATH, "w+") as f:
+        f.write('[secret-agent]\nsa-address = "%s"\nsa-port = "%s"\nsa-cafile = "%s"\n'
+                % (addr, sa.SA_PORT, ca_file))
+    return ["--only-config-file", SA_TOOLS_CONF_PATH]
+
+SA_ARG_SOURCES = pytest.mark.parametrize("make_sa_args", [sa_cli_args, sa_conf_args],
+                                         ids=["cli", "config-file"])
+
+def test_secrets_ca_file_config_file():
+    """
+    Test the secret agent TLS options from the [secret-agent] config section.
+    """
+    backup_restore_with_secrets(
+        backup_args={"host": "127.0.0.1", "port": 3000},
+        restore_args={"host": "127.0.0.1", "port": 3000},
+        sa_args=sa_conf_args(sa.SA_TLS_ADDR, SA_CA_FILE),
+        sa_tls=True
+    )
+
+def expect_sa_cert_verify_failure(sa_args:[str], reason:str):
+    os.system("rm -rf " + SA_RSRC_PATH)
+    os.system("mkdir " + SA_RSRC_PATH)
+
+    host_args = {"host": "127.0.0.1"}
+    gen_secret_agent_files(backup_args=host_args, restore_args=host_args, sa_tls=True)
+    agent = sa.get_secret_agent(config=SA_CONF_PATH)
+
+    try:
+        agent.start()
+        for tool, resource in [("asbackup", SA_BACKUP_RESOURCE),
+                               ("asrestore", SA_RESTORE_RESOURCE)]:
+            with tempfile.TemporaryFile() as stderr:
+                with pytest.raises(subprocess.CalledProcessError):
+                    lib.run(tool, "--host", "secrets:%s:host" % resource, *sa_args,
+                            pipe_stderr=stderr)
+                stderr.seek(0)
+                output = stderr.read().decode("utf-8", errors="replace")
+                assert re.search("certificate verify failed: " + reason, output), output
+    finally:
+        agent.stop()
+        print("*** Secret Agent Output ***")
+        print(agent.output())
+        print("*** End Secret Agent Output ***")
+        agent.cleanup()
+
+@SA_ARG_SOURCES
+def test_secrets_ca_file_address_mismatch(make_sa_args):
+    """
+    Test that the agent certificate is rejected when the secret agent address
+    is not one of its subject alternative names.
+    """
+    expect_sa_cert_verify_failure(make_sa_args(sa.SA_ADDR, SA_CA_FILE),
+                                  "IP address mismatch")
+
+@SA_ARG_SOURCES
+def test_secrets_ca_file_untrusted_ca(make_sa_args):
+    """
+    Test that the agent certificate is rejected when it is not signed by the
+    secret agent CA file.
+    """
+    sa.tls_cfg(cert_file=SA_UNTRUSTED_CA_FILE, key_file=SA_UNTRUSTED_KEY_FILE).get_cfg()
+    expect_sa_cert_verify_failure(make_sa_args(sa.SA_TLS_ADDR, SA_UNTRUSTED_CA_FILE),
+                                  "self[- ]signed certificate")
 
 def test_secrets():
     """

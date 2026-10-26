@@ -1,5 +1,6 @@
 import base64
 import datetime
+import ipaddress
 import lib
 import time
 import subprocess
@@ -199,6 +200,7 @@ def get_secret_agent(config:str, port:str=SA_PORT) -> SecretAgent:
 # util functions
 
 SA_ADDR = "0.0.0.0"
+SA_TLS_ADDR = "127.0.0.1"
 
 class tls_cfg():
     def __init__(self, cert_file:str, key_file:str) -> None:
@@ -280,7 +282,10 @@ class tls_cfg():
             # Our certificate will be valid for 10 days
             datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=10)
         ).add_extension(
-            x509.SubjectAlternativeName([x509.DNSName(u"localhost")]),
+            x509.SubjectAlternativeName([
+                x509.DNSName(u"localhost"),
+                x509.IPAddress(ipaddress.ip_address(SA_TLS_ADDR)),
+            ]),
             critical=False,
         # Sign our certificate with our private key
         ).sign(self.key, hashes.SHA256())
