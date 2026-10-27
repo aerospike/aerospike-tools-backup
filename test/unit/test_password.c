@@ -1,9 +1,11 @@
 
 #include <check.h>
 #include <fcntl.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <termios.h>
 #include <unistd.h>
 
 #include <backup.h>
@@ -93,19 +95,82 @@ write_file(const char* path, const char* data, size_t len)
 }
 
 static void
-pipe_stdin(const char* data)
+pipe_stdin_bytes(const char* data, size_t len)
 {
 	if (saved_stdin >= 0) {
 		restore_stdin();
 	}
 
-	write_file(STDIN_FILE, data, strlen(data));
+	write_file(STDIN_FILE, data, len);
 	saved_stdin = dup(STDIN_FILENO);
 	int fd = open(STDIN_FILE, O_RDONLY);
 	ck_assert_int_ge(fd, 0);
 	dup2(fd, STDIN_FILENO);
 	close(fd);
 	terminal = NO_TERMINAL;
+}
+
+static void
+pipe_stdin(const char* data)
+{
+	pipe_stdin_bytes(data, strlen(data));
+}
+
+// Stdin is a terminal that is not the controlling terminal, as under setsid or
+// su -c. Returns the master side.
+static int
+tty_stdin(void)
+{
+	if (saved_stdin >= 0) {
+		restore_stdin();
+	}
+
+	int master = posix_openpt(O_RDWR | O_NOCTTY);
+	ck_assert_int_ge(master, 0);
+	ck_assert_int_eq(grantpt(master), 0);
+	ck_assert_int_eq(unlockpt(master), 0);
+	int slave = open(ptsname(master), O_RDWR | O_NOCTTY);
+	ck_assert_int_ge(slave, 0);
+
+	saved_stdin = dup(STDIN_FILENO);
+	dup2(slave, STDIN_FILENO);
+	close(slave);
+	terminal = NO_TERMINAL;
+	return master;
+}
+
+typedef struct typist_s {
+	int master;
+	const char* line;
+	bool echo_was_off;
+} typist_t;
+
+static void*
+type_once_echo_is_off(void* arg)
+{
+	typist_t* typist = (typist_t*) arg;
+	struct termios term;
+
+	for (int i = 0; i < 300; i++) {
+		if (tcgetattr(STDIN_FILENO, &term) == 0 && (term.c_lflag & ECHO) == 0) {
+			typist->echo_was_off = true;
+			break;
+		}
+
+		usleep(10000);
+	}
+
+	ck_assert_int_eq(write(typist->master, typist->line, strlen(typist->line)),
+			(ssize_t) strlen(typist->line));
+	return NULL;
+}
+
+static bool
+stdin_echoes(void)
+{
+	struct termios term;
+	ck_assert_int_eq(tcgetattr(STDIN_FILENO, &term), 0);
+	return (term.c_lflag & ECHO) != 0;
 }
 
 static char*
@@ -835,10 +900,11 @@ START_TEST(test_prompt_keyfile)
 				"than 1024 bytes"), NULL);
 	ck_assert_ptr_eq(strstr(out, "xxxx"), NULL);
 
-	memcpy(line, "env:", 4);
-	memset(line + 4, 'k', sizeof(line) - 5);
-	line[sizeof(line) - 1] = '\0';
-	pipe_stdin(line);
+	char env_line[TLS_KEYFILE_PASSWORD_MAX_LEN + 6];
+	memcpy(env_line, "env:", 4);
+	memset(env_line + 4, 'k', sizeof(env_line) - 5);
+	env_line[sizeof(env_line) - 1] = '\0';
+	pipe_stdin(env_line);
 	out = assert_keyfile_prompt_fails();
 	ck_assert_ptr_ne(strstr(out, "--tls-keyfile-password: password is longer "
 				"than 1024 bytes"), NULL);
@@ -855,6 +921,138 @@ START_TEST(test_prompt_terminal)
 	ck_assert_str_eq(password_prompt("Enter Password: ", 63), " s3cr3t \t");
 	ck_assert_int_eq(getpass_calls, 1);
 	ck_assert_str_eq(rest_of_stdin(), " piped \n");
+}
+END_TEST
+
+START_TEST(test_prompt_piped_writes_prompt)
+{
+	pipe_stdin(" s3cr3t \n kp \n");
+
+	capture_stderr();
+	char* pw = password_prompt("Enter Password: ", 63);
+	char* out = release_stderr();
+	ck_assert_str_eq(out, "Enter Password: ");
+	ck_assert_str_eq(pw, "s3cr3t");
+
+	char* value = NULL;
+	capture_stderr();
+	bool ok = tls_prompt_password(TLS_KEYFILE_PASSWORD_OPT, &value);
+	out = release_stderr();
+	ck_assert_str_eq(out, "Enter TLS-Keyfile Password: ");
+	ck_assert(ok);
+	ck_assert_str_eq(value, "kp");
+	cf_free(value);
+	ck_assert_int_eq(getpass_calls, 0);
+}
+END_TEST
+
+START_TEST(test_prompt_tty_stdin_password)
+{
+	int master = tty_stdin();
+	typist_t typist = { master, " s3cr3t \t\n", false };
+	pthread_t thread;
+	ck_assert_int_eq(pthread_create(&thread, NULL, type_once_echo_is_off, &typist), 0);
+
+	capture_stderr();
+	char* pw = password_prompt("Enter Password: ", 63);
+	char* out = release_stderr();
+	pthread_join(thread, NULL);
+
+	ck_assert_msg(typist.echo_was_off,
+			"echo was not turned off while the password was read");
+	ck_assert_msg(stdin_echoes(), "echo was not restored");
+	ck_assert_str_eq(out, "Enter Password: \n");
+	ck_assert_str_eq(pw, " s3cr3t \t");
+	ck_assert_int_eq(getpass_calls, 0);
+	close(master);
+}
+END_TEST
+
+START_TEST(test_prompt_tty_stdin_keyfile)
+{
+	setenv(PW_ENV, "s3cret", 1);
+
+	int master = tty_stdin();
+	typist_t typist = { master, "\tenv:" PW_ENV " \n", false };
+	pthread_t thread;
+	ck_assert_int_eq(pthread_create(&thread, NULL, type_once_echo_is_off, &typist), 0);
+
+	char* value = NULL;
+	capture_stderr();
+	bool ok = tls_prompt_password(TLS_KEYFILE_PASSWORD_OPT, &value);
+	char* out = release_stderr();
+	pthread_join(thread, NULL);
+
+	ck_assert_msg(typist.echo_was_off,
+			"echo was not turned off while the password was read");
+	ck_assert_msg(stdin_echoes(), "echo was not restored");
+	ck_assert_str_eq(out, "Enter TLS-Keyfile Password: \n");
+	ck_assert(ok);
+	ck_assert_str_eq(value, "s3cret");
+	cf_free(value);
+	ck_assert_int_eq(getpass_calls, 0);
+	close(master);
+}
+END_TEST
+
+static void
+assert_keyfile_prompt_rejects_nul(const char* data, size_t len)
+{
+	pipe_stdin_bytes(data, len);
+
+	char* value = NULL;
+	capture_stderr();
+	bool ok = tls_prompt_password(TLS_KEYFILE_PASSWORD_OPT, &value);
+	char* out = release_stderr();
+
+	ck_assert_msg(!ok, "a password with a NUL byte was accepted as \"%s\"", value);
+	ck_assert_msg(strstr(out, "--tls-keyfile-password: password from stdin "
+				"contains a NUL byte\n") != NULL, "no NUL error in: %s", out);
+	ck_assert_ptr_eq(strstr(out, "longer than"), NULL);
+}
+
+START_TEST(test_prompt_keyfile_padded_longest_filling_the_bound)
+{
+	char longest[TLS_KEYFILE_PASSWORD_MAX_LEN + 1];
+	char line[TLS_KEYFILE_PASSWORD_MAX_LEN + 16];
+	memset(longest, 'k', TLS_KEYFILE_PASSWORD_MAX_LEN);
+	longest[TLS_KEYFILE_PASSWORD_MAX_LEN] = '\0';
+
+	snprintf(line, sizeof(line), "   %s", longest);
+	pipe_stdin(line);
+	char* value = NULL;
+	capture_stderr();
+	bool ok = tls_prompt_password(TLS_KEYFILE_PASSWORD_OPT, &value);
+	char* out = release_stderr();
+	ck_assert_msg(ok, "a complete last line was rejected: %s", out);
+	ck_assert_str_eq(value, longest);
+	cf_free(value);
+
+	snprintf(line, sizeof(line), "   %s\nmore\n", longest);
+	pipe_stdin(line);
+	assert_keyfile_prompt_resolves(longest);
+	ck_assert_str_eq(rest_of_stdin(), "more\n");
+
+	snprintf(line, sizeof(line), "   %sk\n", longest);
+	pipe_stdin(line);
+	out = assert_keyfile_prompt_fails();
+	ck_assert_ptr_ne(strstr(out, "--tls-keyfile-password: password is longer "
+				"than 1024 bytes"), NULL);
+}
+END_TEST
+
+START_TEST(test_prompt_keyfile_nul)
+{
+	assert_keyfile_prompt_rejects_nul("k\0k\n", 4);
+
+	size_t len = 2 + 2000 + 1;
+	char* big = test_malloc(len);
+	big[0] = 'k';
+	big[1] = '\0';
+	memset(big + 2, 'k', 2000);
+	big[len - 1] = '\n';
+	assert_keyfile_prompt_rejects_nul(big, len);
+	cf_free(big);
 }
 END_TEST
 
@@ -1701,6 +1899,98 @@ START_TEST(test_piped_password_cut_off)
 }
 END_TEST
 
+static void
+assert_piped_password_rejects_nul(const char* data, size_t len)
+{
+	{
+		backup_config_t conf;
+		ARGV("asbackup", "--no-config-file", "-h", "127.0.0.1", "-p", "1",
+				"-U", "user", "-P");
+		ck_assert_int_eq(backup_config_set(argc, argv, &conf), 0);
+
+		pipe_stdin_bytes(data, len);
+		char* out = backup_status_init_fails(&conf);
+		ck_assert_msg(strstr(out, "--password: password from stdin contains a NUL "
+					"byte\n") != NULL, "no NUL error in: %s", out);
+		ck_assert_ptr_eq(strstr(out, "Error while connecting"), NULL);
+		backup_config_destroy(&conf);
+	}
+
+	{
+		restore_config_t conf;
+		ARGV("asrestore", "--no-config-file", "-h", "127.0.0.1", "-p", "1",
+				"-U", "user", "-P");
+		ck_assert_int_eq(restore_config_set(argc, argv, &conf), 0);
+
+		pipe_stdin_bytes(data, len);
+		char* out = restore_status_init_fails(&conf);
+		ck_assert_msg(strstr(out, "--password: password from stdin contains a NUL "
+					"byte\n") != NULL, "no NUL error in: %s", out);
+		ck_assert_ptr_eq(strstr(out, "Error while connecting"), NULL);
+		restore_config_destroy(&conf);
+	}
+}
+
+START_TEST(test_piped_padded_longest_password_filling_the_bound)
+{
+	char longest[64];
+	char line[80];
+	memset(longest, 'x', 63);
+	longest[63] = '\0';
+
+	{
+		backup_config_t conf;
+		ARGV("asbackup", "--no-config-file", "-h", "127.0.0.1", "-p", "1",
+				"-U", "user", "-P");
+		ck_assert_int_eq(backup_config_set(argc, argv, &conf), 0);
+
+		snprintf(line, sizeof(line), "   %s", longest);
+		pipe_stdin(line);
+		char* out = backup_status_init_fails(&conf);
+		ck_assert_msg(strstr(out, "longer than") == NULL,
+				"a complete last line was rejected: %s", out);
+		ck_assert_ptr_ne(strstr(out, "Error while connecting"), NULL);
+		backup_config_destroy(&conf);
+	}
+
+	snprintf(line, sizeof(line), "   %s\nmore\n", longest);
+	pipe_stdin(line);
+	ck_assert_str_eq(password_prompt("Enter Password: ", 63), longest);
+	ck_assert_str_eq(rest_of_stdin(), "more\n");
+
+	{
+		backup_config_t conf;
+		ARGV("asbackup", "--no-config-file", "-h", "127.0.0.1", "-p", "1",
+				"-U", "user", "-P");
+		ck_assert_int_eq(backup_config_set(argc, argv, &conf), 0);
+
+		snprintf(line, sizeof(line), "   %sy\n", longest);
+		pipe_stdin(line);
+		char* out = backup_status_init_fails(&conf);
+		ck_assert_ptr_ne(strstr(out, "--password: password is longer than 63 "
+					"bytes"), NULL);
+		backup_config_destroy(&conf);
+	}
+}
+END_TEST
+
+START_TEST(test_piped_password_nul)
+{
+	char cut_off[107];
+	memcpy(cut_off, "admin", 5);
+	cut_off[5] = '\0';
+	memset(cut_off + 6, '0', 100);
+	cut_off[106] = '\n';
+	assert_piped_password_rejects_nul(cut_off, sizeof(cut_off));
+
+	assert_piped_password_rejects_nul("ad\0min\n", 7);
+
+	char zeros[100];
+	memset(zeros, '\0', sizeof(zeros));
+	assert_piped_password_rejects_nul(zeros, sizeof(zeros));
+}
+END_TEST
+
 START_TEST(test_restore_stdin_input_prompt)
 {
 	restore_config_t conf;
@@ -1835,21 +2125,28 @@ assert_help(const char* out)
 	ck_assert_ptr_ne(strstr(out,
 				"'file:' must be given as 'b64:' or typed at the prompt.\n"), NULL);
 	ck_assert_ptr_ne(strstr(out, "not PKI. It must be at most 63 bytes.\n"), NULL);
-	ck_assert_ptr_ne(strstr(out,
-				"password is given. The typed password is used as is. A password\n"
-				"                      piped on stdin has surrounding whitespace trimmed.\n"),
-			NULL);
+	ck_assert_msg(strstr(out,
+				"password is given. The typed password is used as is. With no\n"
+				"                      terminal, the password is read from one line of stdin and has\n"
+				"                      surrounding whitespace trimmed.\n") != NULL,
+			"-P prompt help does not match:\n%s", out);
 	ck_assert_ptr_ne(strstr(out,
 				"4) File: 'file:<PATH>', the first line of the file\n"), NULL);
-	ck_assert_ptr_ne(strstr(out,
+	ck_assert_msg(strstr(out,
 				"'file:' must be given as 'b64:'.\n"
-				"                      Surrounding whitespace is trimmed before the form is read.\n"
-				"                      The password is read only when a key file is set."),
-			NULL);
+				"                      Surrounding whitespace is trimmed before the form is read. A\n"
+				"                      password with surrounding whitespace must be given as 'b64:'.\n"
+				"                      The password is read only when a key file is set.") != NULL,
+			"keyfile trim help does not match:\n%s", out);
 	ck_assert_ptr_ne(strstr(out, "most 1024 bytes.\n"
 				"                      Default: none\n"
 				"                      A value fetched with 'secrets:' is used as-is.\n"
 				"                      User will be prompted"), NULL);
+	ck_assert_msg(strstr(out,
+				"specified and no password is given. The typed password\n"
+				"                      accepts the forms above. With no terminal, the password is read\n"
+				"                      from one line of stdin.\n") != NULL,
+			"keyfile prompt help does not match:\n%s", out);
 	ck_assert_ptr_eq(strstr(out, "4999"), NULL);
 }
 
@@ -1872,6 +2169,24 @@ START_TEST(test_help_text)
 		assert_help(release_stdout());
 		ck_assert_int_eq(res, RESTORE_CONFIG_INIT_EXIT);
 	}
+}
+END_TEST
+
+START_TEST(test_sample_config)
+{
+	static char buf[16 * 1024];
+
+	FILE* f = fopen("pkg/astools.conf.sample", "rb");
+	ck_assert(f != NULL);
+	size_t len = fread(buf, 1, sizeof(buf) - 1, f);
+	fclose(f);
+	buf[len] = '\0';
+
+	ck_assert_msg(strstr(buf,
+				"# Surrounding whitespace is trimmed before the form is read.\n"
+				"# A password with surrounding whitespace must be given as \"b64:\".\n")
+			!= NULL, "astools.conf.sample does not say how to keep surrounding "
+			"whitespace");
 }
 END_TEST
 
@@ -1928,6 +2243,11 @@ Suite* password_suite()
 	tcase_add_test(tc_prompt, test_prompt_piped_cut_off);
 	tcase_add_test(tc_prompt, test_prompt_keyfile);
 	tcase_add_test(tc_prompt, test_prompt_terminal);
+	tcase_add_test(tc_prompt, test_prompt_piped_writes_prompt);
+	tcase_add_test(tc_prompt, test_prompt_tty_stdin_password);
+	tcase_add_test(tc_prompt, test_prompt_tty_stdin_keyfile);
+	tcase_add_test(tc_prompt, test_prompt_keyfile_padded_longest_filling_the_bound);
+	tcase_add_test(tc_prompt, test_prompt_keyfile_nul);
 	suite_add_tcase(s, tc_prompt);
 
 	tc_config = tcase_create("Config");
@@ -1948,6 +2268,7 @@ Suite* password_suite()
 	tcase_add_test(tc_config, test_padded_cli_passwords);
 	tcase_add_test(tc_config, test_padded_keyfile_secret);
 	tcase_add_test(tc_config, test_help_text);
+	tcase_add_test(tc_config, test_sample_config);
 	suite_add_tcase(s, tc_config);
 
 	tc_connect = tcase_create("Connect");
@@ -1969,6 +2290,8 @@ Suite* password_suite()
 	tcase_add_test(tc_connect, test_restore_piped_keyfile_pw);
 	tcase_add_test(tc_connect, test_backup_piped_password_is_literal);
 	tcase_add_test(tc_connect, test_piped_password_cut_off);
+	tcase_add_test(tc_connect, test_piped_padded_longest_password_filling_the_bound);
+	tcase_add_test(tc_connect, test_piped_password_nul);
 	tcase_add_test(tc_connect, test_restore_stdin_input_prompt);
 	suite_add_tcase(s, tc_connect);
 
