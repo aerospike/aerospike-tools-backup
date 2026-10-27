@@ -24,6 +24,7 @@ import threading
 import time
 
 import aerospike
+import pytest
 
 import aerospike_servers as as_srv
 import lib
@@ -235,18 +236,25 @@ def teardown_module(module):
 	shutil.rmtree(STATE["dir"], ignore_errors=True)
 
 
-def run(tool, data, *options):
+def run(tool, data, *options, valgrind_log=None):
 	"""
 	Runs the tool with no controlling terminal and data on stdin. Returns the
-	exit code, the output and whatever the tool left unread on stdin.
+	exit code, the output and whatever the tool left unread on stdin. With
+	valgrind_log, the tool runs under valgrind, which reports there.
 	"""
+	command = [os.path.join("test_target", tool), "--no-config-file"] + list(options)
+
+	if valgrind_log is not None:
+		command = ["valgrind", "--leak-check=full", "--show-reachable=yes",
+			"--suppressions=" + lib.absolute_path(lib.VAL_SUP_FILE),
+			"--log-file=" + valgrind_log] + command
+
 	read_end, write_end = os.pipe()
 	os.write(write_end, data)
 	os.close(write_end)
 
 	try:
-		proc = subprocess.run([os.path.join("test_target", tool), "--no-config-file"] +
-			list(options), cwd=lib.absolute_path("../.."), stdin=read_end,
+		proc = subprocess.run(command, cwd=lib.absolute_path("../.."), stdin=read_end,
 			capture_output=True, start_new_session=True, timeout=120)
 		os.set_blocking(read_end, False)
 		try:
@@ -407,22 +415,51 @@ def test_restore_reads_the_keyfile_password_once():
 	assert record_count() == N_RECORDS
 
 
-def test_typed_password_without_controlling_terminal():
+@pytest.mark.skipif(shutil.which("valgrind") is None, reason="valgrind is not installed")
+def test_restore_frees_the_keyfile_password():
 	"""
-	Under setsid or su -c, stdin is a terminal but /dev/tty cannot be opened.
-	The tool prompts on stderr, reads with echo off and uses the typed line as is.
+	The second connection takes the keyfile password from the first, so the copy
+	it replaces must be freed.
+	"""
+	truncate()
+	log = os.path.join(STATE["dir"], "val_keyfile_pw.log")
+	proxy = LoginProxy(STATE["tls_context"])
+	try:
+		rc, out, _ = run("asrestore", (KEY_PASSWORD + "\n").encode(), *via_tls(proxy),
+			"--tls-keyfile-password", *restore_source(), valgrind_log=log)
+	finally:
+		proxy.close()
+
+	with open(log) as f:
+		report = f.read()
+
+	assert rc == 0, out
+	assert not lib.parse_val_logs(log), report
+	assert record_count() == N_RECORDS
+
+
+def type_password(tool, line, *options, ignore=(), send=None):
+	"""
+	Runs the tool with a terminal as stdin but no controlling terminal and types
+	line once echo is off. The signals in ignore are ignored from the start, and
+	send is delivered half a second before line is typed. Returns the exit code,
+	stdout, stderr, what the terminal echoed, whether echo was off before typing
+	and whether it is on again at the end.
 	"""
 	master, slave = pty.openpty()
-	proxy = LoginProxy()
 	echo_was_off = False
 	echoed = b""
 
+	def ignore_signals():
+		for sig in ignore:
+			signal.signal(sig, signal.SIG_IGN)
+
 	try:
-		proc = subprocess.Popen([os.path.join("test_target", "asbackup"),
-				"--no-config-file", *via(proxy), "-U", "admin", "-P", "-n", "test", "-s",
-				SET_NAME, "-d", tempfile.mkdtemp(dir=STATE["dir"])],
+		proc = subprocess.Popen([os.path.join("test_target", tool), "--no-config-file",
+				*options],
 			cwd=lib.absolute_path("../.."), stdin=slave, stdout=subprocess.PIPE,
-			stderr=subprocess.PIPE, start_new_session=True)
+			stderr=subprocess.PIPE, start_new_session=True,
+			preexec_fn=ignore_signals if ignore else None)
 
 		deadline = time.time() + 5
 		while time.time() < deadline:
@@ -431,7 +468,11 @@ def test_typed_password_without_controlling_terminal():
 				break
 			time.sleep(0.05)
 
-		os.write(master, b" pw \n")
+		if send is not None:
+			proc.send_signal(send)
+			time.sleep(0.5)
+
+		os.write(master, line)
 
 		while select.select([master], [], [], 1)[0]:
 			try:
@@ -445,17 +486,70 @@ def test_typed_password_without_controlling_terminal():
 		out, err = proc.communicate(timeout=60)
 		echo_restored = bool(termios.tcgetattr(slave)[3] & termios.ECHO)
 	finally:
-		proxy.close()
 		os.close(master)
 		os.close(slave)
 
-	output = out.decode(errors="replace") + err.decode(errors="replace")
+	return proc.returncode, out.decode(errors="replace"), err.decode(errors="replace"), \
+		echoed, echo_was_off, echo_restored
+
+
+def test_typed_password_without_controlling_terminal():
+	"""
+	Under setsid or su -c, stdin is a terminal but /dev/tty cannot be opened.
+	The tool prompts on stderr, reads with echo off and uses the typed line as is.
+	"""
+	proxy = LoginProxy()
+	try:
+		rc, out, err, echoed, echo_was_off, echo_restored = type_password("asbackup",
+			b" pw \n", *via(proxy), "-U", "admin", "-P", "-n", "test", "-s", SET_NAME,
+			"-d", tempfile.mkdtemp(dir=STATE["dir"]))
+	finally:
+		proxy.close()
+
+	output = out + err
 	assert echo_was_off, "echo was not turned off before the password was typed:\n" + output
 	assert b"pw" not in echoed, echoed
 	assert echo_restored
-	assert "Enter Password: " in err.decode(errors="replace"), output
-	assert proc.returncode == 0, output
+	assert "Enter Password: " in err, output
+	assert rc == 0, output
 	assert proxy.credentials() == {login_with(" pw ")}, output
+
+
+def test_backup_prompt_survives_an_ignored_sigint():
+	"""
+	A signal the tool starts with ignored, as after trap '' INT, stays ignored
+	while the password is typed, so the read goes on and the typed line is used.
+	"""
+	proxy = LoginProxy()
+	try:
+		rc, out, err, _, _, _ = type_password("asbackup", b"pw\n", *via(proxy), "-U",
+			"admin", "-P", "-n", "test", "-s", SET_NAME, "-d",
+			tempfile.mkdtemp(dir=STATE["dir"]), ignore=(signal.SIGINT,),
+			send=signal.SIGINT)
+	finally:
+		proxy.close()
+
+	assert proxy.credentials() == {login_with("pw")}, out + err
+	assert rc == 0, out + err
+
+
+def test_restore_prompt_survives_an_ignored_sighup():
+	"""
+	As above for asrestore, which sets its own SIGINT handler before it prompts,
+	so an ignored SIGHUP is used instead.
+	"""
+	truncate()
+	proxy = LoginProxy()
+	try:
+		rc, out, err, _, _, _ = type_password("asrestore", b"pw\n", *via(proxy), "-U",
+			"admin", "-P", *restore_source(), ignore=(signal.SIGHUP,),
+			send=signal.SIGHUP)
+	finally:
+		proxy.close()
+
+	assert proxy.credentials() == {login_with("pw")}, out + err
+	assert rc == 0, out + err
+	assert record_count() == N_RECORDS
 
 
 def echo_after_interrupted_prompt(tool, *options):
