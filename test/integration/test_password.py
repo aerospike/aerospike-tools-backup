@@ -10,6 +10,8 @@ lets a test see each login, and so which password was read, without an
 Enterprise server.
 """
 
+import ctypes
+import ctypes.util
 import os
 import pty
 import select
@@ -317,6 +319,18 @@ def login_with(password):
 		proxy.close()
 
 
+def ssl_write_has_breakpoint():
+	"""
+	Returns whether SSL_write starts with an int3, as it does where an HTTPS
+	monitor has a uprobe on it. Valgrind runs that int3 and dies of SIGTRAP.
+	"""
+	path = ctypes.util.find_library("ssl")
+	if path is None:
+		return False
+	ssl_write = ctypes.cast(ctypes.CDLL(path).SSL_write, ctypes.c_void_p).value
+	return ctypes.string_at(ssl_write, 1) == b"\xcc"
+
+
 def test_backup_to_file_reads_the_password_once():
 	proxy = LoginProxy()
 	try:
@@ -421,6 +435,10 @@ def test_restore_frees_the_keyfile_password():
 	The second connection takes the keyfile password from the first, so the copy
 	it replaces must be freed.
 	"""
+	if ssl_write_has_breakpoint():
+		pytest.skip("SSL_write has a breakpoint (an HTTPS monitor's uprobe) that "
+			"kills valgrind with SIGTRAP")
+
 	truncate()
 	log = os.path.join(STATE["dir"], "val_keyfile_pw.log")
 	proxy = LoginProxy(STATE["tls_context"])
