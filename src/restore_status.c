@@ -447,6 +447,7 @@ _init_as_config(as_config* as_conf, const restore_config_t* conf,
 	}
 
 	if (prior_as_conf != NULL) {
+		cf_free(as_conf->tls.keyfile_pw);
 		as_conf->tls.keyfile_pw = safe_strdup(prior_as_conf->tls.keyfile_pw);
 	}
 	else if ((conf->tls.keyfile || conf->tls.keystring) && conf->tls.keyfile_pw) {
