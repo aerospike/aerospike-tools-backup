@@ -433,7 +433,7 @@ def test_restore_frees_the_keyfile_password():
 	with open(log) as f:
 		report = f.read()
 
-	assert rc == 0, out
+	assert rc == 0, out + report
 	assert not lib.parse_val_logs(log), report
 	assert record_count() == N_RECORDS
 
