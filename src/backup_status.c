@@ -322,8 +322,8 @@ backup_status_init(backup_status_t* status, backup_config_t* conf)
 		if (strcmp(conf->password, DEFAULT_PASSWORD) == 0) {
 			password = password_prompt("Enter Password: ", AS_PASSWORD_SIZE - 1);
 
-			if (!auth_mode_is_pki(conf->auth_mode) &&
-					!password_fits(PASSWORD_OPT, password, AS_PASSWORD_SIZE - 1)) {
+			if (password == NULL || (!auth_mode_is_pki(conf->auth_mode) &&
+					!password_fits(PASSWORD_OPT, password, AS_PASSWORD_SIZE - 1))) {
 				goto cleanup2;
 			}
 		}

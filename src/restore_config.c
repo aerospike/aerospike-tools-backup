@@ -1164,8 +1164,9 @@ usage(const char *name)
 					"                      not PKI. It must be at most 63 bytes.\n"
 					"                      A value fetched with 'secrets:' is used as-is.\n");
 	fprintf(stdout, "                      User will be prompted on command line if -P specified and no\n");
-	fprintf(stdout, "                      password is given. The typed password is used as is. A password\n");
-	fprintf(stdout, "                      piped on stdin has surrounding whitespace trimmed.\n");
+	fprintf(stdout, "                      password is given. The typed password is used as is. With no\n");
+	fprintf(stdout, "                      terminal, the password is read from one line of stdin and has\n");
+	fprintf(stdout, "                      surrounding whitespace trimmed.\n");
 	fprintf(stdout, " -A, --auth\n");
 	fprintf(stdout, "                      Set authentication mode when user/password is defined. Modes are\n");
 	fprintf(stdout, "                      (INTERNAL, EXTERNAL, EXTERNAL_INSECURE, PKI) and the default is INTERNAL.\n");
@@ -1203,14 +1204,16 @@ usage(const char *name)
 					"                      and one trailing newline is dropped after decoding.\n"
 					"                      A password that itself begins with 'env:', 'env-b64:', 'b64:' or\n"
 					"                      'file:' must be given as 'b64:'.\n"
-					"                      Surrounding whitespace is trimmed before the form is read.\n"
+					"                      Surrounding whitespace is trimmed before the form is read. A\n"
+					"                      password with surrounding whitespace must be given as 'b64:'.\n"
 					"                      The password is read only when a key file is set. It must be at\n"
 					"                      most 1024 bytes.\n"
 					"                      Default: none\n"
 					"                      A value fetched with 'secrets:' is used as-is.\n"
 					"                      User will be prompted on command line if --tls-keyfile-password\n"
 					"                      specified and no password is given. The typed password\n"
-					"                      accepts the forms above.\n");
+					"                      accepts the forms above. With no terminal, the password is read\n"
+					"                      from one line of stdin.\n");
 	fprintf(stdout, " --tls-certfile=TLS_CERTFILE <path>\n");
 	fprintf(stdout, "                      Path to the chain file for mutual authentication (if\n"
 					"                      Aerospike Cluster is supporting it).\n");

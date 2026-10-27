@@ -28,6 +28,8 @@
 #include <errno.h>
 #include <dirent.h>
 #include <fcntl.h>
+#include <signal.h>
+#include <termios.h>
 #include <unistd.h>
 #include <sys/stat.h>
 
@@ -66,6 +68,8 @@
 
 char *DEFAULT_PASSWORD = "SomeDefaultRandomPassword";
 
+static volatile sig_atomic_t g_password_signal = 0;
+
 
 //=========================================================
 // Forward Declarations.
@@ -103,8 +107,10 @@ static bool password_file(const char *opt_name, const char *path,
 		size_t max_len, bool first_line, char **ptr);
 static void password_trim(char *value);
 static bool password_has_terminal(void);
-static char *password_read_prompt(const char *prompt, size_t max_len,
-		bool *cut_off);
+static void password_on_signal(int sig);
+static bool password_read_byte(char *c);
+static char *password_read_prompt(const char *opt_name, const char *prompt,
+		size_t max_len, bool *cut_off);
 
 // returns 0 on success or if rtoml cannot be a secret path
 // returns a value not equal to 0 on failure
@@ -251,10 +257,14 @@ bool
 tls_prompt_password(const char *opt_name, char **ptr)
 {
 	bool cut_off;
-	char *value = password_read_prompt("Enter TLS-Keyfile Password: ",
+	char *value = password_read_prompt(opt_name, "Enter TLS-Keyfile Password: ",
 			TLS_KEYFILE_PASSWORD_MAX_LEN, &cut_off);
 
 	*ptr = NULL;
+
+	if (value == NULL) {
+		return false;
+	}
 
 	if (cut_off) {
 		err("%s: password is longer than %d bytes", opt_name,
@@ -270,7 +280,7 @@ password_prompt(const char *prompt, size_t max_len)
 {
 	bool cut_off;
 
-	return password_read_prompt(prompt, max_len, &cut_off);
+	return password_read_prompt(PASSWORD_OPT, prompt, max_len, &cut_off);
 }
 
 bool
@@ -1838,10 +1848,36 @@ password_has_terminal(void)
 	return true;
 }
 
+static void
+password_on_signal(int sig)
+{
+	g_password_signal = sig;
+}
+
+static bool
+password_read_byte(char *c)
+{
+	while (true) {
+		ssize_t n = read(STDIN_FILENO, c, 1);
+
+		if (n == 1) {
+			return true;
+		}
+
+		if (n < 0 && errno == EINTR && g_password_signal == 0) {
+			continue;
+		}
+
+		return false;
+	}
+}
+
 static char *
-password_read_prompt(const char *prompt, size_t max_len, bool *cut_off)
+password_read_prompt(const char *opt_name, const char *prompt, size_t max_len,
+		bool *cut_off)
 {
 	static char buf[TLS_KEYFILE_PASSWORD_MAX_LEN + 4];
+	static const int signals[] = { SIGHUP, SIGINT, SIGQUIT, SIGTERM };
 
 	*cut_off = false;
 
@@ -1855,30 +1891,86 @@ password_read_prompt(const char *prompt, size_t max_len, bool *cut_off)
 		cap = sizeof(buf) - 1;
 	}
 
-	size_t len = 0;
+	size_t n_signals = sizeof(signals) / sizeof(signals[0]);
+	struct sigaction saved_sa[sizeof(signals) / sizeof(signals[0])];
+	struct termios saved_term;
+	bool typed = isatty(STDIN_FILENO) != 0;
+	bool guarded = typed && tcgetattr(STDIN_FILENO, &saved_term) == 0;
+	bool echo_off = false;
 
-	// One byte at a time, so input after the line is left on stdin.
-	while (len < cap) {
-		ssize_t n = read(STDIN_FILENO, buf + len, 1);
+	fputs(prompt, stderr);
+	g_password_signal = 0;
 
-		if (n < 0 && errno == EINTR) {
-			continue;
+	// While echo is off, a signal restores the terminal before it takes effect.
+	if (guarded) {
+		struct sigaction sa;
+		struct termios term = saved_term;
+
+		memset(&sa, 0, sizeof(sa));
+		sa.sa_handler = password_on_signal;
+		sigemptyset(&sa.sa_mask);
+
+		for (size_t i = 0; i < n_signals; i++) {
+			sigaction(signals[i], &sa, &saved_sa[i]);
 		}
 
-		if (n != 1 || buf[len++] == '\n') {
+		term.c_lflag &= ~(tcflag_t) (ECHO | ECHONL);
+		echo_off = tcsetattr(STDIN_FILENO, TCSAFLUSH, &term) == 0;
+	}
+
+	size_t len = 0;
+	char c;
+
+	// One byte at a time, so input after the line is left on stdin.
+	while (len < cap && password_read_byte(&c)) {
+		buf[len++] = c;
+
+		if (c == '\n') {
 			break;
 		}
 	}
 
+	// A line that fills the bound is complete only if the input ends or the
+	// line does.
+	bool cut = len == cap && buf[len - 1] != '\n' && password_read_byte(&c) &&
+			c != '\n';
+
 	buf[len] = '\0';
 
+	if (echo_off) {
+		tcsetattr(STDIN_FILENO, TCSAFLUSH, &saved_term);
+		fputc('\n', stderr);
+	}
+
+	if (guarded) {
+		for (size_t i = 0; i < n_signals; i++) {
+			sigaction(signals[i], &saved_sa[i], NULL);
+		}
+
+		if (g_password_signal != 0) {
+			raise(g_password_signal);
+			return NULL;
+		}
+	}
+
+	if (memchr(buf, 0, len) != NULL) {
+		err("%s: password from stdin contains a NUL byte", opt_name);
+		return NULL;
+	}
+
 	// A cut-off line stays as read so the length check rejects it.
-	if (len == cap && buf[len - 1] != '\n') {
+	if (cut) {
 		*cut_off = true;
 		return buf;
 	}
 
-	password_trim(buf);
+	if (! typed) {
+		password_trim(buf);
+	}
+	else if (len != 0 && buf[len - 1] == '\n') {
+		buf[len - 1] = '\0';
+	}
+
 	return buf;
 }
 

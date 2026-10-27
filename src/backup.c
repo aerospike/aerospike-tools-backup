@@ -518,6 +518,21 @@ start_backup(backup_config_t* conf)
 			estimate_conf->max_records = 0;
 			// don't parallelize the estimate
 			estimate_conf->parallel = 0;
+			// reuse the passwords the backup already read instead of asking again
+			const as_config* as_conf = &status->as->config;
+
+			if (conf->user != NULL &&
+					strcmp(conf->password, DEFAULT_PASSWORD) == 0) {
+				cf_free(estimate_conf->password);
+				estimate_conf->password = safe_strdup(as_conf->password);
+			}
+
+			if (conf->tls.keyfile_pw != NULL && as_conf->tls.keyfile_pw != NULL &&
+					strcmp(conf->tls.keyfile_pw, DEFAULT_PASSWORD) == 0) {
+				cf_free(estimate_conf->tls.keyfile_pw);
+				estimate_conf->tls.keyfile_pw = safe_strdup(as_conf->tls.keyfile_pw);
+				estimate_conf->tls_keyfile_pw_from_secret_agent = true;
+			}
 
 			bool cur_silent_val = g_silent;
 			g_silent = true;
