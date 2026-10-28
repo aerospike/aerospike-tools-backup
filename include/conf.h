@@ -35,6 +35,8 @@ extern "C" {
 #include <stdbool.h>
 #include <stddef.h>
 
+#include <sa_client.h>
+
 
 //==========================================================
 // Typedefs & constants.
@@ -65,6 +67,9 @@ bool config_from_files(void *c, const char* instance, const char* cmd_config_fna
 bool config_from_file(void *c, const char* instance, const char* fname, int level, bool is_backup);
 
 bool tls_read_password(const char* opt_name, const char* value, char** ptr);
+bool tls_read_secret(sa_client* sc, char** value, bool* is_secret);
+bool tls_prompt_password(const char* opt_name, char** ptr);
+char* password_prompt(const char* prompt, size_t max_len);
 bool resolve_password(const char* opt_name, char** value, size_t max_len,
 		bool first_line);
 bool password_has_source(const char* value);
