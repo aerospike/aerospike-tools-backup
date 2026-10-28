@@ -14,6 +14,7 @@ Suite* utils_suite(void);
 Suite* backup_file_suite(void);
 Suite* s3_config_suite(void);
 Suite* password_suite(void);
+Suite* secret_agent_suite(void);
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-function"

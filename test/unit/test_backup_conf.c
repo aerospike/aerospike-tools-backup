@@ -862,22 +862,45 @@ END_TEST
 
 START_TEST(test_cli_sa_ca_file_overrides_config)
 {
-	tmp_file_init("", "", "", "sa-ca-file=\"test/test_key2.pem\"\n");
+	static const char* const conf_keys[] = { "sa-ca-file", "sa-cafile" };
+	static char* const cli_options[] = { "--sa-ca-file", "--sa-cafile" };
 
-	char* argv[] = { "asbackup", "--only-config-file", file_name,
-		"--sa-cafile", "test/test_key.pem" };
-	assert_cli_sa_ca_file(5, argv, "test/test_key.pem");
+	for (uint32_t i = 0; i < 2; i++) {
+		char sa_args[64];
+		snprintf(sa_args, sizeof(sa_args), "%s=\"test/test_key2.pem\"\n",
+				conf_keys[i]);
+		tmp_file_init("", "", "", sa_args);
+
+		char* conf_only[] = { "asbackup", "--only-config-file", file_name };
+		assert_cli_sa_ca_file(3, conf_only, "test/test_key2.pem");
+
+		for (uint32_t j = 0; j < 2; j++) {
+			char* argv[] = { "asbackup", "--only-config-file", file_name,
+				cli_options[j], "test/test_key.pem" };
+			assert_cli_sa_ca_file(5, argv, "test/test_key.pem");
+		}
+	}
 }
 END_TEST
 
 START_TEST(test_cli_sa_ca_file_missing)
 {
-	char* argv[] = { "asbackup", "--no-config-file",
-		"--sa-ca-file", "test/no_such_ca.pem" };
-	backup_config_t conf;
-	ck_assert_int_eq(backup_config_set(4, argv, &conf),
-			BACKUP_CONFIG_INIT_FAILURE);
-	backup_config_destroy(&conf);
+	static char* const options[] = { "--sa-ca-file", "--sa-cafile" };
+
+	for (uint32_t i = 0; i < 2; i++) {
+		char* found[] = { "asbackup", "--no-config-file",
+			options[i], "test/test_key.pem" };
+		assert_cli_sa_ca_file(4, found, "test/test_key.pem");
+
+		char* missing[] = { "asbackup", "--no-config-file",
+			options[i], "test/no_such_ca.pem" };
+		backup_config_t conf;
+		ck_assert_int_eq(backup_config_set(4, missing, &conf),
+				BACKUP_CONFIG_INIT_FAILURE);
+		ck_assert_ptr_eq(conf.secret_cfg.tls.ca_string, NULL);
+		ck_assert(! conf.secret_cfg.tls.enabled);
+		backup_config_destroy(&conf);
+	}
 }
 END_TEST
 
