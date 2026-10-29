@@ -110,14 +110,14 @@
 #------------------------------------------------------------------------------
 # Aerospike Secret Agent
 #
-# Used by asadm, asbackup, asrestore, aql and asconfig to fetch values given
-# as "secrets:<resource>:<key>". With --instance, a [secret-agent_<instance>]
-# section replaces this one if it exists.
+# Used by asadm, asbackup, asrestore and aql to fetch values given as
+# "secrets:<resource>:<key>". With --instance, a [secret-agent_<instance>]
+# section in the same file replaces this one if it exists.
 #------------------------------------------------------------------------------
 [secret-agent]
 # sa-address = "127.0.0.1"            # "<host>[:<port>]" or "[<ipv6>][:<port>]"
-# sa-port = "3005"                    # overrides a port in sa-address
-# sa-timeout = 1000                   # in ms, 1 or more
+# sa-port = "3005"                    # 1 to 65535, overrides a port in sa-address
+# sa-timeout = 1000                   # in ms, 1 to 2147483647
 # sa-ca-file enables TLS to the agent and verifies the agent's certificate against
 # this CA. The hostname or IP address in sa-address must be in the certificate.
 # sa-ca-file = "/etc/aerospike/secret-agent/cacert.pem"
