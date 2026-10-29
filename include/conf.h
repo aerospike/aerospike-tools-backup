@@ -32,9 +32,11 @@ extern "C" {
 // Includes.
 //
 
+#include <getopt.h>
 #include <stdbool.h>
 #include <stddef.h>
 
+#include <aerospike/as_vector.h>
 #include <sa_client.h>
 
 
@@ -51,6 +53,19 @@ extern "C" {
 // password.
 #define TLS_KEYFILE_PASSWORD_MAX_LEN 1024
 
+/*
+ * The secret agent options given on the command line, and the long names of
+ * the other options it gives. Config file keys with those names are skipped.
+ */
+typedef struct config_cli_s {
+	const char* sa_address;
+	const char* sa_port;
+	const char* sa_timeout;
+	const char* sa_ca_file;
+	const char* sa_cafile;
+	as_vector keys;
+} config_cli_t;
+
 
 //==========================================================
 // Globals.
@@ -63,7 +78,16 @@ extern char *DEFAULT_PASSWORD;
 // Public API.
 //
 
-bool config_from_files(void *c, const char* instance, const char* cmd_config_fname, bool is_backup);
+void config_cli_add(config_cli_t* cli, const struct option* options, int opt);
+bool config_secret_agent_cli(sa_cfg* c, const config_cli_t* cli);
+
+/*
+ * Reads the [secret-agent] sections of every file, then the command line
+ * secret agent options, then the other sections, so secrets in config files
+ * are fetched with the final agent settings.
+ */
+bool config_from_files(void *c, const char* instance, const char* cmd_config_fname,
+		bool only_cmd_config_file, const config_cli_t* cli, bool is_backup);
 bool config_from_file(void *c, const char* instance, const char* fname, int level, bool is_backup);
 
 bool tls_read_password(const char* opt_name, const char* value, char** ptr);

@@ -201,6 +201,9 @@ backup_config_set(int argc, char* argv[], backup_config_t* conf)
 	bool read_conf_files = true;
 	bool read_only_conf_file = false;
 	char *instance = NULL;
+	config_cli_t cli = { 0 };
+
+	as_vector_init(&cli.keys, sizeof(const char*), 8);
 
 	// Reset optind (internal variable) to parse all options again
 	optind = 1;
@@ -224,102 +227,59 @@ backup_config_set(int argc, char* argv[], backup_config_t* conf)
 				read_only_conf_file = true;
 				break;
 
+			case COMMAND_SA_ADDRESS:
+				cli.sa_address = optarg;
+				break;
+
+			case COMMAND_SA_PORT:
+				cli.sa_port = optarg;
+				break;
+
+			case COMMAND_SA_TIMEOUT:
+				cli.sa_timeout = optarg;
+				break;
+
+			case COMMAND_SA_CA_FILE:
+				cli.sa_ca_file = optarg;
+				break;
+
+			case COMMAND_SA_CAFILE:
+				cli.sa_cafile = optarg;
+				break;
+
+			// These add to the config file value or conflict with it.
+			case 's':
+			case '1':
+			case '2':
+				break;
+
+			default:
+				config_cli_add(&cli, options, opt);
+				break;
 		}
 	}
+
+	bool loaded;
 
 	if (read_conf_files) {
-		if (read_only_conf_file) {
-			if (!config_from_file(conf, instance, config_fname, 0, true)) {
-				return BACKUP_CONFIG_INIT_FAILURE;
-			}
-		} else {
-			if (!config_from_files(conf, instance, config_fname, true)) {
-				return BACKUP_CONFIG_INIT_FAILURE;
-			}
-		}
-	} else { 
-		if (read_only_conf_file) {
-			err("--no-config-file and only-config-file are mutually exclusive "
-					"option. Please enable only one.");
-			return BACKUP_CONFIG_INIT_FAILURE;
-		}
+		loaded = config_from_files(conf, instance, config_fname,
+				read_only_conf_file, &cli, true);
+	} else if (read_only_conf_file) {
+		err("--no-config-file and only-config-file are mutually exclusive "
+				"option. Please enable only one.");
+		loaded = false;
+	} else {
+		loaded = config_secret_agent_cli(&conf->secret_cfg, &cli);
 	}
 
-	// Reset optind (internal variable) to parse all options again
-	optind = 1;
+	as_vector_destroy(&cli.keys);
 
-	// Now print error messages
-	opterr = 1;
-
-	bool used_sa_port_arg = false;
-	const char* sa_ca_file = NULL;
-	const char* sa_cafile = NULL;
-	// parse secret agent arguments
-	while ((opt = getopt_long(argc, argv, "-" OPTIONS_SHORT, options, 0)) != -1) {
-
-		switch (opt) {
-		case COMMAND_SA_ADDRESS:
-			// if the default was set, free it
-			if (conf->secret_cfg.addr != NULL) {
-				cf_free(conf->secret_cfg.addr);
-			}
-
-			conf->secret_cfg.addr = safe_strdup(optarg);
-			break;
-
-		case COMMAND_SA_PORT:
-			used_sa_port_arg = true;
-			
-			// if the default was set, free it
-			if (conf->secret_cfg.port != NULL) {
-				cf_free(conf->secret_cfg.port);
-			}
-			
-			conf->secret_cfg.port = safe_strdup(optarg);
-			break;
-		
-		case COMMAND_SA_TIMEOUT:
-			if (!better_atoi(optarg, &tmp) || tmp < 0 || tmp > INT_MAX) {
-				err("Invalid secret agent timeout value %s", optarg);
-				return BACKUP_CONFIG_INIT_FAILURE;
-			}
-			conf->secret_cfg.timeout = (int) tmp;
-			break;
-		
-		case COMMAND_SA_CA_FILE:
-			sa_ca_file = optarg;
-			break;
-
-		case COMMAND_SA_CAFILE:
-			sa_cafile = optarg;
-			break;
-		}
-	}
-
-	if (sa_ca_file == NULL) {
-		sa_ca_file = sa_cafile;
-	}
-
-	if (sa_ca_file != NULL &&
-			!sa_tls_set_ca_file(&conf->secret_cfg.tls, sa_ca_file)) {
-		err("Invalid secret agent CA file %s", sa_ca_file);
+	if (!loaded) {
 		return BACKUP_CONFIG_INIT_FAILURE;
 	}
 
-	// if the user supplied the secret_agent address
-	// with an attached port, ex 127.0.0.1:3005
-	// then parse and use the addr and port only
-	// if the user did not also provide an explicit port
-	char* sa_addr = NULL;
-	char* sa_port = NULL;
-	char *sa_addr_p = conf->secret_cfg.addr;
-	bool is_addr_and_port = parse_host(&conf->secret_cfg.addr, &sa_addr, &sa_port);
-	if (is_addr_and_port && !used_sa_port_arg) {
-		cf_free(conf->secret_cfg.port);
-		conf->secret_cfg.addr = safe_strdup(sa_addr);
-		conf->secret_cfg.port = safe_strdup(sa_port);
-		cf_free(sa_addr_p);
-	}
+	// Now print error messages
+	opterr = 1;
 
 	sa_client sac;
 	sa_client_init(&sac, &conf->secret_cfg);
@@ -1651,8 +1611,8 @@ usage(const char *name)
 	fprintf(stdout, "    asrestore -n secrets:resource1:namespace -d testout -h secrets:pass:pass --sa-address 127.0.0.1:3005\n");
 	fprintf(stdout, "    asbackup -n test -d testout --ca-file secrets:resource2:cacert\n");
 	fprintf(stdout, " --sa-address=<host_name>\n");
-	fprintf(stdout, "                      <host_name> is \"<host>[:<port>]\" \n");
-	fprintf(stdout, "                      Aerospike Secret agent hostname or IP address.\n");
+	fprintf(stdout, "                      <host_name> is \"<host>[:<port>]\" or \"[<ipv6>][:<port>]\".\n");
+	fprintf(stdout, "                      Secret Agent hostname or IP address.\n");
 	fprintf(stdout, "                      Default: 127.0.0.1:3005\n");
 	fprintf(stdout, "                      Examples:\n");
 	fprintf(stdout, "                        host1\n");
@@ -1660,17 +1620,16 @@ usage(const char *name)
 	fprintf(stdout, "                        192.168.1.10:3005\n");
 	fprintf(stdout, "                        [::1]:3005\n");
 	fprintf(stdout, " --sa-port=<port>\n");
-	fprintf(stdout, "                      The port number used to connect to the Aerospike secret agent \n");
-	fprintf(stdout, "                      Default: 3005 \n");
+	fprintf(stdout, "                      Secret Agent port, 1 to 65535. Overrides a port in --sa-address.\n");
+	fprintf(stdout, "                      Default: 3005\n");
 	fprintf(stdout, " --sa-timeout=<ms>\n");
-	fprintf(stdout, "                      Timeout in milliseconds applied when connecting\n");
-	fprintf(stdout, "                      to the Aerospike Secret agent and when requesting secrets.\n");
-	fprintf(stdout, "                      The default timeout is 1000ms. A value of 0 fails immediately.\n");
+	fprintf(stdout, "                      Timeout in milliseconds for Secret Agent requests, an integer\n");
+	fprintf(stdout, "                      from 1 to 2147483647.\n");
+	fprintf(stdout, "                      Default: 1000\n");
 	fprintf(stdout, " --sa-ca-file=<tls_cafile>\n");
-	fprintf(stdout, "                      Path to a trusted CA certificate file.\n");
-	fprintf(stdout, "                      Used when authenticating with the Aerospike secret agent.\n");
-	fprintf(stdout, "                      The agent certificate must match --sa-address.\n");
-	fprintf(stdout, "                      --sa-cafile is accepted as an alias. If both are given,\n");
-	fprintf(stdout, "                      --sa-ca-file is used.\n");
+	fprintf(stdout, "                      Path to a CA certificate file. Enables TLS to the Secret Agent\n");
+	fprintf(stdout, "                      and verifies its certificate against this CA. The agent's\n");
+	fprintf(stdout, "                      hostname or IP address must be in the certificate.\n");
+	fprintf(stdout, "                      Default: none\n");
 }
 

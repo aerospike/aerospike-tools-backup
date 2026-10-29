@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/time.h>
 #include <unistd.h>
 
@@ -29,6 +30,8 @@
 #define CONF_FILE WORKING_DIR "/tmp_sa.conf"
 #define LATER_CONF_FILE WORKING_DIR "/tmp_sa_later.conf"
 #define INCLUDE_LATER "[include]\nfile = \"" LATER_CONF_FILE "\"\n"
+#define INCLUDE_DIR WORKING_DIR "/tmp_sa_dir"
+#define INCLUDE_DIR_FILE INCLUDE_DIR "/bad.conf"
 #define OUT_FILE WORKING_DIR "/tmp_sa_out"
 #define CA_CERT_FILE WORKING_DIR "/tmp_sa_ca.pem"
 #define CA_FILE "test/test_key.pem"
@@ -275,6 +278,8 @@ sa_teardown(void)
 
 	remove(CONF_FILE);
 	remove(LATER_CONF_FILE);
+	remove(INCLUDE_DIR_FILE);
+	rmdir(INCLUDE_DIR);
 	remove(OUT_FILE);
 	remove(CA_CERT_FILE);
 }
@@ -761,6 +766,24 @@ TOOL_TEST(test_bad_later_file_fetches_nothing)
 	tool_destroy(&t);
 }
 
+TOOL_TEST(test_bad_file_in_include_directory_fetches_nothing)
+{
+	fake_agent_t* agent = fake_agent_start(&g_agents[0]);
+	mkdir(INCLUDE_DIR, 0700);
+	write_text(CONF_FILE, "[secret-agent]\nsa-address = \"%s\"\n"
+			"[include]\ndirectory = \"" INCLUDE_DIR "\"\n", agent->address);
+	write_text(INCLUDE_DIR_FILE, "[cluster]\nuser = \"secrets:r:user\"\n"
+			"[secret-agent]\nsa-adress = \"127.0.0.1\"\n");
+
+	tool_conf_t t;
+	int rc = tool_run(&t, backup, "--only-config-file", CONF_FILE, NULL);
+	fake_agent_stop(agent);
+
+	ck_assert_int_eq(agent->connections, 0);
+	assert_fails(&t, rc, "Unknown parameter `sa-adress` in `secret-agent` section");
+	tool_destroy(&t);
+}
+
 TOOL_TEST(test_secret_path_escaped_in_request)
 {
 	static const char* const cases[][3] = {
@@ -843,8 +866,22 @@ TOOL_TEST(test_help_sa_timeout_range)
 
 	ck_assert_msg(strstr(block, "A value of 0") == NULL,
 			"--sa-timeout help still describes 0: %s", block);
-	ck_assert_msg(strstr(block, "1 to 2147483647") != NULL,
+	ck_assert_msg(strstr(block,
+			"Timeout in milliseconds for Secret Agent requests, an integer\n"
+			"                      from 1 to 2147483647.\n"
+			"                      Default: 1000") != NULL,
 			"--sa-timeout help does not give the range: %s", block);
+}
+
+TOOL_TEST(test_help_sa_port_range)
+{
+	char block[1024];
+	help_block(help_text(backup), " --sa-port=", block, sizeof(block));
+
+	ck_assert_msg(strstr(block,
+			"Secret Agent port, 1 to 65535. Overrides a port in --sa-address.\n"
+			"                      Default: 3005") != NULL,
+			"--sa-port help does not give the range: %s", block);
 }
 
 TOOL_TEST(test_help_sa_address_ipv6)
@@ -852,10 +889,11 @@ TOOL_TEST(test_help_sa_address_ipv6)
 	char block[1024];
 	help_block(help_text(backup), " --sa-address=", block, sizeof(block));
 
-	ck_assert_msg(strstr(block, "[<ipv6>]:<port>") != NULL &&
-			count_of(block, "[<ipv6>]") >= 2,
-			"--sa-address help does not list [<ipv6>] and [<ipv6>]:<port>: %s",
-			block);
+	ck_assert_msg(strstr(block,
+			"\"<host>[:<port>]\" or \"[<ipv6>][:<port>]\".\n"
+			"                      Secret Agent hostname or IP address.\n"
+			"                      Default: 127.0.0.1:3005\n") != NULL,
+			"--sa-address help does not list [<ipv6>][:<port>]: %s", block);
 }
 
 TOOL_TEST(test_cli_sa_timeout_zero)
@@ -986,6 +1024,15 @@ TOOL_TEST(test_help_lists_sa_ca_file_only)
 	ck_assert_ptr_ne(strstr(t.out, " --sa-ca-file="), NULL);
 	const char* hit = strstr(t.out, "sa-cafile");
 	ck_assert_msg(hit == NULL, "help mentions sa-cafile: %.60s", hit);
+
+	char block[1024];
+	help_block(t.out, " --sa-ca-file=", block, sizeof(block));
+	ck_assert_msg(strstr(block,
+			"Path to a CA certificate file. Enables TLS to the Secret Agent\n"
+			"                      and verifies its certificate against this CA. The agent's\n"
+			"                      hostname or IP address must be in the certificate.\n"
+			"                      Default: none\n") != NULL,
+			"--sa-ca-file help does not match: %s", block);
 	tool_destroy(&t);
 }
 
@@ -1138,6 +1185,7 @@ Suite* secret_agent_suite()
 	ADD_TOOL_TEST(tc, test_unknown_key_fetches_nothing);
 	ADD_TOOL_TEST(tc, test_wrong_type_fetches_nothing);
 	ADD_TOOL_TEST(tc, test_bad_later_file_fetches_nothing);
+	ADD_TOOL_TEST(tc, test_bad_file_in_include_directory_fetches_nothing);
 	ADD_TOOL_TEST(tc, test_secret_path_escaped_in_request);
 
 	ADD_TOOL_TEST(tc, test_cli_sa_port_invalid);
@@ -1147,6 +1195,7 @@ Suite* secret_agent_suite()
 	ADD_TOOL_TEST(tc, test_cli_hostname_address);
 	ADD_TOOL_TEST(tc, test_conf_hostname_address);
 	ADD_TOOL_TEST(tc, test_help_sa_timeout_range);
+	ADD_TOOL_TEST(tc, test_help_sa_port_range);
 	ADD_TOOL_TEST(tc, test_help_sa_address_ipv6);
 
 	ADD_TOOL_TEST(tc, test_cli_sa_timeout_zero);
