@@ -41,7 +41,8 @@
 # password = ""
 # Prefixes are case-sensitive. A base64 value may be line wrapped, and one
 # trailing newline is dropped after decoding. A password that itself begins
-# with "env:", "env-b64:", "b64:" or "file:" must be given as "b64:".
+# with "env:", "env-b64:", "b64:", "file:" or "secrets:" must be given as
+# "b64:".
 # The password is read only when a user is set and the auth mode is not PKI.
 # It must be at most 63 bytes.
 
@@ -74,7 +75,7 @@
 # String: "<PASSWORD>"
 # tls-keyfile-password = ""
 # Prefixes are case-sensitive. A password that itself begins with "env:",
-# "env-b64:", "b64:" or "file:" must be given as "b64:".
+# "env-b64:", "b64:", "file:" or "secrets:" must be given as "b64:".
 # Surrounding whitespace is trimmed before the form is read.
 # A password with surrounding whitespace must be given as "b64:".
 # The password must be at most 1024 bytes.
