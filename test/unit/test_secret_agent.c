@@ -32,11 +32,23 @@
 #define INCLUDE_LATER "[include]\nfile = \"" LATER_CONF_FILE "\"\n"
 #define INCLUDE_DIR WORKING_DIR "/tmp_sa_dir"
 #define INCLUDE_DIR_FILE INCLUDE_DIR "/bad.conf"
+#define INCLUDE_DIR_README INCLUDE_DIR "/README"
+#define INCLUDE_DIR_NESTED INCLUDE_DIR "/nested.conf"
+#define INCLUDE_SUBDIR INCLUDE_DIR "/locked"
+// 32 bytes, so a path buffer without room for the NUL overflows.
+#define INCLUDE_DIR_AGENT INCLUDE_DIR "/agent1.conf"
+#define HOME_DIR WORKING_DIR "/tmp_sa_home"
+#define HOME_AEROSPIKE_DIR HOME_DIR "/.aerospike"
+#define HOME_CONF_FILE HOME_AEROSPIKE_DIR "/astools.conf"
 #define OUT_FILE WORKING_DIR "/tmp_sa_out"
 #define CA_CERT_FILE WORKING_DIR "/tmp_sa_ca.pem"
 #define CA_FILE "test/test_key.pem"
 #define CA_FILE2 "test/test_key2.pem"
 #define NO_CA_FILE "test/no_such_ca.pem"
+#define ENCRYPT_KEY_FILE "test/test_key.pem"
+#define ENCRYPT_KEY_ENV "TEST_SA_ENCRYPT_KEY_ENV_VAR"
+#define ENCRYPT_KEY "MUFZJlNYl5Orze8BI0VniQ=="
+#define ENCRYPT_CONFLICT "Cannot specify both encryption-key-file and encryption-key-env"
 #define SA_MAGIC 0x51dec1cc
 #define TLS_HANDSHAKE 0x16
 #define SECRET_REPLY "{\"SecretValue\":\"MTI3LjAuMC4x\"}"
@@ -47,12 +59,13 @@
 #define TIMEOUT_EXPECTED ", expected an integer from 1 to 2147483647"
 #define PORT_EXPECTED ", expected an integer from 1 to 65535"
 #define ADDRESS_EXPECTED ", expected <host>[:<port>] or [<ipv6>][:<port>]"
+#define CA_EXPECTED ", expected a path to a CA certificate file"
 #define TIMEOUT_INVALID \
-	"Invalid parameter value for `sa-timeout` in `secret-agent` section"
+	"for sa-timeout in the [secret-agent] config section" TIMEOUT_EXPECTED
 #define PORT_INVALID \
-	"Invalid parameter value for `sa-port` in `secret-agent` section"
+	"for sa-port in the [secret-agent] config section" PORT_EXPECTED
 #define ADDRESS_INVALID \
-	"Invalid parameter value for `sa-address` in `secret-agent` section"
+	"for sa-address in the [secret-agent] config section" ADDRESS_EXPECTED
 
 #define TOOL_TEST(name) \
 static void name(bool backup); \
@@ -279,7 +292,14 @@ sa_teardown(void)
 	remove(CONF_FILE);
 	remove(LATER_CONF_FILE);
 	remove(INCLUDE_DIR_FILE);
+	remove(INCLUDE_DIR_README);
+	remove(INCLUDE_DIR_NESTED);
+	remove(INCLUDE_DIR_AGENT);
+	rmdir(INCLUDE_SUBDIR);
 	rmdir(INCLUDE_DIR);
+	remove(HOME_CONF_FILE);
+	rmdir(HOME_AEROSPIKE_DIR);
+	rmdir(HOME_DIR);
 	remove(OUT_FILE);
 	remove(CA_CERT_FILE);
 }
@@ -376,6 +396,12 @@ tool_host(tool_conf_t* t)
 	return t->backup ? t->bup.host : t->res.host;
 }
 
+static const char*
+tool_section(bool backup)
+{
+	return backup ? "asbackup" : "asrestore";
+}
+
 static int
 failure(bool backup)
 {
@@ -441,18 +467,16 @@ assert_agent(tool_conf_t* t, const char* host, const char* port)
 static void
 assert_ca_file(tool_conf_t* t, const char* path)
 {
-	char* expected = read_file_as_string(path);
-	ck_assert_ptr_ne(expected, NULL);
-	ck_assert_ptr_ne(t->sa->tls.ca_string, NULL);
-	ck_assert_msg(strcmp(t->sa->tls.ca_string, expected) == 0,
-			"CA is not the contents of %s", path);
-	ck_assert(t->sa->tls.enabled);
-	cf_free(expected);
+	ck_assert_ptr_ne(sa_ca_file_path(), NULL);
+	ck_assert_str_eq(sa_ca_file_path(), path);
+	ck_assert_ptr_eq(t->sa->tls.ca_string, NULL);
+	ck_assert(! t->sa->tls.enabled);
 }
 
 static void
 assert_no_ca_file(tool_conf_t* t)
 {
+	ck_assert_ptr_eq(sa_ca_file_path(), NULL);
 	ck_assert_ptr_eq(t->sa->tls.ca_string, NULL);
 	ck_assert(! t->sa->tls.enabled);
 }
@@ -531,7 +555,7 @@ static void
 assert_cli_invalid(bool backup, char* option, char* value, const char* expected)
 {
 	char message[160];
-	snprintf(message, sizeof(message), "%s: invalid value %s%s", option, value,
+	snprintf(message, sizeof(message), "%s: invalid value \"%s\"%s", option, value,
 			expected);
 
 	tool_conf_t t;
@@ -965,17 +989,21 @@ TOOL_TEST(test_conf_sa_port_integer)
 TOOL_TEST(test_conf_sa_cafile_wrong_type)
 {
 	assert_conf_fails(backup, "sa-ca-file = \"" CA_FILE "\"\nsa-cafile = 5\n",
-			"Invalid parameter value for `sa-cafile` in `secret-agent` section");
+			"invalid value \"5\" for sa-cafile in the [secret-agent] config section"
+			CA_EXPECTED);
 	assert_conf_fails(backup, "sa-cafile = 5\nsa-ca-file = \"" CA_FILE "\"\n",
-			"Invalid parameter value for `sa-cafile` in `secret-agent` section");
+			"invalid value \"5\" for sa-cafile in the [secret-agent] config section"
+			CA_EXPECTED);
 }
 
 TOOL_TEST(test_conf_sa_ca_file_wrong_type)
 {
 	assert_conf_fails(backup, "sa-ca-file = 5\n",
-			"Invalid parameter value for `sa-ca-file` in `secret-agent` section");
+			"invalid value \"5\" for sa-ca-file in the [secret-agent] config section"
+			CA_EXPECTED);
 	assert_conf_fails(backup, "sa-cafile = \"" CA_FILE "\"\nsa-ca-file = 5\n",
-			"Invalid parameter value for `sa-ca-file` in `secret-agent` section");
+			"invalid value \"5\" for sa-ca-file in the [secret-agent] config section"
+			CA_EXPECTED);
 }
 
 TOOL_TEST(test_cli_sa_cafile_deprecated)
@@ -1106,8 +1134,11 @@ TOOL_TEST(test_instance_section_replaces_default)
 	assert_no_ca_file(&t);
 	tool_destroy(&t);
 
-	assert_fails(&t, tool_run(&t, backup, "--only-config-file", CONF_FILE,
-			"--instance", "y", NULL), "Invalid parameter value for `sa-ca-file`");
+	assert_ok(&t, tool_run(&t, backup, "--only-config-file", CONF_FILE,
+			"--instance", "y", NULL));
+	assert_agent(&t, "127.0.0.1", "1111");
+	ck_assert_int_eq(t.sa->timeout, 5);
+	assert_ca_file(&t, NO_CA_FILE);
 	tool_destroy(&t);
 }
 
@@ -1115,45 +1146,319 @@ TOOL_TEST(test_empty_ca_file_path)
 {
 	tool_conf_t t;
 
-	ck_assert_int_eq(tool_run(&t, backup, "--no-config-file", "--sa-ca-file", "",
-			NULL), failure(backup));
+	assert_fails(&t, tool_run(&t, backup, "--no-config-file", "--sa-ca-file", "",
+			NULL), "--sa-ca-file: invalid value \"\"" CA_EXPECTED);
 	assert_no_ca_file(&t);
 	tool_destroy(&t);
 
-	ck_assert_int_eq(tool_run(&t, backup, "--no-config-file", "--sa-cafile", "",
-			NULL), failure(backup));
+	assert_fails(&t, tool_run(&t, backup, "--no-config-file", "--sa-cafile", "",
+			NULL), "--sa-cafile: invalid value \"\"" CA_EXPECTED);
 	assert_no_ca_file(&t);
 	tool_destroy(&t);
 
 	assert_conf_fails(backup, "sa-ca-file = \"\"\n",
-			"Invalid parameter value for `sa-ca-file` in `secret-agent` section");
+			"invalid value \"\" for sa-ca-file in the [secret-agent] config section"
+			CA_EXPECTED);
 	assert_conf_fails(backup, "sa-cafile = \"\"\n",
-			"Invalid parameter value for `sa-cafile` in `secret-agent` section");
+			"invalid value \"\" for sa-cafile in the [secret-agent] config section"
+			CA_EXPECTED);
+}
+
+TOOL_TEST(test_missing_ca_file_not_read_without_secrets)
+{
+	tool_conf_t t;
+
+	assert_ok(&t, tool_run(&t, backup, "--no-config-file", "--sa-ca-file",
+			NO_CA_FILE, NULL));
+	assert_ca_file(&t, NO_CA_FILE);
+	tool_destroy(&t);
+
+	assert_ok(&t, conf_run(&t, backup, "sa-cafile = \"" NO_CA_FILE "\"\n"));
+	assert_ca_file(&t, NO_CA_FILE);
+	tool_destroy(&t);
 }
 
 TOOL_TEST(test_conf_missing_ca_file_names_key)
 {
-	assert_conf_fails(backup, "sa-ca-file = \"" NO_CA_FILE "\"\n",
-			"Invalid parameter value for `sa-ca-file` in `secret-agent` section");
-	assert_conf_fails(backup, "sa-cafile = \"" NO_CA_FILE "\"\n",
-			"Invalid parameter value for `sa-cafile` in `secret-agent` section");
+	static const char* const keys[] = { "sa-ca-file", "sa-cafile" };
+
+	for (uint32_t i = 0; i < sizeof(keys) / sizeof(keys[0]); i++) {
+		fake_agent_t* agent = fake_agent_start(&g_agents[0]);
+		write_text(CONF_FILE, "[cluster]\nhost = \"secrets:r:host\"\n"
+				"[secret-agent]\nsa-address = \"%s\"\n%s = \"" NO_CA_FILE "\"\n",
+				agent->address, keys[i]);
+
+		tool_conf_t t;
+		int rc = tool_run(&t, backup, "--only-config-file", CONF_FILE, NULL);
+		fake_agent_stop(agent);
+
+		char message[160];
+		snprintf(message, sizeof(message),
+				"%s in the [secret-agent] config section: cannot load CA file \"%s\"",
+				keys[i], NO_CA_FILE);
+		ck_assert_int_eq(agent->connections, 0);
+		assert_fails(&t, rc, message);
+		tool_destroy(&t);
+	}
 }
 
 TOOL_TEST(test_cli_missing_ca_file_names_option)
 {
+	static char* const options[] = { "--sa-ca-file", "--sa-cafile" };
+
+	for (uint32_t i = 0; i < sizeof(options) / sizeof(options[0]); i++) {
+		fake_agent_t* agent = fake_agent_start(&g_agents[0]);
+
+		tool_conf_t t;
+		int rc = tool_run(&t, backup, "--no-config-file", "--sa-address",
+				agent->address, options[i], NO_CA_FILE, "--host", "secrets:r:host",
+				NULL);
+		fake_agent_stop(agent);
+
+		char message[160];
+		snprintf(message, sizeof(message), "%s: cannot load CA file \"%s\"",
+				options[i], NO_CA_FILE);
+		ck_assert_int_eq(agent->connections, 0);
+		assert_fails(&t, rc, message);
+		tool_destroy(&t);
+	}
+}
+
+TOOL_TEST(test_missing_ca_file_names_selected_section)
+{
+	static const char* const sections[] = { "secret-agent_x", "secret-agent" };
+
+	for (uint32_t i = 0; i < sizeof(sections) / sizeof(sections[0]); i++) {
+		fake_agent_t* agent = fake_agent_start(&g_agents[0]);
+		write_text(CONF_FILE, "[cluster_x]\nhost = \"secrets:r:host\"\n"
+				"[%s]\nsa-address = \"%s\"\nsa-ca-file = \"" NO_CA_FILE "\"\n",
+				sections[i], agent->address);
+
+		tool_conf_t t;
+		int rc = tool_run(&t, backup, "--only-config-file", CONF_FILE,
+				"--instance", "x", NULL);
+		fake_agent_stop(agent);
+
+		char message[160];
+		snprintf(message, sizeof(message),
+				"sa-ca-file in the [%s] config section: cannot load CA file \"%s\"",
+				sections[i], NO_CA_FILE);
+		ck_assert_int_eq(agent->connections, 0);
+		assert_fails(&t, rc, message);
+		tool_destroy(&t);
+	}
+}
+
+static void
+assert_include_dir_entry_skipped(bool backup)
+{
+	fake_agent_t* agent = fake_agent_start(&g_agents[0]);
+	write_text(CONF_FILE, "[cluster]\nhost = \"secrets:r:host\"\n"
+			"[secret-agent]\nsa-address = \"%s\"\n"
+			"[include]\ndirectory = \"" INCLUDE_DIR "\"\n", agent->address);
+
 	tool_conf_t t;
+	int rc = tool_run(&t, backup, "--only-config-file", CONF_FILE, NULL);
+	fake_agent_stop(agent);
 
-	assert_fails(&t, tool_run(&t, backup, "--no-config-file", "--sa-ca-file",
-			NO_CA_FILE, NULL), NO_CA_FILE);
-	ck_assert_msg(has_line(t.out, "--sa-ca-file", NO_CA_FILE),
-			"no line names --sa-ca-file and " NO_CA_FILE ", output: %s", t.out);
+	assert_ok(&t, rc);
+	ck_assert_int_eq(agent->requests, 1);
+	ck_assert_str_eq(tool_host(&t), "127.0.0.1");
+	ck_assert_msg(count_of(t.out, "Skipped .....") == 1,
+			"expected one skipped entry, output: %s", t.out);
 	tool_destroy(&t);
+}
 
-	assert_fails(&t, tool_run(&t, backup, "--no-config-file", "--sa-cafile",
-			NO_CA_FILE, NULL), NO_CA_FILE);
-	ck_assert_msg(has_line(t.out, "--sa-cafile", NO_CA_FILE),
-			"no line names --sa-cafile and " NO_CA_FILE ", output: %s", t.out);
+TOOL_TEST(test_include_dir_text_file_skipped)
+{
+	mkdir(INCLUDE_DIR, 0700);
+	write_text(INCLUDE_DIR_README, "Put tools config files in this directory.\n");
+	assert_include_dir_entry_skipped(backup);
+}
+
+TOOL_TEST(test_include_dir_unopenable_subdir_skipped)
+{
+	if (geteuid() == 0) {
+		return;
+	}
+
+	mkdir(INCLUDE_DIR, 0700);
+	mkdir(INCLUDE_SUBDIR, 0);
+	assert_include_dir_entry_skipped(backup);
+}
+
+TOOL_TEST(test_include_dir_bad_nested_include_skipped)
+{
+	mkdir(INCLUDE_DIR, 0700);
+	write_text(INCLUDE_DIR_NESTED, "[include]\nfiles = \"" LATER_CONF_FILE "\"\n");
+	assert_include_dir_entry_skipped(backup);
+}
+
+TOOL_TEST(test_include_dir_file_with_32_byte_path_loaded)
+{
+	fake_agent_t* agent = fake_agent_start(&g_agents[0]);
+	mkdir(INCLUDE_DIR, 0700);
+	write_text(CONF_FILE, "[cluster]\nhost = \"secrets:r:host\"\n"
+			"[include]\ndirectory = \"" INCLUDE_DIR "\"\n");
+	write_text(INCLUDE_DIR_AGENT, "[secret-agent]\nsa-address = \"%s\"\n",
+			agent->address);
+
+	tool_conf_t t;
+	int rc = tool_run(&t, backup, "--only-config-file", CONF_FILE, NULL);
+	fake_agent_stop(agent);
+
+	ck_assert_int_eq(agent->requests, 1);
+	assert_ok(&t, rc);
+	ck_assert_str_eq(tool_host(&t), "127.0.0.1");
 	tool_destroy(&t);
+}
+
+START_TEST(test_conf_set_and_cli_set_both_backed_up)
+{
+	write_text(CONF_FILE, "[asbackup]\nset = \"a\"\n");
+
+	tool_conf_t t;
+	assert_ok(&t, tool_run(&t, true, "--only-config-file", CONF_FILE, "--set", "b",
+			NULL));
+	ck_assert_int_eq(t.bup.set_list.size, 2);
+	ck_assert_str_eq((char*) as_vector_get(&t.bup.set_list, 0), "a");
+	ck_assert_str_eq((char*) as_vector_get(&t.bup.set_list, 1), "b");
+	tool_destroy(&t);
+}
+END_TEST
+
+TOOL_TEST(test_conf_and_cli_encryption_key_file_conflict)
+{
+	write_text(CONF_FILE, "[%s]\nencryption-key-file = \"" ENCRYPT_KEY_FILE "\"\n",
+			tool_section(backup));
+
+	tool_conf_t t;
+	assert_fails(&t, tool_run(&t, backup, "--only-config-file", CONF_FILE,
+			"--encryption-key-file", ENCRYPT_KEY_FILE, NULL), ENCRYPT_CONFLICT);
+	tool_destroy(&t);
+}
+
+TOOL_TEST(test_conf_and_cli_encryption_key_env_conflict)
+{
+	setenv(ENCRYPT_KEY_ENV, ENCRYPT_KEY, 1);
+	write_text(CONF_FILE, "[%s]\nencryption-key-env = \"" ENCRYPT_KEY_ENV "\"\n",
+			tool_section(backup));
+
+	tool_conf_t t;
+	int rc = tool_run(&t, backup, "--only-config-file", CONF_FILE,
+			"--encryption-key-env", ENCRYPT_KEY_ENV, NULL);
+	unsetenv(ENCRYPT_KEY_ENV);
+
+	assert_fails(&t, rc, ENCRYPT_CONFLICT);
+	tool_destroy(&t);
+}
+
+TOOL_TEST(test_ambiguous_sa_option_fetches_nothing)
+{
+	char* options[] = { "--sa-c", "--sa-ca" };
+
+	for (uint32_t i = 0; i < sizeof(options) / sizeof(options[0]); i++) {
+		fake_agent_t* agent = fake_agent_start(&g_agents[0]);
+		write_text(CONF_FILE, "[cluster]\nhost = \"secrets:r:host\"\n"
+				"[secret-agent]\nsa-address = \"%s\"\n", agent->address);
+
+		tool_conf_t t;
+		int rc = tool_run(&t, backup, "--only-config-file", CONF_FILE,
+				"--user", "secrets:r:user", options[i], CA_FILE, NULL);
+		fake_agent_stop(agent);
+
+		ck_assert_msg(agent->connections == 0,
+				"%s: agent got %d connection(s), output: %s", options[i],
+				agent->connections, t.out);
+		assert_fails(&t, rc, "ambiguous");
+		tool_destroy(&t);
+	}
+}
+
+TOOL_TEST(test_help_sa_ca_file_path_and_config_key)
+{
+	const char* help = help_text(backup);
+	char block[1024];
+	help_block(help, " --sa-ca-file=", block, sizeof(block));
+
+	ck_assert_msg(strstr(block, " --sa-ca-file=<path>\n") == block,
+			"--sa-ca-file metavar is not <path>: %s", block);
+	ck_assert_msg(strstr(help,
+			" In a config file, set these in the [secret-agent] section as sa-address,\n"
+			" sa-port, sa-timeout and sa-ca-file.\n") != NULL,
+			"help does not name the [secret-agent] config keys");
+}
+
+TOOL_TEST(test_home_file_secret_uses_later_file_agent)
+{
+	fake_agent_t* home_agent = fake_agent_start(&g_agents[0]);
+	fake_agent_t* file_agent = fake_agent_start(&g_agents[1]);
+	mkdir(HOME_DIR, 0700);
+	mkdir(HOME_AEROSPIKE_DIR, 0700);
+	write_text(HOME_CONF_FILE, "[cluster]\nhost = \"secrets:r:host\"\n"
+			"[secret-agent]\nsa-address = \"%s\"\n", home_agent->address);
+	write_text(CONF_FILE, "[secret-agent]\nsa-address = \"%s\"\n",
+			file_agent->address);
+
+	char* home = getenv("HOME") != NULL ? strdup(getenv("HOME")) : NULL;
+	setenv("HOME", HOME_DIR, 1);
+
+	tool_conf_t t;
+	int rc = tool_run(&t, backup, "--config-file", CONF_FILE, NULL);
+
+	if (home != NULL) {
+		setenv("HOME", home, 1);
+		free(home);
+	}
+	else {
+		unsetenv("HOME");
+	}
+
+	fake_agent_stop(home_agent);
+	fake_agent_stop(file_agent);
+
+	ck_assert_int_eq(home_agent->connections, 0);
+	ck_assert_int_eq(file_agent->requests, 1);
+	assert_ok(&t, rc);
+	ck_assert_str_eq(tool_host(&t), "127.0.0.1");
+	tool_destroy(&t);
+}
+
+TOOL_TEST(test_cli_ipv6_zone_id)
+{
+	assert_cli_agent(backup, "fe80::1%eth0", "43007",
+			"--sa-address", "[fe80::1%eth0]:43007", NULL);
+	assert_cli_agent(backup, "fe80::1%eth0", "3005",
+			"--sa-address", "fe80::1%eth0", NULL);
+}
+
+TOOL_TEST(test_conf_ipv6_zone_id)
+{
+	assert_conf_agent(backup, "sa-address = \"[fe80::1%eth0]:43007\"\n",
+			"fe80::1%eth0", "43007");
+	assert_conf_agent(backup, "sa-address = \"fe80::1%eth0\"\n",
+			"fe80::1%eth0", "3005");
+}
+
+TOOL_TEST(test_ipv6_empty_zone_id_invalid)
+{
+	assert_cli_address_invalid(backup, "[fe80::1%]:3005");
+	assert_cli_address_invalid(backup, "fe80::1%");
+	assert_conf_fails(backup, "sa-address = \"[fe80::1%]:3005\"\n", ADDRESS_INVALID);
+	assert_conf_fails(backup, "sa-address = \"fe80::1%\"\n", ADDRESS_INVALID);
+}
+
+TOOL_TEST(test_conf_sa_value_error_gives_value_and_expected)
+{
+	assert_conf_fails(backup, "sa-port = 0\n", "invalid value \"0\" " PORT_INVALID);
+	assert_conf_fails(backup, "sa-port = \"http\"\n",
+			"invalid value \"http\" " PORT_INVALID);
+	assert_conf_fails(backup, "sa-timeout = 0\n",
+			"invalid value \"0\" " TIMEOUT_INVALID);
+	assert_conf_fails(backup, "sa-address = \"host:\"\n",
+			"invalid value \"host:\" " ADDRESS_INVALID);
+	assert_conf_fails(backup, "sa-address = \"\"\n",
+			"invalid value \"\" " ADDRESS_INVALID);
 }
 
 
@@ -1218,8 +1523,25 @@ Suite* secret_agent_suite()
 	ADD_TOOL_TEST(tc, test_later_file_beats_earlier);
 	ADD_TOOL_TEST(tc, test_instance_section_replaces_default);
 	ADD_TOOL_TEST(tc, test_empty_ca_file_path);
+	ADD_TOOL_TEST(tc, test_missing_ca_file_not_read_without_secrets);
 	ADD_TOOL_TEST(tc, test_conf_missing_ca_file_names_key);
 	ADD_TOOL_TEST(tc, test_cli_missing_ca_file_names_option);
+	ADD_TOOL_TEST(tc, test_missing_ca_file_names_selected_section);
+
+	ADD_TOOL_TEST(tc, test_include_dir_text_file_skipped);
+	ADD_TOOL_TEST(tc, test_include_dir_unopenable_subdir_skipped);
+	ADD_TOOL_TEST(tc, test_include_dir_bad_nested_include_skipped);
+	ADD_TOOL_TEST(tc, test_include_dir_file_with_32_byte_path_loaded);
+	tcase_add_test(tc, test_conf_set_and_cli_set_both_backed_up);
+	ADD_TOOL_TEST(tc, test_conf_and_cli_encryption_key_file_conflict);
+	ADD_TOOL_TEST(tc, test_conf_and_cli_encryption_key_env_conflict);
+	ADD_TOOL_TEST(tc, test_ambiguous_sa_option_fetches_nothing);
+	ADD_TOOL_TEST(tc, test_help_sa_ca_file_path_and_config_key);
+	ADD_TOOL_TEST(tc, test_home_file_secret_uses_later_file_agent);
+	ADD_TOOL_TEST(tc, test_cli_ipv6_zone_id);
+	ADD_TOOL_TEST(tc, test_conf_ipv6_zone_id);
+	ADD_TOOL_TEST(tc, test_ipv6_empty_zone_id_invalid);
+	ADD_TOOL_TEST(tc, test_conf_sa_value_error_gives_value_and_expected);
 
 	suite_add_tcase(s, tc);
 

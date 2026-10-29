@@ -424,6 +424,19 @@ void sa_tls_destroy(sa_tls_cfg* cfg);
 bool sa_tls_set_ca_file(sa_tls_cfg* cfg, const char* path);
 
 /*
+ * Records the Secret Agent CA file to load before the first secret is fetched,
+ * and the option or config key that gave it. NULL clears it.
+ */
+void sa_ca_file_set(const char* path, const char* source);
+const char* sa_ca_file_path(void);
+
+/*
+ * Loads the recorded CA file into `cfg` and enables TLS. Returns false, naming
+ * the option or key, if it can't be read.
+ */
+bool sa_ca_file_load(sa_tls_cfg* cfg);
+
+/*
  * reads a private key from the given file into the pkey buffer and
  * initializes/populates the key passed
  */

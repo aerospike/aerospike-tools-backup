@@ -54,6 +54,15 @@
 #define SA_ADDRESS_EXPECTED "<host>[:<port>] or [<ipv6>][:<port>]"
 #define SA_PORT_EXPECTED "an integer from 1 to 65535"
 #define SA_TIMEOUT_EXPECTED "an integer from 1 to 2147483647"
+#define SA_CA_FILE_EXPECTED "a path to a CA certificate file"
+
+typedef enum {
+	CONFIG_PASS_MAIN,
+	CONFIG_PASS_AGENT,
+	// Only a rejected [secret-agent] section fails here. The main pass skips
+	// any other bad include directory entry.
+	CONFIG_PASS_AGENT_DIR
+} config_pass_t;
 
 
 //=========================================================
@@ -99,16 +108,17 @@ static bool config_restore(toml_table_t *config_table, restore_config_t *c, cons
 static bool config_cli_sets(const config_cli_t *cli, const char *name);
 
 static bool config_secret_agent(toml_table_t *config_table, sa_cfg *c, const char *instance, char errbuf[]);
+static const char *sa_expected(const char *name);
 static bool config_sa_number(const char *raw, int64_t max, int64_t *val);
 static bool parse_sa_number(const char *s, int64_t max, int64_t *val);
 static bool parse_sa_address(const char *address, char **host, int64_t *port);
 static bool is_ipv6(const char *host, size_t len);
 static void sa_cfg_set(sa_cfg *c, char *host, int64_t address_port, int64_t port, int64_t timeout);
 
-static bool config_load_file(void *c, const char *instance, const char *fname, int level, bool is_backup, bool agent_pass, const config_cli_t *cli);
-static bool config_load_files(void *c, const char *instance, const char *cmd_config_fname, bool only_cmd_config_file, bool is_backup, bool agent_pass, const config_cli_t *cli);
-static bool config_include(toml_table_t *config_table, void *c, const char *instance, int level, bool is_backup, bool agent_pass, const config_cli_t *cli);
-static bool config_from_dir(void *c, const char *instance, char *dirname, int level, bool is_backup, bool agent_pass, const config_cli_t *cli);
+static bool config_load_file(void *c, const char *instance, const char *fname, int level, bool is_backup, config_pass_t pass, const config_cli_t *cli);
+static bool config_load_files(void *c, const char *instance, const char *cmd_config_fname, bool only_cmd_config_file, bool is_backup, config_pass_t pass, const config_cli_t *cli);
+static bool config_include(toml_table_t *config_table, void *c, const char *instance, int level, bool is_backup, config_pass_t pass, const config_cli_t *cli);
+static bool config_from_dir(void *c, const char *instance, char *dirname, int level, bool is_backup, config_pass_t pass, const config_cli_t *cli);
 
 static const char *password_env_value(const char *opt_name, const char *var);
 static bool password_env(const char *opt_name, const char *var, char **ptr);
@@ -136,14 +146,19 @@ static bool get_secret_rtoml(sa_client *sc, const char *rtoml, char **res, bool 
 
 static bool
 config_load_file(void *c, const char *instance, const char *fname,
-		int level, bool is_backup, bool agent_pass, const config_cli_t *cli)
+		int level, bool is_backup, config_pass_t pass, const config_cli_t *cli)
 {
 	bool status = true;
+	bool agent_pass = pass != CONFIG_PASS_MAIN;
 	//fprintf(stderr, "Load file %d:%s\n", level, fname);
 	toml_table_t *config_table = NULL;
 
 	char errbuf[ERR_BUF_SIZE] = {""};
 	if (! config_parse_file((char*)fname, &config_table, errbuf)) {
+		if (pass == CONFIG_PASS_AGENT_DIR) {
+			return true;
+		}
+
 		status = false;
 	}
 	else if (! config_table) {
@@ -170,7 +185,7 @@ config_load_file(void *c, const char *instance, const char *fname,
 				status = false;
 			} else if (! agent_pass && ! config_backup(config_table, (backup_config_t*)c, instance, errbuf, &sc, cli)) {
 				status = false;
-			} else if (! config_include(config_table, c, instance, level, is_backup, agent_pass, cli)) {
+			} else if (! config_include(config_table, c, instance, level, is_backup, pass, cli)) {
 				status = false;
 			}
 		} else {
@@ -189,7 +204,7 @@ config_load_file(void *c, const char *instance, const char *fname,
 				status = false;
 			} else if (! agent_pass && ! config_restore(config_table, (restore_config_t*)c, instance, errbuf, &sc, cli)) {
 				status = false;
-			} else if (! config_include(config_table, c, instance, level, is_backup, agent_pass, cli)) {
+			} else if (! config_include(config_table, c, instance, level, is_backup, pass, cli)) {
 				status = false;
 			}
 		}
@@ -209,19 +224,23 @@ bool
 config_from_file(void *c, const char *instance, const char *fname,
 		int level, bool is_backup)
 {
-	return config_load_file(c, instance, fname, level, is_backup, true, NULL) &&
-			config_load_file(c, instance, fname, level, is_backup, false, NULL);
+	sa_ca_file_set(NULL, NULL);
+
+	return config_load_file(c, instance, fname, level, is_backup,
+			CONFIG_PASS_AGENT, NULL) &&
+			config_load_file(c, instance, fname, level, is_backup,
+			CONFIG_PASS_MAIN, NULL);
 }
 
 static bool
 config_load_files(void *c, const char *instance, const char *cmd_config_fname,
-		bool only_cmd_config_file, bool is_backup, bool agent_pass,
+		bool only_cmd_config_file, bool is_backup, config_pass_t pass,
 		const config_cli_t *cli)
 {
 	if (! only_cmd_config_file) {
 		// Load /etc/aerospike/astools.conf
 		if (! config_load_file(c, instance, "/etc/aerospike/astools.conf", 0,
-					is_backup, agent_pass, cli)) {
+					is_backup, pass, cli)) {
 			return false;
 		}
 
@@ -229,7 +248,7 @@ config_load_files(void *c, const char *instance, const char *cmd_config_fname,
 		char user_config_fname[128];
 		snprintf(user_config_fname, 127, "%s/%s", getenv("HOME"), BACKUP_CONFIG_FILE);
 		if (! config_load_file(c, instance, user_config_fname, 0, is_backup,
-					agent_pass, cli)) {
+					pass, cli)) {
 			return false;
 		}
 	}
@@ -237,7 +256,7 @@ config_load_files(void *c, const char *instance, const char *cmd_config_fname,
 	// Load user passed conf file
 	if (cmd_config_fname) {
 		if (! config_load_file(c, instance, cmd_config_fname, 0, is_backup,
-					agent_pass, cli)) {
+					pass, cli)) {
 			return false;
 		}
 	}
@@ -252,10 +271,10 @@ config_from_files(void *c, const char *instance, const char *cmd_config_fname,
 			&((restore_config_t*)c)->secret_cfg;
 
 	return config_load_files(c, instance, cmd_config_fname,
-			only_cmd_config_file, is_backup, true, NULL) &&
+			only_cmd_config_file, is_backup, CONFIG_PASS_AGENT, NULL) &&
 			config_secret_agent_cli(secret_cfg, cli) &&
 			config_load_files(c, instance, cmd_config_fname,
-			only_cmd_config_file, is_backup, false, cli);
+			only_cmd_config_file, is_backup, CONFIG_PASS_MAIN, cli);
 }
 
 void
@@ -283,29 +302,33 @@ config_secret_agent_cli(sa_cfg *c, const config_cli_t *cli)
 	}
 
 	if (cli->sa_port != NULL && ! parse_sa_number(cli->sa_port, 65535, &port)) {
-		err("--sa-port: invalid value %s, expected " SA_PORT_EXPECTED, cli->sa_port);
+		err("--sa-port: invalid value \"%s\", expected " SA_PORT_EXPECTED,
+				cli->sa_port);
 		return false;
 	}
 
 	if (cli->sa_timeout != NULL &&
 			! parse_sa_number(cli->sa_timeout, INT_MAX, &timeout)) {
-		err("--sa-timeout: invalid value %s, expected " SA_TIMEOUT_EXPECTED,
+		err("--sa-timeout: invalid value \"%s\", expected " SA_TIMEOUT_EXPECTED,
 				cli->sa_timeout);
 		return false;
 	}
 
 	if (cli->sa_address != NULL &&
 			! parse_sa_address(cli->sa_address, &host, &address_port)) {
-		err("--sa-address: invalid value %s, expected " SA_ADDRESS_EXPECTED,
+		err("--sa-address: invalid value \"%s\", expected " SA_ADDRESS_EXPECTED,
 				cli->sa_address);
 		return false;
 	}
 
-	if (ca_file != NULL &&
-			(ca_file[0] == '\0' || ! sa_tls_set_ca_file(&c->tls, ca_file))) {
-		err("%s: cannot load CA file \"%s\"", ca_option, ca_file);
+	if (ca_file != NULL && ca_file[0] == '\0') {
+		err("%s: invalid value \"\", expected " SA_CA_FILE_EXPECTED, ca_option);
 		cf_free(host);
 		return false;
+	}
+
+	if (ca_file != NULL) {
+		sa_ca_file_set(ca_file, ca_option);
 	}
 
 	sa_cfg_set(c, host, address_port, port, timeout);
@@ -601,11 +624,14 @@ config_secret_agent(toml_table_t *config_table, sa_cfg *c, const char *instance,
 
 	char secret_agent[256] = {"secret-agent"};
 	if (instance) {
-		snprintf(secret_agent, 255, "secret-agent_%s", instance);
+		char instance_section[256];
+		snprintf(instance_section, sizeof(instance_section), "secret-agent_%s",
+				instance);
 		// override if it exists otherwise use
 		// default section
-		if (toml_table_in(config_table, secret_agent)) {
-			current_table = toml_table_in(config_table, secret_agent);
+		if (toml_table_in(config_table, instance_section)) {
+			current_table = toml_table_in(config_table, instance_section);
+			strcpy(secret_agent, instance_section);
 		}
 	}
 
@@ -657,16 +683,30 @@ config_secret_agent(toml_table_t *config_table, sa_cfg *c, const char *instance,
 	const char *ca_key = ca_file != NULL ? "sa-ca-file" : "sa-cafile";
 	const char *ca_path = ca_file != NULL ? ca_file : cafile;
 
-	if (status && ca_path != NULL && ! sa_tls_set_ca_file(&c->tls, ca_path)) {
-		name = ca_key;
-		status = false;
-	}
-
 	if (status) {
+		if (ca_path != NULL) {
+			char source[300];
+			snprintf(source, sizeof(source), "%s in the [%s] config section", ca_key,
+					secret_agent);
+			sa_ca_file_set(ca_path, source);
+		}
+
 		sa_cfg_set(c, host, address_port, port, timeout);
 	}
 	else {
-		if (errbuf[0] == '\0') {
+		const char *expected = sa_expected(name);
+		const char *raw = toml_raw_in(current_table, name);
+
+		if (errbuf[0] == '\0' && expected != NULL && raw != NULL) {
+			char *value = NULL;
+			bool is_str = _config_str(raw, (void*)&value);
+
+			snprintf(errbuf, ERR_BUF_SIZE,
+					"invalid value \"%s\" for %s in the [%s] config section, expected %s\n",
+					is_str ? value : raw, name, secret_agent, expected);
+			cf_free(value);
+		}
+		else if (errbuf[0] == '\0') {
 			snprintf(errbuf, ERR_BUF_SIZE, "Invalid parameter value for `%s` in `%s` section\n",
 					name, secret_agent);
 		}
@@ -677,6 +717,28 @@ config_secret_agent(toml_table_t *config_table, sa_cfg *c, const char *instance,
 	cf_free(ca_file);
 	cf_free(cafile);
 	return status;
+}
+
+static const char *
+sa_expected(const char *name)
+{
+	if (! strcasecmp("sa-address", name)) {
+		return SA_ADDRESS_EXPECTED;
+	}
+
+	if (! strcasecmp("sa-port", name)) {
+		return SA_PORT_EXPECTED;
+	}
+
+	if (! strcasecmp("sa-timeout", name)) {
+		return SA_TIMEOUT_EXPECTED;
+	}
+
+	if (! strcasecmp("sa-ca-file", name) || ! strcasecmp("sa-cafile", name)) {
+		return SA_CA_FILE_EXPECTED;
+	}
+
+	return NULL;
 }
 
 static bool
@@ -760,15 +822,17 @@ parse_sa_address(const char *address, char **host, int64_t *port)
 static bool
 is_ipv6(const char *host, size_t len)
 {
+	const char *zone = memchr(host, '%', len);
+	size_t addr_len = zone != NULL ? (size_t) (zone - host) : len;
 	char buf[INET6_ADDRSTRLEN];
 	struct in6_addr addr;
 
-	if (len >= sizeof(buf)) {
+	if (addr_len >= sizeof(buf) || (zone != NULL && addr_len + 1 == len)) {
 		return false;
 	}
 
-	memcpy(buf, host, len);
-	buf[len] = '\0';
+	memcpy(buf, host, addr_len);
+	buf[addr_len] = '\0';
 	return inet_pton(AF_INET6, buf, &addr) == 1;
 }
 
@@ -1098,15 +1162,22 @@ config_backup_cluster(toml_table_t *config_table, backup_config_t *c, const char
 
 static bool
 config_from_dir(void *c, const char *instance, char *dirname,
-		int level, bool is_backup, bool agent_pass, const config_cli_t *cli)
+		int level, bool is_backup, config_pass_t pass, const config_cli_t *cli)
 {
 	DIR *dp;
 	struct dirent *entry;
 
 	if ((dp = opendir(dirname)) == NULL) {
+		if (pass == CONFIG_PASS_AGENT_DIR) {
+			return true;
+		}
+
 		fprintf(stderr, "Failed to open directory %s\n", dirname);
 		return false;
 	}
+
+	config_pass_t entry_pass = pass == CONFIG_PASS_MAIN ? CONFIG_PASS_MAIN :
+			CONFIG_PASS_AGENT_DIR;
 
 	while ((entry = readdir(dp)) != NULL) {
 
@@ -1115,7 +1186,7 @@ config_from_dir(void *c, const char *instance, char *dirname,
 			continue;
 		}
 
-		char path[strlen(dirname) + 1 + strlen(entry->d_name)];
+		char path[strlen(dirname) + 1 + strlen(entry->d_name) + 1];
 		sprintf(path, "%s/%s", dirname, entry->d_name);
 
 		struct stat statbuf;
@@ -1124,15 +1195,15 @@ config_from_dir(void *c, const char *instance, char *dirname,
 		bool ok = true;
 
 		if (S_ISDIR(statbuf.st_mode)) {
-			ok = config_from_dir(c, instance, path, level, is_backup, agent_pass,
+			ok = config_from_dir(c, instance, path, level, is_backup, entry_pass,
 					cli);
 		} else if (S_ISREG(statbuf.st_mode)) {
-			ok = config_load_file(c, instance, path, level, is_backup, agent_pass,
+			ok = config_load_file(c, instance, path, level, is_backup, entry_pass,
 					cli);
 		}
 
 		if (! ok) {
-			if (agent_pass) {
+			if (pass != CONFIG_PASS_MAIN) {
 				closedir(dp);
 				return false;
 			}
@@ -1148,9 +1219,15 @@ config_from_dir(void *c, const char *instance, char *dirname,
 
 static bool
 config_include(toml_table_t *config_table, void *c, const char *instance,
-		int level, bool is_backup, bool agent_pass, const config_cli_t *cli)
+		int level, bool is_backup, config_pass_t pass, const config_cli_t *cli)
 {
+	bool skip_errors = pass == CONFIG_PASS_AGENT_DIR;
+
 	if (level > 3) {
+		if (skip_errors) {
+			return true;
+		}
+
 		fprintf(stderr, "include max recursion level %d", level);
 		return false;
 	}
@@ -1166,6 +1243,10 @@ config_include(toml_table_t *config_table, void *c, const char *instance,
 
 		const char* raw_config_value = toml_raw_in(current_table, name);
 		if (! raw_config_value) {
+			if (skip_errors) {
+				continue;
+			}
+
 			fprintf(stderr, "Invalid parameter value for `%s` in `%s` section.\n",
 					name, "include");
 			return false;
@@ -1179,7 +1260,7 @@ config_include(toml_table_t *config_table, void *c, const char *instance,
 
 			if (status) {
 				if (! config_load_file(c, instance, fname, level + 1, is_backup,
-							agent_pass, cli)) {
+							pass, cli)) {
 					cf_free(fname);
 					return false;
 				}
@@ -1191,19 +1272,21 @@ config_include(toml_table_t *config_table, void *c, const char *instance,
 			status = config_str(raw_config_value, (void*)&dirname, NULL);
 			if (status) {
 				if (! config_from_dir(c, instance, dirname, level + 1, is_backup,
-							agent_pass, cli)) {
+							pass, cli)) {
 					cf_free(dirname);
 					return false;
 				}
 				cf_free(dirname);
 			}
 
+		} else if (skip_errors) {
+			continue;
 		} else {
 			fprintf(stderr, "Unknown parameter `%s` in `include` section.\n", name);
 			return false;
 		}
 
-		if (! status) {
+		if (! status && ! skip_errors) {
 			fprintf(stderr, "Invalid parameter value for `%s` in `include` section.\n",
 					name);
 			return false;

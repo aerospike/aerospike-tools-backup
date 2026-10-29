@@ -2165,6 +2165,40 @@ sa_tls_set_ca_file(sa_tls_cfg* cfg, const char* path)
 	return true;
 }
 
+static char* g_sa_ca_file = NULL;
+static char* g_sa_ca_source = NULL;
+
+void
+sa_ca_file_set(const char* path, const char* source)
+{
+	cf_free(g_sa_ca_file);
+	cf_free(g_sa_ca_source);
+	g_sa_ca_file = path != NULL ? safe_strdup(path) : NULL;
+	g_sa_ca_source = source != NULL ? safe_strdup(source) : NULL;
+}
+
+const char*
+sa_ca_file_path(void)
+{
+	return g_sa_ca_file;
+}
+
+bool
+sa_ca_file_load(sa_tls_cfg* cfg)
+{
+	if (g_sa_ca_file == NULL) {
+		return true;
+	}
+
+	if (! sa_tls_set_ca_file(cfg, g_sa_ca_file)) {
+		err("%s: cannot load CA file \"%s\"", g_sa_ca_source, g_sa_ca_file);
+		return false;
+	}
+
+	sa_ca_file_set(NULL, NULL);
+	return true;
+}
+
 char* read_file_as_string(const char* path)
 {
 	FILE* fptr;
@@ -2229,6 +2263,10 @@ get_secret_arg(sa_client* sc, char* path, char** res, bool* is_secret) {
 
 		if (!sc->cfg->addr || !sc->cfg->port) {
 			err("--sa-address and --sa-port must be used when using secrets");
+			return 1;
+		}
+
+		if (! sa_ca_file_load(&sc->cfg->tls)) {
 			return 1;
 		}
 

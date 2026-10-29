@@ -163,12 +163,13 @@ restore_config_set(int argc, char* argv[], restore_config_t* conf)
 
 	restore_config_init(conf);
 	restore_config_set_heap_defaults(conf);
+	sa_ca_file_set(NULL, NULL);
 
 	int32_t optcase;
 	int64_t tmp;
 	s3_log_level_t s3_log_level;
 
-	// Don't print error messages for the first two argument parsers
+	// Don't print error messages for the first argument parser
 	opterr = 0;
 
 	// Reset optind (internal variable)
@@ -198,11 +199,19 @@ restore_config_set(int argc, char* argv[], restore_config_t* conf)
 
 	as_vector_init(&cli.keys, sizeof(const char*), 8);
 
+	// Print error messages from here, before any secret is fetched
+	opterr = 1;
+
 	// Reset optind (internal variable)
 	// to parse all options again
 	optind = 1;
 	while ((optcase = getopt_long(argc, argv, OPTIONS_SHORT, options, 0)) != -1) {
 		switch (optcase) {
+
+			case '?':
+				fprintf(stderr, "Run with --help for usage information and flag options\n");
+				as_vector_destroy(&cli.keys);
+				return RESTORE_CONFIG_INIT_FAILURE;
 
 			case CONFIG_FILE_OPT_FILE:
 				config_fname = optarg;
@@ -270,9 +279,6 @@ restore_config_set(int argc, char* argv[], restore_config_t* conf)
 	if (!loaded) {
 		return RESTORE_CONFIG_INIT_FAILURE;
 	}
-
-	// Now print error messages
-	opterr = 1;
 
 	sa_client sac;
 	sa_client_init(&sac, &conf->secret_cfg);
@@ -1379,6 +1385,8 @@ usage(const char *name)
 	fprintf(stdout, "    Examples:\n");
 	fprintf(stdout, "    asrestore -n secrets:resource1:namespace -d testout -h secrets:pass:pass --sa-address 127.0.0.1:3005\n");
 	fprintf(stdout, "    asbackup -n test -d testout --ca-file secrets:resource2:cacert\n");
+	fprintf(stdout, " In a config file, set these in the [secret-agent] section as sa-address,\n");
+	fprintf(stdout, " sa-port, sa-timeout and sa-ca-file.\n");
 	fprintf(stdout, " --sa-address=<host_name>\n");
 	fprintf(stdout, "                      <host_name> is \"<host>[:<port>]\" or \"[<ipv6>][:<port>]\".\n");
 	fprintf(stdout, "                      Secret Agent hostname or IP address.\n");
@@ -1395,7 +1403,7 @@ usage(const char *name)
 	fprintf(stdout, "                      Timeout in milliseconds for Secret Agent requests, an integer\n");
 	fprintf(stdout, "                      from 1 to 2147483647.\n");
 	fprintf(stdout, "                      Default: 1000\n");
-	fprintf(stdout, " --sa-ca-file=<tls_cafile>\n");
+	fprintf(stdout, " --sa-ca-file=<path>\n");
 	fprintf(stdout, "                      Path to a CA certificate file. Enables TLS to the Secret Agent\n");
 	fprintf(stdout, "                      and verifies its certificate against this CA. The agent's\n");
 	fprintf(stdout, "                      hostname or IP address must be in the certificate.\n");
