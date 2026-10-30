@@ -34,6 +34,9 @@
 #define INCLUDE_DIR_FILE INCLUDE_DIR "/bad.conf"
 #define INCLUDE_DIR_README INCLUDE_DIR "/README"
 #define INCLUDE_DIR_NESTED INCLUDE_DIR "/nested.conf"
+#define INCLUDE_DIR_LINK INCLUDE_DIR "/link.conf"
+#define INCLUDE_DIR_LOOP INCLUDE_DIR "/loop"
+#define MISSING_CONF_FILE WORKING_DIR "/tmp_sa_missing.conf"
 #define INCLUDE_SUBDIR INCLUDE_DIR "/locked"
 // 32 bytes, so a path buffer without room for the NUL overflows. Only a
 // -fsanitize=address build traps that write; a normal build passes either way.
@@ -296,6 +299,8 @@ sa_teardown(void)
 	remove(INCLUDE_DIR_README);
 	remove(INCLUDE_DIR_NESTED);
 	remove(INCLUDE_DIR_AGENT);
+	remove(INCLUDE_DIR_LINK);
+	remove(INCLUDE_DIR_LOOP);
 	rmdir(INCLUDE_SUBDIR);
 	rmdir(INCLUDE_DIR);
 	remove(HOME_CONF_FILE);
@@ -1342,6 +1347,128 @@ TOOL_TEST(test_include_dir_missing_ca_file_fails)
 	tool_destroy(&t);
 }
 
+static int
+include_dir_link_run(tool_conf_t* t, bool backup, const char* target,
+		const char* link, fake_agent_t* agent)
+{
+	char path[PATH_MAX];
+	ck_assert(realpath(target, path) != NULL);
+	ck_assert_int_eq(symlink(path, link), 0);
+
+	write_text(CONF_FILE, "[cluster]\nhost = \"secrets:r:host\"\n"
+			"[include]\ndirectory = \"" INCLUDE_DIR "\"\n");
+
+	int rc = tool_run(t, backup, "--only-config-file", CONF_FILE, NULL);
+	fake_agent_stop(agent);
+	return rc;
+}
+
+TOOL_TEST(test_include_dir_symlinked_file_loaded)
+{
+	fake_agent_t* agent = fake_agent_start(&g_agents[0]);
+	mkdir(INCLUDE_DIR, 0700);
+	write_text(LATER_CONF_FILE, "[secret-agent]\nsa-address = \"%s\"\n",
+			agent->address);
+
+	tool_conf_t t;
+	int rc = include_dir_link_run(&t, backup, LATER_CONF_FILE, INCLUDE_DIR_LINK,
+			agent);
+
+	ck_assert_int_eq(agent->requests, 1);
+	assert_ok(&t, rc);
+	tool_destroy(&t);
+}
+
+TOOL_TEST(test_include_dir_link_to_directory_not_followed)
+{
+	// Following a link loop reads the same files at every level, until the
+	// path holds too many links.
+	fake_agent_t* agent = fake_agent_start(&g_agents[0]);
+	mkdir(INCLUDE_DIR, 0700);
+	write_text(INCLUDE_DIR_FILE, "[secret-agent]\nsa-address = \"%s\"\n",
+			agent->address);
+
+	tool_conf_t t;
+	int rc = include_dir_link_run(&t, backup, INCLUDE_DIR, INCLUDE_DIR_LOOP,
+			agent);
+
+	ck_assert_int_eq(agent->requests, 1);
+	assert_ok(&t, rc);
+	ck_assert_msg(count_of(t.out, "cannot read config file") == 0,
+			"expected no read warning, output: %s", t.out);
+	tool_destroy(&t);
+}
+
+static int
+tool_run_in_empty_home(tool_conf_t* t, bool backup, const char* option,
+		const char* path)
+{
+	mkdir(HOME_DIR, 0700);
+	char* home = getenv("HOME") != NULL ? strdup(getenv("HOME")) : NULL;
+	setenv("HOME", HOME_DIR, 1);
+
+	int rc = tool_run(t, backup, option, path, NULL);
+
+	if (home != NULL) {
+		setenv("HOME", home, 1);
+		free(home);
+	}
+	else {
+		unsetenv("HOME");
+	}
+
+	return rc;
+}
+
+TOOL_TEST(test_missing_named_config_file_reported)
+{
+	// The file the user named may have held the agent's CA file.
+	static const char* const options[] = { "--config-file", "--only-config-file" };
+
+	for (uint32_t i = 0; i < sizeof(options) / sizeof(options[0]); i++) {
+		tool_conf_t t;
+		int rc = tool_run_in_empty_home(&t, backup, options[i], MISSING_CONF_FILE);
+
+		assert_ok(&t, rc);
+		ck_assert_msg(count_of(t.out, "Warning: cannot read config file "
+				MISSING_CONF_FILE ": No such file or directory\n") == 1,
+				"expected one warning for %s, output: %s", options[i], t.out);
+		tool_destroy(&t);
+	}
+}
+
+TOOL_TEST(test_missing_default_config_file_not_reported)
+{
+	write_text(CONF_FILE, "");
+
+	tool_conf_t t;
+	int rc = tool_run_in_empty_home(&t, backup, "--config-file", CONF_FILE);
+
+	assert_ok(&t, rc);
+	ck_assert_msg(count_of(t.out, "cannot read config file") == 0,
+			"expected no read warning, output: %s", t.out);
+	tool_destroy(&t);
+}
+
+TOOL_TEST(test_unreadable_config_file_reported)
+{
+	if (geteuid() == 0) {
+		return;
+	}
+
+	write_text(CONF_FILE, "[secret-agent]\nsa-port = 1\n");
+	chmod(CONF_FILE, 0);
+
+	tool_conf_t t;
+	int rc = tool_run(&t, backup, "--only-config-file", CONF_FILE, NULL);
+
+	assert_ok(&t, rc);
+	ck_assert_msg(count_of(t.out, "Warning: cannot read config file " CONF_FILE
+			": Permission denied\n") == 1,
+			"expected one warning, output: %s", t.out);
+	tool_destroy(&t);
+}
+
 START_TEST(test_conf_set_and_cli_set_both_backed_up)
 {
 	write_text(CONF_FILE, "[asbackup]\nset = \"a\"\n");
@@ -1562,6 +1689,11 @@ Suite* secret_agent_suite()
 	ADD_TOOL_TEST(tc, test_include_dir_bad_nested_include_skipped);
 	ADD_TOOL_TEST(tc, test_include_dir_file_with_32_byte_path_loaded);
 	ADD_TOOL_TEST(tc, test_include_dir_missing_ca_file_fails);
+	ADD_TOOL_TEST(tc, test_include_dir_symlinked_file_loaded);
+	ADD_TOOL_TEST(tc, test_include_dir_link_to_directory_not_followed);
+	ADD_TOOL_TEST(tc, test_missing_named_config_file_reported);
+	ADD_TOOL_TEST(tc, test_missing_default_config_file_not_reported);
+	ADD_TOOL_TEST(tc, test_unreadable_config_file_reported);
 	tcase_add_test(tc, test_conf_set_and_cli_set_both_backed_up);
 	ADD_TOOL_TEST(tc, test_conf_and_cli_encryption_key_file_conflict);
 	ADD_TOOL_TEST(tc, test_conf_and_cli_encryption_key_env_conflict);

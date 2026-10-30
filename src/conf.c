@@ -97,7 +97,8 @@ static bool _config_int32(const char *raw_val, int32_t *ptr);
 static bool _config_int64(const char *raw_val, int64_t *ptr);
 static bool _config_bool(const char *raw_val, void *ptr);
 
-static bool config_parse_file(const char *fname, toml_table_t **tab, char errbuf[]);
+static bool config_parse_file(const char *fname, toml_table_t **tab, char errbuf[],
+		bool report);
 
 static bool config_backup_cluster(toml_table_t *config_table, backup_config_t *c, const char *instance, char errbuf[], sa_client* sc, const config_cli_t *cli);
 static bool config_backup(toml_table_t *config_table, backup_config_t *c, const char *instance, char errbuf[], sa_client* sc, const config_cli_t *cli);
@@ -154,7 +155,8 @@ config_load_file(void *c, const char *instance, const char *fname,
 	toml_table_t *config_table = NULL;
 
 	char errbuf[ERR_BUF_SIZE] = {""};
-	if (! config_parse_file((char*)fname, &config_table, errbuf)) {
+	if (! config_parse_file((char*)fname, &config_table, errbuf,
+			pass == CONFIG_PASS_MAIN)) {
 		if (pass == CONFIG_PASS_AGENT_DIR) {
 			return true;
 		}
@@ -269,6 +271,13 @@ config_from_files(void *c, const char *instance, const char *cmd_config_fname,
 {
 	sa_cfg *secret_cfg = is_backup ? &((backup_config_t*)c)->secret_cfg :
 			&((restore_config_t*)c)->secret_cfg;
+	struct stat cmd_config_stat;
+
+	if (cmd_config_fname != NULL && stat(cmd_config_fname, &cmd_config_stat) != 0 &&
+			errno == ENOENT) {
+		fprintf(stderr, "Warning: cannot read config file %s: %s\n", cmd_config_fname,
+				strerror(errno));
+	}
 
 	return config_load_files(c, instance, cmd_config_fname,
 			only_cmd_config_file, is_backup, CONFIG_PASS_AGENT, NULL) &&
@@ -1190,11 +1199,27 @@ config_from_dir(void *c, const char *instance, char *dirname,
 		sprintf(path, "%s/%s", dirname, entry->d_name);
 
 		struct stat statbuf;
-		lstat(path, &statbuf);
+
+		if (lstat(path, &statbuf) != 0) {
+			continue;
+		}
+
+		// As in asadm and aql, a link to a directory is not followed, so a link
+		// loop is not walked.
+		bool is_link = S_ISLNK(statbuf.st_mode);
+
+		if (is_link && stat(path, &statbuf) != 0) {
+			if (pass == CONFIG_PASS_MAIN) {
+				fprintf(stderr, "Warning: cannot read config file %s: %s\n", path,
+						strerror(errno));
+			}
+
+			continue;
+		}
 
 		bool ok = true;
 
-		if (S_ISDIR(statbuf.st_mode)) {
+		if (S_ISDIR(statbuf.st_mode) && ! is_link) {
 			ok = config_from_dir(c, instance, path, level, is_backup, entry_pass,
 					cli);
 		} else if (S_ISREG(statbuf.st_mode)) {
@@ -1296,11 +1321,17 @@ config_include(toml_table_t *config_table, void *c, const char *instance,
 }
 
 static bool
-config_parse_file(const char *fname, toml_table_t **tab, char errbuf[])
+config_parse_file(const char *fname, toml_table_t **tab, char errbuf[],
+		bool report)
 {
 	FILE *fp = fopen(fname, "r");
 
 	if (! fp) {
+		if (report && errno != ENOENT) {
+			fprintf(stderr, "Warning: cannot read config file %s: %s\n", fname,
+					strerror(errno));
+		}
+
 		// it ok if file is not found
 		return true;
 	}
