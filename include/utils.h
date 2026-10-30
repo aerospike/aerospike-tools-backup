@@ -437,6 +437,12 @@ const char* sa_ca_file_path(void);
 bool sa_ca_file_load(sa_tls_cfg* cfg);
 
 /*
+ * True when the recorded CA file failed to load since it was last set. A
+ * config file that fails this way must stop the run, never be skipped.
+ */
+bool sa_ca_file_load_failed(void);
+
+/*
  * reads a private key from the given file into the pkey buffer and
  * initializes/populates the key passed
  */

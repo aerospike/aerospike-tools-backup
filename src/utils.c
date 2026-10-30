@@ -2167,6 +2167,7 @@ sa_tls_set_ca_file(sa_tls_cfg* cfg, const char* path)
 
 static char* g_sa_ca_file = NULL;
 static char* g_sa_ca_source = NULL;
+static bool g_sa_ca_load_failed = false;
 
 void
 sa_ca_file_set(const char* path, const char* source)
@@ -2175,6 +2176,7 @@ sa_ca_file_set(const char* path, const char* source)
 	cf_free(g_sa_ca_source);
 	g_sa_ca_file = path != NULL ? safe_strdup(path) : NULL;
 	g_sa_ca_source = source != NULL ? safe_strdup(source) : NULL;
+	g_sa_ca_load_failed = false;
 }
 
 const char*
@@ -2190,13 +2192,31 @@ sa_ca_file_load(sa_tls_cfg* cfg)
 		return true;
 	}
 
+	FILE* f = fopen(g_sa_ca_file, "rb");
+
+	if (f == NULL) {
+		err("%s: cannot load CA file \"%s\": %s", g_sa_ca_source, g_sa_ca_file,
+				strerror(errno));
+		g_sa_ca_load_failed = true;
+		return false;
+	}
+
+	fclose(f);
+
 	if (! sa_tls_set_ca_file(cfg, g_sa_ca_file)) {
 		err("%s: cannot load CA file \"%s\"", g_sa_ca_source, g_sa_ca_file);
+		g_sa_ca_load_failed = true;
 		return false;
 	}
 
 	sa_ca_file_set(NULL, NULL);
 	return true;
+}
+
+bool
+sa_ca_file_load_failed(void)
+{
+	return g_sa_ca_load_failed;
 }
 
 char* read_file_as_string(const char* path)

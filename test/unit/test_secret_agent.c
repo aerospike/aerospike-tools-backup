@@ -35,7 +35,8 @@
 #define INCLUDE_DIR_README INCLUDE_DIR "/README"
 #define INCLUDE_DIR_NESTED INCLUDE_DIR "/nested.conf"
 #define INCLUDE_SUBDIR INCLUDE_DIR "/locked"
-// 32 bytes, so a path buffer without room for the NUL overflows.
+// 32 bytes, so a path buffer without room for the NUL overflows. Only a
+// -fsanitize=address build traps that write; a normal build passes either way.
 #define INCLUDE_DIR_AGENT INCLUDE_DIR "/agent1.conf"
 #define HOME_DIR WORKING_DIR "/tmp_sa_home"
 #define HOME_AEROSPIKE_DIR HOME_DIR "/.aerospike"
@@ -1194,10 +1195,12 @@ TOOL_TEST(test_conf_missing_ca_file_names_key)
 
 		char message[160];
 		snprintf(message, sizeof(message),
-				"%s in the [secret-agent] config section: cannot load CA file \"%s\"",
-				keys[i], NO_CA_FILE);
+				"%s in the [secret-agent] config section: cannot load CA file \"%s\": "
+				"No such file or directory\n", keys[i], NO_CA_FILE);
 		ck_assert_int_eq(agent->connections, 0);
 		assert_fails(&t, rc, message);
+		ck_assert_msg(count_of(t.out, NO_CA_FILE) == 1,
+				"expected one line naming the CA file, output: %s", t.out);
 		tool_destroy(&t);
 	}
 }
@@ -1216,10 +1219,13 @@ TOOL_TEST(test_cli_missing_ca_file_names_option)
 		fake_agent_stop(agent);
 
 		char message[160];
-		snprintf(message, sizeof(message), "%s: cannot load CA file \"%s\"",
+		snprintf(message, sizeof(message),
+				"%s: cannot load CA file \"%s\": No such file or directory\n",
 				options[i], NO_CA_FILE);
 		ck_assert_int_eq(agent->connections, 0);
 		assert_fails(&t, rc, message);
+		ck_assert_msg(count_of(t.out, NO_CA_FILE) == 1,
+				"expected one line naming the CA file, output: %s", t.out);
 		tool_destroy(&t);
 	}
 }
@@ -1241,8 +1247,8 @@ TOOL_TEST(test_missing_ca_file_names_selected_section)
 
 		char message[160];
 		snprintf(message, sizeof(message),
-				"sa-ca-file in the [%s] config section: cannot load CA file \"%s\"",
-				sections[i], NO_CA_FILE);
+				"sa-ca-file in the [%s] config section: cannot load CA file \"%s\": "
+				"No such file or directory\n", sections[i], NO_CA_FILE);
 		ck_assert_int_eq(agent->connections, 0);
 		assert_fails(&t, rc, message);
 		tool_destroy(&t);
@@ -1310,6 +1316,29 @@ TOOL_TEST(test_include_dir_file_with_32_byte_path_loaded)
 	ck_assert_int_eq(agent->requests, 1);
 	assert_ok(&t, rc);
 	ck_assert_str_eq(tool_host(&t), "127.0.0.1");
+	tool_destroy(&t);
+}
+
+TOOL_TEST(test_include_dir_missing_ca_file_fails)
+{
+	// Skipping the file would back up the default host, or restore into the
+	// backup's own namespace, with rc 0.
+	fake_agent_t* agent = fake_agent_start(&g_agents[0]);
+	mkdir(INCLUDE_DIR, 0700);
+	write_text(CONF_FILE, "[secret-agent]\nsa-address = \"%s\"\n"
+			"[include]\ndirectory = \"" INCLUDE_DIR "\"\n", agent->address);
+	write_text(INCLUDE_DIR_FILE, "[cluster]\nhost = \"secrets:r:host\"\n"
+			"[secret-agent]\nsa-ca-file = \"" NO_CA_FILE "\"\n");
+
+	tool_conf_t t;
+	int rc = tool_run(&t, backup, "--only-config-file", CONF_FILE, NULL);
+	fake_agent_stop(agent);
+
+	ck_assert_int_eq(agent->connections, 0);
+	assert_fails(&t, rc, "sa-ca-file in the [secret-agent] config section: "
+			"cannot load CA file \"" NO_CA_FILE "\"");
+	ck_assert_msg(count_of(t.out, "Skipped .....") == 0,
+			"expected no skipped entry, output: %s", t.out);
 	tool_destroy(&t);
 }
 
@@ -1532,6 +1561,7 @@ Suite* secret_agent_suite()
 	ADD_TOOL_TEST(tc, test_include_dir_unopenable_subdir_skipped);
 	ADD_TOOL_TEST(tc, test_include_dir_bad_nested_include_skipped);
 	ADD_TOOL_TEST(tc, test_include_dir_file_with_32_byte_path_loaded);
+	ADD_TOOL_TEST(tc, test_include_dir_missing_ca_file_fails);
 	tcase_add_test(tc, test_conf_set_and_cli_set_both_backed_up);
 	ADD_TOOL_TEST(tc, test_conf_and_cli_encryption_key_file_conflict);
 	ADD_TOOL_TEST(tc, test_conf_and_cli_encryption_key_env_conflict);

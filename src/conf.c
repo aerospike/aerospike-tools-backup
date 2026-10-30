@@ -1203,7 +1203,7 @@ config_from_dir(void *c, const char *instance, char *dirname,
 		}
 
 		if (! ok) {
-			if (pass != CONFIG_PASS_MAIN) {
+			if (pass != CONFIG_PASS_MAIN || sa_ca_file_load_failed()) {
 				closedir(dp);
 				return false;
 			}
