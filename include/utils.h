@@ -269,7 +269,8 @@ typedef enum {
 	COMMAND_SA_ADDRESS,
 	COMMAND_SA_PORT,
 	COMMAND_SA_TIMEOUT,
-	COMMAND_SA_CAFILE
+	COMMAND_SA_CAFILE,
+	COMMAND_SA_CA_FILE
 } cmd_opt;
 
 /*
@@ -415,6 +416,31 @@ void sa_config_clone(sa_cfg* clone, const sa_cfg* src);
 void sa_config_destroy(sa_cfg* cfg);
 void sa_tls_clone(sa_tls_cfg* clone, const sa_tls_cfg* src);
 void sa_tls_destroy(sa_tls_cfg* cfg);
+
+/*
+ * Reads the CA file at `path` into `cfg` and enables TLS, replacing any CA
+ * set before. Leaves `cfg` unchanged if the file can't be read.
+ */
+bool sa_tls_set_ca_file(sa_tls_cfg* cfg, const char* path);
+
+/*
+ * Records the Secret Agent CA file to load before the first secret is fetched,
+ * and the option or config key that gave it. NULL clears it.
+ */
+void sa_ca_file_set(const char* path, const char* source);
+const char* sa_ca_file_path(void);
+
+/*
+ * Loads the recorded CA file into `cfg` and enables TLS. Returns false, naming
+ * the option or key, if it can't be read.
+ */
+bool sa_ca_file_load(sa_tls_cfg* cfg);
+
+/*
+ * True when the recorded CA file failed to load since it was last set. A
+ * config file that fails this way must stop the run, never be skipped.
+ */
+bool sa_ca_file_load_failed(void);
 
 /*
  * reads a private key from the given file into the pkey buffer and

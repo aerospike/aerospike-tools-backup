@@ -621,38 +621,10 @@ START_TEST(test_init_encryption_key_env)
 }
 END_TEST
 
-START_TEST(test_init_sa_ca_file)
+static void
+assert_sa_ca_file_conf(const char* secret_agent_args)
 {
-	// decoding of test/test_key.pem
-	static char data[] = "-----BEGIN RSA PRIVATE KEY-----\n"
-			"MIIEogIBAAKCAQEAvFGdHQauRhjDleDY/0lAVi7OfpzuUUpEbaQZIQ966qs2nXCY\n"
-			"CAYZwnO7VkR4ooUKofms4rgGv7wmZzzXYGXqQuhiEcGd+DeUnasq6+cgqWlUGqYw\n"
-			"I67iWIjzJTWOoMC7jCbphBsjHLb/ckJ4piNJUxVH/9FPdYoQLCo5J3gTvae5IZwr\n"
-			"ezB88uc9JUYFuXDWwTu0yTzzZuteLMTG1Ab6ZMTR6wb4x4vU4yJfTyictJRcO6ad\n"
-			"idXPOrEqbFk/AzOegzHSVEvPRwwbfbHYI08CyYXJ3RO9hTrv6MdPqtI+jz6uPFRl\n"
-			"ilHCIlQ9cJjapNLJFnGJfzv6guTICkaxUTnhTwIDAQABAoIBAC7VsVhlr/P49rOQ\n"
-			"vwcGhbypWWu9xbtr2AbYl/NT8ULpn+SZ+wWL1t44gC/dSY9JvTI5cRjVocAPoBFu\n"
-			"3TW5QwCu4Kz/1TTFRe3Mgxk2WzYm3ubdy/0j4mEYdjgb0MQECuC5ULwtL5dVn8Qf\n"
-			"6fePsQ27rjNeL//QfWMugRZi064H2lQjI27/x5uPRvkPM0yjijqMlTA/0XVA0aO9\n"
-			"UWMkEAH5iwUslAhE+0MJebFZA704No+98VrcShxnzEfEMqtAtpdCpcA19Nev5TsZ\n"
-			"DvhvODzw4xYdHfEBlPRO7SVXwC4NBxZZy2ocglwHVN3rd6gfa3IfF4OuGs13y6O+\n"
-			"jAy9l3ECgYEA39aGooT4U50RReGVsRf483Rf4b2Ajkm6Di29Qw2il0LcGTc5PG6s\n"
-			"LjA2dX1ubzp1jBsY/P2tpgPBjreOY8lA5tEcFYHLfwMBXYLFG7GBcgYzwDpyH402\n"
-			"5dPMJzAEwwAUsfKkZSdqfudNBvUIPZ4mf2j2Xji9tOF+Y+X2LLKm1rkCgYEA12CU\n"
-			"Nuy2rvHtvLSRjlK79j2oY8ijQOTNT5xIiaBUCNHQJBOKfjb2jv9efxSsQqVMWXsn\n"
-			"8Rvwi3aklVINzmcdLLWZc7X3lnazEd5dpiIzFOYr0sXDdrNexr/+w3OMQtiivBru\n"
-			"YCp8o70NIsRf+h/1kLmtNzM+OqSEIzft0lys9EcCgYBf2504yD0YgbE9/gd/GccR\n"
-			"a4sMP31ocgZtwATHTHWO1aEwY0ftq2+tMBSCaD78/0oLwCcJYRIWgJFJry4ZabyT\n"
-			"nIWsaDNfp0fUZgZHf9Lxo9pRvjXVcUJLVlKdjaDcaZJzSnhAoYqn4iJIknL/AFV4\n"
-			"RtkLLL2BUvgvi/HK3o84cQKBgF2U/VGQMSB6xk3EN6qbkEhCKjSRLT45LGx2/52t\n"
-			"KFZctA+43ehRgXhIxYp6NQ8QO8h1lrlQ5ofymTi4Wn9glnCix3ZbjqS2FsCg2hgh\n"
-			"rAhcqpX+kBu3fGrnaY8LWdqBvtP077ahP171+gstQHayBEVKKFVf0p4wdanH13Ic\n"
-			"CpppAoGAOzC3FYRb3C3RhAMddPQ3kZ2VWk9XYOwe9KDZtdjGvmyhBHuRlkw2+nX4\n"
-			"Gq13GCn2ugWNryIPzq+2uqognb9Z+mdUTwc0DBoIWaKJbf7CRxraD2KOym0jU3nn\n"
-			"7QAQsGMrAby/zeT+pQRbQRBim6PAfpRoPicDa9PZNh7orkPxaL0=\n"
-			"-----END RSA PRIVATE KEY-----\n";
-
-	tmp_file_init("", "", "", "sa-cafile=\"test/test_key.pem\"\n");
+	tmp_file_init("", "", "", secret_agent_args);
 	restore_config_t c1;
 	restore_config_t c2;
 	restore_config_init(&c1);
@@ -661,14 +633,105 @@ START_TEST(test_init_sa_ca_file)
 
 	ck_assert_int_ne(config_from_file(&c1, NULL, file_name, 0, false), 0);
 
-	c2.secret_cfg.tls.ca_string = (char*) test_malloc(sizeof(data));
-	memcpy((void*)c2.secret_cfg.tls.ca_string, data, sizeof(data));
-	c2.secret_cfg.tls.enabled = true;
+	ck_assert_ptr_ne(sa_ca_file_path(), NULL);
+	ck_assert_str_eq(sa_ca_file_path(), "test/test_key.pem");
 
 	assert_restore_config_eq(&c1, &c2);
 
 	restore_config_destroy(&c2);
 	restore_config_destroy(&c1);
+}
+
+START_TEST(test_init_sa_ca_file)
+{
+	assert_sa_ca_file_conf("sa-ca-file=\"test/test_key.pem\"\n");
+}
+END_TEST
+
+START_TEST(test_init_sa_cafile)
+{
+	assert_sa_ca_file_conf("sa-cafile=\"test/test_key.pem\"\n");
+}
+END_TEST
+
+START_TEST(test_init_sa_ca_file_beats_sa_cafile)
+{
+	assert_sa_ca_file_conf("sa-cafile=\"test/no_such_ca.pem\"\n"
+			"sa-ca-file=\"test/test_key.pem\"\n");
+	assert_sa_ca_file_conf("sa-ca-file=\"test/test_key.pem\"\n"
+			"sa-cafile=\"test/no_such_ca.pem\"\n");
+}
+END_TEST
+
+static void
+assert_cli_sa_ca_file(int argc, char* argv[], const char* expected_path)
+{
+	restore_config_t conf;
+	ck_assert_int_eq(restore_config_set(argc, argv, &conf), 0);
+
+	ck_assert_ptr_ne(sa_ca_file_path(), NULL);
+	ck_assert_str_eq(sa_ca_file_path(), expected_path);
+	ck_assert_ptr_eq(conf.secret_cfg.tls.ca_string, NULL);
+	ck_assert(! conf.secret_cfg.tls.enabled);
+	restore_config_destroy(&conf);
+}
+
+START_TEST(test_cli_sa_ca_file)
+{
+	char* ca_file[] = { "asrestore", "--no-config-file",
+		"--sa-ca-file", "test/test_key.pem" };
+	assert_cli_sa_ca_file(4, ca_file, "test/test_key.pem");
+
+	char* cafile[] = { "asrestore", "--no-config-file",
+		"--sa-cafile", "test/test_key.pem" };
+	assert_cli_sa_ca_file(4, cafile, "test/test_key.pem");
+
+	char* ca_file_first[] = { "asrestore", "--no-config-file",
+		"--sa-ca-file", "test/test_key.pem", "--sa-cafile", "test/no_such_ca.pem" };
+	assert_cli_sa_ca_file(6, ca_file_first, "test/test_key.pem");
+
+	char* cafile_first[] = { "asrestore", "--no-config-file",
+		"--sa-cafile", "test/no_such_ca.pem", "--sa-ca-file", "test/test_key.pem" };
+	assert_cli_sa_ca_file(6, cafile_first, "test/test_key.pem");
+}
+END_TEST
+
+START_TEST(test_cli_sa_ca_file_overrides_config)
+{
+	static const char* const conf_keys[] = { "sa-ca-file", "sa-cafile" };
+	static char* const cli_options[] = { "--sa-ca-file", "--sa-cafile" };
+
+	for (uint32_t i = 0; i < 2; i++) {
+		char sa_args[64];
+		snprintf(sa_args, sizeof(sa_args), "%s=\"test/test_key2.pem\"\n",
+				conf_keys[i]);
+		tmp_file_init("", "", "", sa_args);
+
+		char* conf_only[] = { "asrestore", "--only-config-file", file_name };
+		assert_cli_sa_ca_file(3, conf_only, "test/test_key2.pem");
+
+		for (uint32_t j = 0; j < 2; j++) {
+			char* argv[] = { "asrestore", "--only-config-file", file_name,
+				cli_options[j], "test/test_key.pem" };
+			assert_cli_sa_ca_file(5, argv, "test/test_key.pem");
+		}
+	}
+}
+END_TEST
+
+START_TEST(test_cli_sa_ca_file_missing)
+{
+	static char* const options[] = { "--sa-ca-file", "--sa-cafile" };
+
+	for (uint32_t i = 0; i < 2; i++) {
+		char* found[] = { "asrestore", "--no-config-file",
+			options[i], "test/test_key.pem" };
+		assert_cli_sa_ca_file(4, found, "test/test_key.pem");
+
+		char* missing[] = { "asrestore", "--no-config-file",
+			options[i], "test/no_such_ca.pem" };
+		assert_cli_sa_ca_file(4, missing, "test/no_such_ca.pem");
+	}
 }
 END_TEST
 
@@ -885,6 +948,11 @@ Suite* restore_conf_suite()
 	tcase_add_test(tc_init, test_init_sa_port);
 	tcase_add_test(tc_init, test_init_sa_timeout);
 	tcase_add_test(tc_init, test_init_sa_ca_file);
+	tcase_add_test(tc_init, test_init_sa_cafile);
+	tcase_add_test(tc_init, test_init_sa_ca_file_beats_sa_cafile);
+	tcase_add_test(tc_init, test_cli_sa_ca_file);
+	tcase_add_test(tc_init, test_cli_sa_ca_file_overrides_config);
+	tcase_add_test(tc_init, test_cli_sa_ca_file_missing);
 
 	suite_add_tcase(s, tc_init);
 

@@ -79,7 +79,8 @@ def gen_secret_agent_files(backup_args:{str:any}=None, restore_args:{str:any}=No
 
 
 BIN_NAMES = lib.identifier_variations(14, False)
-def backup_restore_with_secrets(backup_args:{str:any}, restore_args:{str:any}, sa_args:[str], sa_tls:bool=False):
+def backup_restore_with_secrets(backup_args:{str:any}, restore_args:{str:any}, sa_args:[str], sa_tls:bool=False,
+                                cli_secrets:bool=True):
     os.system("rm -rf " + SA_RSRC_PATH)
     os.system("mkdir " + SA_RSRC_PATH)
 
@@ -94,9 +95,9 @@ def backup_restore_with_secrets(backup_args:{str:any}, restore_args:{str:any}, s
     try:
         agent.start()
 
-        bargs = sa.gen_secret_args(backup_args, SA_BACKUP_RESOURCE)
+        bargs = sa.gen_secret_args(backup_args, SA_BACKUP_RESOURCE) if cli_secrets else []
         bargs += sa_args
-        rargs = sa.gen_secret_args(restore_args, SA_RESTORE_RESOURCE)
+        rargs = sa.gen_secret_args(restore_args, SA_RESTORE_RESOURCE) if cli_secrets else []
         rargs += sa_args
 
         backup_and_restore(
@@ -122,38 +123,34 @@ def setup_module(module):
 def teardown_module(module):
 	sa.teardown_secret_agent()
 
-def test_secrets_ca_file():
-    """
-    Test sa cert secret option.
-    """
-    backup_restore_with_secrets(
-        backup_args={"host": "127.0.0.1", "port": 3000},
-        restore_args={"host": "127.0.0.1", "port": 3000},
-        sa_args=["--sa-address", sa.SA_TLS_ADDR, "--sa-port", sa.SA_PORT,
-                 "--sa-cafile", SA_CA_FILE],
-        sa_tls=True
-    )
+def sa_cli_args(addr:str, ca_file:str, ca_file_key:str) -> [str]:
+    return ["--sa-address", addr, "--sa-port", sa.SA_PORT, "--" + ca_file_key, ca_file]
 
-def sa_cli_args(addr:str, ca_file:str) -> [str]:
-    return ["--sa-address", addr, "--sa-port", sa.SA_PORT, "--sa-cafile", ca_file]
-
-def sa_conf_args(addr:str, ca_file:str) -> [str]:
+def sa_conf_args(addr:str, ca_file:str, ca_file_key:str) -> [str]:
     with open(SA_TOOLS_CONF_PATH, "w+") as f:
-        f.write('[secret-agent]\nsa-address = "%s"\nsa-port = "%s"\nsa-cafile = "%s"\n'
-                % (addr, sa.SA_PORT, ca_file))
+        f.write('[secret-agent]\nsa-address = "%s"\nsa-port = "%s"\n%s = "%s"\n'
+                % (addr, sa.SA_PORT, ca_file_key, ca_file))
+    return ["--only-config-file", SA_TOOLS_CONF_PATH]
+
+def write_tools_conf(text:str) -> [str]:
+    with open(SA_TOOLS_CONF_PATH, "w+") as f:
+        f.write(text)
     return ["--only-config-file", SA_TOOLS_CONF_PATH]
 
 SA_ARG_SOURCES = pytest.mark.parametrize("make_sa_args", [sa_cli_args, sa_conf_args],
                                          ids=["cli", "config-file"])
+SA_CA_FILE_KEYS = pytest.mark.parametrize("ca_file_key", ["sa-ca-file", "sa-cafile"])
 
-def test_secrets_ca_file_config_file():
+@SA_ARG_SOURCES
+@SA_CA_FILE_KEYS
+def test_secrets_ca_file(make_sa_args, ca_file_key):
     """
-    Test the secret agent TLS options from the [secret-agent] config section.
+    Test the secret agent TLS options.
     """
     backup_restore_with_secrets(
         backup_args={"host": "127.0.0.1", "port": 3000},
         restore_args={"host": "127.0.0.1", "port": 3000},
-        sa_args=sa_conf_args(sa.SA_TLS_ADDR, SA_CA_FILE),
+        sa_args=make_sa_args(sa.SA_TLS_ADDR, SA_CA_FILE, ca_file_key),
         sa_tls=True
     )
 
@@ -184,23 +181,26 @@ def expect_sa_cert_verify_failure(sa_args:[str], reason:str):
         agent.cleanup()
 
 @SA_ARG_SOURCES
-def test_secrets_ca_file_address_mismatch(make_sa_args):
+@SA_CA_FILE_KEYS
+def test_secrets_ca_file_address_mismatch(make_sa_args, ca_file_key):
     """
     Test that the agent certificate is rejected when the secret agent address
     is not one of its subject alternative names.
     """
-    expect_sa_cert_verify_failure(make_sa_args(sa.SA_ADDR, SA_CA_FILE),
+    expect_sa_cert_verify_failure(make_sa_args(sa.SA_ADDR, SA_CA_FILE, ca_file_key),
                                   "IP address mismatch")
 
 @SA_ARG_SOURCES
-def test_secrets_ca_file_untrusted_ca(make_sa_args):
+@SA_CA_FILE_KEYS
+def test_secrets_ca_file_untrusted_ca(make_sa_args, ca_file_key):
     """
     Test that the agent certificate is rejected when it is not signed by the
     secret agent CA file.
     """
     sa.tls_cfg(cert_file=SA_UNTRUSTED_CA_FILE, key_file=SA_UNTRUSTED_KEY_FILE).get_cfg()
-    expect_sa_cert_verify_failure(make_sa_args(sa.SA_TLS_ADDR, SA_UNTRUSTED_CA_FILE),
-                                  "self[- ]signed certificate")
+    expect_sa_cert_verify_failure(
+        make_sa_args(sa.SA_TLS_ADDR, SA_UNTRUSTED_CA_FILE, ca_file_key),
+        "self[- ]signed certificate")
 
 def test_secrets():
     """
@@ -240,4 +240,81 @@ def test_secrets_default_sa_args():
         backup_args={"host": "127.0.0.1", "port": 3000},
         restore_args={"host": "127.0.0.1", "port": 3000},
         sa_args=[]
+    )
+
+@pytest.mark.parametrize("make_sa_args", [
+    lambda: ["--no-config-file", "--sa-address", "127.0.0.1:9999", "--sa-port", sa.SA_PORT],
+    lambda: write_tools_conf('[secret-agent]\nsa-address = "127.0.0.1:9999"\nsa-port = "%s"\n'
+                             % sa.SA_PORT),
+], ids=["cli", "config-file"])
+def test_secrets_sa_port_beats_address_port(make_sa_args):
+    """
+    Test that sa-port overrides a port given in sa-address.
+    """
+    backup_restore_with_secrets(
+        backup_args={"host": "127.0.0.1", "port": 3000},
+        restore_args={"host": "127.0.0.1", "port": 3000},
+        sa_args=make_sa_args()
+    )
+
+@pytest.mark.parametrize("make_sa_args", [
+    lambda: ["--no-config-file", "--sa-address", "[::1]:%s" % sa.SA_PORT],
+    lambda: ["--no-config-file", "--sa-address", "[::1]", "--sa-port", sa.SA_PORT],
+    lambda: ["--no-config-file", "--sa-address", "::1"],
+    lambda: write_tools_conf('[secret-agent]\nsa-address = "[::1]:%s"\n' % sa.SA_PORT),
+    lambda: write_tools_conf('[secret-agent]\nsa-address = "[::1]"\nsa-port = "%s"\n' % sa.SA_PORT),
+    lambda: write_tools_conf('[secret-agent]\nsa-address = "::1"\n'),
+], ids=["cli-port", "cli-sa-port", "cli-unbracketed",
+        "config-file-port", "config-file-sa-port", "config-file-unbracketed"])
+def test_secrets_ipv6_address_forms(make_sa_args):
+    """
+    Test the IPv6 sa-address forms: bracketed with a port, bracketed with
+    sa-port and unbracketed with the default port.
+    """
+    backup_restore_with_secrets(
+        backup_args={"host": "127.0.0.1", "port": 3000},
+        restore_args={"host": "127.0.0.1", "port": 3000},
+        sa_args=make_sa_args()
+    )
+
+def test_secrets_in_config_file_use_cli_sa_options():
+    """
+    Test that secrets in the config file are fetched with the secret agent
+    options given on the command line.
+    """
+    conf_args = write_tools_conf('[cluster]\nhost = "secrets:%s:host"\n' % SA_BACKUP_RESOURCE)
+    backup_restore_with_secrets(
+        backup_args={"host": "127.0.0.1"},
+        restore_args={"host": "127.0.0.1"},
+        sa_args=conf_args + sa_cli_args(sa.SA_TLS_ADDR, SA_CA_FILE, "sa-ca-file"),
+        sa_tls=True,
+        cli_secrets=False
+    )
+
+def test_secrets_in_config_file_overridden_on_cli_not_fetched():
+    """
+    Test that a secret in the config file is not fetched when the command line
+    gives the same option.
+    """
+    conf_args = write_tools_conf('[cluster]\nhost = "secrets:%s:no-such-secret"\n'
+                                 % SA_BACKUP_RESOURCE)
+    backup_restore_with_secrets(
+        backup_args={"port": 3000},
+        restore_args={"port": 3000},
+        sa_args=conf_args + ["--host", "127.0.0.1"]
+    )
+
+def test_secrets_conf_integer_port_and_digit_string_timeout():
+    """
+    Test a [secret-agent] section with sa-port as an integer and sa-timeout as
+    a string of digits.
+    """
+    conf_args = write_tools_conf('[secret-agent]\nsa-address = "%s"\nsa-port = %s\n'
+                                 'sa-timeout = "2000"\nsa-ca-file = "%s"\n'
+                                 % (sa.SA_TLS_ADDR, sa.SA_PORT, SA_CA_FILE))
+    backup_restore_with_secrets(
+        backup_args={"host": "127.0.0.1", "port": 3000},
+        restore_args={"host": "127.0.0.1", "port": 3000},
+        sa_args=conf_args,
+        sa_tls=True
     )
