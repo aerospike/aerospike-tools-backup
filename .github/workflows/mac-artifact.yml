@@ -15,9 +15,9 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [macos-15-intel, macos-14, macos-15, macos-26]
+        os: [macos-15-intel, macos-26-intel, macos-15, macos-26]
         include:
-          # x86_64 native build
+          # x86_64 native builds
           - os: macos-15-intel
             openssl-path: /usr/local/opt/openssl@3
             zstd-path: /usr/local
@@ -26,15 +26,15 @@ jobs:
             ssh2-path: /usr/local
             uv-path: /usr/local
             jansson-path: /usr/local
-          # ARM64 native builds
-          - os: macos-14
-            openssl-path: /opt/homebrew/opt/openssl@3
-            zstd-path: /opt/homebrew
+          - os: macos-26-intel
+            openssl-path: /usr/local/opt/openssl@3
+            zstd-path: /usr/local
             aws-sdk-path: /usr/local
             curl-path: /usr/local
             ssh2-path: /usr/local
-            uv-path: /opt/homebrew
-            jansson-path: /opt/homebrew
+            uv-path: /usr/local
+            jansson-path: /usr/local
+          # ARM64 native builds
           - os: macos-15
             openssl-path: /opt/homebrew/opt/openssl@3
             zstd-path: /opt/homebrew
@@ -165,11 +165,13 @@ jobs:
         # Xcode / Clang on macOS 26 (Xcode 26.5+) rejects two things in the AWS SDK under -Werror:
         # aws-crt-cpp literal-operator spacing (-Wdeprecated-literal-operator) and abs(int64_t) in
         # AdaptiveRetryStrategy.cpp (-Wabsolute-value). Suppress both so the SDK builds.
-        if [[ "${{ matrix.os }}" == "macos-26" ]]; then
+        if [[ "$MATRIX_OS" == macos-26* ]]; then
           FLAGS+=(-DCMAKE_CXX_FLAGS="-Wno-deprecated-literal-operator -Wno-absolute-value")
         fi
         cmake -S . -B build_static "${FLAGS[@]}"
         make -C build_static
+      env:
+        MATRIX_OS: ${{ matrix.os }}
       working-directory: aws-sdk-cpp-${{ env.AWS_SDK_CPP_VERSION }}
     - name: Cache libssh2
       id: cache-libssh2
@@ -317,7 +319,7 @@ jobs:
         if-no-files-found: error
   bundle-binaries:
     needs: build
-    runs-on: macos-14
+    runs-on: macos-15
     if: "${{ inputs.submodule == '' }}"
 
     steps: 
