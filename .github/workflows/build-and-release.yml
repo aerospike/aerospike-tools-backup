@@ -365,12 +365,12 @@ jobs:
     needs: get-version
     strategy:
       matrix:
-        os: [macos-15-intel, macos-14, macos-15, macos-26]
+        os: [macos-15-intel, macos-26-intel, macos-15, macos-26]
         # One publisher per arch (the oldest runner): every leg of an arch now
         # builds the same file name, so a second uploader would collide. The
         # unmarked legs still build and test, which is the point of the matrix.
         include:
-          # x86_64 native build
+          # x86_64 native builds
           - os: macos-15-intel
             publish: true
             openssl-path: /usr/local/opt/openssl@3
@@ -380,17 +380,17 @@ jobs:
             ssh2-path: /usr/local
             uv-path: /usr/local
             jansson-path: /usr/local
-          # ARM64 native builds
-          - os: macos-14
-            publish: true
-            openssl-path: /opt/homebrew/opt/openssl@3
-            zstd-path: /opt/homebrew
+          - os: macos-26-intel
+            openssl-path: /usr/local/opt/openssl@3
+            zstd-path: /usr/local
             aws-sdk-path: /usr/local
             curl-path: /usr/local
             ssh2-path: /usr/local
-            uv-path: /opt/homebrew
-            jansson-path: /opt/homebrew
+            uv-path: /usr/local
+            jansson-path: /usr/local
+          # ARM64 native builds
           - os: macos-15
+            publish: true
             openssl-path: /opt/homebrew/opt/openssl@3
             zstd-path: /opt/homebrew
             aws-sdk-path: /usr/local
@@ -510,11 +510,13 @@ jobs:
         # Xcode / Clang on macOS 26 (Xcode 26.5+) rejects two things in the AWS SDK under -Werror:
         # aws-crt-cpp literal-operator spacing (-Wdeprecated-literal-operator) and abs(int64_t) in
         # AdaptiveRetryStrategy.cpp (-Wabsolute-value). Suppress both so the SDK builds.
-        if [[ "${{ matrix.os }}" == "macos-26" ]]; then
+        if [[ "$MATRIX_OS" == macos-26* ]]; then
           FLAGS+=(-DCMAKE_CXX_FLAGS="-Wno-deprecated-literal-operator -Wno-absolute-value")
         fi
         cmake -S . -B build_static "${FLAGS[@]}"
         make -C build_static
+      env:
+        MATRIX_OS: ${{ matrix.os }}
       working-directory: aws-sdk-cpp-${{ env.AWS_SDK_CPP_VERSION }}
     - name: Cache libssh2
       id: cache-libssh2
@@ -908,7 +910,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-15-intel, macos-14, macos-15, macos-26]
+        os: [macos-15-intel, macos-26-intel, macos-15, macos-26]
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
