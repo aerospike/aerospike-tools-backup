@@ -2122,30 +2122,42 @@ assert_help(const char* out)
 	ck_assert_ptr_ne(strstr(out,
 				"4) File: 'file:<PATH>', the whole file less one trailing '\\n' or\n"),
 			NULL);
-	ck_assert_ptr_ne(strstr(out,
-				"'file:' must be given as 'b64:' or typed at the prompt.\n"), NULL);
+	ck_assert_msg(strstr(out,
+				"'\\r\\n'. PATH should name a regular file.\n"
+				"                      5) Aerospike Secret Agent: 'secrets:<resource>:<key>'\n"
+				"                      6) String: 'PASSWORD'\n") != NULL,
+			"-P forms help does not match:\n%s", out);
+	ck_assert_msg(strstr(out,
+				"A password that itself begins with 'env:', 'env-b64:', 'b64:',\n"
+				"                      'file:' or 'secrets:' must be given as 'b64:' or typed at the\n"
+				"                      prompt.\n") != NULL,
+			"-P prefix help does not match:\n%s", out);
 	ck_assert_ptr_ne(strstr(out, "not PKI. It must be at most 63 bytes.\n"), NULL);
 	ck_assert_msg(strstr(out,
 				"password is given. The typed password is used as is. With no\n"
 				"                      terminal, the password is read from one line of stdin and has\n"
 				"                      surrounding whitespace trimmed.\n") != NULL,
 			"-P prompt help does not match:\n%s", out);
-	ck_assert_ptr_ne(strstr(out,
-				"4) File: 'file:<PATH>', the first line of the file\n"), NULL);
 	ck_assert_msg(strstr(out,
-				"'file:' must be given as 'b64:'.\n"
+				"4) File: 'file:<PATH>', the first line of the file\n"
+				"                      5) Aerospike Secret Agent: 'secrets:<resource>:<key>'\n"
+				"                      6) String: 'PASSWORD'\n") != NULL,
+			"keyfile forms help does not match:\n%s", out);
+	ck_assert_msg(strstr(out,
+				"'file:' or 'secrets:' must be given as 'b64:'.\n"
 				"                      Surrounding whitespace is trimmed before the form is read. A\n"
 				"                      password with surrounding whitespace must be given as 'b64:'.\n"
 				"                      The password is read only when a key file is set.") != NULL,
 			"keyfile trim help does not match:\n%s", out);
-	ck_assert_ptr_ne(strstr(out, "most 1024 bytes.\n"
-				"                      Default: none\n"
+	ck_assert_msg(strstr(out, "most 1024 bytes.\n"
 				"                      A value fetched with 'secrets:' is used as-is.\n"
-				"                      User will be prompted"), NULL);
+				"                      Default: none\n"
+				"                      User will be prompted") != NULL,
+			"keyfile default help does not match:\n%s", out);
 	ck_assert_msg(strstr(out,
 				"specified and no password is given. The typed password\n"
-				"                      accepts the forms above. With no terminal, the password is read\n"
-				"                      from one line of stdin.\n") != NULL,
+				"                      accepts the forms above except 'secrets:'. With no terminal, the\n"
+				"                      password is read from one line of stdin.\n") != NULL,
 			"keyfile prompt help does not match:\n%s", out);
 	ck_assert_ptr_eq(strstr(out, "4999"), NULL);
 }

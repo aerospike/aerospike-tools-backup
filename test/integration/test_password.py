@@ -10,8 +10,10 @@ lets a test see each login, and so which password was read, without an
 Enterprise server.
 """
 
+import base64
 import ctypes
 import ctypes.util
+import json
 import os
 import pty
 import select
@@ -130,6 +132,44 @@ class LoginProxy:
 
 	def credentials(self):
 		return set(self.logins)
+
+	def close(self):
+		self.server.close()
+
+
+class FakeAgent:
+	"""
+	A Secret Agent that counts the connections it accepts and answers every
+	request with secret.
+	"""
+
+	def __init__(self, secret):
+		self.reply = json.dumps(
+			{"SecretValue": base64.b64encode(secret.encode()).decode()}).encode()
+		self.connections = 0
+		self.server = socket.socket()
+		self.server.bind(("127.0.0.1", 0))
+		self.server.listen(16)
+		self.address = "127.0.0.1:%d" % self.server.getsockname()[1]
+		threading.Thread(target=self.accept, daemon=True).start()
+
+	def accept(self):
+		while True:
+			try:
+				conn, _ = self.server.accept()
+			except OSError:
+				return
+			self.connections += 1
+			with conn:
+				try:
+					conn.settimeout(5)
+					header = recv_exact(conn, 8)
+					if header is not None and recv_exact(conn,
+							int.from_bytes(header[4:], "big")) is not None:
+						conn.sendall(header[:4] + len(self.reply).to_bytes(4, "big") +
+							self.reply)
+				except OSError:
+					pass
 
 	def close(self):
 		self.server.close()
@@ -614,3 +654,51 @@ def test_interrupted_prompt_restores_echo():
 		tempfile.mkdtemp(dir=STATE["dir"])), "asbackup left echo off"
 	assert echo_after_interrupted_prompt("asrestore", "-d", STATE["dir_backup"]), \
 		"asrestore left echo off"
+
+
+def keyfile_password_run_options(tool, agent, proxy):
+	options = [*via_tls(proxy), "--tls-keyfile-password", "--sa-address", agent.address]
+
+	if tool == "asbackup":
+		return options + ["-n", "test", "-s", SET_NAME, *backup_target()]
+
+	return options + restore_source()
+
+
+@pytest.mark.parametrize("tool", ["asbackup", "asrestore"])
+def test_piped_keyfile_password_is_not_a_secret(tool):
+	"""
+	A keyfile password read from stdin is used as is, even when it starts with
+	secrets:, so the Secret Agent is never asked for it. The agent would answer
+	with the real password, so the literal value must fail to open the key.
+	"""
+	agent = FakeAgent(KEY_PASSWORD)
+	proxy = LoginProxy(STATE["tls_context"])
+	try:
+		rc, out, _ = run(tool, b"secrets:res:kp\n",
+			*keyfile_password_run_options(tool, agent, proxy))
+	finally:
+		proxy.close()
+		agent.close()
+
+	assert agent.connections == 0, out
+	assert rc != 0, out
+
+
+@pytest.mark.parametrize("tool", ["asbackup", "asrestore"])
+def test_typed_keyfile_password_is_not_a_secret(tool):
+	"""
+	As above for a keyfile password typed at the prompt.
+	"""
+	agent = FakeAgent(KEY_PASSWORD)
+	proxy = LoginProxy(STATE["tls_context"])
+	try:
+		rc, out, err, _, echo_was_off, _ = type_password(tool, b"secrets:res:kp\n",
+			*keyfile_password_run_options(tool, agent, proxy))
+	finally:
+		proxy.close()
+		agent.close()
+
+	assert echo_was_off, "the keyfile password was not prompted for:\n" + out + err
+	assert agent.connections == 0, out + err
+	assert rc != 0, out + err
