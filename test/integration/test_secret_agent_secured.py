@@ -8,8 +8,10 @@ The module starts its own single Enterprise node, apart from the CE nodes the
 other tests use. FEATKEY must hold a base64 encoded feature key file.
 """
 
+import base64
 import os
 import shutil
+import socket
 import subprocess
 import tempfile
 import time
@@ -52,6 +54,8 @@ USERS = {
 	"sa-literal": "secrets:%s:wrong" % RESOURCE,
 	"sa-env": "env:" + UNSET_ENV,
 	"sa-max": MAX_PASSWORD,
+	"sa-missing-key": "secrets:%s:absent" % RESOURCE,
+	"sa-missing-resource": "secrets:absent:password",
 }
 
 SA_SECRETS_PATH = os.path.join(sa.WORK_DIRECTORY, "secured.json")
@@ -101,6 +105,15 @@ def admin_client():
 		"password": "admin"}).connect()
 
 
+def cluster_stable(client):
+	keys = set()
+	for error, response in client.info_all("cluster-stable:size=1").values():
+		value = (response or "").split("\t", 1)[-1].strip()
+		keys.add(None if error or not value or value.upper().startswith("ERROR")
+			else value)
+	return len(keys) == 1 and None not in keys
+
+
 def start_server():
 	STATE["dir"] = tempfile.mkdtemp(prefix=CONTAINER_NAME + "-")
 	os.chmod(STATE["dir"], 0o755)
@@ -119,13 +132,16 @@ def start_server():
 	deadline = time.time() + SERVER_START_TIMEOUT
 	while True:
 		try:
-			STATE["client"] = admin_client()
-			return
-		except aerospike.exception.AerospikeError as error:
-			if time.time() > deadline:
-				raise Exception("admin/admin never logged in: %s\n%s" % (error,
-					container.logs().decode(errors="replace")))
-			time.sleep(0.5)
+			STATE["client"] = STATE.get("client") or admin_client()
+			if cluster_stable(STATE["client"]):
+				return
+			error = "cluster not stable"
+		except aerospike.exception.AerospikeError as e:
+			error = e
+		if time.time() > deadline:
+			raise Exception("admin/admin never logged in to a stable cluster: %s\n%s" % (error,
+				container.logs().decode(errors="replace")))
+		time.sleep(0.5)
 
 
 def remove_container():
@@ -216,6 +232,16 @@ def fetched(name):
 	return "secrets:%s:%s" % (RESOURCE, name)
 
 
+def literal(password):
+	return "b64:" + base64.b64encode(password.encode()).decode()
+
+
+def closed_port():
+	with socket.socket() as s:
+		s.bind(("127.0.0.1", 0))
+		return str(s.getsockname()[1])
+
+
 def server_args():
 	return ["--no-config-file", "-h", "127.0.0.1", "-p", str(STATE["port"])]
 
@@ -297,8 +323,38 @@ def test_reference_is_not_sent_as_the_password(agent, tool):
 	instead of the fetched value would log in.
 	"""
 	rc, out = run(tool, *server_args(), "--user", "sa-literal", "--password",
+		literal(USERS["sa-literal"]), *tool_target(tool))
+	assert rc == 0, out
+
+	rc, out = run(tool, *server_args(), "--user", "sa-literal", "--password",
 		fetched("wrong"), *agent_args(), *tool_target(tool))
 	assert_rejected_by_server(rc, out)
+
+
+@pytest.mark.parametrize("tool", TOOLS)
+@pytest.mark.parametrize("user,reachable,code,detail", [
+	("sa-literal", False, 3, "secret-agent: ERR: connect failed"),
+	("sa-missing-key", True, 1, "secret-agent: ERR: response: absent not present in file "),
+	("sa-missing-resource", True, 1,
+		"secret-agent: ERR: response: resource not found in config: absent"),
+], ids=["agent_unreachable", "missing_key", "missing_resource"])
+def test_failed_fetch_never_sends_reference(agent, tool, user, reachable, code, detail):
+	"""
+	Each user's password is the reference itself, so falling back to sending the
+	reference after a failed fetch would log in.
+	"""
+	reference = USERS[user]
+	rc, out = run(tool, *server_args(), "--user", user, "--password", literal(reference),
+		*tool_target(tool))
+	assert rc == 0, out
+
+	rc, out = run(tool, *server_args(), "--user", user, "--password", reference,
+		"--sa-address", "127.0.0.1", "--sa-port", sa.SA_PORT if reachable else closed_port(),
+		*tool_target(tool))
+	assert rc == 1, out
+	assert "secret agent request failed err code: %d\n" % code in out, out
+	assert detail in out, out
+	assert SERVER_ERROR not in out, out
 
 
 def test_fetched_value_is_not_resolved_again(agent):
