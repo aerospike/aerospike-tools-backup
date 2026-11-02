@@ -335,8 +335,9 @@ def test_reference_is_not_sent_as_the_password(agent, tool):
 @pytest.mark.parametrize("user,reachable,code,detail", [
 	("sa-literal", False, 3, "secret-agent: ERR: connect failed"),
 	("sa-missing-key", True, 1, "secret-agent: ERR: response: absent not present in file "),
+	# with one resource configured, agent 1.1.0 reports an unknown one this way
 	("sa-missing-resource", True, 1,
-		"secret-agent: ERR: response: resource not found in config: absent"),
+		"secret-agent: ERR: response: password not present in file "),
 ], ids=["agent_unreachable", "missing_key", "missing_resource"])
 def test_failed_fetch_never_sends_reference(agent, tool, user, reachable, code, detail):
 	"""
