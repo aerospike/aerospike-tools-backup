@@ -166,7 +166,7 @@ jobs:
         make run_test_secret_agent_secured
       working-directory: main
       env:
-        FEATKEY: ${{ secrets.TEST_FEAT_KEY }}
+        FEATKEY: ${{ secrets.FEAT_KEY_B64 }}
       timeout-minutes: 20
     - name: Test password
       run: |
