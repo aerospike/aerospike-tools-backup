@@ -261,6 +261,11 @@ Please make sure that you have Python 3, `virtualenv`, and optionally `valgrind`
 
 This creates a virtual Python environment in a new subdirectory (`env`), activates it, and installs the Python packages required by the tests. Then the actual tests run.
 
+`test/integration/test_secret_agent_secured.py` also starts an Enterprise server with security enabled, so it needs a feature key file in `FEATKEY`. Without it the module is skipped, or fails when `CI` is set.
+
+    export FEATKEY=$(base64 < /path/to/features.conf)
+    make run_test_secret_agent_secured
+
 ## Backup Source Code
 
 Let's take a quick look at the overall structure of the `asbackup` source code, at `src/backup.c`. The code does the following, starting at `backup_main()`.
