@@ -9,6 +9,7 @@ other tests use. FEATKEY must hold a base64 encoded feature key file.
 """
 
 import base64
+import binascii
 import json
 import os
 import shutil
@@ -191,6 +192,10 @@ def setup_module(module):
 	if not FEATKEY:
 		pytest.skip("FEATKEY is not set: export FEATKEY=$(base64 < features.conf) to run "
 			"the secured server tests")
+	try:
+		base64.b64decode(FEATKEY, validate=True)
+	except binascii.Error:
+		pytest.fail("FEATKEY is not base64: export FEATKEY=$(base64 < features.conf)")
 
 	try:
 		start_server()
@@ -417,13 +422,14 @@ def test_reference_is_not_sent_as_the_password(agent, tool, form):
 
 
 @pytest.mark.parametrize("tool", TOOLS)
+@pytest.mark.parametrize("form", PASSWORD_FORMS)
 @pytest.mark.parametrize("user,reachable,code,detail", [
 	("sa-literal", False, 3, "secret-agent: ERR: connect failed"),
 	("sa-missing-key", True, 1, "secret-agent: ERR: response: absent not present in file "),
 	("sa-missing-resource", True, 1,
 		"secret-agent: ERR: response: resource not found in config: absent\n"),
 ], ids=["agent_unreachable", "missing_key", "missing_resource"])
-def test_failed_fetch_never_sends_reference(agent, tool, user, reachable, code, detail):
+def test_failed_fetch_never_sends_reference(agent, tool, form, user, reachable, code, detail):
 	"""
 	Each user's password is the reference itself, so falling back to sending the
 	reference after a failed fetch would log in.
@@ -440,7 +446,7 @@ def test_failed_fetch_never_sends_reference(agent, tool, user, reachable, code, 
 		truncate(PROBE_SET)
 		target = restore_source(STATE["probe_backup"])
 
-	rc, out = run(tool, *server_args(), "--user", user, "--password", reference,
+	rc, out = run(tool, *server_args(), "--user", user, *password_args(form, reference),
 		"--sa-address", "127.0.0.1", "--sa-port", sa.SA_PORT if reachable else closed_port(),
 		*target)
 	assert rc == 1, out
@@ -476,17 +482,31 @@ def test_tls_agent(tls_agent, address, ca_option):
 	round_trip(login, login)
 
 
+def config_file(sa_port):
+	path = os.path.join(tempfile.mkdtemp(dir=STATE["dir"]), "astools.conf")
+	with open(path, "w") as f:
+		f.write('[cluster]\nhost = "127.0.0.1"\nport = %d\nuser = "%s"\npassword = "%s"\n'
+			'[secret-agent]\nsa-address = "localhost"\nsa-port = "%s"\nsa-ca-file = "%s"\n'
+			% (STATE["port"], fetched("user"), fetched("password"), sa_port, SA_CA_FILE))
+	return path
+
+
 def test_config_file(tls_agent):
 	"""
 	The agent only speaks TLS, so the tools reach it only if they read the
 	[secret-agent] section rather than falling back to the plain defaults.
 	"""
-	path = os.path.join(tempfile.mkdtemp(dir=STATE["dir"]), "astools.conf")
-	with open(path, "w") as f:
-		f.write('[cluster]\nhost = "127.0.0.1"\nport = %d\nuser = "%s"\npassword = "%s"\n'
-			'[secret-agent]\nsa-address = "localhost"\nsa-port = "%s"\nsa-ca-file = "%s"\n'
-			% (STATE["port"], fetched("user"), fetched("password"), sa.SA_PORT, SA_CA_FILE))
+	path = config_file(sa.SA_PORT)
 	round_trip(["--only-config-file", path], ["--only-config-file", path])
+
+
+@pytest.mark.parametrize("tool", TOOLS)
+def test_config_file_sa_port_is_read(tls_agent, tool):
+	rc, out = run(tool, "--only-config-file", config_file(closed_port()), *tool_target(tool))
+	assert rc == 1, out
+	assert "secret agent request failed err code: 3\n" in out, out
+	assert SERVER_ERROR not in out, out
+	assert_no_secret(out)
 
 
 def test_restore_with_fetched_password(agent):

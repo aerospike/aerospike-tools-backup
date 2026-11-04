@@ -231,8 +231,7 @@ jobs:
       timeout-minutes: 100
     - name: Test secret agent with a secured server
       if: ${{ !cancelled() }}
-      run: |
-        make run_test_secret_agent_secured
+      run: ./tests.sh "$PWD/env" test/integration/test_secret_agent_secured.py
       working-directory: main
       env:
         FEATKEY: ${{ secrets.FEAT_KEY_B64 }}
