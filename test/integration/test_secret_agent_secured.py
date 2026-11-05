@@ -192,9 +192,12 @@ def setup_module(module):
 	if not FEATKEY:
 		pytest.skip("FEATKEY is not set: export FEATKEY=$(base64 < features.conf) to run "
 			"the secured server tests")
+	featkey_invalid = False
 	try:
 		base64.b64decode(FEATKEY, validate=True)
-	except binascii.Error:
+	except (binascii.Error, ValueError):
+		featkey_invalid = True
+	if featkey_invalid:
 		pytest.fail("FEATKEY is not base64: export FEATKEY=$(base64 < features.conf)")
 
 	try:
