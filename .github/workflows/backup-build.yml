@@ -229,17 +229,28 @@ jobs:
       run: make run_test_s3
       working-directory: main
       timeout-minutes: 100
+    - name: Test secret agent with a secured server
+      if: ${{ !cancelled() }}
+      run: ./tests.sh "$PWD/env" test/integration/test_secret_agent_secured.py
+      working-directory: main
+      env:
+        FEATKEY: ${{ secrets.FEAT_KEY_B64 }}
+      timeout-minutes: 20
     - name: Accumulate coverage
+      if: ${{ !cancelled() }}
       run: make coverage
       working-directory: main
     - name: Report coverage
+      if: ${{ !cancelled() }}
       run: make report
       working-directory: main
     - name: clear temp directories
+      if: ${{ !cancelled() }}
       run: |
         rm -rf client
         rm -rf main/target
     - name: Upload coverage to Codecov
+      if: ${{ !cancelled() }}
       uses: codecov/codecov-action@ab904c41d6ece82784817410c45d8b8c02684457 # v3.1.6
       with:
         verbose: false
