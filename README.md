@@ -1,7 +1,7 @@
 ## Aerospike Backup Tools
 
 > [!WARNING]
-> **This repository is deprecated.** `asbackup` and `asrestore` are replaced by [absctl](https://github.com/aerospike/absctl), the unified command-line tool for Aerospike backup and restore. Please use absctl for new deployments.
+> **This repository is deprecated.** `asbackup` and `asrestore` are replaced by [absctl](https://github.com/aerospike/absctl), the unified command-line tool for [Aerospike backup and restore](https://aerospike.com/docs/database/tools/backup-and-restore/overview/). Please use absctl for new deployments.
 
 [![Build and Test All](https://github.com/aerospike/aerospike-tools-backup/actions/workflows/backup-build.yml/badge.svg?branch=master)](https://github.com/aerospike/aerospike-tools-backup/actions/workflows/backup-build.yml)
 [![codecov](https://codecov.io/gh/aerospike/aerospike-tools-backup/branch/main/graph/badge.svg)](https://codecov.io/gh/aerospike/aerospike-tools-backup)
